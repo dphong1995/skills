@@ -36,6 +36,7 @@ Do NOT write implementation code until a design has been approved (Step 1) and a
 This applies regardless of task simplicity. "Simple" tasks are where unexamined assumptions waste the most time.
 User override: If user explicitly says "just code it" or "skip planning", respect their instruction —
 collapse Step 1 to a minimal scout + one confirmation (see `references/design-phase.md` § Escalation).
+A bug fix handed off by `routing-bug-fixes-to-cook` collapses Step 1 the same way (same § Escalation).
 </HARD-GATE>
 
 <HARD-GATE>

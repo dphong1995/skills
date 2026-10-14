@@ -1,4 +1,4 @@
-# Claude Code skills — brainstorm-pro / ck-plan / cook
+# Claude Code skills — brainstorm-pro / ck-plan / cook / routing-bug-fixes-to-cook
 
 Bộ skill thiết kế → lập kế hoạch → triển khai cho Claude Code, kèm các subagent mà chúng dispatch.
 
@@ -32,7 +32,7 @@ Nếu sửa skill trực tiếp ở `~/.claude/skills/`, copy ngược lại rep
 
 ```bash
 cd ~/.claude/skills-repo
-rsync -a --exclude '.DS_Store' ~/.claude/skills/{brainstorm-pro,ck-plan,cook} skills/
+rsync -a --exclude '.DS_Store' ~/.claude/skills/{brainstorm-pro,ck-plan,cook,routing-bug-fixes-to-cook} skills/
 rsync -a --exclude '.DS_Store' ~/.claude/agents/ agents/
 git add -A && git commit -m "..." && git push
 ```
@@ -45,7 +45,10 @@ skills/
 │                     → viết spec → user duyệt → gọi ck-plan
 ├── ck-plan/          Lập kế hoạch: research → phân tích codebase → plan.md + phase-XX-*.md
 │                     → tự động gọi cook
-└── cook/             Triển khai: mỗi phase một subagent → test → review fan-out 3 agent → finalize
+├── cook/             Triển khai: mỗi phase một subagent → test → review fan-out 3 agent → finalize
+└── routing-bug-fixes-to-cook/
+                      Cổng sau khi debug xong root cause: fix ≥ 3 file production, chạm 2 repo
+                      hoặc có nhiều cách sửa → gọi cook (Step 1 rút gọn); nhỏ hơn → sửa thẳng
 
 agents/               19 subagent definition mà cook/ck-plan gọi tới
 ```
@@ -63,4 +66,10 @@ các gate tương tác trong phase design của brainstorm-pro/cook).
   `designer`, `debugger`, `explore`, `document-specialist`, `planner`. Thiếu thì cook vẫn chạy
   nhưng phải fallback sang agent mặc định và chất lượng giảm.
 - **Không có CLI `ck`.** Tên `ck-plan` chỉ là di sản đặt tên; mọi thứ chạy trong skill.
+- **`routing-bug-fixes-to-cook` cần 1 dòng trong `~/.claude/CLAUDE.md`** để được gọi đúng lúc (thêm
+  thủ công):
+  ```
+  - Bug fix: once the root cause is confirmed, invoke the `routing-bug-fixes-to-cook` skill before writing the fix.
+  ```
+  Skill này dùng chế độ Step 1 rút gọn của `cook`, nên phải cài cùng bản `cook` trong repo.
 - Repo này không đụng tới `settings.json`, `CLAUDE.md` hay plugin — những thứ đó cấu hình riêng.

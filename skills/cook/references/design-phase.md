@@ -221,6 +221,9 @@ Selected approach from 1D, with rationale (cite 1B research if used).
 
 - **User says "just code it" / "skip planning"** → respect it. Collapse Step 1 to: minimal scout
   (≤3 actions) + one confirmation question + a 5-line design block, then go to Step 2.
+- **Bug fix handed off by `routing-bug-fixes-to-cook`** (root cause confirmed) → same collapse, with
+  the investigation as the scout: Q&A only for a genuinely open question, the candidate fixes with a
+  recommendation + a 5-line design block, one approval, then Step 2.
 - **Topic too large** → decompose into sub-projects; cook only the first.
 - **Scope keeps drifting** → freeze scope explicitly; document drifted items as Open Items.
 - **No clear recommendation possible** → present approaches with trade-offs, ask the user to
