@@ -1,6 +1,6 @@
 ---
 name: routing-bug-fixes-to-cook
-description: Use when a bug's root cause is confirmed (superpowers:systematic-debugging Phase 3 done, or the cause is otherwise known) and you are about to write the fix, or when a fix in progress grows to more files or another repository than planned
+description: Use when a bug's root cause is confirmed (superpowers:systematic-debugging Phase 3 done, or the cause is otherwise known) and you are about to write the fix, or when a fix in progress grows to more files than planned
 ---
 
 # Routing Bug Fixes to Cook
@@ -15,15 +15,14 @@ systematic-debugging finds the root cause. It does not decide who implements the
 
 Run it after the root cause is confirmed and BEFORE the first test or fix edit. List the files the fix touches. The fix is **LARGE** if ANY of these is true:
 
-1. It touches **≥ 3 production files** (tests, snapshots and fixtures don't count)
-2. It touches **more than one repository** (e.g. FE and BE), at any size
-3. There is **more than one reasonable way** to fix it
+1. It touches **≥ 3 production files** in total, counted across all repositories (tests, snapshots and fixtures don't count)
+2. There is **more than one reasonable way** to fix it
 
 | Result | Do |
 |---|---|
 | LARGE | Invoke `cook` now (Handoff below). Write no test and no fix yourself first. |
 | SMALL | Continue systematic-debugging Phase 4. |
-| SMALL, then a fix edit reveals a 3rd file or another repo | STOP editing. Invoke `cook` with the findings and the edits made so far. |
+| SMALL, then a fix edit reveals a 3rd production file | STOP editing. Invoke `cook` with the findings and the edits made so far. |
 
 Only the user's explicit words skip the gate ("sửa luôn, không cần cook", "skip cook"). Urgency is not permission.
 
@@ -53,12 +52,11 @@ Collapsed Step 1 (cook `references/design-phase.md` § Escalation): the investig
 | "I'll invoke cook but do the edits inline, it's faster" | Cook with inline edits is not cook. Executors do every edit. |
 | "I'll keep cook light / cut it down if it sprawls" | The collapse is defined above. Nothing else gets cut. |
 | "Fix the BE file now, cook the FE later" | Splitting is the same skip. The whole fix goes to cook. |
-| "Only 2 FE files + one line in BE" | Two repositories = LARGE, at any size. |
+| "Only 2 FE files + one line in BE" | That is 3 production files. Count across repositories. |
 | "Ask the user whether to use cook" | The user already made this rule. Invoke cook. |
 
 ## Red Flags — STOP and invoke cook
 
 - About to Edit/Write a 3rd production file for a bug fix outside cook
-- Editing a second repository for a bug fix outside cook
 - "Just this one file first"
 - Writing the failing test yourself before the gate said SMALL

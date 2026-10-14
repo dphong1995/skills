@@ -47,8 +47,8 @@ skills/
 │                     → tự động gọi cook
 ├── cook/             Triển khai: mỗi phase một subagent → test → review fan-out 3 agent → finalize
 └── routing-bug-fixes-to-cook/
-                      Cổng sau khi debug xong root cause: fix ≥ 3 file production, chạm 2 repo
-                      hoặc có nhiều cách sửa → gọi cook (Step 1 rút gọn); nhỏ hơn → sửa thẳng
+                      Cổng sau khi debug xong root cause: fix ≥ 3 file production (đếm gộp các
+                      repo) hoặc có nhiều cách sửa → gọi cook (Step 1 rút gọn); nhỏ hơn → sửa thẳng
 
 agents/               19 subagent definition mà cook/ck-plan gọi tới
 ```
