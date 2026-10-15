@@ -52,6 +52,8 @@ skills/
                       gọn); nhỏ hơn → sửa thẳng
 
 agents/               19 subagent definition mà cook/ck-plan gọi tới
+
+cmux/                 Settings của cmux (không thuộc install.sh ở trên, xem mục cmux bên dưới)
 ```
 
 Chuỗi thiết kế: `brainstorm-pro` → `ck-plan` → `cook` chạy liền mạch, không dừng hỏi ở giữa (trừ
@@ -74,3 +76,34 @@ các gate tương tác trong phase design của brainstorm-pro/cook).
   ```
   Skill này dùng chế độ Step 1 rút gọn của `cook`, nên phải cài cùng bản `cook` trong repo.
 - Repo này không đụng tới `settings.json`, `CLAUDE.md` hay plugin — những thứ đó cấu hình riêng.
+
+## cmux
+
+cmux không tự sync settings giữa các máy, nên repo giữ bản copy của 2 file:
+
+| File trong repo | Vị trí trên máy |
+|---|---|
+| `cmux/cmux.json` | `~/.config/cmux/cmux.json` — settings, shortcuts |
+| `cmux/config.ghostty` | `~/Library/Application Support/com.cmuxterm.app/config.ghostty` — config Ghostty mà cửa sổ Settings của cmux ghi (font, cursor…) |
+
+Cài trên máy mới (file đang có được giữ lại dạng `<file>.<timestamp>.bak`):
+
+```bash
+bash ~/.claude/skills-repo/cmux/install.sh
+```
+
+Đẩy thay đổi ngược lên repo:
+
+```bash
+cd ~/.claude/skills-repo
+cp ~/.config/cmux/cmux.json "$HOME/Library/Application Support/com.cmuxterm.app/config.ghostty" cmux/
+git add cmux && git commit -m "..." && git push
+```
+
+Setting chỉnh trong cửa sổ Settings mà **không có trong `cmux.json`** thì nằm trong plist của macOS
+(`com.cmuxterm.app`), không đi theo repo. Muốn sync thì ghi nó vào `cmux.json`:
+`cmux config set <setting.path> <value>` (`cmux config get <path>` cho biết giá trị đang lấy từ đâu).
+Giá trị trong `cmux.json` đè lên giá trị trong cửa sổ Settings.
+
+`cmux config doctor` báo lỗi ở các shortcut dạng object (`{"first": {...}}`). Dạng này do cửa sổ
+Settings tự ghi và app vẫn đọc được, chỉ schema của doctor là không chấp nhận.

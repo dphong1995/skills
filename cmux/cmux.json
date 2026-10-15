@@ -1,0 +1,91 @@
+{
+  "$schema" : "https://raw.githubusercontent.com/manaflow-ai/cmux/main/web/data/cmux.schema.json",
+  "app" : {
+    "preferredEditor" : "webstorm",
+    "focusPaneOnFirstClick": true,
+    "openSupportedFilesInCmux": false,
+    "openMarkdownInCmuxViewer": false
+  },
+  "schemaVersion" : 1,
+  "shortcuts" : {
+    "bindings" : {
+      "focusDown" : {
+        "first" : {
+          "command" : true,
+          "control" : false,
+          "key" : "↓",
+          "keyCode" : 125,
+          "option" : false,
+          "shift" : true
+        }
+      },
+      "focusLeft" : {
+        "first" : {
+          "command" : true,
+          "control" : false,
+          "key" : "←",
+          "keyCode" : 123,
+          "option" : false,
+          "shift" : true
+        }
+      },
+      "focusRight" : {
+        "first" : {
+          "command" : true,
+          "control" : false,
+          "key" : "→",
+          "keyCode" : 124,
+          "option" : false,
+          "shift" : true
+        }
+      },
+      "focusUp" : {
+        "first" : {
+          "command" : true,
+          "control" : false,
+          "key" : "↑",
+          "keyCode" : 126,
+          "option" : false,
+          "shift" : true
+        }
+      },
+      "previousAgentTurn": {
+        "first": {
+          "command": false,
+          "control": false,
+          "key": "",
+          "option": false,
+          "shift": false
+        }
+      },
+      "nextAgentTurn": {
+        "first": {
+          "command": false,
+          "control": false,
+          "key": "",
+          "option": false,
+          "shift": false
+        }
+      },
+      "selectSurfaceByNumber": "cmd+1",
+      "selectWorkspaceByNumber": "ctrl+1"
+    }
+  },
+  "sidebar": {
+    "branchVerticalLayout": false,
+    "showNotificationMessage": false,
+    "showBranchDirectory": false,
+    "showPullRequests": false,
+    "makePullRequestsClickable": false,
+    "openPullRequestLinksInCmuxBrowser": false,
+    "openPortLinksInCmuxBrowser": false,
+    "showSSH": false,
+    "showPorts": false,
+    "showLog": false,
+    "showProgress": false,
+    "showCustomMetadata": false
+  },
+  "sidebarAppearance": {
+    "matchTerminalBackground": false
+  }
+}
