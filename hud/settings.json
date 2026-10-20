@@ -1,0 +1,57 @@
+{
+  "statusLine": {
+    "type": "command",
+    "command": "node $HOME/.claude/hud/omc-hud.mjs"
+  },
+  "omcHud": {
+    "preset": "full",
+    "elements": {
+      "omcLabel": false,
+      "thinking": false,
+      "gitStatus": false,
+      "showCallCounts": false,
+      "model": true,
+      "modelFormat": "short",
+      "enterpriseMode": true,
+      "activeSkills": false,
+      "lastSkill": false
+    },
+    "layout": {
+      "line1": [
+        "hostname",
+        "cwd",
+        "gitRepo",
+        "gitBranch",
+        "gitStatus",
+        "model",
+        "apiKeySource",
+        "profile"
+      ],
+      "main": [
+        "omcLabel",
+        "rateLimits",
+        "customBuckets",
+        "permission",
+        "thinking",
+        "promptTime",
+        "session",
+        "tokens",
+        "ralph",
+        "autopilot",
+        "prd",
+        "contextBar",
+        "background",
+        "callCounts",
+        "lastTool",
+        "sessionSummary"
+      ],
+      "detail": [
+        "missionBoard",
+        "contextWarning",
+        "payloadWarning",
+        "updateHint",
+        "todos"
+      ]
+    }
+  }
+}
