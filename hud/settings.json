@@ -14,7 +14,8 @@
       "modelFormat": "short",
       "enterpriseMode": true,
       "activeSkills": false,
-      "lastSkill": false
+      "lastSkill": false,
+      "todos": false
     },
     "layout": {
       "line1": [
