@@ -4,7 +4,7 @@ description: "ALWAYS activate this skill before implementing EVERY feature, plan
 argument-hint: "[task|plan-path]"
 metadata:
   author: claudekit
-  version: "5.3.0"
+  version: "5.4.0"
 ---
 
 # Cook - Smart Feature Implementation
@@ -96,7 +96,7 @@ flowchart TD
     subgraph S1[Step 1: Design — brainstorm-pro flow, interactive, orchestrator-run]
       direction TB
       C1[1A: Deep Scout] --> C2[1B: Best-Practice Research<br/>conditional]
-      C2 --> C3[1C: Q&A Loop — one round at a time<br/>on an HTML question page, answers pasted back]
+      C2 --> C3[1C: Q&A Loop — one round at a time<br/>on an HTML question page, answers sent back]
       C3 --> C4[1D: Propose 2-3 Approaches]
       C4 --> C5[1E: Sectioned Design + per-section approval]
     end

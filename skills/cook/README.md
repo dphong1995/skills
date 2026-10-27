@@ -44,7 +44,7 @@ the writing.
 ```
 
 Step 1 (Design) is interactive — one round at a time on a local HTML question page (independent
-questions may share a page; the user pastes the copied answers back), approval per design section in chat.
+questions may share a page; the page sends the answers back, copy-and-paste as the fallback), approval per design section in chat.
 From Step 2 onward it runs end to end without pausing; only the final commit is confirmed.
 
 ## Sub-agent Roles
@@ -74,6 +74,7 @@ cook/
 
 ## Version
 
+5.4.0 - The interview page sends the answers back through a local server started in the background (copy-and-paste stays as the fallback); file paths in the text open in the viewer; screenshots and wireframe mockups; the page is styled with Tailwind
 5.3.0 - Interview questions shown as a local HTML page, one round at a time (up to 4 independent questions per page); a floating button copies every answer for the user to paste back (no Artifact, no polling)
 5.2.0 - The interview page wakes the session when the user answers (comment sent to Claude); polling only as a fallback
 5.1.0 - Step 1 interview questions (1C, 1D approach pick) asked on an Artifact page shared with brainstorm-pro, answers polled from its db

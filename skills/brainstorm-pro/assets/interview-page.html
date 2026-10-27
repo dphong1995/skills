@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="vi">
+<html lang="vi" class="scroll-pt-14">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -10,8 +10,10 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.3"></script>
 <style>
-/* Layout: sticky bar with the topic and a jump link per question; settled decisions fold at the top; one card per question with everything to read first (why, context, options side by side, recommendation) and a compact answer strip last; a small floating bar picks the recommendations and copies every answer at once. */
+/* Layout: sticky bar with the topic and a jump link per question; settled decisions fold at the top; one card per question with everything to read first (why, context, options side by side, recommendation) and a compact answer strip last; a small floating bar picks the recommendations and sends or copies every answer at once.
+   Styling is Tailwind utilities on the elements; these are the color tokens they use, light and dark. */
 :root {
   --bg: #f3f5f8;
   --surface: #ffffff;
@@ -31,7 +33,7 @@
   --del: rgb(207 34 46 / .12);
   --shadow: 0 6px 20px rgb(23 32 49 / .18);
   --font-body: "Be Vietnam Pro", "Segoe UI", system-ui, -apple-system, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-code: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -42,149 +44,38 @@
     --shadow: 0 6px 20px rgb(0 0 0 / .5); color-scheme: dark;
   }
 }
-* { box-sizing: border-box; }
-[hidden] { display: none !important; }
-html { scroll-padding-top: 56px; }
-body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 14px; line-height: 1.5; }
-.wrap { max-width: calc(1280px + 32px); margin: 0 auto; padding-left: 16px; padding-right: 16px; }
-
-.topbar { position: sticky; top: 0; z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line); }
-.topbar .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding-block: 8px; }
-.topic { font-size: 15px; font-weight: 600; line-height: 1.35; margin: 0; min-width: 0; }
-.qnav { display: flex; flex-wrap: wrap; gap: 4px; }
-.qnav a { font-family: var(--font-mono); font-size: 12px; padding: 1px 10px; border-radius: 999px; border: 1px solid var(--accent); color: var(--accent); text-decoration: none; white-space: nowrap; }
-.qnav a[data-done="true"] { background: var(--accent); color: var(--accent-ink); }
-.qnav a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.caps { font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-
-main.wrap { display: grid; gap: 14px; padding-block: 14px 80px; }
-.decided { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; font-size: 13px; }
-.decided > summary { cursor: pointer; padding: 6px 12px; font-weight: 600; }
-.decided > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 10px; }
-.decided ul { margin: 0; padding: 0 12px 8px 2em; display: grid; gap: 2px; }
-
-.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; display: grid; gap: 12px; min-width: 0; transition: border-color .2s, box-shadow .2s; }
-.card.attention { border-color: var(--note); box-shadow: 0 0 0 3px var(--note-soft); }
-@media (max-width: 520px) { .card { padding: 14px 12px; } }
-.card-head { display: grid; gap: 2px; }
-.q-num { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
-.tag { color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; }
-.undo { border-radius: 999px; padding: 0 8px; text-transform: none; letter-spacing: 0; }
-.undo[data-easy="true"] { color: var(--pro); border: 1px solid currentColor; }
-.undo[data-easy="false"] { color: var(--note); background: var(--note-soft); font-weight: 600; }
-.q-num .state { margin-left: auto; border-radius: 999px; padding: 0 8px; color: var(--muted); background: var(--sunken); text-transform: none; letter-spacing: 0; }
-.q-num .state[data-done="true"] { color: var(--pro); }
-.q-title { font-size: 18px; line-height: 1.35; font-weight: 700; margin: 0; text-wrap: balance; }
-.why { background: var(--accent-soft); border-radius: 8px; padding: 6px 12px; display: grid; gap: 2px; }
-.why p { margin: 0; }
-.why strong { color: var(--accent); }
-
-.blocks { display: grid; gap: 8px; min-width: 0; }
-.blocks > p { margin: 0; white-space: pre-line; max-width: 90ch; }
-.blocks > ul, .blocks > ol { margin: 0; padding-left: 1.3em; display: grid; gap: 2px; max-width: 90ch; }
-code { font-family: var(--font-mono); font-size: .86em; background: var(--sunken); border-radius: 4px; padding: .05em .3em; overflow-wrap: anywhere; }
-figure.code, figure.diagram { margin: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--sunken); min-width: 0; overflow: hidden; }
-figure.diagram { background: var(--surface); }
-figcaption, .diff-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; font-family: var(--font-mono); font-size: 11px; color: var(--muted); padding: 2px 4px 2px 10px; border-bottom: 1px solid var(--line); }
-figcaption span, .diff-head span { min-width: 0; overflow-wrap: anywhere; }
-.btn-file { font-family: var(--font-body); font-size: 12px; padding: 1px 10px; white-space: nowrap; color: var(--accent); background: var(--surface); border-color: var(--line); }
-.code-body { display: flex; align-items: flex-start; overflow-x: auto; }
-.code-body pre { margin: 0; padding: 8px 0; font-family: var(--font-mono); font-size: 12.5px; line-height: 19px; tab-size: 2; }
-.code-body .src { flex: 1 0 auto; }
-.code-body code { display: block; background: none; padding: 0; font-size: inherit; overflow-wrap: normal; }
-.code-body .line { display: block; min-height: 19px; padding: 0 10px; }
-.gutter { flex: none; position: sticky; left: 0; z-index: 1; text-align: right; color: var(--muted); background-color: var(--sunken); border-right: 1px solid var(--line); user-select: none; }
-.code-body .gutter .line { padding: 0 8px; }
-.code-body .line.mark { background: var(--mark); }
-.code-body .line.add { background: var(--add); }
-.code-body .line.del { background: var(--del); }
-.code-body .line.pad { background: repeating-linear-gradient(135deg, transparent 0 5px, var(--line) 5px 6px); }
-.diff-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.diff-col { min-width: 0; }
-.diff-col + .diff-col { border-left: 1px solid var(--line); }
-@media (max-width: 720px) {
-  .diff-cols { grid-template-columns: minmax(0, 1fr); }
-  .diff-col + .diff-col { border-left: 0; border-top: 1px solid var(--line); }
+</style>
+<style type="text/tailwindcss">
+@theme inline {
+  --color-page: var(--bg);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-pro: var(--pro);
+  --color-con: var(--con);
+  --color-note: var(--note);
+  --color-note-soft: var(--note-soft);
+  --color-mark: var(--mark);
+  --color-add: var(--add);
+  --color-del: var(--del);
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-code);
 }
-.diagram-body { padding: 10px; overflow-x: auto; text-align: center; }
-.diagram-body svg { max-width: 100%; height: auto; }
-.diagram-body .callout { text-align: left; margin-bottom: 8px; }
-.table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
-table { border-collapse: collapse; width: 100%; font-size: 13px; }
-th, td { text-align: left; vertical-align: top; padding: 5px 10px; border-bottom: 1px solid var(--line); }
-th { background: var(--sunken); font-weight: 600; }
-tbody tr:last-child td { border-bottom: 0; }
-.callout { margin: 0; background: var(--note-soft); border-radius: 8px; padding: 6px 12px; }
-.callout strong:first-child { color: var(--note); }
-
-.opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: 6px 8px; }
-@media (max-width: 1060px) { .opts[data-n="4"] { grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); } }
-.opt { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: grid; grid-template-rows: subgrid; min-width: 0; transition: border-color .15s, background-color .15s; }
-.opt.recommended { border-color: var(--accent); }
-.opt.chosen { background: var(--accent-soft); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-.opt-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
-.opt-key { font-family: var(--font-mono); font-weight: 600; color: var(--accent); }
-.opt-label { font-weight: 600; }
-.badge-rec { font-family: var(--font-mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; background: var(--accent); color: var(--accent-ink); border-radius: 999px; padding: 0 6px; }
-.effort { margin-left: auto; font-size: 12px; color: var(--muted); }
-.opt p { margin: 0; }
-.example { font-size: 13px; background: var(--sunken); border-radius: 6px; padding: 4px 8px; white-space: pre-line; }
-.pc { margin: 0; padding: 0; list-style: none; display: grid; gap: 1px; align-content: start; font-size: 13px; }
-.pc li { padding-left: 1.1em; text-indent: -1.1em; }
-.pc li::before { display: inline-block; width: 1.1em; text-indent: 0; font-weight: 700; }
-.pc .pro::before { content: "+"; color: var(--pro); }
-.pc .con::before { content: "–"; color: var(--con); }
-.rec { margin: 0; border-left: 3px solid var(--accent); padding: 2px 10px; }
-.rec strong { color: var(--accent); }
-
-.answer { border-top: 1px dashed var(--line); padding-top: 10px; display: grid; gap: 8px; }
-.answer-head { display: flex; align-items: baseline; gap: 8px; }
-.hint { font-size: 12px; color: var(--muted); }
-.choices { display: flex; flex-wrap: wrap; gap: 6px; }
-.choice { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px 3px 8px; font-size: 13px; cursor: pointer; background: var(--surface); transition: border-color .15s, background-color .15s; }
-.choice:hover { border-color: var(--accent); }
-.choice:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
-.choice:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
-.choice.builtin { border-style: dashed; }
-.choice input { margin: 0; width: 15px; height: 15px; accent-color: var(--accent); }
-.star { color: var(--accent); }
-.fields { display: flex; flex-wrap: wrap; gap: 8px; }
-.fields textarea { flex: 1 1 18rem; }
-textarea { width: 100%; resize: vertical; font: inherit; font-size: 13px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; }
-textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-
-.viewer { width: min(1400px, calc(100vw - 32px)); height: calc(100vh - 48px); max-width: none; max-height: none; padding: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--sunken); color: var(--ink); box-shadow: var(--shadow); overflow: hidden; }
-.viewer[open] { display: grid; grid-template-rows: auto minmax(0, 1fr); }
-.viewer::backdrop { background: rgb(0 0 0 / .45); }
-.viewer-head { display: flex; align-items: center; gap: 12px; padding: 6px 6px 6px 14px; background: var(--surface); border-bottom: 1px solid var(--line); }
-.viewer-path { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: 12px; overflow-wrap: anywhere; }
-.viewer-body { display: grid; min-height: 0; }
-.viewer .code-body { overflow: auto; min-height: 0; }
-
-.fab { position: fixed; right: 16px; bottom: 16px; z-index: 10; max-width: calc(100vw - 32px); display: grid; justify-items: end; gap: 6px; }
-.fab-bar { display: flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px 4px 4px 12px; box-shadow: var(--shadow); }
-.count { font-family: var(--font-mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
-button { font: inherit; font-size: 13px; font-weight: 600; border-radius: 999px; padding: 6px 14px; border: 1px solid transparent; cursor: pointer; }
-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.btn-primary { background: var(--accent); color: var(--accent-ink); }
-.btn-ghost { background: var(--sunken); color: var(--ink); border-color: var(--line); }
-.msg { margin: 0; max-width: 24rem; font-size: 13px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; box-shadow: var(--shadow); }
-.msg:empty { display: none; }
-.msg[data-kind="ok"] { color: var(--pro); }
-.msg[data-kind="warn"] { color: var(--note); }
-.msg button { margin-left: 8px; padding: 1px 10px; font-size: 12px; }
-.out { width: min(26rem, calc(100vw - 32px)); font-family: var(--font-mono); font-size: 12px; max-height: 40vh; background: var(--sunken); }
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
-<body>
-<header class="topbar">
-  <div class="wrap">
-    <h1 class="topic" id="topic">Phỏng vấn thiết kế</h1>
-    <nav class="qnav" id="qnav" aria-label="Các câu hỏi"></nav>
+<body class="bg-page text-ink font-sans text-[14px] leading-normal">
+<header class="sticky top-0 z-5 bg-surface border-b border-line">
+  <div class="max-w-[1312px] mx-auto px-4 py-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+    <h1 class="text-[15px] font-semibold leading-[1.35] min-w-0" id="topic">Phỏng vấn thiết kế</h1>
+    <nav class="flex flex-wrap gap-1" id="qnav" aria-label="Các câu hỏi"></nav>
   </div>
 </header>
-<main class="wrap" id="main"></main>
+<main class="max-w-[1312px] mx-auto px-4 pt-3.5 pb-20 grid gap-3.5" id="main"></main>
 
 <script>
 (() => {
@@ -204,12 +95,36 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   };
   const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-  // Inline `code` and **bold** only; everything else is plain text.
+  // Class sets used in more than one place.
+  const FOCUS = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent';
+  const CODE = 'font-mono text-[.86em] bg-sunken rounded px-[.3em] py-[.05em] wrap-anywhere';
+  const FIG = 'm-0 min-w-0 overflow-hidden border border-line rounded-lg';
+  const CAPTION = 'flex items-center justify-between gap-2 min-h-7 py-0.5 pr-1 pl-2.5 border-b border-line font-mono text-[11px] text-muted';
+  const CAP_TEXT = 'min-w-0 wrap-anywhere';
+  const CALLOUT = 'm-0 bg-note-soft rounded-lg px-3 py-1.5';
+  const LIST = 'm-0 pl-[1.3em] grid gap-0.5 max-w-[90ch]';
+  const PC = 'pl-[1.1em] -indent-[1.1em] before:inline-block before:w-[1.1em] before:indent-0 before:font-bold';
+  const TEXTAREA = 'w-full resize-y text-[13px] text-ink bg-page border border-line rounded-lg px-2.5 py-[5px] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent';
+  const btnCls = (kind, small) => ['font-sans font-semibold rounded-full border cursor-pointer disabled:opacity-60 disabled:cursor-default', FOCUS,
+    small ? 'text-[12px] px-2.5 py-px' : 'text-[13px] px-3.5 py-1.5',
+    kind === 'primary' ? 'border-transparent bg-accent text-accent-ink'
+      : kind === 'file' ? 'border-line bg-surface text-accent whitespace-nowrap' : 'border-line bg-sunken text-ink'].join(' ');
+
+  // Inline `code` and **bold** only; everything else is plain text. A `path:N-M` the render script found on disk opens in the file viewer.
+  const PATH = /^(.+?)(?::(\d+)(?:-(\d+))?)?$/;
   const inline = (text) => {
     const frag = document.createDocumentFragment();
     String(text ?? '').split(/(`[^`]+`|\*\*[^*]+\*\*)/).forEach((part) => {
       if (!part) return;
-      if (part.length > 2 && part[0] === '`' && part.endsWith('`')) frag.append(el('code', { text: part.slice(1, -1) }));
+      if (part.length > 2 && part[0] === '`' && part.endsWith('`')) {
+        const t = part.slice(1, -1);
+        const m = PATH.exec(t);
+        const abs = D && D.paths && D.paths[m[1]];
+        frag.append(abs
+          ? el('a', { href: '#', class: CODE + ' text-accent underline decoration-dotted underline-offset-2 hover:decoration-solid', title: 'Xem file',
+            onclick: (e) => { e.preventDefault(); openFile(abs, extLang(abs), m[2] ? [+m[2], +(m[3] || m[2])] : null); } }, t)
+          : el('code', { class: CODE, text: t }));
+      }
       else if (part.length > 4 && part.startsWith('**') && part.endsWith('**')) frag.append(el('strong', { text: part.slice(2, -2) }));
       else frag.append(document.createTextNode(part));
     });
@@ -219,6 +134,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   // Code: highlight.js from the CDN (plain text when it did not load), one block per line so lines can be numbered and tinted.
   const LH = 19, PAD = 8;
   const AUTO = ['typescript', 'javascript', 'json', 'sql', 'bash', 'python', 'css', 'scss', 'xml', 'yaml'];
+  const TINT = { mark: 'bg-mark', add: 'bg-add', del: 'bg-del', pad: 'bg-[repeating-linear-gradient(135deg,transparent_0_5px,var(--line)_5px_6px)]' };
   const highlight = (text, lang) => {
     const h = window.hljs;
     if (!h) return null;
@@ -247,42 +163,51 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     return html == null ? text.split('\n').map(esc) : splitLines(html);
   };
   const linesView = (lines, nums, cls) => {
-    const row = (html, i) => '<span class="line' + (cls && cls[i] ? ' ' + cls[i] : '') + '">' + html + '</span>';
-    const src = el('pre', { class: 'src' });
-    src.innerHTML = '<code>' + lines.map(row).join('') + '</code>';
+    const row = (html, i, px) => '<span class="block min-h-[19px] ' + px + (cls && cls[i] ? ' ' + TINT[cls[i]] : '') + '">' + html + '</span>';
+    const PRE = 'm-0 py-2 font-mono text-[12.5px] leading-[19px] [tab-size:2]';
+    const src = el('pre', { class: PRE + ' flex-[1_0_auto]' });
+    src.innerHTML = '<code class="block">' + lines.map((l, i) => row(l, i, 'px-2.5')).join('') + '</code>';
     let gutter = null;
     if (nums) {
-      gutter = el('pre', { class: 'gutter', 'aria-hidden': 'true' });
-      gutter.innerHTML = nums.map((n, i) => row(n == null ? '' : String(n), i)).join('');
+      gutter = el('pre', { class: PRE + ' flex-none sticky left-0 z-1 text-right text-muted bg-sunken border-r border-line select-none', 'aria-hidden': 'true' });
+      gutter.innerHTML = nums.map((n, i) => row(n == null ? '' : String(n), i, 'px-2')).join('');
     }
-    return el('div', { class: 'code-body' }, gutter, src);
+    return el('div', { class: 'flex items-start overflow-x-auto' }, gutter, src);
   };
   const extLang = (file) => (/\.([\w-]+)$/.exec(file || '') || [])[1];
 
-  const viewerPath = el('span', { class: 'viewer-path' });
-  const viewerBody = el('div', { class: 'viewer-body' });
-  const viewer = el('dialog', { class: 'viewer', onclick: (e) => { if (e.target === viewer) viewer.close(); } },
-    el('div', { class: 'viewer-head' }, viewerPath, el('button', { type: 'button', class: 'btn-ghost', onclick: () => viewer.close() }, 'Đóng (Esc)')),
+  // One dialog shows a whole file, an image or a mockup at full size.
+  const viewerTitle = el('span', { class: 'flex-1 min-w-0 font-mono text-[12px] wrap-anywhere' });
+  const viewerBody = el('div', { class: 'grid min-h-0' });
+  const viewer = el('dialog', { class: 'm-auto w-[min(1400px,calc(100vw-32px))] h-[calc(100vh-48px)] max-w-none max-h-none p-0 border border-line rounded-xl bg-sunken text-ink [box-shadow:var(--shadow)] overflow-hidden backdrop:bg-black/45 open:grid open:grid-rows-[auto_minmax(0,1fr)]',
+    onclick: (e) => { if (e.target === viewer) viewer.close(); } },
+    el('div', { class: 'flex items-center gap-3 py-1.5 pr-1.5 pl-3.5 bg-surface border-b border-line' }, viewerTitle,
+      el('button', { type: 'button', class: btnCls('ghost'), onclick: () => viewer.close() }, 'Đóng (Esc)')),
     viewerBody);
   document.body.append(viewer);
+  const showInViewer = (title, node) => {
+    viewerTitle.textContent = title;
+    viewerBody.replaceChildren(node);
+    viewer.showModal();
+  };
   const openFile = (file, lang, mark) => {
     const text = D.files[file].replace(/\n$/, '');
     const lines = hlLines(text, lang);
     const view = linesView(lines, lines.map((_, i) => i + 1), mark ? lines.map((_, i) => (i + 1 >= mark[0] && i + 1 <= mark[1] ? 'mark' : null)) : null);
-    viewerPath.textContent = file + ' · ' + lines.length + ' dòng';
-    viewerBody.replaceChildren(view);
-    viewer.showModal();
+    view.classList.add('overflow-auto', 'min-h-0');
+    showInViewer(file + ' · ' + lines.length + ' dòng', view);
     view.scrollTop = mark ? Math.max(0, PAD + (mark[0] - 5) * LH) : 0;
   };
   const fileButton = (s, lang) => (s.file && D.files && D.files[s.file] != null
-    ? el('button', { type: 'button', class: 'btn-file', onclick: () => openFile(s.file, lang, s.lines) }, 'Xem toàn file') : null);
+    ? el('button', { type: 'button', class: btnCls('file', true), onclick: () => openFile(s.file, lang, s.lines) }, 'Xem toàn file') : null);
+  const zoomButton = (onclick) => el('button', { type: 'button', class: btnCls('file', true), onclick }, 'Phóng to');
 
   const codeBlock = (b) => {
     const lang = b.lang || extLang(b.file);
     const btn = fileButton(b, lang);
     const lines = hlLines(b.text || '', lang);
-    return el('figure', { class: 'code' },
-      b.label || btn ? el('figcaption', {}, el('span', { text: b.label || '' }), btn) : null,
+    return el('figure', { class: FIG + ' bg-sunken' },
+      b.label || btn ? el('figcaption', { class: CAPTION }, el('span', { class: CAP_TEXT, text: b.label || '' }), btn) : null,
       linesView(lines, b.lines ? lines.map((_, i) => b.lines[0] + i) : null, null));
   };
 
@@ -318,13 +243,14 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       const lang = s.lang || b.lang || extLang(s.file);
       const hl = hlLines(texts[k], lang);
       const key = k ? 'b' : 'a';
-      return el('div', { class: 'diff-col' },
-        el('div', { class: 'diff-head' }, el('span', { text: (k ? 'Sau' : 'Trước') + (s.label ? ' · ' + s.label : '') }), fileButton(s, lang)),
+      return el('div', { class: 'min-w-0' + (k ? ' border-l border-line max-[720px]:border-l-0 max-[720px]:border-t' : '') },
+        el('div', { class: CAPTION }, el('span', { class: CAP_TEXT, text: (k ? 'Sau' : 'Trước') + (s.label ? ' · ' + s.label : '') }), fileButton(s, lang)),
         linesView(rows.map((r) => (r[key] == null ? '' : hl[r[key]])),
           s.lines ? rows.map((r) => (r[key] == null ? null : s.lines[0] + r[key])) : null,
           rows.map((r) => (r[key] == null ? 'pad' : r.same ? null : k ? 'add' : 'del'))));
     });
-    return el('figure', { class: 'code' }, b.label ? el('figcaption', {}, el('span', { text: b.label })) : null, el('div', { class: 'diff-cols' }, cols));
+    return el('figure', { class: FIG + ' bg-sunken' }, b.label ? el('figcaption', { class: CAPTION }, el('span', { class: CAP_TEXT, text: b.label })) : null,
+      el('div', { class: 'grid grid-cols-2 max-[720px]:grid-cols-1' }, cols));
   };
 
   // Diagrams: Mermaid loads from the CDN only when the page has one; until it draws (or when it cannot) the source shows as text.
@@ -343,7 +269,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   }));
   const mermaidBlock = (b) => {
     const text = b.text || '';
-    const body = el('div', { class: 'diagram-body' }, linesView(hlLines(text, 'plaintext'), null, null));
+    const body = el('div', { class: 'p-2.5 overflow-x-auto [&>svg]:mx-auto [&>svg]:max-w-full [&>svg]:h-auto' }, linesView(hlLines(text, 'plaintext'), null, null));
     const id = 'mmd-' + ++diagrams;
     mermaidQueue = mermaidQueue.then(loadMermaid)
       .then((m) => m.parse(text).then(() => m.render(id, text)))
@@ -351,29 +277,70 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       .catch(() => {
         const left = document.getElementById('d' + id);
         if (left) left.remove();
-        body.prepend(el('p', { class: 'callout', text: 'Không vẽ được sơ đồ (mất mạng hoặc sai cú pháp Mermaid); bên dưới là mã nguồn.' }));
+        body.prepend(el('p', { class: CALLOUT + ' mb-2', text: 'Không vẽ được sơ đồ (mất mạng hoặc sai cú pháp Mermaid); bên dưới là mã nguồn.' }));
       });
-    return el('figure', { class: 'diagram' }, b.label ? el('figcaption', {}, el('span', { text: b.label })) : null, body);
+    return el('figure', { class: FIG + ' bg-surface' }, b.label ? el('figcaption', { class: CAPTION }, el('span', { class: CAP_TEXT, text: b.label })) : null, body);
+  };
+
+  const imgBlock = (b) => {
+    const title = b.label || b.file || 'Ảnh';
+    const alt = b.alt || b.label || '';
+    const open = () => showInViewer(title, el('div', { class: 'overflow-auto min-h-0 p-4' }, el('img', { src: b.src, alt, class: 'max-w-none mx-auto' })));
+    return el('figure', { class: FIG + ' bg-surface' },
+      el('figcaption', { class: CAPTION }, el('span', { class: CAP_TEXT, text: title }), zoomButton(open)),
+      el('div', { class: 'p-2.5' }, el('img', { src: b.src, alt, class: 'block mx-auto max-w-full max-h-[480px] w-auto h-auto object-contain cursor-zoom-in', onclick: open })));
+  };
+
+  // Mockups: each one is its own sandboxed page with Tailwind and daisyUI's wireframe theme; it reports its height so the frame fits it.
+  const MOCK_HEAD = '<!doctype html><html data-theme="wireframe"><head><meta charset="utf-8">'
+    + '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.7.47/daisyui.css">'
+    + '<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.7.47/themes.css">'
+    + '<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.3"><\/script>'
+    + '<style>body{margin:0;padding:8px;font-family:system-ui,sans-serif;font-size:14px}</style></head><body>';
+  const MOCK_TAIL = '<script>new ResizeObserver(() => parent.postMessage({ mockH: Math.ceil(document.body.getBoundingClientRect().height) }, "*")).observe(document.body);<\/script></body></html>';
+  addEventListener('message', (e) => {
+    if (!e.data || typeof e.data.mockH !== 'number') return;
+    for (const f of document.querySelectorAll('iframe[data-mock]')) if (f.contentWindow === e.source) f.style.height = Math.min(Math.max(e.data.mockH, 24), 4000) + 'px';
+  });
+  const mockFrame = (html) => {
+    const f = el('iframe', { sandbox: 'allow-scripts', 'data-mock': '', title: 'Bản phác', class: 'block w-full h-20 border-0' });
+    f.srcdoc = MOCK_HEAD + html + MOCK_TAIL;
+    return f;
+  };
+  const mockBlock = (html, label) => {
+    const title = label || 'Bản phác';
+    // White below the frame too, so a mockup in a taller option row reads as one box.
+    return el('figure', { class: FIG + ' bg-surface flex flex-col' },
+      el('figcaption', { class: CAPTION }, el('span', { class: CAP_TEXT, text: title }),
+        zoomButton(() => showInViewer(title, el('div', { class: 'overflow-auto min-h-0 p-4' }, mockFrame(html))))),
+      el('div', { class: 'flex-1 bg-white' }, mockFrame(html)));
   };
 
   const block = (b) => {
     switch (b && b.t) {
-      case 'p': return el('p', {}, inline(b.text));
-      case 'list': return el(b.ordered ? 'ol' : 'ul', {}, (b.items || []).map((i) => el('li', {}, inline(i))));
+      case 'p': return el('p', { class: 'whitespace-pre-line max-w-[90ch]' }, inline(b.text));
+      case 'list': return el(b.ordered ? 'ol' : 'ul', { class: LIST + (b.ordered ? ' list-decimal' : ' list-disc') }, (b.items || []).map((i) => el('li', {}, inline(i))));
       case 'code': return codeBlock(b);
       case 'diff': return diffBlock(b);
       case 'mermaid': return mermaidBlock(b);
-      case 'table': return el('div', { class: 'table-scroll' }, el('table', {},
-        el('thead', {}, el('tr', {}, (b.head || []).map((h) => el('th', {}, inline(h))))),
-        el('tbody', {}, (b.rows || []).map((r) => el('tr', {}, r.map((c) => el('td', {}, inline(c))))))));
-      case 'note': return el('p', { class: 'callout' }, el('strong', { text: 'Lưu ý: ' }), inline(b.text));
-      default: return b && b.text ? el('p', {}, inline(b.text)) : null;
+      case 'img': return b.src ? imgBlock(b) : null;
+      case 'mockup': return mockBlock(b.html || '', b.label);
+      case 'table': {
+        const rows = b.rows || [];
+        const cell = 'text-left align-top px-2.5 py-[5px] border-line';
+        return el('div', { class: 'overflow-x-auto border border-line rounded-lg' }, el('table', { class: 'border-collapse w-full text-[13px]' },
+          el('thead', {}, el('tr', {}, (b.head || []).map((h) => el('th', { class: cell + ' border-b bg-sunken font-semibold' }, inline(h))))),
+          el('tbody', {}, rows.map((r, k) => el('tr', {}, r.map((c) => el('td', { class: cell + (k < rows.length - 1 ? ' border-b' : '') }, inline(c))))))));
+      }
+      case 'note': return el('p', { class: CALLOUT + ' whitespace-pre-line max-w-[90ch]' },el('strong', { class: 'text-note', text: 'Lưu ý: ' }), inline(b.text));
+      default: return b && b.text ? el('p', { class: 'whitespace-pre-line max-w-[90ch]' }, inline(b.text)) : null;
     }
   };
 
+  const CARD = 'bg-surface border border-line rounded-xl px-[18px] py-4 max-[520px]:px-3 max-[520px]:py-3.5 grid gap-3 min-w-0 transition-[border-color,box-shadow] duration-200 motion-reduce:transition-none [&.attention]:border-note [&.attention]:[box-shadow:0_0_0_3px_var(--note-soft)]';
   const main = $('#main');
   if (!D || !D.questions || !D.questions.length) {
-    main.append(el('article', { class: 'card' }, el('p', { text: 'File này là mẫu, chưa có câu hỏi. Tạo trang câu hỏi bằng render-interview.mjs.' })));
+    main.append(el('article', { class: CARD }, el('p', { text: 'File này là mẫu, chưa có câu hỏi. Tạo trang câu hỏi bằng render-interview.mjs.' })));
     return;
   }
 
@@ -387,7 +354,8 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   document.title = range + ' · ' + (D.topic || 'Phỏng vấn thiết kế');
   $('#topic').textContent = D.topic || 'Phỏng vấn thiết kế';
-  const navLinks = Q.map((q) => el('a', { href: '#card-' + q.id }));
+  const navLinks = Q.map((q) => el('a', { href: '#card-' + q.id,
+    class: 'font-mono text-[12px] px-2.5 py-px rounded-full border border-accent text-accent whitespace-nowrap data-[done=true]:bg-accent data-[done=true]:text-accent-ink ' + FOCUS }));
   $('#qnav').append(...navLinks);
 
   const fit = (ta) => {
@@ -400,31 +368,33 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     const multi = !!q.multi;
     const own = q.options || [];
     const options = [...own, OTHER, EXPLAIN];
-    const state = el('span', { class: 'state' });
+    const state = el('span', { class: 'ml-auto rounded-full px-2 bg-sunken text-muted normal-case tracking-normal data-[done=true]:text-pro' });
     const inputs = [];
     const optCards = new Map();
-    const otherBox = el('textarea', { id: q.id + '-other', rows: '1', hidden: true, placeholder: 'Phương án của bạn…', 'aria-label': 'Phương án tự nhập' });
-    const note = el('textarea', { id: q.id + '-note', rows: '1', placeholder: 'Ghi chú (không bắt buộc): lý do, điều kiện kèm theo, hoặc điều bạn chưa rõ…', 'aria-label': 'Ghi chú cho câu ' + (q.n ?? '') });
+    const otherBox = el('textarea', { id: q.id + '-other', rows: '1', hidden: true, class: TEXTAREA + ' flex-[1_1_18rem]', placeholder: 'Phương án của bạn…', 'aria-label': 'Phương án tự nhập' });
+    const note = el('textarea', { id: q.id + '-note', rows: '1', class: TEXTAREA + ' flex-[1_1_18rem]', placeholder: 'Ghi chú (không bắt buộc): lý do, điều kiện kèm theo, hoặc điều bạn chưa rõ…', 'aria-label': 'Ghi chú cho câu ' + (q.n ?? '') });
     otherBox.addEventListener('input', () => fit(otherBox));
     note.addEventListener('input', () => fit(note));
 
     // Option cards sit side by side and share rows (subgrid), so each part lines up across options.
     const parts = own.map((o, i) => [
-      el('div', { class: 'opt-head' },
-        el('span', { class: 'opt-key', text: keyOf(i) + '.' }),
-        el('span', { class: 'opt-label' }, inline(o.label)),
-        o.recommended ? el('span', { class: 'badge-rec', text: 'Đề xuất' }) : null,
-        o.effort ? el('span', { class: 'effort' }, 'Công sức: ', inline(o.effort)) : null),
+      el('div', { class: 'flex flex-wrap items-baseline gap-x-2 gap-y-0.5' },
+        el('span', { class: 'font-mono font-semibold text-accent', text: keyOf(i) + '.' }),
+        el('span', { class: 'font-semibold' }, inline(o.label)),
+        o.recommended ? el('span', { class: 'font-mono text-[10px] tracking-[.06em] uppercase bg-accent text-accent-ink rounded-full px-1.5', text: 'Đề xuất' }) : null,
+        o.effort ? el('span', { class: 'ml-auto text-[12px] text-muted' }, 'Công sức: ', inline(o.effort)) : null),
       o.means ? el('p', {}, inline(o.means)) : null,
+      o.mockup ? mockBlock(o.mockup) : null,
       o.code ? codeBlock(o.code) : null,
-      o.example ? el('p', { class: 'example' }, el('strong', { text: 'Ví dụ: ' }), inline(o.example)) : null,
-      (o.pros && o.pros.length) || (o.cons && o.cons.length) ? el('ul', { class: 'pc' },
-        (o.pros || []).map((p) => el('li', { class: 'pro' }, inline(p))),
-        (o.cons || []).map((c) => el('li', { class: 'con' }, inline(c)))) : null,
+      o.example ? el('p', { class: 'text-[13px] bg-sunken rounded-md px-2 py-1 whitespace-pre-line' }, el('strong', { text: 'Ví dụ: ' }), inline(o.example)) : null,
+      (o.pros && o.pros.length) || (o.cons && o.cons.length) ? el('ul', { class: 'grid gap-px content-start text-[13px]' },
+        (o.pros || []).map((p) => el('li', { class: PC + " before:content-['+'] before:text-pro" }, inline(p))),
+        (o.cons || []).map((c) => el('li', { class: PC + " before:content-['–'] before:text-con" }, inline(c)))) : null,
     ]);
-    const used = [0, 1, 2, 3, 4].filter((s) => parts.some((p) => p[s]));
+    const used = [0, 1, 2, 3, 4, 5].filter((s) => parts.some((p) => p[s]));
     const optCard = (o, i) => {
-      const box = el('div', { class: 'opt' + (o.recommended ? ' recommended' : ''), style: 'grid-row: span ' + used.length },
+      const box = el('div', { class: 'border rounded-[10px] px-3 py-2.5 grid grid-rows-subgrid min-w-0 transition-[border-color,background-color] duration-150 motion-reduce:transition-none data-[chosen=true]:bg-accent-soft data-[chosen=true]:border-accent data-[chosen=true]:[box-shadow:inset_0_0_0_1px_var(--accent)] '
+        + (o.recommended ? 'border-accent' : 'border-line'), style: 'grid-row: span ' + used.length },
         used.map((s) => parts[i][s] || el('div')));
       optCards.set(o.id, box);
       return box;
@@ -432,7 +402,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
     const choice = (o, i) => {
       const builtin = o === OTHER || o === EXPLAIN;
-      const input = el('input', { type: multi ? 'checkbox' : 'radio', name: 'choice-' + q.id, id: q.id + '-opt-' + o.id, value: o.id });
+      const input = el('input', { type: multi ? 'checkbox' : 'radio', name: 'choice-' + q.id, id: q.id + '-opt-' + o.id, value: o.id, class: 'm-0 size-[15px] accent-accent' });
       inputs.push(input);
       input.addEventListener('change', () => {
         if (multi && input.checked) {
@@ -442,42 +412,47 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         if (input.checked && o === OTHER) otherBox.focus();
         if (input.checked && o === EXPLAIN) note.focus();
       });
-      return el('label', { class: 'choice' + (builtin ? ' builtin' : ''), for: input.id, title: builtin ? o.means : null }, input,
-        builtin ? null : el('span', { class: 'opt-key', text: keyOf(i) + '.' }),
+      return el('label', { class: 'inline-flex items-center gap-1.5 border border-line rounded-full py-[3px] pr-3 pl-2 text-[13px] cursor-pointer bg-surface transition-[border-color,background-color] duration-150 motion-reduce:transition-none hover:border-accent has-checked:border-accent has-checked:bg-accent-soft has-checked:font-semibold has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent'
+        + (builtin ? ' border-dashed' : ''), for: input.id, title: builtin ? o.means : null }, input,
+        builtin ? null : el('span', { class: 'font-mono font-semibold text-accent', text: keyOf(i) + '.' }),
         el('span', {}, inline(o.label)),
-        o.recommended ? el('span', { class: 'star', title: 'Claude đề xuất', text: '★' }) : null);
+        o.recommended ? el('span', { class: 'text-accent', title: 'Claude đề xuất', text: '★' }) : null);
     };
 
     const recI = own.findIndex((o) => o.recommended);
     const hasUndo = q.reversible != null;
     const undoText = q.reversible ? 'Dễ đổi về sau' : 'Khó đổi về sau';
-    const card = el('article', { class: 'card', id: 'card-' + q.id },
-      el('header', { class: 'card-head' },
-        el('div', { class: 'q-num' },
+    const card = el('article', { class: CARD, id: 'card-' + q.id },
+      el('header', { class: 'grid gap-0.5' },
+        el('div', { class: 'flex flex-wrap items-center gap-1.5 font-mono text-[11px] tracking-[.06em] uppercase text-accent' },
           el('span', { text: 'Câu ' + (q.n ?? '') }),
-          q.stage ? el('span', { class: 'tag', text: q.stage }) : null,
-          hasUndo ? el('span', { class: 'undo', 'data-easy': String(!!q.reversible), title: q.reversibleWhy || null, text: undoText }) : null,
+          q.stage ? el('span', { class: 'text-muted border border-line rounded-full px-2', text: q.stage }) : null,
+          hasUndo ? el('span', { class: 'rounded-full px-2 normal-case tracking-normal ' + (q.reversible ? 'text-pro border border-current' : 'text-note bg-note-soft font-semibold'),
+            title: q.reversibleWhy || null, text: undoText }) : null,
           state),
-        el('h2', { class: 'q-title' }, inline(q.title))),
-      q.why || (hasUndo && q.reversibleWhy) ? el('div', { class: 'why' },
+        el('h2', { class: 'text-[18px] leading-[1.35] font-bold text-balance' }, inline(q.title))),
+      q.why || (hasUndo && q.reversibleWhy) ? el('div', { class: 'bg-accent-soft rounded-lg px-3 py-1.5 grid gap-0.5 [&_strong]:text-accent' },
         q.why ? el('p', {}, el('strong', { text: 'Vì sao cần chốt: ' }), inline(q.why)) : null,
         hasUndo && q.reversibleWhy ? el('p', {}, el('strong', { text: undoText + ': ' }), inline(q.reversibleWhy)) : null) : null,
-      q.context && q.context.length ? el('div', { class: 'blocks' }, q.context.map(block)) : null,
-      own.length ? el('div', { class: 'opts', 'data-n': String(own.length) }, own.map(optCard)) : null,
-      q.recommendation ? el('p', { class: 'rec' },
-        el('strong', {}, 'Claude đề xuất', recI >= 0 ? [' ' + keyOf(recI) + '. ', inline(own[recI].label)] : null, ': '),
+      q.context && q.context.length ? el('div', { class: 'grid gap-2 min-w-0' }, q.context.map(block)) : null,
+      own.length ? el('div', { class: 'grid gap-x-2 gap-y-1.5 grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))]'
+        + (own.length === 4 ? ' max-[1060px]:grid-cols-[repeat(auto-fit,minmax(min(100%,22rem),1fr))]' : '') }, own.map(optCard)) : null,
+      q.recommendation ? el('p', { class: 'border-l-[3px] border-accent px-2.5 py-0.5' },
+        el('strong', { class: 'text-accent' }, 'Claude đề xuất', recI >= 0 ? [' ' + keyOf(recI) + '. ', inline(own[recI].label)] : null, ': '),
         inline(q.recommendation)) : null,
-      el('div', { class: 'answer' },
-        el('div', { class: 'answer-head' }, el('span', { class: 'caps', text: 'Trả lời' }), el('span', { class: 'hint', text: multi ? 'chọn một hoặc nhiều' : 'chọn một' })),
-        el('div', { class: 'choices' }, options.map(choice)),
-        el('div', { class: 'fields' }, otherBox, note)));
+      el('div', { class: 'border-t border-dashed border-line pt-2.5 grid gap-2' },
+        el('div', { class: 'flex items-baseline gap-2' },
+          el('span', { class: 'font-mono text-[11px] font-medium tracking-[.06em] uppercase text-muted', text: 'Trả lời' }),
+          el('span', { class: 'text-[12px] text-muted', text: multi ? 'chọn một hoặc nhiều' : 'chọn một' })),
+        el('div', { class: 'flex flex-wrap gap-1.5' }, options.map(choice)),
+        el('div', { class: 'flex flex-wrap gap-2' }, otherBox, note)));
     const otherInput = inputs[own.length];
 
     function refresh() {
       const done = inputs.some((i) => i.checked);
       state.dataset.done = String(done);
       state.textContent = done ? 'Đã chọn' : 'Chưa chọn';
-      for (const i of inputs) if (optCards.has(i.value)) optCards.get(i.value).classList.toggle('chosen', i.checked);
+      for (const i of inputs) if (optCards.has(i.value)) optCards.get(i.value).dataset.chosen = String(i.checked);
       otherBox.hidden = !otherInput.checked;
       card.classList.remove('attention');
       updateFab();
@@ -522,9 +497,11 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     };
   };
 
-  const fabCount = el('span', { class: 'count' });
-  const fabMsg = el('p', { class: 'msg', role: 'status' });
-  const out = el('textarea', { id: 'out', class: 'out', readonly: true, hidden: true, 'aria-label': 'Câu trả lời để dán vào Claude' });
+  // Served by render-interview.mjs --serve, the page sends the answers to Claude itself; opened as a file, it copies them for pasting.
+  const sendMode = !!D.send;
+  const fabCount = el('span', { class: 'font-mono text-[12px] text-muted whitespace-nowrap' });
+  const fabMsg = el('p', { class: 'max-w-[24rem] text-[13px] bg-surface border border-line rounded-lg px-2.5 py-1.5 [box-shadow:var(--shadow)] empty:hidden data-[kind=ok]:text-pro data-[kind=warn]:text-note', role: 'status' });
+  const out = el('textarea', { id: 'out', class: TEXTAREA + ' w-[min(26rem,calc(100vw-32px))] font-mono text-[12px] max-h-[40vh] bg-sunken', readonly: true, hidden: true, 'aria-label': 'Câu trả lời để dán vào Claude' });
   const say = (kind, ...parts) => { fabMsg.dataset.kind = kind || ''; fabMsg.replaceChildren(...parts); };
   let cards = [];
 
@@ -536,11 +513,11 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   };
   const save = () => store.set(Object.fromEntries(cards.map((c) => [c.q.id, c.get()])));
 
-  const acceptBtn = el('button', { type: 'button', class: 'btn-ghost', title: 'Chọn phương án Claude đề xuất cho các câu chưa chọn', onclick: () => {
+  const acceptBtn = el('button', { type: 'button', class: btnCls('ghost'), title: 'Chọn phương án Claude đề xuất cho các câu chưa chọn', onclick: () => {
     const todo = cards.filter((c) => !c.done() && c.rec);
     for (const c of todo) c.pick(c.rec);
     save();
-    say('ok', 'Đã chọn theo đề xuất cho ' + todo.length + ' câu. Xem lại rồi copy.');
+    say('ok', 'Đã chọn theo đề xuất cho ' + todo.length + ' câu. Xem lại rồi ' + (sendMode ? 'gửi.' : 'copy.'));
   } }, 'Theo đề xuất');
 
   function updateFab() {
@@ -555,44 +532,75 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   }
 
   if (D.decided && D.decided.length) {
-    main.append(el('details', { class: 'decided' }, el('summary', { text: 'Đã chốt trước đó (' + D.decided.length + ')' }),
-      el('ul', {}, D.decided.map((d) => el('li', {}, inline(d))))));
+    main.append(el('details', { class: 'bg-surface border border-line rounded-[10px] text-[13px]' },
+      el('summary', { class: 'cursor-pointer px-3 py-1.5 font-semibold rounded-[10px] ' + FOCUS, text: 'Đã chốt trước đó (' + D.decided.length + ')' }),
+      el('ul', { class: 'm-0 pt-0 pr-3 pb-2 pl-[2em] grid gap-0.5 list-disc' }, D.decided.map((d) => el('li', {}, inline(d))))));
   }
   cards = Q.map(questionCard);
   for (const c of cards) main.append(c.card);
   main.addEventListener('input', save);
   main.addEventListener('change', save);
 
-  const copyAll = async () => {
+  // The answers of every card, or null after pointing at the first card that is not complete.
+  const collect = () => {
     const missing = cards.find((c) => c.problem());
     if (missing) {
       missing.card.classList.add('attention');
       missing.card.scrollIntoView({ behavior: 'smooth', block: 'start' });
       say('warn', 'Câu ' + (missing.q.n ?? '') + ' ' + missing.problem() + '.');
-      return;
+      return null;
     }
-    const text = cards.map((c) => c.text()).join('\n\n');
+    return cards.map((c) => c.text()).join('\n\n');
+  };
+  const copyText = async (text) => {
     out.value = text;
     let ok = false;
-    try { await navigator.clipboard.writeText(text); ok = true; }
+    // writeText can wait forever for a permission the browser never asks for, so it gets two seconds.
+    try { await Promise.race([navigator.clipboard.writeText(text), new Promise((_, no) => setTimeout(() => no(new Error('timeout')), 2000))]); ok = true; }
     catch (e) { out.hidden = false; out.focus(); out.select(); try { ok = document.execCommand('copy'); } catch (e2) { ok = false; } }
-    if (ok) {
-      out.hidden = true;
+    out.hidden = ok;
+    return ok;
+  };
+  const copyAll = async () => {
+    const text = collect();
+    if (text == null) return;
+    if (await copyText(text)) {
       say('ok', 'Đã copy ' + cards.length + ' câu trả lời. Dán vào terminal của Claude rồi Enter.');
       setTimeout(() => { if (fabMsg.dataset.kind === 'ok') say(''); }, 4000);
     }
-    else { out.hidden = false; say('warn', 'Không copy tự động được: chọn đoạn bên dưới, copy rồi dán vào terminal của Claude.'); }
+    else say('warn', 'Không copy tự động được: chọn đoạn bên dưới, copy rồi dán vào terminal của Claude.');
   };
+  const sendBtn = el('button', { type: 'button', class: btnCls('primary'), title: 'Cmd/Ctrl+Enter', onclick: () => sendAll() }, 'Gửi câu trả lời');
+  const sendAll = async () => {
+    const text = collect();
+    if (text == null) return;
+    sendBtn.disabled = true;
+    try {
+      const r = await fetch(D.send, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      store.set(null);
+      sendBtn.textContent = 'Đã gửi';
+      say('ok', 'Đã gửi cho Claude. Có thể đóng tab này.');
+    } catch (e) {
+      sendBtn.disabled = false;
+      say('warn', await copyText(text)
+        ? 'Không gửi được (Claude không còn chờ trang này). Đã copy câu trả lời: dán vào terminal của Claude.'
+        : 'Không gửi được và không copy tự động được: chọn đoạn bên dưới, copy rồi dán vào terminal của Claude.');
+    }
+  };
+  const submit = () => (sendMode ? (sendBtn.disabled ? null : sendAll()) : copyAll());
 
-  document.body.append(el('aside', { class: 'fab', 'aria-label': 'Gửi câu trả lời' }, fabMsg, out,
-    el('div', { class: 'fab-bar' }, fabCount, acceptBtn, el('button', { type: 'button', class: 'btn-primary', title: 'Cmd/Ctrl+Enter', onclick: copyAll }, 'Copy câu trả lời'))));
-  document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); copyAll(); } });
+  document.body.append(el('aside', { class: 'fixed right-4 bottom-4 z-10 max-w-[calc(100vw-32px)] grid justify-items-end gap-1.5', 'aria-label': 'Gửi câu trả lời' }, fabMsg, out,
+    el('div', { class: 'flex items-center gap-1.5 bg-surface border border-line rounded-full py-1 pr-1 pl-3 [box-shadow:var(--shadow)]' }, fabCount, acceptBtn,
+      sendMode ? [el('button', { type: 'button', class: btnCls('ghost'), title: 'Copy để dán vào terminal', onclick: copyAll }, 'Copy'), sendBtn]
+        : el('button', { type: 'button', class: btnCls('primary'), title: 'Cmd/Ctrl+Enter', onclick: copyAll }, 'Copy câu trả lời'))));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); } });
   updateFab();
 
   const draft = store.get();
   if (draft && cards.some((c) => { const s = draft[c.q.id]; return s && ((s.c || []).length || s.o || s.n); })) {
     for (const c of cards) if (draft[c.q.id]) c.set(draft[c.q.id]);
-    say('', 'Đã khôi phục câu trả lời đã lưu.', el('button', { type: 'button', class: 'btn-ghost', onclick: () => {
+    say('', 'Đã khôi phục câu trả lời đã lưu.', el('button', { type: 'button', class: btnCls('ghost', true) + ' ml-2', onclick: () => {
       for (const c of cards) c.set(null);
       store.set(null);
       say('');

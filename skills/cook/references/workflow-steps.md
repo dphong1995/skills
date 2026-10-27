@@ -24,7 +24,7 @@ design stage only. Summary:
 |---|---|---|
 | 1A Deep Scout | CLAUDE.md + rules, related dirs/features, cross-repo, docs, user memory. Produce reuse opportunities / conflict risks / open questions. | Orchestrator; `document-specialist`/`Explore` sub-agents optional for parallel reading (≤150-line reports) |
 | 1B Best-Practice Research | Conditional — only if no in-repo precedent AND well-trodden externally AND a real design fork. Orienting pass by default. | Orchestrator; `document-specialist` / context7 / WebSearch optional |
-| 1C Q&A Loop | ONE round at a time (one question, or up to 4 independent ones) on a local HTML question page (`../brainstorm-pro/references/html-interview.md`): full card, multi-choice + recommendation, answers pasted back into chat, mini re-explore between rounds, ≥1 brutal-honesty pushback. **Cap 8 rounds.** | Orchestrator only |
+| 1C Q&A Loop | ONE round at a time (one question, or up to 4 independent ones) on a local HTML question page (`../brainstorm-pro/references/html-interview.md`): full card, multi-choice + recommendation, answers sent back from the page (or pasted), mini re-explore between rounds, ≥1 brutal-honesty pushback. **Cap 8 rounds.** | Orchestrator only |
 | 1D Approaches | 2-3 approaches with pros/cons/effort, recommendation first — the last question on the interview page. | Orchestrator only |
 | 1E Sectioned Design | Architecture / Components & Files / Data Flow & Types / Error Handling / Testing & Rollout — **approval after each section**. | Orchestrator only |
 

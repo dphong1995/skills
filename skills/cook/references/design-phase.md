@@ -31,7 +31,7 @@ be delegated. Sub-agents are allowed only as parallel research helpers inside 1A
 | "I already know the solution" | Then writing it down takes 30 seconds. Do it. |
 | "Cook is supposed to run without stopping" | The no-stop rule starts at Step 2. Step 1 is interactive by design. |
 | "I'll just batch the questions" | Batching dependent questions breaks adaptive follow-up. Group only independent ones (up to 4 on one page). |
-| "This one is quick, I'll ask it in chat" | Every interview question goes on the HTML question page. Chat carries the file path and the pasted answers. |
+| "This one is quick, I'll ask it in chat" | Every interview question goes on the HTML question page. Chat carries the file path; the answers come back from the page (or pasted). |
 | "A short question is easier to answer" | A short question makes the user reconstruct the context. Fill the card: why, evidence, example per option, pros/cons, recommendation. |
 | "Skip scout, the ticket is detailed" | Tickets often miss existing infra. Scout anyway, briefly. |
 | "Just propose one approach" | Always 2-3. Lead with rec, but show alternatives. |
@@ -47,7 +47,7 @@ flowchart TD
     A[1A: Deep Scout] --> W{Know WHAT to build, or only HOW?}
     W -->|WHAT fuzzy| Q0[Ask ONE scope-fixing question<br/>on the interview page] --> R
     W -->|WHAT clear| R[1B: Best-Practice Research<br/>orienting; deep only on a real fork]
-    R --> B[1C: Q&A Loop<br/>HTML question page, answers pasted back]
+    R --> B[1C: Q&A Loop<br/>HTML question page, answers sent back]
     B --> C{Round cap or scope clear?}
     C -->|need more| B
     C -->|new fork surfaced| R
@@ -126,12 +126,12 @@ conventions + large-system precedents over novel invention.
 
 **REQUIRED:** run the interview through `../brainstorm-pro/references/html-interview.md`
 (relative to the cook skill directory) — a local HTML page per round opened in the browser, a
-full card per question, the answers pasted back into chat. The scope-fixing question (Q0) and the
+full card per question, the answers sent back from the page (or pasted into chat). The scope-fixing question (Q0) and the
 1D approach pick are asked the same way.
 
 **Rules:**
 - ONE round per page — one question, or up to 4 independent ones (no answer can change another's
-  options or relevance). Open it, wait for the pasted answers, then open the next. A question that
+  options or relevance). Open it, wait for the answers, then open the next. A question that
   depends on an answer waits for the next round.
 - 2-4 suggested options per question with **your recommendation** marked, plus a **"Khác (tự
   nhập)" option on every question** for the user's own answer (the page adds it; in the chat
@@ -257,7 +257,7 @@ Selected approach from 1D, with rationale (cite 1B research if used).
 - [ ] Q&A respected one-per-round rule, max 8 rounds
 - [ ] Every interview question (Q0, Q&A, approach pick) went on the interview page as a full card
       (why, context with evidence, options with example/pros/cons, recommendation); each answer
-      taken from the user's pasted reply before the next question
+      taken from the page's reply (or the user's pasted one) before the next question
 - [ ] Mid-stream re-explore happened at least once if an answer reshaped scope
 - [ ] At least one brutal honesty pushback on premise/assumption
 - [ ] 2-3 approaches presented with trade-offs + recommendation
