@@ -1,10 +1,17 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Phỏng vấn thiết kế</title>
-<meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <style>
-/* Layout: one reading column. Sticky bar with topic + whose turn it is; the open question is the main card; answered questions fold below it. */
+/* Layout: sticky bar with topic + progress; settled decisions fold at the top; one card per question with everything to read first (why, context, options side by side, recommendation) and a compact answer strip last; a small floating button copies every answer at once. */
 :root {
   --bg: #f3f5f8;
   --surface: #ffffff;
@@ -19,158 +26,141 @@
   --con: #a93838;
   --note: #845400;
   --note-soft: #fbf2df;
+  --mark: rgb(255 200 0 / .22);
+  --shadow: 0 6px 20px rgb(23 32 49 / .18);
   --font-body: "Be Vietnam Pro", "Segoe UI", system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  --radius: 10px;
+  color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+  :root {
     --bg: #0e131b; --surface: #151c27; --sunken: #1b2330; --ink: #e5eaf2; --muted: #9ba7b9; --line: #2a3445;
     --accent: #93aaff; --accent-ink: #0e131b; --accent-soft: #1c2747; --pro: #74d3a0; --con: #f08d8d;
-    --note: #e8bb5f; --note-soft: #2a2213; color-scheme: dark;
+    --note: #e8bb5f; --note-soft: #2a2213; --mark: rgb(255 200 0 / .14); --shadow: 0 6px 20px rgb(0 0 0 / .5); color-scheme: dark;
   }
 }
-:root[data-theme="dark"] {
-  --bg: #0e131b; --surface: #151c27; --sunken: #1b2330; --ink: #e5eaf2; --muted: #9ba7b9; --line: #2a3445;
-  --accent: #93aaff; --accent-ink: #0e131b; --accent-soft: #1c2747; --pro: #74d3a0; --con: #f08d8d;
-  --note: #e8bb5f; --note-soft: #2a2213; color-scheme: dark;
-}
 * { box-sizing: border-box; }
-body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.6; }
-body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface); }
-.wrap { max-width: 48rem; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+[hidden] { display: none !important; }
+html { scroll-padding-top: 56px; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 14px; line-height: 1.5; }
+.wrap { max-width: calc(1280px + 32px); margin: 0 auto; padding-left: 16px; padding-right: 16px; }
 
-.topbar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line); }
-.topbar .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding-block: 12px; }
-.topbar .who { min-width: 0; }
-.eyebrow, .label { font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0; }
-.topic { font-size: 17px; font-weight: 600; line-height: 1.35; margin: 2px 0 0; text-wrap: balance; }
-.pill { font-family: var(--font-mono); font-size: 12px; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--sunken); color: var(--muted); white-space: nowrap; }
-.pill[data-state="you"] { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
-.pill[data-state="claude"] { background: var(--note-soft); color: var(--note); border-color: transparent; }
-.pill[data-state="done"] { color: var(--pro); }
+.topbar { position: sticky; top: 0; z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line); }
+.topbar .wrap { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 8px; }
+.topic { font-size: 15px; font-weight: 600; line-height: 1.35; margin: 0; min-width: 0; }
+.pill { font-family: var(--font-mono); font-size: 12px; padding: 2px 10px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); white-space: nowrap; }
+.label { font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 
-main.wrap { display: grid; gap: 32px; padding-block: 24px 64px; }
-.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 24px; display: grid; gap: 22px; min-width: 0; }
-@media (max-width: 520px) { .card { padding: 18px 16px; } }
-.q-num { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+main.wrap { display: grid; gap: 14px; padding-block: 14px 80px; }
+.decided { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; font-size: 13px; }
+.decided > summary { cursor: pointer; padding: 6px 12px; font-weight: 600; }
+.decided > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 10px; }
+.decided ul { margin: 0; padding: 0 12px 8px 2em; display: grid; gap: 2px; }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; display: grid; gap: 12px; min-width: 0; transition: border-color .2s, box-shadow .2s; }
+.card.attention { border-color: var(--note); box-shadow: 0 0 0 3px var(--note-soft); }
+@media (max-width: 520px) { .card { padding: 14px 12px; } }
+.card-head { display: grid; gap: 2px; }
+.q-num { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
 .tag { color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; }
-.q-title { font-size: 22px; line-height: 1.35; font-weight: 700; letter-spacing: -0.01em; margin: 6px 0 0; text-wrap: balance; }
-.why { background: var(--accent-soft); border-radius: var(--radius); padding: 12px 16px; display: grid; gap: 4px; }
-.why .label { color: var(--accent); }
-.why p { margin: 0; }
-section { display: grid; gap: 10px; min-width: 0; }
-.section-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
-.hint { font-size: 13px; color: var(--muted); }
+.state { margin-left: auto; border-radius: 999px; padding: 0 8px; color: var(--muted); background: var(--sunken); text-transform: none; letter-spacing: 0; }
+.state[data-done="true"] { color: var(--pro); }
+.q-title { font-size: 18px; line-height: 1.35; font-weight: 700; margin: 0; text-wrap: balance; }
+.why { margin: 0; background: var(--accent-soft); border-radius: 8px; padding: 6px 12px; }
+.why strong { color: var(--accent); }
 
-.blocks { display: grid; gap: 12px; min-width: 0; }
-.blocks p { margin: 0; white-space: pre-line; max-width: 68ch; }
-.blocks ul, .blocks ol { margin: 0; padding-left: 1.3em; display: grid; gap: 4px; max-width: 68ch; }
-code { font-family: var(--font-mono); font-size: .86em; background: var(--sunken); border-radius: 4px; padding: .1em .35em; overflow-wrap: anywhere; }
-figure.code { margin: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--sunken); min-width: 0; overflow: hidden; }
-figure.code figcaption { font-family: var(--font-mono); font-size: 11px; color: var(--muted); padding: 6px 12px; border-bottom: 1px solid var(--line); }
-figure.code pre { margin: 0; padding: 12px; overflow-x: auto; font-size: 13px; line-height: 1.5; }
-figure.code pre code { background: none; padding: 0; font-size: inherit; overflow-wrap: normal; }
-.table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); }
-table { border-collapse: collapse; width: 100%; font-size: 14px; }
-th, td { text-align: left; vertical-align: top; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.blocks { display: grid; gap: 8px; min-width: 0; }
+.blocks p { margin: 0; white-space: pre-line; max-width: 90ch; }
+.blocks ul, .blocks ol { margin: 0; padding-left: 1.3em; display: grid; gap: 2px; max-width: 90ch; }
+code { font-family: var(--font-mono); font-size: .86em; background: var(--sunken); border-radius: 4px; padding: .05em .3em; overflow-wrap: anywhere; }
+figure.code { margin: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--sunken); min-width: 0; overflow: hidden; }
+figure.code figcaption { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-family: var(--font-mono); font-size: 11px; color: var(--muted); padding: 3px 4px 3px 10px; border-bottom: 1px solid var(--line); }
+figure.code figcaption span { min-width: 0; overflow-wrap: anywhere; }
+.btn-file { font-family: var(--font-body); font-size: 12px; padding: 1px 10px; white-space: nowrap; color: var(--accent); background: var(--surface); border-color: var(--line); }
+.code-body { display: flex; align-items: flex-start; overflow-x: auto; }
+.code-body pre { margin: 0; padding: 8px 10px; font-family: var(--font-mono); font-size: 12.5px; line-height: 19px; tab-size: 2; }
+.code-body .src { flex: 1 0 auto; }
+.code-body code { background: none; padding: 0; font-size: inherit; overflow-wrap: normal; }
+.gutter { flex: none; position: sticky; left: 0; z-index: 1; text-align: right; color: var(--muted); background-color: var(--sunken); border-right: 1px solid var(--line); user-select: none; }
+.marked { background-image: linear-gradient(var(--mark), var(--mark)); background-repeat: no-repeat; background-position: 0 var(--mt); background-size: 100% var(--mh); }
+.viewer { width: min(1400px, calc(100vw - 32px)); height: calc(100vh - 48px); max-width: none; max-height: none; padding: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--sunken); color: var(--ink); box-shadow: var(--shadow); overflow: hidden; }
+.viewer[open] { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+.viewer::backdrop { background: rgb(0 0 0 / .45); }
+.viewer-head { display: flex; align-items: center; gap: 12px; padding: 6px 6px 6px 14px; background: var(--surface); border-bottom: 1px solid var(--line); }
+.viewer-path { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: 12px; overflow-wrap: anywhere; }
+.viewer .code-body { overflow: auto; min-height: 0; }
+.btn-ghost { background: var(--sunken); color: var(--ink); border-color: var(--line); }
+.table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { text-align: left; vertical-align: top; padding: 5px 10px; border-bottom: 1px solid var(--line); }
 th { background: var(--sunken); font-weight: 600; }
 tbody tr:last-child td { border-bottom: 0; }
-.callout { background: var(--note-soft); border-radius: var(--radius); padding: 10px 14px; margin: 0; }
+.callout { background: var(--note-soft); border-radius: 8px; padding: 6px 12px; }
 .callout strong:first-child { color: var(--note); }
 
-.options { display: grid; gap: 12px; }
-.opt { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; border: 1.5px solid var(--line); border-radius: 12px; padding: 14px 16px; background: var(--surface); cursor: pointer; transition: border-color .15s, background-color .15s; }
-.opt:hover { border-color: var(--accent); }
-.opt:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
-.opt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
-.read .opt { cursor: default; }
-.read .opt:hover { border-color: var(--line); }
-.read .opt:has(input:checked) { border-color: var(--accent); }
-.opt input { width: 18px; height: 18px; margin: 3px 0 0; accent-color: var(--accent); }
-.opt-body { display: grid; gap: 8px; min-width: 0; }
-.opt-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
-.opt-key { font-family: var(--font-mono); font-weight: 500; color: var(--accent); }
-.opt-label { font-size: 16px; font-weight: 600; }
-.badge-rec { font-family: var(--font-mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; background: var(--accent); color: var(--accent-ink); border-radius: 999px; padding: 1px 8px; }
-.effort { font-size: 13px; color: var(--muted); }
-.opt-body > p { margin: 0; }
-.example { background: var(--sunken); border-radius: 8px; padding: 8px 12px; font-size: 14px; display: grid; gap: 2px; }
-.example p { margin: 0; white-space: pre-line; }
-.pc { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; }
-@media (max-width: 560px) { .pc { grid-template-columns: 1fr; } }
-.pc > div { display: grid; gap: 2px; align-content: start; min-width: 0; }
-.pc ul { margin: 0; padding-left: 1.2em; font-size: 14px; display: grid; gap: 3px; }
-.pros .label { color: var(--pro); }
-.cons .label { color: var(--con); }
-.pros ul { list-style-type: "+  "; }
-.cons ul { list-style-type: "–  "; }
-.pros li::marker { color: var(--pro); font-weight: 700; }
-.cons li::marker { color: var(--con); font-weight: 700; }
-.rec { border: 1px dashed var(--accent); border-radius: var(--radius); padding: 12px 16px; display: grid; gap: 4px; }
-.rec .label { color: var(--accent); }
-.rec p { margin: 0; }
+.opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: 6px 8px; }
+@media (max-width: 1060px) { .opts[data-n="4"] { grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); } }
+.opt { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: grid; grid-template-rows: subgrid; min-width: 0; transition: border-color .15s, background-color .15s; }
+.opt.recommended { border-color: var(--accent); }
+.opt.chosen { background: var(--accent-soft); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.opt-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.opt-key { font-family: var(--font-mono); font-weight: 600; color: var(--accent); }
+.opt-label { font-weight: 600; }
+.badge-rec { font-family: var(--font-mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; background: var(--accent); color: var(--accent-ink); border-radius: 999px; padding: 0 6px; }
+.effort { margin-left: auto; font-size: 12px; color: var(--muted); }
+.opt p { margin: 0; }
+.example { font-size: 13px; background: var(--sunken); border-radius: 6px; padding: 4px 8px; white-space: pre-line; }
+.pc { margin: 0; padding: 0; list-style: none; display: grid; gap: 1px; align-content: start; font-size: 13px; }
+.pc li { padding-left: 1.1em; text-indent: -1.1em; }
+.pc li::before { display: inline-block; width: 1.1em; text-indent: 0; font-weight: 700; }
+.pc .pro::before { content: "+"; color: var(--pro); }
+.pc .con::before { content: "–"; color: var(--con); }
+.rec { margin: 0; border-left: 3px solid var(--accent); padding: 2px 10px; }
+.rec strong { color: var(--accent); }
 
-.answer { display: grid; gap: 10px; border-top: 1px solid var(--line); padding-top: 20px; }
-.answer label { font-weight: 600; }
-textarea { width: 100%; min-height: 96px; resize: vertical; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; }
-.other-input { min-height: 0; background: var(--surface); }
+.answer { border-top: 1px dashed var(--line); padding-top: 10px; display: grid; gap: 8px; }
+.answer-head { display: flex; align-items: baseline; gap: 8px; }
+.hint { font-size: 12px; color: var(--muted); }
+.choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.choice { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px 3px 8px; font-size: 13px; cursor: pointer; background: var(--surface); transition: border-color .15s, background-color .15s; }
+.choice:hover { border-color: var(--accent); }
+.choice:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+.choice:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.choice.builtin { border-style: dashed; }
+.choice input { margin: 0; width: 15px; height: 15px; accent-color: var(--accent); }
+.star { color: var(--accent); }
+.fields { display: flex; flex-wrap: wrap; gap: 8px; }
+.fields textarea { flex: 1 1 18rem; }
+textarea { width: 100%; resize: vertical; font: inherit; font-size: 13px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; }
 textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-button { font: inherit; font-weight: 600; border-radius: 10px; padding: 10px 18px; border: 1px solid transparent; cursor: pointer; }
+
+.fab { position: fixed; right: 16px; bottom: 16px; z-index: 10; max-width: calc(100vw - 32px); display: grid; justify-items: end; gap: 6px; }
+.fab-bar { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px 4px 4px 12px; box-shadow: var(--shadow); }
+.count { font-family: var(--font-mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
+button { font: inherit; font-size: 13px; font-weight: 600; border-radius: 999px; padding: 6px 14px; border: 1px solid transparent; cursor: pointer; }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-button:disabled { opacity: .55; cursor: default; }
 .btn-primary { background: var(--accent); color: var(--accent-ink); }
-.btn-ghost { background: transparent; color: var(--ink); border-color: var(--line); }
-.msg { font-size: 14px; color: var(--muted); margin: 0; min-height: 1.6em; }
+.msg { margin: 0; max-width: 22rem; font-size: 13px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; box-shadow: var(--shadow); }
+.msg:empty { display: none; }
+.msg[data-kind="ok"] { color: var(--pro); }
 .msg[data-kind="warn"] { color: var(--note); }
-.msg[data-kind="error"] { color: var(--con); }
-
-.panel { display: grid; gap: 8px; }
-.panel h2 { font-size: 18px; margin: 0; display: flex; align-items: center; gap: 10px; }
-.panel p { margin: 0; max-width: 68ch; }
-.pulse { width: 10px; height: 10px; flex: none; border-radius: 50%; background: var(--note); animation: pulse 1.4s ease-in-out infinite; }
-@keyframes pulse { 50% { opacity: .25; } }
-@media (prefers-reduced-motion: reduce) { .pulse { animation: none; } * { transition: none !important; } }
-
-.history { display: grid; gap: 10px; }
-.history[hidden] { display: none; }
-details.past { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; min-width: 0; }
-details.past > summary { list-style: none; cursor: pointer; padding: 12px 16px; display: grid; gap: 2px; }
-details.past > summary::-webkit-details-marker { display: none; }
-details.past > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 12px; }
-.past-title { font-weight: 600; }
-.past-answer { font-size: 14px; color: var(--muted); }
-.past-answer strong { color: var(--ink); font-weight: 600; }
-details.past > .card { border: 0; border-top: 1px solid var(--line); border-radius: 0 0 12px 12px; }
+.out { width: min(26rem, calc(100vw - 32px)); font-family: var(--font-mono); font-size: 12px; max-height: 40vh; background: var(--sunken); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
-
+</head>
+<body>
 <header class="topbar">
   <div class="wrap">
-    <div class="who">
-      <p class="eyebrow">Phỏng vấn thiết kế</p>
-      <h1 class="topic" id="topic">Đang tải…</h1>
-    </div>
-    <span class="pill" id="status">Đang kết nối</span>
+    <h1 class="topic" id="topic">Phỏng vấn thiết kế</h1>
+    <span class="pill" id="num"></span>
   </div>
 </header>
-
-<main class="wrap">
-  <div id="current">
-    <article class="card panel">
-      <h2><span class="pulse" aria-hidden="true"></span>Đang tải câu hỏi</h2>
-      <p>Trang lấy câu hỏi từ dữ liệu của artifact. Nếu chờ quá lâu, hãy mở trang trong claude.ai khi đã đăng nhập.</p>
-    </article>
-  </div>
-  <section class="history" id="history" hidden>
-    <h2 class="label" id="history-head">Đã trả lời</h2>
-    <div class="history" id="history-list"></div>
-  </section>
-</main>
+<main class="wrap" id="main"></main>
 
 <script>
 (() => {
-  const $ = (s) => document.querySelector(s);
+  const D = /*__INTERVIEW_DATA__*/null;
+  const $ = (s, root = document) => root.querySelector(s);
   const el = (tag, props = {}, ...kids) => {
     const n = document.createElement(tag);
     for (const [k, v] of Object.entries(props)) {
@@ -196,11 +186,58 @@ details.past > .card { border: 0; border-top: 1px solid var(--line); border-radi
     return frag;
   };
 
+  // Code: highlight.js from the CDN (plain text when it did not load). Line numbers when the snippet came from a file.
+  const LH = 19, PAD = 8;
+  const AUTO = ['typescript', 'javascript', 'json', 'sql', 'bash', 'python', 'css', 'scss', 'xml', 'yaml'];
+  const highlight = (text, lang) => {
+    const h = window.hljs;
+    if (!h) return null;
+    try {
+      if (lang && h.getLanguage(lang)) return h.highlight(text, { language: lang, ignoreIllegals: true }).value;
+      const auto = h.highlightAuto(text, AUTO);
+      return auto.relevance >= 5 ? auto.value : null;
+    } catch (e) { return null; }
+  };
+  const codeView = (text, lang, start, mark) => {
+    const code = el('code');
+    const html = highlight(text, lang);
+    if (html == null) code.textContent = text; else code.innerHTML = html;
+    const style = mark ? '--mt:' + (PAD + (mark[0] - start) * LH) + 'px;--mh:' + (mark[1] - mark[0] + 1) * LH + 'px' : null;
+    const marked = mark ? ' marked' : '';
+    return el('div', { class: 'code-body' },
+      start ? el('pre', { class: 'gutter' + marked, style, 'aria-hidden': 'true', text: Array.from({ length: text.split('\n').length }, (_, i) => start + i).join('\n') }) : null,
+      el('pre', { class: 'src' + marked, style }, code));
+  };
+
+  const viewerPath = el('span', { class: 'viewer-path' });
+  const viewerBody = el('div', { style: 'display:grid;min-height:0' });
+  const viewer = el('dialog', { class: 'viewer', onclick: (e) => { if (e.target === viewer) viewer.close(); } },
+    el('div', { class: 'viewer-head' }, viewerPath, el('button', { type: 'button', class: 'btn-ghost', onclick: () => viewer.close() }, 'Đóng (Esc)')),
+    viewerBody);
+  document.body.append(viewer);
+  const openFile = (file, lang, mark) => {
+    const text = D.files[file].replace(/\n$/, '');
+    const view = codeView(text, lang, 1, mark);
+    viewerPath.textContent = file + ' · ' + text.split('\n').length + ' dòng';
+    viewerBody.replaceChildren(view);
+    viewer.showModal();
+    view.scrollTop = mark ? Math.max(0, PAD + (mark[0] - 5) * LH) : 0;
+  };
+
+  const codeBlock = (b) => {
+    const lang = b.lang || (/\.([\w-]+)$/.exec(b.file || '') || [])[1];
+    const full = b.file && D.files && D.files[b.file] != null;
+    return el('figure', { class: 'code' },
+      b.label || full ? el('figcaption', {}, el('span', { text: b.label || '' }),
+        full ? el('button', { type: 'button', class: 'btn-file', onclick: () => openFile(b.file, lang, b.lines) }, 'Xem toàn file') : null) : null,
+      codeView(b.text || '', lang, b.lines && b.lines[0], null));
+  };
+
   const block = (b) => {
     switch (b && b.t) {
       case 'p': return el('p', {}, inline(b.text));
       case 'list': return el(b.ordered ? 'ol' : 'ul', {}, (b.items || []).map((i) => el('li', {}, inline(i))));
-      case 'code': return el('figure', { class: 'code' }, b.label ? el('figcaption', { text: b.label }) : null, el('pre', {}, el('code', { text: b.text || '' })));
+      case 'code': return codeBlock(b);
       case 'table': return el('div', { class: 'table-scroll' }, el('table', {},
         el('thead', {}, el('tr', {}, (b.head || []).map((h) => el('th', {}, inline(h))))),
         el('tbody', {}, (b.rows || []).map((r) => el('tr', {}, r.map((c) => el('td', {}, inline(c))))))));
@@ -209,240 +246,173 @@ details.past > .card { border: 0; border-top: 1px solid var(--line); border-radi
     }
   };
 
-  const KEYS = 'ABCDEFGHIJ';
-  const OTHER = { id: 'other', label: 'Khác (tự nhập)', means: 'Không phương án nào ở trên đúng ý? Gõ phương án của bạn vào ô dưới đây.' };
-  const S = { meta: null, questions: [], answers: new Map(), ready: { meta: false, q: false, a: false } };
-  let DB = null;
-  let COMMENTS = null;
-  let canSend = 'off';
-  let notice = null;
-  let draft = { qid: null, choice: new Set(), other: '', note: '' };
-  let currentKey = null;
-  let historyKey = null;
-  let sending = false;
+  const main = $('#main');
+  if (!D || !D.questions || !D.questions.length) {
+    main.append(el('article', { class: 'card' }, el('p', { text: 'File này là mẫu, chưa có câu hỏi. Tạo trang câu hỏi bằng render-interview.mjs.' })));
+    return;
+  }
 
-  const optionCard = (q, o, i, { readOnly, chosen }) => {
+  const KEYS = 'ABCDEFGHIJ';
+  const keyOf = (i) => KEYS[i] || String(i + 1);
+  const OTHER = { id: 'other', label: 'Khác (tự nhập)', means: 'Không phương án nào ở trên đúng ý: gõ phương án của bạn.' };
+  const EXPLAIN = { id: 'explain', label: 'Cần giải thích thêm', means: 'Claude giải thích rõ hơn rồi hỏi lại câu này. Ghi điều bạn chưa rõ vào ô ghi chú.' };
+  const Q = D.questions;
+  const nums = Q.map((q) => q.n);
+  const range = nums.length > 1 ? 'Câu ' + Math.min(...nums) + '–' + Math.max(...nums) : 'Câu ' + (nums[0] ?? '');
+
+  document.title = range + ' · ' + (D.topic || 'Phỏng vấn thiết kế');
+  $('#topic').textContent = D.topic || 'Phỏng vấn thiết kế';
+  $('#num').textContent = range;
+
+  const grow = (ta) => ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 2 + 'px'; });
+
+  // One card per question: what to read first, the answer strip last. The card's DOM is the answer state.
+  const questionCard = (q) => {
     const multi = !!q.multi;
-    const otherBox = o.id === 'other' && !readOnly ? el('textarea', { id: 'other-' + q.id, class: 'other-input', rows: '2', placeholder: 'Phương án của bạn…', 'aria-label': 'Phương án tự nhập' }) : null;
-    const input = el('input', { type: multi ? 'checkbox' : 'radio', name: 'choice-' + q.id, id: 'opt-' + q.id + '-' + o.id, value: o.id });
-    if (readOnly) { input.disabled = true; input.checked = chosen.includes(o.id); }
-    else {
-      input.checked = draft.choice.has(o.id);
-      input.addEventListener('change', () => {
-        if (multi) { if (input.checked) draft.choice.add(o.id); else draft.choice.delete(o.id); }
-        else draft.choice = new Set([o.id]);
-        if (otherBox && input.checked) otherBox.focus();
-        say('');
-      });
-    }
-    const key = o.id === 'other' ? null : (KEYS[i] || String(i + 1)) + '.';
-    const pros = o.pros && o.pros.length ? el('div', { class: 'pros' }, el('p', { class: 'label', text: 'Được' }), el('ul', {}, o.pros.map((p) => el('li', {}, inline(p))))) : null;
-    const cons = o.cons && o.cons.length ? el('div', { class: 'cons' }, el('p', { class: 'label', text: 'Mất' }), el('ul', {}, o.cons.map((c) => el('li', {}, inline(c))))) : null;
-    return el('label', { class: 'opt', for: input.id }, input, el('div', { class: 'opt-body' },
+    const own = q.options || [];
+    const options = [...own, OTHER, EXPLAIN];
+    const state = el('span', { class: 'state' });
+    const inputs = [];
+    const optCards = new Map();
+    const otherBox = el('textarea', { id: q.id + '-other', rows: '1', hidden: true, placeholder: 'Phương án của bạn…', 'aria-label': 'Phương án tự nhập' });
+    const note = el('textarea', { id: q.id + '-note', rows: '1', placeholder: 'Ghi chú (không bắt buộc): lý do, điều kiện kèm theo, hoặc điều bạn chưa rõ…', 'aria-label': 'Ghi chú cho câu ' + (q.n ?? '') });
+    grow(otherBox);
+    grow(note);
+
+    // Option cards sit side by side and share rows (subgrid), so each part lines up across options.
+    const parts = own.map((o, i) => [
       el('div', { class: 'opt-head' },
-        key ? el('span', { class: 'opt-key', text: key }) : null,
+        el('span', { class: 'opt-key', text: keyOf(i) + '.' }),
         el('span', { class: 'opt-label' }, inline(o.label)),
-        o.recommended ? el('span', { class: 'badge-rec', text: 'Claude đề xuất' }) : null,
+        o.recommended ? el('span', { class: 'badge-rec', text: 'Đề xuất' }) : null,
         o.effort ? el('span', { class: 'effort' }, 'Công sức: ', inline(o.effort)) : null),
       o.means ? el('p', {}, inline(o.means)) : null,
-      o.example ? el('div', { class: 'example' }, el('p', { class: 'label', text: 'Ví dụ cụ thể' }), el('p', {}, inline(o.example))) : null,
-      pros || cons ? el('div', { class: 'pc' }, pros, cons) : null,
-      otherBox));
-  };
+      o.example ? el('p', { class: 'example' }, el('strong', { text: 'Ví dụ: ' }), inline(o.example)) : null,
+      (o.pros && o.pros.length) || (o.cons && o.cons.length) ? el('ul', { class: 'pc' },
+        (o.pros || []).map((p) => el('li', { class: 'pro' }, inline(p))),
+        (o.cons || []).map((c) => el('li', { class: 'con' }, inline(c)))) : null,
+    ]);
+    const used = [0, 1, 2, 3].filter((s) => parts.some((p) => p[s]));
+    const optCard = (o, i) => {
+      const box = el('div', { class: 'opt' + (o.recommended ? ' recommended' : ''), style: 'grid-row: span ' + used.length },
+        used.map((s) => parts[i][s] || el('div')));
+      optCards.set(o.id, box);
+      return box;
+    };
 
-  const questionCard = (q, { readOnly = false, answer = null } = {}) => {
-    const chosen = answer ? [].concat(answer.choice || []) : [];
-    const card = el('article', { class: 'card' + (readOnly ? ' read' : '') });
-    if (!readOnly) card.append(el('header', {},
-      el('div', { class: 'q-num' }, el('span', { text: 'Câu ' + (q.n ?? '') }), q.stage ? el('span', { class: 'tag', text: q.stage }) : null),
-      el('h2', { class: 'q-title' }, inline(q.title))));
-    if (q.why) card.append(el('div', { class: 'why' }, el('p', { class: 'label', text: 'Vì sao cần chốt' }), el('p', {}, inline(q.why))));
-    if (q.context && q.context.length) card.append(el('section', {}, el('h3', { class: 'label', text: 'Bối cảnh' }), el('div', { class: 'blocks' }, q.context.map(block))));
-    const options = [...(q.options || [])];
-    if (!readOnly) options.push(OTHER);
-    else if (chosen.includes('other')) options.push(Object.assign({}, OTHER, { means: answer.other || answer.note || '' }));
-    if (options.length) card.append(el('section', {},
-      el('div', { class: 'section-head' }, el('h3', { class: 'label', text: 'Các lựa chọn' }), readOnly ? null : el('span', { class: 'hint', text: q.multi ? 'Chọn một hoặc nhiều, hoặc tự nhập ở mục Khác' : 'Chọn một, hoặc tự nhập ở mục Khác' })),
-      el('div', { class: 'options' }, options.map((o, i) => optionCard(q, o, i, { readOnly, chosen })))));
-    if (q.recommendation) card.append(el('div', { class: 'rec' }, el('p', { class: 'label', text: 'Claude đề xuất vì' }), el('p', {}, inline(q.recommendation))));
-    return card;
-  };
+    const choice = (o, i) => {
+      const builtin = o === OTHER || o === EXPLAIN;
+      const input = el('input', { type: multi ? 'checkbox' : 'radio', name: 'choice-' + q.id, id: q.id + '-opt-' + o.id, value: o.id });
+      inputs.push(input);
+      input.addEventListener('change', () => {
+        if (multi && input.checked) {
+          for (const other of inputs) if (other !== input && (o === EXPLAIN || other.value === 'explain')) other.checked = false;
+        }
+        refresh();
+        if (input.checked && o === OTHER) otherBox.focus();
+        if (input.checked && o === EXPLAIN) note.focus();
+      });
+      return el('label', { class: 'choice' + (builtin ? ' builtin' : ''), for: input.id, title: builtin ? o.means : null }, input,
+        builtin ? null : el('span', { class: 'opt-key', text: keyOf(i) + '.' }),
+        el('span', {}, inline(o.label)),
+        o.recommended ? el('span', { class: 'star', title: 'Claude đề xuất', text: '★' }) : null);
+    };
 
-  const say = (text, kind) => { const m = $('#msg'); if (m) { m.textContent = text; m.dataset.kind = kind || ''; } };
+    const recI = own.findIndex((o) => o.recommended);
+    const card = el('article', { class: 'card', id: 'card-' + q.id },
+      el('header', { class: 'card-head' },
+        el('div', { class: 'q-num' }, el('span', { text: 'Câu ' + (q.n ?? '') }), q.stage ? el('span', { class: 'tag', text: q.stage }) : null, state),
+        el('h2', { class: 'q-title' }, inline(q.title))),
+      q.why ? el('p', { class: 'why' }, el('strong', { text: 'Vì sao cần chốt: ' }), inline(q.why)) : null,
+      q.context && q.context.length ? el('div', { class: 'blocks' }, q.context.map(block)) : null,
+      own.length ? el('div', { class: 'opts', 'data-n': String(own.length) }, own.map(optCard)) : null,
+      q.recommendation ? el('p', { class: 'rec' },
+        el('strong', {}, 'Claude đề xuất', recI >= 0 ? [' ' + keyOf(recI) + '. ', inline(own[recI].label)] : null, ': '),
+        inline(q.recommendation)) : null,
+      el('div', { class: 'answer' },
+        el('div', { class: 'answer-head' }, el('span', { class: 'label', text: 'Trả lời' }), el('span', { class: 'hint', text: multi ? 'chọn một hoặc nhiều' : 'chọn một' })),
+        el('div', { class: 'choices' }, options.map(choice)),
+        el('div', { class: 'fields' }, otherBox, note)));
+    const otherInput = inputs[own.length];
 
-  const openCard = (q) => {
-    if (draft.qid !== q.id) draft = { qid: q.id, choice: new Set(), other: '', note: '' };
-    const card = questionCard(q);
-    const otherBox = card.querySelector('.other-input');
-    const otherInput = document.getElementById('opt-' + q.id + '-other') || card.querySelector('input[value="other"]');
-    if (otherBox && otherInput) {
-      otherBox.value = draft.other;
-      const pickOther = () => {
-        if (otherInput.checked) return;
-        otherInput.checked = true;
-        otherInput.dispatchEvent(new Event('change'));
-      };
-      otherBox.addEventListener('focus', pickOther);
-      otherBox.addEventListener('input', () => { draft.other = otherBox.value; pickOther(); });
-    }
-    const note = el('textarea', { id: 'note', placeholder: 'Lý do, điều kiện kèm theo, hoặc điều bạn chưa rõ…' });
-    note.value = draft.note;
-    note.addEventListener('input', () => { draft.note = note.value; });
-    note.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(q, 'answer', card); } });
-    checkCanSend();
-    card.append(el('form', { class: 'answer', onsubmit: (e) => { e.preventDefault(); submit(q, 'answer', card); } },
-      el('label', { for: 'note', text: 'Ghi chú cho Claude' }),
-      el('span', { class: 'hint', text: 'Không bắt buộc. Lý do, điều kiện kèm theo, hoặc điều bạn chưa rõ khi bấm "Chưa đủ thông tin".' }),
-      note,
-      el('div', { class: 'actions' },
-        el('button', { type: 'submit', class: 'btn-primary', id: 'send' }, 'Gửi câu trả lời'),
-        el('button', { type: 'button', class: 'btn-ghost', id: 'explain', onclick: () => submit(q, 'explain', card) }, 'Chưa đủ thông tin, giải thích thêm')),
-      el('p', { class: 'msg', id: 'msg', role: 'status' })));
-    return card;
-  };
-
-  const checkCanSend = () => {
-    if (!COMMENTS) return;
-    COMMENTS.canSendToClaude().then((v) => { canSend = v; }, () => { canSend = 'off'; });
-  };
-
-  // Wakes the Claude session watching this page, so it does not have to poll for the answer.
-  const notifyClaude = async (q, a, anchorP) => {
-    if (!anchorP) return 'poll';
-    try {
-      const anchor = await anchorP;
-      if (!anchor) return 'poll';
-      const text = ('Câu ' + (q.n ?? '') + ' (' + q.id + ') đã trả lời: ' + answerPlain(q, a)).slice(0, 1500)
-        + '\n\nChỉ cần ghi nhận trong thread này, đừng sửa trang hay dữ liệu của trang: phiên Claude đang phỏng vấn sẽ tự đọc câu trả lời và quyết định câu tiếp theo.';
-      await COMMENTS.sendToClaude({ anchor, text });
-      return 'sent';
-    } catch (e) {
-      return 'poll';
-    }
-  };
-
-  const submit = async (q, kind, card) => {
-    if (sending || !DB) return;
-    const note = draft.note.trim();
-    let choice = 'explain';
-    let other = '';
-    if (kind === 'answer') {
-      const picked = [...draft.choice];
-      if (!picked.length) return say('Chọn một phương án, tự nhập ở mục Khác, hoặc bấm "Chưa đủ thông tin, giải thích thêm".', 'warn');
-      if (picked.includes('other')) {
-        other = draft.other.trim();
-        if (!other) return say('Bạn chọn "Khác": gõ phương án của bạn vào ô ngay dưới lựa chọn đó.', 'warn');
-      }
-      choice = q.multi ? picked : picked[0];
-    }
-    sending = true;
-    for (const id of ['send', 'explain']) { const b = document.getElementById(id); if (b) b.disabled = true; }
-    say('Đang gửi…');
-    const anchorP = COMMENTS && canSend === 'available' ? COMMENTS.anchorFor(card).catch(() => null) : null;
-    notice = anchorP ? 'sending' : 'poll';
-    const answer = { choice, other, note, answeredAt: new Date().toISOString() };
-    try {
-      await DB.doc('answers/' + q.id).set(answer);
-      notice = await notifyClaude(q, answer, anchorP);
-      render();
-    } catch (e) {
-      notice = null;
-      for (const id of ['send', 'explain']) { const b = document.getElementById(id); if (b) b.disabled = false; }
-      const code = e && e.code;
-      say(code === 'invalid_argument' ? 'Không lưu được: tài khoản đang xem không có quyền ghi trên trang này.'
-        : 'Chưa gửi được (' + (code || 'lỗi') + '). Bấm gửi lại sau vài giây.', 'error');
-    } finally {
-      sending = false;
-    }
-  };
-
-  const panel = (title, lines, busy) => el('article', { class: 'card panel' },
-    el('h2', {}, busy ? el('span', { class: 'pulse', 'aria-hidden': 'true' }) : null, title),
-    lines.map((l) => el('p', {}, inline(l))));
-
-  const pickedLabels = (q, a) => [].concat(a.choice || []).map((id) => {
-    if (id === 'other') return 'Khác: ' + (a.other || '(xem ghi chú)');
-    if (id === 'explain') return 'Cần giải thích thêm';
-    const i = (q.options || []).findIndex((o) => o.id === id);
-    return i < 0 ? id : (KEYS[i] || i + 1) + '. ' + q.options[i].label;
-  });
-
-  const answerPlain = (q, a) => pickedLabels(q, a).join(', ') + (a.note ? ' | Ghi chú: ' + a.note : '');
-
-  const answerText = (q, a) => {
-    const picked = pickedLabels(q, a);
-    return el('span', { class: 'past-answer' }, 'Trả lời: ', el('strong', {}, inline(picked.join(', '))),
-      a.note ? ' — "' + a.note + '"' : '', a.source === 'chat' ? ' (trả lời trong chat)' : '');
-  };
-
-  const WAIT_TEXT = {
-    sending: 'Đã lưu câu trả lời. Đang báo cho Claude…',
-    sent: 'Đã báo cho Claude. Câu tiếp theo sẽ hiện ở đây sau ít giây, trang tự cập nhật.',
-    poll: 'Claude sẽ thấy câu trả lời ở lần kiểm tra trang tiếp theo và đưa câu tiếp theo lên đây. Muốn nhanh hơn, nhắn "xong" ở terminal.',
-  };
-
-  const setPill = (state, text) => { const p = $('#status'); p.dataset.state = state; p.textContent = text; };
-
-  const render = () => {
-    if (!(S.ready.meta && S.ready.q && S.ready.a)) return;
-    $('#topic').textContent = (S.meta && S.meta.topic) || 'Phỏng vấn thiết kế';
-    const answered = S.questions.filter((q) => S.answers.has(q.id));
-    const open = S.questions.find((q) => !S.answers.has(q.id));
-    const done = !open && S.meta && S.meta.status === 'done';
-
-    if (open) setPill('you', 'Đến lượt bạn · câu ' + (open.n ?? ''));
-    else if (done) setPill('done', 'Đã xong · ' + answered.length + ' câu');
-    else setPill('claude', 'Claude đang soạn câu tiếp');
-
-    const key = open ? 'q:' + JSON.stringify(open) : done ? 'done:' + (S.meta.summary || '') : 'wait:' + answered.length + ':' + notice;
-    if (key !== currentKey) {
-      currentKey = key;
-      $('#current').replaceChildren(open ? openCard(open)
-        : done ? panel('Phỏng vấn đã xong', [S.meta.summary || '', 'Quay lại terminal: Claude tiếp tục bước thiết kế ở đó.'].filter(Boolean))
-        : answered.length ? panel('Đã nhận câu trả lời', [WAIT_TEXT[notice] || WAIT_TEXT.poll], true)
-        : panel('Claude đang chuẩn bị câu hỏi đầu tiên', ['Trang tự cập nhật khi câu hỏi sẵn sàng.'], true));
+    function refresh() {
+      const done = inputs.some((i) => i.checked);
+      state.dataset.done = String(done);
+      state.textContent = done ? 'Đã chọn' : 'Chưa chọn';
+      for (const i of inputs) if (optCards.has(i.value)) optCards.get(i.value).classList.toggle('chosen', i.checked);
+      otherBox.hidden = !otherInput.checked;
+      card.classList.remove('attention');
+      updateFab();
     }
 
-    const hKey = JSON.stringify(answered.map((q) => [q, S.answers.get(q.id)]));
-    if (hKey !== historyKey) {
-      historyKey = hKey;
-      $('#history').hidden = !answered.length;
-      $('#history-head').textContent = 'Đã trả lời (' + answered.length + ')';
-      $('#history-list').replaceChildren(...answered.slice().reverse().map((q) => {
-        const a = S.answers.get(q.id);
-        return el('details', { class: 'past' },
-          el('summary', {}, el('span', { class: 'q-num' }, 'Câu ' + (q.n ?? '')), el('span', { class: 'past-title' }, inline(q.title)), answerText(q, a)),
-          questionCard(q, { readOnly: true, answer: a }));
-      }));
-    }
+    const labelOf = (input) => {
+      if (input.value === 'other') return 'Khác (tự nhập): ' + otherBox.value.trim();
+      if (input.value === 'explain') return 'Cần giải thích thêm';
+      const i = options.findIndex((o) => o.id === input.value);
+      return keyOf(i) + '. ' + options[i].label;
+    };
+
+    refresh();
+    return {
+      q, card,
+      // null when complete, else what is missing.
+      problem: () => {
+        if (!inputs.some((i) => i.checked)) return 'chưa chọn phương án';
+        if (otherInput.checked && !otherBox.value.trim()) return 'chọn "Khác" nhưng chưa gõ phương án';
+        return null;
+      },
+      done: () => inputs.some((i) => i.checked),
+      text: () => {
+        const lines = ['[' + q.id + '] ' + q.title, 'Chọn: ' + inputs.filter((i) => i.checked).map(labelOf).join('; ')];
+        if (note.value.trim()) lines.push('Ghi chú: ' + note.value.trim());
+        return lines.join('\n');
+      },
+    };
   };
 
-  const fail = (e) => {
-    currentKey = 'error';
-    setPill('', 'Mất kết nối');
-    $('#current').replaceChildren(panel('Không đọc được dữ liệu của trang', ['Lỗi: ' + ((e && e.code) || 'không rõ') + '. Tải lại trang để thử lại.']));
-  };
+  const fabCount = el('span', { class: 'count' });
+  const fabMsg = el('p', { class: 'msg', role: 'status' });
+  const out = el('textarea', { id: 'out', class: 'out', readonly: true, hidden: true, 'aria-label': 'Câu trả lời để dán vào Claude' });
+  const say = (kind, ...parts) => { fabMsg.dataset.kind = kind || ''; fabMsg.replaceChildren(...parts); };
+  let cards = [];
+  function updateFab() {
+    fabCount.textContent = cards.filter((c) => c.done()).length + '/' + Q.length + ' câu';
+    say('');
+  }
 
-  const start = async () => {
-    let db = null;
-    try { db = window.claude && window.claude.use ? await window.claude.use('db') : null; } catch (e) { db = null; }
-    if (!db) {
-      setPill('', 'Chỉ xem');
-      $('#topic').textContent = 'Phỏng vấn thiết kế';
-      $('#current').replaceChildren(panel('Trang này cần mở trong claude.ai', ['Câu hỏi và câu trả lời được lưu trong dữ liệu của artifact. Mở trang trong claude.ai khi đã đăng nhập để xem và trả lời.']));
+  if (D.decided && D.decided.length) {
+    main.append(el('details', { class: 'decided' }, el('summary', { text: 'Đã chốt trước đó (' + D.decided.length + ')' }),
+      el('ul', {}, D.decided.map((d) => el('li', {}, inline(d))))));
+  }
+  cards = Q.map(questionCard);
+  for (const c of cards) main.append(c.card);
+
+  const copyAll = async () => {
+    const missing = cards.find((c) => c.problem());
+    if (missing) {
+      missing.card.classList.add('attention');
+      missing.card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      say('warn', 'Câu ' + (missing.q.n ?? '') + ' ' + missing.problem() + '.');
       return;
     }
-    DB = db;
-    window.claude.use('comments').then((c) => { COMMENTS = c; checkCanSend(); }, () => {});
-    db.doc('meta/state').onSnapshot((s) => { S.meta = s.exists ? s.data() : null; S.ready.meta = true; render(); }, fail);
-    db.collection('questions').onSnapshot((s) => {
-      S.questions = s.docs.map((d) => Object.assign({ id: d.id }, d.data()))
-        .sort((a, b) => ((a.n ?? 0) - (b.n ?? 0)) || a.id.localeCompare(b.id));
-      S.ready.q = true; render();
-    }, fail);
-    db.collection('answers').onSnapshot((s) => { S.answers = new Map(s.docs.map((d) => [d.id, d.data()])); S.ready.a = true; render(); }, fail);
+    const text = cards.map((c) => c.text()).join('\n\n');
+    out.value = text;
+    let ok = false;
+    try { await navigator.clipboard.writeText(text); ok = true; }
+    catch (e) { out.hidden = false; out.focus(); out.select(); try { ok = document.execCommand('copy'); } catch (e2) { ok = false; } }
+    if (ok) {
+      out.hidden = true;
+      say('ok', 'Đã copy ' + cards.length + ' câu trả lời. Dán vào terminal của Claude rồi Enter.');
+      setTimeout(() => { if (fabMsg.dataset.kind === 'ok') say(''); }, 4000);
+    }
+    else { out.hidden = false; say('warn', 'Không copy tự động được: chọn đoạn bên dưới, copy rồi dán vào terminal của Claude.'); }
   };
 
-  start();
+  document.body.append(el('aside', { class: 'fab', 'aria-label': 'Gửi câu trả lời' }, fabMsg, out,
+    el('div', { class: 'fab-bar' }, fabCount, el('button', { type: 'button', class: 'btn-primary', title: 'Cmd/Ctrl+Enter', onclick: copyAll }, 'Copy câu trả lời'))));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); copyAll(); } });
+  updateFab();
 })();
 </script>
+</body>
+</html>

@@ -16,7 +16,8 @@ be delegated. Sub-agents are allowed only as parallel research helpers inside 1A
 
 - **YAGNI / KISS / DRY** — every design decision must honour these.
 - **Reuse over rewrite** — scout first; if a similar feature exists, design ON TOP of it.
-- **One question at a time** — never batch; follow-ups depend on prior answers.
+- **One round at a time** — never batch questions that depend on each other; follow-ups depend on
+  prior answers.
 - **Decide from the card** — each question goes on the interview page with the context, evidence,
   concrete examples and trade-offs the user needs to decide without reading the code or the chat.
 - **Brutal honesty** — challenge the premise, the user's preferred option, unexamined assumptions.
@@ -29,8 +30,8 @@ be delegated. Sub-agents are allowed only as parallel research helpers inside 1A
 | "This is too simple to need a design" | Simple tasks = most wasted work from unexamined assumptions. |
 | "I already know the solution" | Then writing it down takes 30 seconds. Do it. |
 | "Cook is supposed to run without stopping" | The no-stop rule starts at Step 2. Step 1 is interactive by design. |
-| "I'll just batch the questions" | Batching breaks adaptive follow-up. One at a time. |
-| "This one is quick, I'll ask it in chat" | Every interview question goes on the interview page. Chat carries the link and status lines only. |
+| "I'll just batch the questions" | Batching dependent questions breaks adaptive follow-up. Group only independent ones (up to 4 on one page). |
+| "This one is quick, I'll ask it in chat" | Every interview question goes on the HTML question page. Chat carries the file path and the pasted answers. |
 | "A short question is easier to answer" | A short question makes the user reconstruct the context. Fill the card: why, evidence, example per option, pros/cons, recommendation. |
 | "Skip scout, the ticket is detailed" | Tickets often miss existing infra. Scout anyway, briefly. |
 | "Just propose one approach" | Always 2-3. Lead with rec, but show alternatives. |
@@ -46,7 +47,7 @@ flowchart TD
     A[1A: Deep Scout] --> W{Know WHAT to build, or only HOW?}
     W -->|WHAT fuzzy| Q0[Ask ONE scope-fixing question<br/>on the interview page] --> R
     W -->|WHAT clear| R[1B: Best-Practice Research<br/>orienting; deep only on a real fork]
-    R --> B[1C: Q&A Loop<br/>interview page, wait for each answer]
+    R --> B[1C: Q&A Loop<br/>HTML question page, answers pasted back]
     B --> C{Round cap or scope clear?}
     C -->|need more| B
     C -->|new fork surfaced| R
@@ -121,15 +122,17 @@ conventions + large-system precedents over novel invention.
 
 ---
 
-## 1C: Q&A Loop (one question at a time, on the interview page)
+## 1C: Q&A Loop (one round at a time, on the interview page)
 
-**REQUIRED:** run the interview through `../brainstorm-pro/references/artifact-interview.md`
-(relative to the cook skill directory) — one Artifact page per run, a full question card per
-round, a wait for each answer (the page wakes the session; polling only as a fallback). The scope-fixing question (Q0) and the
-1D approach pick go on the same page.
+**REQUIRED:** run the interview through `../brainstorm-pro/references/html-interview.md`
+(relative to the cook skill directory) — a local HTML page per round opened in the browser, a
+full card per question, the answers pasted back into chat. The scope-fixing question (Q0) and the
+1D approach pick are asked the same way.
 
 **Rules:**
-- ONE question per page update — post it, wait for its answer, then post the next. Never batch.
+- ONE round per page — one question, or up to 4 independent ones (no answer can change another's
+  options or relevance). Open it, wait for the pasted answers, then open the next. A question that
+  depends on an answer waits for the next round.
 - 2-4 suggested options per question with **your recommendation** marked, plus a **"Khác (tự
   nhập)" option on every question** for the user's own answer (the page adds it; in the chat
   fallback, list it yourself).
@@ -181,7 +184,7 @@ In content terms:
 Lead with your recommendation and the reason. If the user prefers a non-recommended option,
 **brutally honest pushback** as the next question on the page (stage `Phản biện`: the risk you
 see, keep vs. switch) — but accept the user's call if they reconfirm with reason. Once the
-approach is settled, close the page (`meta/state` → `done`) and continue 1E in chat.
+approach is settled, continue 1E in chat.
 
 **Output:** `✓ Step 1D: Approach selected - [name]`
 
@@ -254,7 +257,7 @@ Selected approach from 1D, with rationale (cite 1B research if used).
 - [ ] Q&A respected one-per-round rule, max 8 rounds
 - [ ] Every interview question (Q0, Q&A, approach pick) went on the interview page as a full card
       (why, context with evidence, options with example/pros/cons, recommendation); each answer
-      read from its db before the next question
+      taken from the user's pasted reply before the next question
 - [ ] Mid-stream re-explore happened at least once if an answer reshaped scope
 - [ ] At least one brutal honesty pushback on premise/assumption
 - [ ] 2-3 approaches presented with trade-offs + recommendation

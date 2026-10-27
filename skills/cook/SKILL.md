@@ -4,7 +4,7 @@ description: "ALWAYS activate this skill before implementing EVERY feature, plan
 argument-hint: "[task|plan-path]"
 metadata:
   author: claudekit
-  version: "5.2.0"
+  version: "5.3.0"
 ---
 
 # Cook - Smart Feature Implementation
@@ -21,7 +21,7 @@ End-to-end implementation. Every implementation phase is executed by a dedicated
 
 - **Plan path given** (`plan.md` / `phase-*.md`) → load it, skip Steps 1–2, start at Step 3.
 - **No plan** → Step 1 runs the full `brainstorm-pro` design flow in-line (deep scout →
-  best-practice research → one-question-at-a-time Q&A on an interview Artifact page → 2-3
+  best-practice research → one-round-at-a-time Q&A on a local HTML question page → 2-3
   approaches → sectioned design with per-section approval). Where brainstorm-pro would write `spec.md` and hand off to `ck-plan`,
   cook instead goes straight to Step 2 (write the plan) and executes it in the same run.
 
@@ -70,7 +70,7 @@ The orchestrator NEVER edits source files itself during Step 3. Every phase MUST
 | "Just this once" | Every skip is "just this once." No exceptions. |
 | "Cook never stops for the user, so skip the Q&A" | The no-stop rule starts at Step 2. Step 1 is interactive by design. |
 | "The task is clear, skip scout and go straight to planning" | Scout is what makes the plan reuse existing infra instead of duplicating it. |
-| "Batch the design questions to save turns" | Batching breaks adaptive follow-up. One question per page update. |
+| "Batch the design questions to save turns" | Batching dependent questions breaks adaptive follow-up. Only independent ones share a page (up to 4). |
 | "This design question is quick, ask it in chat" | Every 1C question and the 1D approach pick go on the interview page (`references/design-phase.md` § 1C). |
 | "Write spec.md first, then plan from it" | No spec in cook. The approved design block goes straight into the plan files. |
 | "Let a `planner` sub-agent write the plan" | No. The orchestrator writes the plan itself — it holds the design conversation. Sub-agents start at Step 3. |
@@ -96,7 +96,7 @@ flowchart TD
     subgraph S1[Step 1: Design — brainstorm-pro flow, interactive, orchestrator-run]
       direction TB
       C1[1A: Deep Scout] --> C2[1B: Best-Practice Research<br/>conditional]
-      C2 --> C3[1C: Q&A Loop — one question at a time<br/>on the interview page, wait for each answer]
+      C2 --> C3[1C: Q&A Loop — one round at a time<br/>on an HTML question page, answers pasted back]
       C3 --> C4[1D: Propose 2-3 Approaches]
       C4 --> C5[1E: Sectioned Design + per-section approval]
     end
@@ -128,7 +128,7 @@ Step 1 is interactive (Q&A rounds, per-section approval). **From Step 2 onward t
 
 ## Gates
 
-**Step 1 has real gates** (it is a design conversation): one question at a time on the interview page during 1C (and the 1D approach pick), and explicit approval after every design section in 1E. Do not shortcut them.
+**Step 1 has real gates** (it is a design conversation): one round at a time on the HTML question page during 1C (independent questions may share a page; the 1D approach pick too), and explicit approval after every design section in 1E. Do not shortcut them.
 
 **No approval stops from Step 2 onward.** Plan → implement → test → review fan-out → finalize runs end to end without pausing for the user. Report progress as you go (`✓ Step [N]: …`) so the user can interrupt if they want to redirect, but never block waiting for a go-ahead. In particular, once implementation and testing finish, go straight into the review fan-out in the same turn.
 
