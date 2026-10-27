@@ -1,8 +1,9 @@
 # Artifact Interview
 
 Every interview question goes on ONE Artifact page per brainstorm, one question at a time. The
-user reads and answers on the page; you poll the page's database for the answer, then put the
-next question on the same page. The chat carries only the link and one-line status updates.
+user reads and answers on the page; the page saves the answer to its database and wakes this
+session, then you put the next question on the same page. The chat carries only the link and
+one-line status updates.
 
 **Covers:** the scope-fixing question (Q0), every Q&A round, and the approach pick (brainstorm-pro
 Phase 3 / cook 1D, including a collapsed bug-fix's candidate fixes). **Does not cover:**
@@ -15,17 +16,20 @@ the db, so you never edit its markup beyond the `<title>`.
 ## Setup (once per brainstorm)
 
 0. Load what the publish needs: the `artifact-design` and `artifact-capabilities` skills (the
-   `Artifact` tool requires them before a page with `capabilities`), and `ArtifactData` through
-   `ToolSearch` when it is listed as deferred.
+   `Artifact` tool requires them before a page with `capabilities`), and `ArtifactData`,
+   `ArtifactComments` and `TaskStop` through `ToolSearch` when they are listed as deferred.
 1. One `Bash`: copy the template to the scratchpad as `interview-<slug>.html` and `sed` its
    `<title>` to a 2-4 word name of the topic.
-2. Publish it: `Artifact` with that `file_path`, `capabilities: {db: {}}`, `icon: "question"`,
-   and a one-sentence `description` of the topic.
+2. Publish it: `Artifact` with that `file_path`, `capabilities: {db: {}, comments: {}}`,
+   `icon: "question"`, and a one-sentence `description` of the topic.
 3. Seed it with one `ArtifactData batch`: `meta/state` = `{topic, status: "asking"}` and the
    first question as `questions/q01`. Keep the `version` each write returns; every later write to
    an existing document (`meta/state`) passes it as `if_version`.
 4. Functional check, once: `ArtifactData list` of `questions`.
-5. Chat: the link plus the first question's title, one line.
+5. Pick the wait mode: `ArtifactComments` `watch` with no `url` lists this session's watches. The
+   page's row says `auto-replies armed` → **wake mode**; anything else → **poll mode**.
+6. Chat: the link plus the first question's title, one line. In wake mode add that the first
+   answer asks them to allow the page to message this session (Allow).
 
 ## The question document (`questions/qNN`)
 
@@ -56,18 +60,32 @@ the user must not miss).
 **Card test before writing:** someone who has not read the code or this conversation can decide
 from the card alone. If deciding needs a fact you have not shown, add it to `context`.
 
-## Waiting for the answer (poll loop)
+## Waiting for the answer
 
-1. After writing `questions/qNN`, start `Bash` with `run_in_background: true`, command `sleep 20`,
-   description `Chờ câu trả lời qNN #1`. End the turn with one status line.
-2. When timer `#k` finishes, `ArtifactData get` `answers` / `qNN`.
+On submit the page saves `answers/qNN`, then sends a comment to Claude on its own thread
+(`Câu N (qNN) đã trả lời: …`, plus a line asking the auto-reply only to acknowledge). In wake
+mode that comment starts a turn here: a notification that the platform auto-replied to a thread
+on this page. If the user declines the permission or the send fails, the page tells them to type
+"xong" in the terminal. A wake can also fail to arrive; the timer covers that.
+
+1. After writing `questions/qNN`, start one timer: `Bash` with `run_in_background: true`,
+   description `Chờ câu trả lời qNN #1`, command `sleep 300` in wake mode (a safety net only) or
+   `sleep 20` in poll mode. End the turn with one status line.
+2. **Woken by the page's comment** → `TaskStop` the pending timer, `ArtifactData get`
+   `answers` / `qNN` (the comment names qNN), `ArtifactComments resolve` the thread (the
+   platform already replied in it; post nothing), then process the answer. A comment for a qNN you
+   already processed: resolve its thread, nothing else. If the notification says the auto-reply
+   changed the artifact, read `meta/state` and `questions` first and put back anything you did
+   not write: the interview's state is yours alone.
+3. **Timer `#k` finishes** → `ArtifactData get` `answers` / `qNN`.
    - Exists → process it (next section).
-   - Missing, k < 26 → start timer `#k+1` and end the turn with no output: `sleep 20` for
-     k+1 ≤ 9 (about 3 minutes), `sleep 60` after that.
-   - Missing, k = 26 (about 20 minutes) → start no timer; say once in chat:
-     "Câu qNN vẫn chờ trên trang: trả lời xong thì nhắn bất kỳ gì ở đây."
-3. Keep one timer at a time. A timer whose qNN is already answered ends the turn with no output.
-4. A chat message while waiting: if it answers the question, take it as the answer and write it to
+   - Missing, wake mode, k < 4 → timer `#k+1`, `sleep 300`, end the turn with no output.
+   - Missing, poll mode, k < 26 → timer `#k+1`, `sleep 20` for k+1 ≤ 9 (about 3 minutes),
+     `sleep 60` after that, end the turn with no output.
+   - Missing at k = 4 (wake) or k = 26 (poll), about 20 minutes → start no timer; say once in
+     chat: "Câu qNN vẫn chờ trên trang: trả lời xong thì nhắn bất kỳ gì ở đây."
+4. Keep one timer at a time. A timer whose qNN is already answered ends the turn with no output.
+5. A chat message while waiting: if it answers the question, take it as the answer and write it to
    `answers/qNN` with `source: "chat"` so the page's history stays complete; if it says the user
    answered on the page ("xong", "done", "rồi"), read `answers/qNN` now. A chat answer that fits
    none of the options is written as `choice: "other"` with their words in `other`.

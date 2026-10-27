@@ -4,7 +4,7 @@ description: Hybrid brainstorm — deep scout (ck-style) + one-question-at-a-tim
 license: MIT
 metadata:
   author: phong
-  version: "1.1.0"
+  version: "1.2.0"
   combines: [ck:brainstorm, superpowers:brainstorming]
 ---
 
@@ -14,7 +14,7 @@ Combine the best parts of `ck:brainstorm` and `superpowers:brainstorming`:
 
 - **From ck:** deep scout BEFORE any question, brutal honesty, brutal pushback on premise, terminal at `ck-plan`.
 - **From superpowers:** one question per round, multi-choice with recommendation, sectioned design with per-section approval, spec self-review (4 checks), user review gate before plan.
-- **New:** conditional best-practice research right after scout; mid-stream re-explore when an answer reveals a new direction; interview questions asked on an Artifact page, one at a time, answers polled from its database.
+- **New:** conditional best-practice research right after scout; mid-stream re-explore when an answer reveals a new direction; interview questions asked on an Artifact page, one at a time; the page wakes the session when the user answers (polling only as a fallback).
 
 ## Core Principles
 
@@ -62,7 +62,7 @@ flowchart TD
     A[Phase 1: Deep Scout] --> W{Know WHAT to build, or only HOW?}
     W -->|WHAT fuzzy| Q0[Ask ONE scope-fixing question<br/>on the interview page] --> R
     W -->|WHAT clear| R[Phase 1.5: Best-Practice Research<br/>orienting; deep only on a real fork]
-    R --> B[Phase 2: Q&A Loop<br/>interview page, poll for each answer]
+    R --> B[Phase 2: Q&A Loop<br/>interview page, wait for each answer]
     B --> C{Round cap or scope clear?}
     C -->|need more| B
     C -->|new fork surfaced| R
@@ -141,7 +141,7 @@ Anchor findings to the design and cite them in the Phase 3 approaches. Prefer th
 ## Phase 2: Q&A Loop (one question at a time, on the interview page)
 
 **REQUIRED:** run the interview through `references/artifact-interview.md` — one Artifact page per
-brainstorm, a full question card per round, a poll loop that waits for each answer on the page.
+brainstorm, a full question card per round, a wait for each answer (the page wakes the session; polling only as a fallback).
 The scope-fixing question (Q0) and the Phase 3 approach pick go on the same page.
 
 **Rules:**
@@ -340,7 +340,7 @@ The only thing that stops the chain at the plan is the user explicitly saying so
 - `Read` / `Glob` / `Grep` for scout (Phase 1)
 - `Bash` for `ls`, `find`, `git log` etc. during scout
 - `context7` (library docs), `WebSearch`, or a `document-specialist` sub-agent for Phase 1.5 best-practice research
-- `Artifact` + `ArtifactData` + background `Bash` `sleep` for every interview question (Q0, Phase 2, Phase 3) — `references/artifact-interview.md`; chat only as its fallback
+- `Artifact` + `ArtifactData` + `ArtifactComments` (+ background `Bash` `sleep` as a safety net) for every interview question (Q0, Phase 2, Phase 3) — `references/artifact-interview.md`; chat only as its fallback
 - Sub-agents OK for parallel research IF Phase 1 reveals multiple unknown areas — but keep it focused
 - `Write` to save spec in Phase 5
 - `Skill` to invoke `ck-plan` in Phase 8

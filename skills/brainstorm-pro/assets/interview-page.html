@@ -213,6 +213,9 @@ details.past > .card { border: 0; border-top: 1px solid var(--line); border-radi
   const OTHER = { id: 'other', label: 'Khác (tự nhập)', means: 'Không phương án nào ở trên đúng ý? Gõ phương án của bạn vào ô dưới đây.' };
   const S = { meta: null, questions: [], answers: new Map(), ready: { meta: false, q: false, a: false } };
   let DB = null;
+  let COMMENTS = null;
+  let canSend = 'off';
+  let notice = null;
   let draft = { qid: null, choice: new Set(), other: '', note: '' };
   let currentKey = null;
   let historyKey = null;
@@ -285,19 +288,40 @@ details.past > .card { border: 0; border-top: 1px solid var(--line); border-radi
     const note = el('textarea', { id: 'note', placeholder: 'Lý do, điều kiện kèm theo, hoặc điều bạn chưa rõ…' });
     note.value = draft.note;
     note.addEventListener('input', () => { draft.note = note.value; });
-    note.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(q, 'answer'); } });
-    card.append(el('form', { class: 'answer', onsubmit: (e) => { e.preventDefault(); submit(q, 'answer'); } },
+    note.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(q, 'answer', card); } });
+    checkCanSend();
+    card.append(el('form', { class: 'answer', onsubmit: (e) => { e.preventDefault(); submit(q, 'answer', card); } },
       el('label', { for: 'note', text: 'Ghi chú cho Claude' }),
       el('span', { class: 'hint', text: 'Không bắt buộc. Lý do, điều kiện kèm theo, hoặc điều bạn chưa rõ khi bấm "Chưa đủ thông tin".' }),
       note,
       el('div', { class: 'actions' },
         el('button', { type: 'submit', class: 'btn-primary', id: 'send' }, 'Gửi câu trả lời'),
-        el('button', { type: 'button', class: 'btn-ghost', id: 'explain', onclick: () => submit(q, 'explain') }, 'Chưa đủ thông tin, giải thích thêm')),
+        el('button', { type: 'button', class: 'btn-ghost', id: 'explain', onclick: () => submit(q, 'explain', card) }, 'Chưa đủ thông tin, giải thích thêm')),
       el('p', { class: 'msg', id: 'msg', role: 'status' })));
     return card;
   };
 
-  const submit = async (q, kind) => {
+  const checkCanSend = () => {
+    if (!COMMENTS) return;
+    COMMENTS.canSendToClaude().then((v) => { canSend = v; }, () => { canSend = 'off'; });
+  };
+
+  // Wakes the Claude session watching this page, so it does not have to poll for the answer.
+  const notifyClaude = async (q, a, anchorP) => {
+    if (!anchorP) return 'poll';
+    try {
+      const anchor = await anchorP;
+      if (!anchor) return 'poll';
+      const text = ('Câu ' + (q.n ?? '') + ' (' + q.id + ') đã trả lời: ' + answerPlain(q, a)).slice(0, 1500)
+        + '\n\nChỉ cần ghi nhận trong thread này, đừng sửa trang hay dữ liệu của trang: phiên Claude đang phỏng vấn sẽ tự đọc câu trả lời và quyết định câu tiếp theo.';
+      await COMMENTS.sendToClaude({ anchor, text });
+      return 'sent';
+    } catch (e) {
+      return 'poll';
+    }
+  };
+
+  const submit = async (q, kind, card) => {
     if (sending || !DB) return;
     const note = draft.note.trim();
     let choice = 'explain';
@@ -314,9 +338,15 @@ details.past > .card { border: 0; border-top: 1px solid var(--line); border-radi
     sending = true;
     for (const id of ['send', 'explain']) { const b = document.getElementById(id); if (b) b.disabled = true; }
     say('Đang gửi…');
+    const anchorP = COMMENTS && canSend === 'available' ? COMMENTS.anchorFor(card).catch(() => null) : null;
+    notice = anchorP ? 'sending' : 'poll';
+    const answer = { choice, other, note, answeredAt: new Date().toISOString() };
     try {
-      await DB.doc('answers/' + q.id).set({ choice, other, note, answeredAt: new Date().toISOString() });
+      await DB.doc('answers/' + q.id).set(answer);
+      notice = await notifyClaude(q, answer, anchorP);
+      render();
     } catch (e) {
+      notice = null;
       for (const id of ['send', 'explain']) { const b = document.getElementById(id); if (b) b.disabled = false; }
       const code = e && e.code;
       say(code === 'invalid_argument' ? 'Không lưu được: tài khoản đang xem không có quyền ghi trên trang này.'
@@ -330,15 +360,25 @@ details.past > .card { border: 0; border-top: 1px solid var(--line); border-radi
     el('h2', {}, busy ? el('span', { class: 'pulse', 'aria-hidden': 'true' }) : null, title),
     lines.map((l) => el('p', {}, inline(l))));
 
+  const pickedLabels = (q, a) => [].concat(a.choice || []).map((id) => {
+    if (id === 'other') return 'Khác: ' + (a.other || '(xem ghi chú)');
+    if (id === 'explain') return 'Cần giải thích thêm';
+    const i = (q.options || []).findIndex((o) => o.id === id);
+    return i < 0 ? id : (KEYS[i] || i + 1) + '. ' + q.options[i].label;
+  });
+
+  const answerPlain = (q, a) => pickedLabels(q, a).join(', ') + (a.note ? ' | Ghi chú: ' + a.note : '');
+
   const answerText = (q, a) => {
-    const picked = [].concat(a.choice || []).map((id) => {
-      if (id === 'other') return 'Khác: ' + (a.other || '(xem ghi chú)');
-      if (id === 'explain') return 'Cần giải thích thêm';
-      const i = (q.options || []).findIndex((o) => o.id === id);
-      return i < 0 ? id : (KEYS[i] || i + 1) + '. ' + q.options[i].label;
-    });
+    const picked = pickedLabels(q, a);
     return el('span', { class: 'past-answer' }, 'Trả lời: ', el('strong', {}, inline(picked.join(', '))),
       a.note ? ' — "' + a.note + '"' : '', a.source === 'chat' ? ' (trả lời trong chat)' : '');
+  };
+
+  const WAIT_TEXT = {
+    sending: 'Đã lưu câu trả lời. Đang báo cho Claude…',
+    sent: 'Đã báo cho Claude. Câu tiếp theo sẽ hiện ở đây sau ít giây, trang tự cập nhật.',
+    poll: 'Claude sẽ thấy câu trả lời ở lần kiểm tra trang tiếp theo và đưa câu tiếp theo lên đây. Muốn nhanh hơn, nhắn "xong" ở terminal.',
   };
 
   const setPill = (state, text) => { const p = $('#status'); p.dataset.state = state; p.textContent = text; };
@@ -354,12 +394,12 @@ details.past > .card { border: 0; border-top: 1px solid var(--line); border-radi
     else if (done) setPill('done', 'Đã xong · ' + answered.length + ' câu');
     else setPill('claude', 'Claude đang soạn câu tiếp');
 
-    const key = open ? 'q:' + JSON.stringify(open) : done ? 'done:' + (S.meta.summary || '') : 'wait:' + answered.length;
+    const key = open ? 'q:' + JSON.stringify(open) : done ? 'done:' + (S.meta.summary || '') : 'wait:' + answered.length + ':' + notice;
     if (key !== currentKey) {
       currentKey = key;
       $('#current').replaceChildren(open ? openCard(open)
         : done ? panel('Phỏng vấn đã xong', [S.meta.summary || '', 'Quay lại terminal: Claude tiếp tục bước thiết kế ở đó.'].filter(Boolean))
-        : answered.length ? panel('Đã nhận câu trả lời', ['Claude đọc câu trả lời trong khoảng một phút rồi đưa câu tiếp theo lên đây. Trang tự cập nhật, không cần tải lại.'], true)
+        : answered.length ? panel('Đã nhận câu trả lời', [WAIT_TEXT[notice] || WAIT_TEXT.poll], true)
         : panel('Claude đang chuẩn bị câu hỏi đầu tiên', ['Trang tự cập nhật khi câu hỏi sẵn sàng.'], true));
     }
 
@@ -393,6 +433,7 @@ details.past > .card { border: 0; border-top: 1px solid var(--line); border-radi
       return;
     }
     DB = db;
+    window.claude.use('comments').then((c) => { COMMENTS = c; checkCanSend(); }, () => {});
     db.doc('meta/state').onSnapshot((s) => { S.meta = s.exists ? s.data() : null; S.ready.meta = true; render(); }, fail);
     db.collection('questions').onSnapshot((s) => {
       S.questions = s.docs.map((d) => Object.assign({ id: d.id }, d.data()))

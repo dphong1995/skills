@@ -46,7 +46,7 @@ flowchart TD
     A[1A: Deep Scout] --> W{Know WHAT to build, or only HOW?}
     W -->|WHAT fuzzy| Q0[Ask ONE scope-fixing question<br/>on the interview page] --> R
     W -->|WHAT clear| R[1B: Best-Practice Research<br/>orienting; deep only on a real fork]
-    R --> B[1C: Q&A Loop<br/>interview page, poll for each answer]
+    R --> B[1C: Q&A Loop<br/>interview page, wait for each answer]
     B --> C{Round cap or scope clear?}
     C -->|need more| B
     C -->|new fork surfaced| R
@@ -125,7 +125,7 @@ conventions + large-system precedents over novel invention.
 
 **REQUIRED:** run the interview through `../brainstorm-pro/references/artifact-interview.md`
 (relative to the cook skill directory) — one Artifact page per run, a full question card per
-round, a poll loop that waits for each answer on the page. The scope-fixing question (Q0) and the
+round, a wait for each answer (the page wakes the session; polling only as a fallback). The scope-fixing question (Q0) and the
 1D approach pick go on the same page.
 
 **Rules:**
