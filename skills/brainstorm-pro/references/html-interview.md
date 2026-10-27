@@ -29,7 +29,9 @@ round. A page counts as one round toward the round cap.
 3. End the turn with one chat line: the question titles and the `round-NN.html` path, so the user
    can reopen it. The user's next message is the answer.
 
-Each round opens in its own browser tab; earlier files stay as they were.
+Each round opens in its own browser tab; earlier files stay as they were. The page keeps the user's
+unsent answers in the browser per file path (restored on reload), so render every round, re-asks
+included, to a new `round-NN.html`; never reuse a path for different questions.
 
 ## The round JSON (`round-NN.json`)
 
@@ -45,25 +47,29 @@ Each round opens in its own browser tab; earlier files stay as they were.
 | `stage` | Short tag for the kind of gap: Mục tiêu / Phạm vi / Ràng buộc / Tiêu chí xong / Cách làm / Phản biện. |
 | `title` | The decision in one plain sentence. No jargon the user would have to look up. |
 | `why` | What changes depending on the answer: what gets built differently, what it rules in or out. 1-2 sentences. |
+| `reversible`, `reversibleWhy` | `true` when a wrong pick is cheap to change later (a message, a label, a config value, a test), `false` when it is costly (data shape or migration, public API, contract with BE, anything users start depending on). `reversibleWhy`: one short line saying what changing it later would take. Shown as a "Dễ đổi / Khó đổi về sau" badge so the user spends their time on the costly ones. |
 | `context` | Blocks (see below): how it works today, with scout evidence (`file:line`, existing component or table names); a concrete scenario of the situation the decision is about; every term the options use, explained in plain words. A `table` when options differ along the same axes. |
-| `options` | 2-4 entries. Each: `id`, `label` (2-6 words), `means` (what concretely happens / what the user would see), `example` (one concrete case played through this option), `pros`, `cons` (short lists), `effort` (e.g. `thấp`, `1 file FE`), `recommended: true` on exactly one. |
+| `options` | 2-4 entries. Each: `id`, `label` (2-6 words), `means` (what concretely happens / what the user would see), `example` (one concrete case played through this option), `pros`, `cons` (short lists), `effort` (e.g. `thấp`, `1 file FE`), `recommended: true` on exactly one. Optional `code`: a code block (same fields as below, without `t`) showing this option's shape, when options differ in code; give every option one so they line up. |
 | `multi` | `true` only when several options can hold together. |
 | `recommendation` | Why the recommended option wins here, tied to the evidence in `context`. |
 
 Write content in the user's language; identifiers, file paths and code stay as they are. Inline
 text supports `` `code` `` and `**bold**` only.
 
-The page shows the options side by side, lined up part by part (`means`, `example`, `pros`/`cons`),
-so give every option the same fields and keep them short and parallel. The recommendation sits
-under the options, above the answer strip; nothing is preselected.
+The page shows the options side by side, lined up part by part (`means`, `code`, `example`,
+`pros`/`cons`), so give every option the same fields and keep them short and parallel. The
+recommendation sits under the options, above the answer strip; nothing is preselected, but a
+"Theo đề xuất" button on the floating bar picks the recommended option on every unanswered
+question, and the top bar links to each question with its answered state.
 
 The answer strip adds two choices after yours on every question: "Khác (tự nhập)" with its own text
 box, and "Cần giải thích thêm". Never add either to `options`. The copy button refuses until every
 question on the page has a choice.
 
 Context blocks (`t` is the type):
-`{t:"p", text}` · `{t:"list", items:[…], ordered?}` · `{t:"code", …}` (below) ·
-`{t:"table", head:[…], rows:[[…]]}` · `{t:"note", text}` (a caveat the user must not miss).
+`{t:"p", text}` · `{t:"list", items:[…], ordered?}` · `{t:"code", …}`, `{t:"diff", …}`,
+`{t:"mermaid", …}` (below) · `{t:"table", head:[…], rows:[[…]]}` · `{t:"note", text}` (a caveat
+the user must not miss).
 
 Code blocks are syntax-highlighted (highlight.js from cdnjs; plain text when offline):
 - Existing code → `{t:"code", file, lines:[from, to]}` with `file` an absolute path. The script
@@ -76,6 +82,14 @@ Code blocks are syntax-highlighted (highlight.js from cdnjs; plain text when off
 - `lang` is a highlight.js name (`typescript`, `json`, `sql`, `bash`, `plaintext` for ASCII flows
   and pseudo-code); by default it comes from the file extension, else it is guessed.
 - Keep a snippet to the lines that matter; the full file is one click away.
+- A change to existing code → `{t:"diff", label, before, after}`: two columns, before on the left
+  and after on the right, rows lined up, removed and added lines tinted. Each side is a code block
+  without `t`; usually `before: {file, lines}` (real line numbers, "Xem toàn file") and
+  `after: {text, lang}` with the same indentation.
+- A flow, a sequence or a state machine with several steps or branches →
+  `{t:"mermaid", text, label}` (Mermaid syntax, drawn by Mermaid from cdnjs; the source shows as
+  text until it draws, offline, or on a syntax error). Two or three boxes in a line do not need it:
+  a sentence or a `plaintext` code block reads faster.
 
 **Card test before writing:** someone who has not read the code or this conversation can decide
 from the card alone. If deciding needs a fact you have not shown, add it to `context`.

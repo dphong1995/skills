@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <style>
-/* Layout: sticky bar with topic + progress; settled decisions fold at the top; one card per question with everything to read first (why, context, options side by side, recommendation) and a compact answer strip last; a small floating button copies every answer at once. */
+/* Layout: sticky bar with the topic and a jump link per question; settled decisions fold at the top; one card per question with everything to read first (why, context, options side by side, recommendation) and a compact answer strip last; a small floating bar picks the recommendations and copies every answer at once. */
 :root {
   --bg: #f3f5f8;
   --surface: #ffffff;
@@ -27,6 +27,8 @@
   --note: #845400;
   --note-soft: #fbf2df;
   --mark: rgb(255 200 0 / .22);
+  --add: rgb(26 127 55 / .14);
+  --del: rgb(207 34 46 / .12);
   --shadow: 0 6px 20px rgb(23 32 49 / .18);
   --font-body: "Be Vietnam Pro", "Segoe UI", system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -36,7 +38,8 @@
   :root {
     --bg: #0e131b; --surface: #151c27; --sunken: #1b2330; --ink: #e5eaf2; --muted: #9ba7b9; --line: #2a3445;
     --accent: #93aaff; --accent-ink: #0e131b; --accent-soft: #1c2747; --pro: #74d3a0; --con: #f08d8d;
-    --note: #e8bb5f; --note-soft: #2a2213; --mark: rgb(255 200 0 / .14); --shadow: 0 6px 20px rgb(0 0 0 / .5); color-scheme: dark;
+    --note: #e8bb5f; --note-soft: #2a2213; --mark: rgb(255 200 0 / .14); --add: rgb(46 160 67 / .2); --del: rgb(248 81 73 / .18);
+    --shadow: 0 6px 20px rgb(0 0 0 / .5); color-scheme: dark;
   }
 }
 * { box-sizing: border-box; }
@@ -46,10 +49,13 @@ body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--f
 .wrap { max-width: calc(1280px + 32px); margin: 0 auto; padding-left: 16px; padding-right: 16px; }
 
 .topbar { position: sticky; top: 0; z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line); }
-.topbar .wrap { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 8px; }
+.topbar .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding-block: 8px; }
 .topic { font-size: 15px; font-weight: 600; line-height: 1.35; margin: 0; min-width: 0; }
-.pill { font-family: var(--font-mono); font-size: 12px; padding: 2px 10px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); white-space: nowrap; }
-.label { font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.qnav { display: flex; flex-wrap: wrap; gap: 4px; }
+.qnav a { font-family: var(--font-mono); font-size: 12px; padding: 1px 10px; border-radius: 999px; border: 1px solid var(--accent); color: var(--accent); text-decoration: none; white-space: nowrap; }
+.qnav a[data-done="true"] { background: var(--accent); color: var(--accent-ink); }
+.qnav a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.caps { font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 
 main.wrap { display: grid; gap: 14px; padding-block: 14px 80px; }
 .decided { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; font-size: 13px; }
@@ -63,39 +69,52 @@ main.wrap { display: grid; gap: 14px; padding-block: 14px 80px; }
 .card-head { display: grid; gap: 2px; }
 .q-num { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-family: var(--font-mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
 .tag { color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; }
-.state { margin-left: auto; border-radius: 999px; padding: 0 8px; color: var(--muted); background: var(--sunken); text-transform: none; letter-spacing: 0; }
-.state[data-done="true"] { color: var(--pro); }
+.undo { border-radius: 999px; padding: 0 8px; text-transform: none; letter-spacing: 0; }
+.undo[data-easy="true"] { color: var(--pro); border: 1px solid currentColor; }
+.undo[data-easy="false"] { color: var(--note); background: var(--note-soft); font-weight: 600; }
+.q-num .state { margin-left: auto; border-radius: 999px; padding: 0 8px; color: var(--muted); background: var(--sunken); text-transform: none; letter-spacing: 0; }
+.q-num .state[data-done="true"] { color: var(--pro); }
 .q-title { font-size: 18px; line-height: 1.35; font-weight: 700; margin: 0; text-wrap: balance; }
-.why { margin: 0; background: var(--accent-soft); border-radius: 8px; padding: 6px 12px; }
+.why { background: var(--accent-soft); border-radius: 8px; padding: 6px 12px; display: grid; gap: 2px; }
+.why p { margin: 0; }
 .why strong { color: var(--accent); }
 
 .blocks { display: grid; gap: 8px; min-width: 0; }
-.blocks p { margin: 0; white-space: pre-line; max-width: 90ch; }
-.blocks ul, .blocks ol { margin: 0; padding-left: 1.3em; display: grid; gap: 2px; max-width: 90ch; }
+.blocks > p { margin: 0; white-space: pre-line; max-width: 90ch; }
+.blocks > ul, .blocks > ol { margin: 0; padding-left: 1.3em; display: grid; gap: 2px; max-width: 90ch; }
 code { font-family: var(--font-mono); font-size: .86em; background: var(--sunken); border-radius: 4px; padding: .05em .3em; overflow-wrap: anywhere; }
-figure.code { margin: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--sunken); min-width: 0; overflow: hidden; }
-figure.code figcaption { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-family: var(--font-mono); font-size: 11px; color: var(--muted); padding: 3px 4px 3px 10px; border-bottom: 1px solid var(--line); }
-figure.code figcaption span { min-width: 0; overflow-wrap: anywhere; }
+figure.code, figure.diagram { margin: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--sunken); min-width: 0; overflow: hidden; }
+figure.diagram { background: var(--surface); }
+figcaption, .diff-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; font-family: var(--font-mono); font-size: 11px; color: var(--muted); padding: 2px 4px 2px 10px; border-bottom: 1px solid var(--line); }
+figcaption span, .diff-head span { min-width: 0; overflow-wrap: anywhere; }
 .btn-file { font-family: var(--font-body); font-size: 12px; padding: 1px 10px; white-space: nowrap; color: var(--accent); background: var(--surface); border-color: var(--line); }
 .code-body { display: flex; align-items: flex-start; overflow-x: auto; }
-.code-body pre { margin: 0; padding: 8px 10px; font-family: var(--font-mono); font-size: 12.5px; line-height: 19px; tab-size: 2; }
+.code-body pre { margin: 0; padding: 8px 0; font-family: var(--font-mono); font-size: 12.5px; line-height: 19px; tab-size: 2; }
 .code-body .src { flex: 1 0 auto; }
-.code-body code { background: none; padding: 0; font-size: inherit; overflow-wrap: normal; }
+.code-body code { display: block; background: none; padding: 0; font-size: inherit; overflow-wrap: normal; }
+.code-body .line { display: block; min-height: 19px; padding: 0 10px; }
 .gutter { flex: none; position: sticky; left: 0; z-index: 1; text-align: right; color: var(--muted); background-color: var(--sunken); border-right: 1px solid var(--line); user-select: none; }
-.marked { background-image: linear-gradient(var(--mark), var(--mark)); background-repeat: no-repeat; background-position: 0 var(--mt); background-size: 100% var(--mh); }
-.viewer { width: min(1400px, calc(100vw - 32px)); height: calc(100vh - 48px); max-width: none; max-height: none; padding: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--sunken); color: var(--ink); box-shadow: var(--shadow); overflow: hidden; }
-.viewer[open] { display: grid; grid-template-rows: auto minmax(0, 1fr); }
-.viewer::backdrop { background: rgb(0 0 0 / .45); }
-.viewer-head { display: flex; align-items: center; gap: 12px; padding: 6px 6px 6px 14px; background: var(--surface); border-bottom: 1px solid var(--line); }
-.viewer-path { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: 12px; overflow-wrap: anywhere; }
-.viewer .code-body { overflow: auto; min-height: 0; }
-.btn-ghost { background: var(--sunken); color: var(--ink); border-color: var(--line); }
+.code-body .gutter .line { padding: 0 8px; }
+.code-body .line.mark { background: var(--mark); }
+.code-body .line.add { background: var(--add); }
+.code-body .line.del { background: var(--del); }
+.code-body .line.pad { background: repeating-linear-gradient(135deg, transparent 0 5px, var(--line) 5px 6px); }
+.diff-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.diff-col { min-width: 0; }
+.diff-col + .diff-col { border-left: 1px solid var(--line); }
+@media (max-width: 720px) {
+  .diff-cols { grid-template-columns: minmax(0, 1fr); }
+  .diff-col + .diff-col { border-left: 0; border-top: 1px solid var(--line); }
+}
+.diagram-body { padding: 10px; overflow-x: auto; text-align: center; }
+.diagram-body svg { max-width: 100%; height: auto; }
+.diagram-body .callout { text-align: left; margin-bottom: 8px; }
 .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
 table { border-collapse: collapse; width: 100%; font-size: 13px; }
 th, td { text-align: left; vertical-align: top; padding: 5px 10px; border-bottom: 1px solid var(--line); }
 th { background: var(--sunken); font-weight: 600; }
 tbody tr:last-child td { border-bottom: 0; }
-.callout { background: var(--note-soft); border-radius: 8px; padding: 6px 12px; }
+.callout { margin: 0; background: var(--note-soft); border-radius: 8px; padding: 6px 12px; }
 .callout strong:first-child { color: var(--note); }
 
 .opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: 6px 8px; }
@@ -134,16 +153,26 @@ tbody tr:last-child td { border-bottom: 0; }
 textarea { width: 100%; resize: vertical; font: inherit; font-size: 13px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; }
 textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
+.viewer { width: min(1400px, calc(100vw - 32px)); height: calc(100vh - 48px); max-width: none; max-height: none; padding: 0; border: 1px solid var(--line); border-radius: 12px; background: var(--sunken); color: var(--ink); box-shadow: var(--shadow); overflow: hidden; }
+.viewer[open] { display: grid; grid-template-rows: auto minmax(0, 1fr); }
+.viewer::backdrop { background: rgb(0 0 0 / .45); }
+.viewer-head { display: flex; align-items: center; gap: 12px; padding: 6px 6px 6px 14px; background: var(--surface); border-bottom: 1px solid var(--line); }
+.viewer-path { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: 12px; overflow-wrap: anywhere; }
+.viewer-body { display: grid; min-height: 0; }
+.viewer .code-body { overflow: auto; min-height: 0; }
+
 .fab { position: fixed; right: 16px; bottom: 16px; z-index: 10; max-width: calc(100vw - 32px); display: grid; justify-items: end; gap: 6px; }
-.fab-bar { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px 4px 4px 12px; box-shadow: var(--shadow); }
+.fab-bar { display: flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px 4px 4px 12px; box-shadow: var(--shadow); }
 .count { font-family: var(--font-mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
 button { font: inherit; font-size: 13px; font-weight: 600; border-radius: 999px; padding: 6px 14px; border: 1px solid transparent; cursor: pointer; }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .btn-primary { background: var(--accent); color: var(--accent-ink); }
-.msg { margin: 0; max-width: 22rem; font-size: 13px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; box-shadow: var(--shadow); }
+.btn-ghost { background: var(--sunken); color: var(--ink); border-color: var(--line); }
+.msg { margin: 0; max-width: 24rem; font-size: 13px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; box-shadow: var(--shadow); }
 .msg:empty { display: none; }
 .msg[data-kind="ok"] { color: var(--pro); }
 .msg[data-kind="warn"] { color: var(--note); }
+.msg button { margin-left: 8px; padding: 1px 10px; font-size: 12px; }
 .out { width: min(26rem, calc(100vw - 32px)); font-family: var(--font-mono); font-size: 12px; max-height: 40vh; background: var(--sunken); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
@@ -152,7 +181,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 <header class="topbar">
   <div class="wrap">
     <h1 class="topic" id="topic">Phỏng vấn thiết kế</h1>
-    <span class="pill" id="num"></span>
+    <nav class="qnav" id="qnav" aria-label="Các câu hỏi"></nav>
   </div>
 </header>
 <main class="wrap" id="main"></main>
@@ -173,6 +202,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     for (const c of kids.flat()) if (c != null && c !== false) n.append(c);
     return n;
   };
+  const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
   // Inline `code` and **bold** only; everything else is plain text.
   const inline = (text) => {
@@ -186,7 +216,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     return frag;
   };
 
-  // Code: highlight.js from the CDN (plain text when it did not load). Line numbers when the snippet came from a file.
+  // Code: highlight.js from the CDN (plain text when it did not load), one block per line so lines can be numbered and tinted.
   const LH = 19, PAD = 8;
   const AUTO = ['typescript', 'javascript', 'json', 'sql', 'bash', 'python', 'css', 'scss', 'xml', 'yaml'];
   const highlight = (text, lang) => {
@@ -198,39 +228,132 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       return auto.relevance >= 5 ? auto.value : null;
     } catch (e) { return null; }
   };
-  const codeView = (text, lang, start, mark) => {
-    const code = el('code');
-    const html = highlight(text, lang);
-    if (html == null) code.textContent = text; else code.innerHTML = html;
-    const style = mark ? '--mt:' + (PAD + (mark[0] - start) * LH) + 'px;--mh:' + (mark[1] - mark[0] + 1) * LH + 'px' : null;
-    const marked = mark ? ' marked' : '';
-    return el('div', { class: 'code-body' },
-      start ? el('pre', { class: 'gutter' + marked, style, 'aria-hidden': 'true', text: Array.from({ length: text.split('\n').length }, (_, i) => start + i).join('\n') }) : null,
-      el('pre', { class: 'src' + marked, style }, code));
+  // Splits highlighted HTML into lines, closing the spans still open at each line end and reopening them on the next line.
+  const splitLines = (html) => {
+    const lines = [];
+    let open = [], cur = '';
+    for (const part of html.split(/(<span[^>]*>|<\/span>|\n)/)) {
+      if (!part) continue;
+      if (part === '\n') { lines.push(cur + '</span>'.repeat(open.length)); cur = open.join(''); }
+      else if (part.startsWith('<span')) { open.push(part); cur += part; }
+      else if (part === '</span>') { open.pop(); cur += part; }
+      else cur += part;
+    }
+    lines.push(cur + '</span>'.repeat(open.length));
+    return lines;
   };
+  const hlLines = (text, lang) => {
+    const html = highlight(text, lang);
+    return html == null ? text.split('\n').map(esc) : splitLines(html);
+  };
+  const linesView = (lines, nums, cls) => {
+    const row = (html, i) => '<span class="line' + (cls && cls[i] ? ' ' + cls[i] : '') + '">' + html + '</span>';
+    const src = el('pre', { class: 'src' });
+    src.innerHTML = '<code>' + lines.map(row).join('') + '</code>';
+    let gutter = null;
+    if (nums) {
+      gutter = el('pre', { class: 'gutter', 'aria-hidden': 'true' });
+      gutter.innerHTML = nums.map((n, i) => row(n == null ? '' : String(n), i)).join('');
+    }
+    return el('div', { class: 'code-body' }, gutter, src);
+  };
+  const extLang = (file) => (/\.([\w-]+)$/.exec(file || '') || [])[1];
 
   const viewerPath = el('span', { class: 'viewer-path' });
-  const viewerBody = el('div', { style: 'display:grid;min-height:0' });
+  const viewerBody = el('div', { class: 'viewer-body' });
   const viewer = el('dialog', { class: 'viewer', onclick: (e) => { if (e.target === viewer) viewer.close(); } },
     el('div', { class: 'viewer-head' }, viewerPath, el('button', { type: 'button', class: 'btn-ghost', onclick: () => viewer.close() }, 'Đóng (Esc)')),
     viewerBody);
   document.body.append(viewer);
   const openFile = (file, lang, mark) => {
     const text = D.files[file].replace(/\n$/, '');
-    const view = codeView(text, lang, 1, mark);
-    viewerPath.textContent = file + ' · ' + text.split('\n').length + ' dòng';
+    const lines = hlLines(text, lang);
+    const view = linesView(lines, lines.map((_, i) => i + 1), mark ? lines.map((_, i) => (i + 1 >= mark[0] && i + 1 <= mark[1] ? 'mark' : null)) : null);
+    viewerPath.textContent = file + ' · ' + lines.length + ' dòng';
     viewerBody.replaceChildren(view);
     viewer.showModal();
     view.scrollTop = mark ? Math.max(0, PAD + (mark[0] - 5) * LH) : 0;
   };
+  const fileButton = (s, lang) => (s.file && D.files && D.files[s.file] != null
+    ? el('button', { type: 'button', class: 'btn-file', onclick: () => openFile(s.file, lang, s.lines) }, 'Xem toàn file') : null);
 
   const codeBlock = (b) => {
-    const lang = b.lang || (/\.([\w-]+)$/.exec(b.file || '') || [])[1];
-    const full = b.file && D.files && D.files[b.file] != null;
+    const lang = b.lang || extLang(b.file);
+    const btn = fileButton(b, lang);
+    const lines = hlLines(b.text || '', lang);
     return el('figure', { class: 'code' },
-      b.label || full ? el('figcaption', {}, el('span', { text: b.label || '' }),
-        full ? el('button', { type: 'button', class: 'btn-file', onclick: () => openFile(b.file, lang, b.lines) }, 'Xem toàn file') : null) : null,
-      codeView(b.text || '', lang, b.lines && b.lines[0], null));
+      b.label || btn ? el('figcaption', {}, el('span', { text: b.label || '' }), btn) : null,
+      linesView(lines, b.lines ? lines.map((_, i) => b.lines[0] + i) : null, null));
+  };
+
+  // Before/after: rows line up on the longest common run of lines; removed and added lines are tinted, gaps hatched.
+  const alignRows = (a, b) => {
+    const n = a.length, m = b.length;
+    const A = a.map((s) => s.trimEnd()), B = b.map((s) => s.trimEnd());
+    const rows = [];
+    if (n * m > 4e6) {
+      for (let k = 0; k < Math.max(n, m); k++) rows.push({ a: k < n ? k : null, b: k < m ? k : null, same: A[k] === B[k] });
+      return rows;
+    }
+    const dp = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) dp[i][j] = A[i] === B[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    let i = 0, j = 0, dels = [], adds = [];
+    const flush = () => {
+      for (let k = 0; k < Math.max(dels.length, adds.length); k++) rows.push({ a: dels[k] ?? null, b: adds[k] ?? null, same: false });
+      dels = []; adds = [];
+    };
+    while (i < n || j < m) {
+      if (i < n && j < m && A[i] === B[j]) { flush(); rows.push({ a: i++, b: j++, same: true }); }
+      else if (j >= m || (i < n && dp[i + 1][j] >= dp[i][j + 1])) dels.push(i++);
+      else adds.push(j++);
+    }
+    flush();
+    return rows;
+  };
+  const diffBlock = (b) => {
+    const sides = [b.before || {}, b.after || {}];
+    const texts = sides.map((s) => s.text || '');
+    const rows = alignRows(texts[0].split('\n'), texts[1].split('\n'));
+    const cols = sides.map((s, k) => {
+      const lang = s.lang || b.lang || extLang(s.file);
+      const hl = hlLines(texts[k], lang);
+      const key = k ? 'b' : 'a';
+      return el('div', { class: 'diff-col' },
+        el('div', { class: 'diff-head' }, el('span', { text: (k ? 'Sau' : 'Trước') + (s.label ? ' · ' + s.label : '') }), fileButton(s, lang)),
+        linesView(rows.map((r) => (r[key] == null ? '' : hl[r[key]])),
+          s.lines ? rows.map((r) => (r[key] == null ? null : s.lines[0] + r[key])) : null,
+          rows.map((r) => (r[key] == null ? 'pad' : r.same ? null : k ? 'add' : 'del'))));
+    });
+    return el('figure', { class: 'code' }, b.label ? el('figcaption', {}, el('span', { text: b.label })) : null, el('div', { class: 'diff-cols' }, cols));
+  };
+
+  // Diagrams: Mermaid loads from the CDN only when the page has one; until it draws (or when it cannot) the source shows as text.
+  let mermaidLoad = null;
+  let mermaidQueue = Promise.resolve();
+  let diagrams = 0;
+  const loadMermaid = () => mermaidLoad || (mermaidLoad = new Promise((resolve, reject) => {
+    const s = el('script', { src: 'https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js' });
+    s.onload = () => {
+      window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', fontFamily: 'Be Vietnam Pro, system-ui, sans-serif',
+        theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default' });
+      resolve(window.mermaid);
+    };
+    s.onerror = reject;
+    document.head.append(s);
+  }));
+  const mermaidBlock = (b) => {
+    const text = b.text || '';
+    const body = el('div', { class: 'diagram-body' }, linesView(hlLines(text, 'plaintext'), null, null));
+    const id = 'mmd-' + ++diagrams;
+    mermaidQueue = mermaidQueue.then(loadMermaid)
+      .then((m) => m.parse(text).then(() => m.render(id, text)))
+      .then(({ svg }) => { body.innerHTML = svg; })
+      .catch(() => {
+        const left = document.getElementById('d' + id);
+        if (left) left.remove();
+        body.prepend(el('p', { class: 'callout', text: 'Không vẽ được sơ đồ (mất mạng hoặc sai cú pháp Mermaid); bên dưới là mã nguồn.' }));
+      });
+    return el('figure', { class: 'diagram' }, b.label ? el('figcaption', {}, el('span', { text: b.label })) : null, body);
   };
 
   const block = (b) => {
@@ -238,6 +361,8 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
       case 'p': return el('p', {}, inline(b.text));
       case 'list': return el(b.ordered ? 'ol' : 'ul', {}, (b.items || []).map((i) => el('li', {}, inline(i))));
       case 'code': return codeBlock(b);
+      case 'diff': return diffBlock(b);
+      case 'mermaid': return mermaidBlock(b);
       case 'table': return el('div', { class: 'table-scroll' }, el('table', {},
         el('thead', {}, el('tr', {}, (b.head || []).map((h) => el('th', {}, inline(h))))),
         el('tbody', {}, (b.rows || []).map((r) => el('tr', {}, r.map((c) => el('td', {}, inline(c))))))));
@@ -262,9 +387,13 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   document.title = range + ' · ' + (D.topic || 'Phỏng vấn thiết kế');
   $('#topic').textContent = D.topic || 'Phỏng vấn thiết kế';
-  $('#num').textContent = range;
+  const navLinks = Q.map((q) => el('a', { href: '#card-' + q.id }));
+  $('#qnav').append(...navLinks);
 
-  const grow = (ta) => ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 2 + 'px'; });
+  const fit = (ta) => {
+    ta.style.height = 'auto';
+    if (ta.value && ta.offsetParent) ta.style.height = ta.scrollHeight + 2 + 'px';
+  };
 
   // One card per question: what to read first, the answer strip last. The card's DOM is the answer state.
   const questionCard = (q) => {
@@ -276,8 +405,8 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     const optCards = new Map();
     const otherBox = el('textarea', { id: q.id + '-other', rows: '1', hidden: true, placeholder: 'Phương án của bạn…', 'aria-label': 'Phương án tự nhập' });
     const note = el('textarea', { id: q.id + '-note', rows: '1', placeholder: 'Ghi chú (không bắt buộc): lý do, điều kiện kèm theo, hoặc điều bạn chưa rõ…', 'aria-label': 'Ghi chú cho câu ' + (q.n ?? '') });
-    grow(otherBox);
-    grow(note);
+    otherBox.addEventListener('input', () => fit(otherBox));
+    note.addEventListener('input', () => fit(note));
 
     // Option cards sit side by side and share rows (subgrid), so each part lines up across options.
     const parts = own.map((o, i) => [
@@ -287,12 +416,13 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         o.recommended ? el('span', { class: 'badge-rec', text: 'Đề xuất' }) : null,
         o.effort ? el('span', { class: 'effort' }, 'Công sức: ', inline(o.effort)) : null),
       o.means ? el('p', {}, inline(o.means)) : null,
+      o.code ? codeBlock(o.code) : null,
       o.example ? el('p', { class: 'example' }, el('strong', { text: 'Ví dụ: ' }), inline(o.example)) : null,
       (o.pros && o.pros.length) || (o.cons && o.cons.length) ? el('ul', { class: 'pc' },
         (o.pros || []).map((p) => el('li', { class: 'pro' }, inline(p))),
         (o.cons || []).map((c) => el('li', { class: 'con' }, inline(c)))) : null,
     ]);
-    const used = [0, 1, 2, 3].filter((s) => parts.some((p) => p[s]));
+    const used = [0, 1, 2, 3, 4].filter((s) => parts.some((p) => p[s]));
     const optCard = (o, i) => {
       const box = el('div', { class: 'opt' + (o.recommended ? ' recommended' : ''), style: 'grid-row: span ' + used.length },
         used.map((s) => parts[i][s] || el('div')));
@@ -319,18 +449,26 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     };
 
     const recI = own.findIndex((o) => o.recommended);
+    const hasUndo = q.reversible != null;
+    const undoText = q.reversible ? 'Dễ đổi về sau' : 'Khó đổi về sau';
     const card = el('article', { class: 'card', id: 'card-' + q.id },
       el('header', { class: 'card-head' },
-        el('div', { class: 'q-num' }, el('span', { text: 'Câu ' + (q.n ?? '') }), q.stage ? el('span', { class: 'tag', text: q.stage }) : null, state),
+        el('div', { class: 'q-num' },
+          el('span', { text: 'Câu ' + (q.n ?? '') }),
+          q.stage ? el('span', { class: 'tag', text: q.stage }) : null,
+          hasUndo ? el('span', { class: 'undo', 'data-easy': String(!!q.reversible), title: q.reversibleWhy || null, text: undoText }) : null,
+          state),
         el('h2', { class: 'q-title' }, inline(q.title))),
-      q.why ? el('p', { class: 'why' }, el('strong', { text: 'Vì sao cần chốt: ' }), inline(q.why)) : null,
+      q.why || (hasUndo && q.reversibleWhy) ? el('div', { class: 'why' },
+        q.why ? el('p', {}, el('strong', { text: 'Vì sao cần chốt: ' }), inline(q.why)) : null,
+        hasUndo && q.reversibleWhy ? el('p', {}, el('strong', { text: undoText + ': ' }), inline(q.reversibleWhy)) : null) : null,
       q.context && q.context.length ? el('div', { class: 'blocks' }, q.context.map(block)) : null,
       own.length ? el('div', { class: 'opts', 'data-n': String(own.length) }, own.map(optCard)) : null,
       q.recommendation ? el('p', { class: 'rec' },
         el('strong', {}, 'Claude đề xuất', recI >= 0 ? [' ' + keyOf(recI) + '. ', inline(own[recI].label)] : null, ': '),
         inline(q.recommendation)) : null,
       el('div', { class: 'answer' },
-        el('div', { class: 'answer-head' }, el('span', { class: 'label', text: 'Trả lời' }), el('span', { class: 'hint', text: multi ? 'chọn một hoặc nhiều' : 'chọn một' })),
+        el('div', { class: 'answer-head' }, el('span', { class: 'caps', text: 'Trả lời' }), el('span', { class: 'hint', text: multi ? 'chọn một hoặc nhiều' : 'chọn một' })),
         el('div', { class: 'choices' }, options.map(choice)),
         el('div', { class: 'fields' }, otherBox, note)));
     const otherInput = inputs[own.length];
@@ -355,6 +493,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     refresh();
     return {
       q, card,
+      rec: recI >= 0 ? own[recI].id : null,
       // null when complete, else what is missing.
       problem: () => {
         if (!inputs.some((i) => i.checked)) return 'chưa chọn phương án';
@@ -367,6 +506,19 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         if (note.value.trim()) lines.push('Ghi chú: ' + note.value.trim());
         return lines.join('\n');
       },
+      pick: (id) => {
+        const input = inputs.find((i) => i.value === id);
+        if (input) { input.checked = true; refresh(); }
+      },
+      get: () => ({ c: inputs.filter((i) => i.checked).map((i) => i.value), o: otherBox.value, n: note.value }),
+      set: (s) => {
+        for (const i of inputs) i.checked = !!s && (s.c || []).includes(i.value);
+        otherBox.value = (s && s.o) || '';
+        note.value = (s && s.n) || '';
+        refresh();
+        fit(otherBox);
+        fit(note);
+      },
     };
   };
 
@@ -375,8 +527,30 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   const out = el('textarea', { id: 'out', class: 'out', readonly: true, hidden: true, 'aria-label': 'Câu trả lời để dán vào Claude' });
   const say = (kind, ...parts) => { fabMsg.dataset.kind = kind || ''; fabMsg.replaceChildren(...parts); };
   let cards = [];
+
+  // Draft: answers are kept in this browser per page file, so a reload or a closed tab loses nothing.
+  const KEY = 'interview-draft:' + location.pathname;
+  const store = {
+    get: () => { try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { return null; } },
+    set: (v) => { try { if (v) localStorage.setItem(KEY, JSON.stringify(v)); else localStorage.removeItem(KEY); } catch (e) { /* storage blocked */ } },
+  };
+  const save = () => store.set(Object.fromEntries(cards.map((c) => [c.q.id, c.get()])));
+
+  const acceptBtn = el('button', { type: 'button', class: 'btn-ghost', title: 'Chọn phương án Claude đề xuất cho các câu chưa chọn', onclick: () => {
+    const todo = cards.filter((c) => !c.done() && c.rec);
+    for (const c of todo) c.pick(c.rec);
+    save();
+    say('ok', 'Đã chọn theo đề xuất cho ' + todo.length + ' câu. Xem lại rồi copy.');
+  } }, 'Theo đề xuất');
+
   function updateFab() {
     fabCount.textContent = cards.filter((c) => c.done()).length + '/' + Q.length + ' câu';
+    acceptBtn.hidden = !cards.some((c) => !c.done() && c.rec);
+    cards.forEach((c, k) => {
+      const done = c.done();
+      navLinks[k].dataset.done = String(done);
+      navLinks[k].textContent = 'Câu ' + (c.q.n ?? '') + (done ? ' ✓' : '');
+    });
     say('');
   }
 
@@ -386,6 +560,8 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   }
   cards = Q.map(questionCard);
   for (const c of cards) main.append(c.card);
+  main.addEventListener('input', save);
+  main.addEventListener('change', save);
 
   const copyAll = async () => {
     const missing = cards.find((c) => c.problem());
@@ -409,9 +585,19 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   };
 
   document.body.append(el('aside', { class: 'fab', 'aria-label': 'Gửi câu trả lời' }, fabMsg, out,
-    el('div', { class: 'fab-bar' }, fabCount, el('button', { type: 'button', class: 'btn-primary', title: 'Cmd/Ctrl+Enter', onclick: copyAll }, 'Copy câu trả lời'))));
+    el('div', { class: 'fab-bar' }, fabCount, acceptBtn, el('button', { type: 'button', class: 'btn-primary', title: 'Cmd/Ctrl+Enter', onclick: copyAll }, 'Copy câu trả lời'))));
   document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); copyAll(); } });
   updateFab();
+
+  const draft = store.get();
+  if (draft && cards.some((c) => { const s = draft[c.q.id]; return s && ((s.c || []).length || s.o || s.n); })) {
+    for (const c of cards) if (draft[c.q.id]) c.set(draft[c.q.id]);
+    say('', 'Đã khôi phục câu trả lời đã lưu.', el('button', { type: 'button', class: 'btn-ghost', onclick: () => {
+      for (const c of cards) c.set(null);
+      store.set(null);
+      say('');
+    } }, 'Xóa nháp'));
+  }
 })();
 </script>
 </body>

@@ -1,6 +1,6 @@
 // Usage: node render-interview.mjs <round.json> <out.html>
 // Puts one round of questions (see references/html-interview.md) into interview-page.html.
-// Code blocks with a "file" get the whole file embedded, for the page's "Xem toàn file" viewer.
+// Code with a "file" (code blocks, both sides of a diff, an option's code) gets the whole file embedded, for the page's "Xem toàn file" viewer.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
@@ -23,8 +23,8 @@ data.questions.forEach((q, i) => {
 });
 
 data.files = {};
-for (const b of data.questions.flatMap((q) => q.context || [])) {
-  if (!b || b.t !== 'code' || !b.file) continue;
+const prep = (b) => {
+  if (!b || !b.file) return;
   if (!isAbsolute(b.file)) throw new Error(`${src}: code "file" must be an absolute path: ${b.file}`);
   const content = readFileSync(b.file, 'utf8');
   if (b.lines) {
@@ -38,6 +38,13 @@ for (const b of data.questions.flatMap((q) => q.context || [])) {
   if (b.label == null) b.label = b.file.replace(homedir(), '~') + (b.lines ? `:${b.lines[0]}-${b.lines[1]}` : '');
   if (Buffer.byteLength(content) <= MAX_FILE) data.files[b.file] = content;
   else console.error(`${b.file}: over ${MAX_FILE / 1024} KB, shown without "Xem toàn file"`);
+};
+for (const q of data.questions) {
+  for (const b of q.context || []) {
+    if (b && b.t === 'code') prep(b);
+    if (b && b.t === 'diff') { prep(b.before); prep(b.after); }
+  }
+  for (const o of q.options || []) prep(o.code);
 }
 
 const template = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'interview-page.html'), 'utf8');
