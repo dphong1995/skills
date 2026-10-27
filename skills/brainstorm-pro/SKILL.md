@@ -4,7 +4,7 @@ description: Hybrid brainstorm — deep scout (ck-style) + one-question-at-a-tim
 license: MIT
 metadata:
   author: phong
-  version: "1.0.0"
+  version: "1.1.0"
   combines: [ck:brainstorm, superpowers:brainstorming]
 ---
 
@@ -14,13 +14,14 @@ Combine the best parts of `ck:brainstorm` and `superpowers:brainstorming`:
 
 - **From ck:** deep scout BEFORE any question, brutal honesty, brutal pushback on premise, terminal at `ck-plan`.
 - **From superpowers:** one question per round, multi-choice with recommendation, sectioned design with per-section approval, spec self-review (4 checks), user review gate before plan.
-- **New:** conditional best-practice research right after scout; mid-stream re-explore when an answer reveals a new direction.
+- **New:** conditional best-practice research right after scout; mid-stream re-explore when an answer reveals a new direction; interview questions asked on an Artifact page, one at a time, answers polled from its database.
 
 ## Core Principles
 
 - **YAGNI / KISS / DRY** — every design decision must honour these.
 - **Reuse over rewrite** — scout first; if a similar feature exists, design ON TOP of it, not next to it.
 - **One question at a time** — never batch; follow-ups depend on prior answers.
+- **Decide from the card** — each question goes on the interview page with the context, evidence, concrete examples and trade-offs the user needs to decide without reading the code or the chat.
 - **Brutal honesty** — challenge the premise, the user's preferred option, and any unexamined assumptions.
 - **Evidence over assumption** — never ask the user what the code already reveals.
 
@@ -43,6 +44,8 @@ This applies to EVERY project regardless of perceived simplicity. The design can
 | "I already know the solution" | Then writing it down takes 30 seconds. Do it. |
 | "Let me explore the code first" | Phase 1 IS exploration. Don't skip the structured scout. |
 | "I'll just batch the questions" | Batching breaks adaptive follow-up. One at a time. |
+| "This one is quick, I'll ask it in chat" | Every interview question goes on the interview page. Chat carries the link and status lines only. |
+| "A short question is easier to answer" | A short question makes the user reconstruct the context. Fill the card: why, evidence, example per option, pros/cons, recommendation. |
 | "Skip scout, the ticket is detailed" | Tickets often miss existing infra. Scout anyway, briefly. |
 | "User wants action, not talk" | Bad action wastes more time than good design. |
 | "Just propose one approach" | Always 2-3. Lead with rec, but show alternatives. |
@@ -57,9 +60,9 @@ This applies to EVERY project regardless of perceived simplicity. The design can
 ```mermaid
 flowchart TD
     A[Phase 1: Deep Scout] --> W{Know WHAT to build, or only HOW?}
-    W -->|WHAT fuzzy| Q0[Ask ONE scope-fixing question] --> R
+    W -->|WHAT fuzzy| Q0[Ask ONE scope-fixing question<br/>on the interview page] --> R
     W -->|WHAT clear| R[Phase 1.5: Best-Practice Research<br/>orienting; deep only on a real fork]
-    R --> B[Phase 2: Q&A Loop]
+    R --> B[Phase 2: Q&A Loop<br/>interview page, poll for each answer]
     B --> C{Round cap or scope clear?}
     C -->|need more| B
     C -->|new fork surfaced| R
@@ -135,11 +138,15 @@ Anchor findings to the design and cite them in the Phase 3 approaches. Prefer th
 
 ---
 
-## Phase 2: Q&A Loop (one question at a time)
+## Phase 2: Q&A Loop (one question at a time, on the interview page)
+
+**REQUIRED:** run the interview through `references/artifact-interview.md` — one Artifact page per
+brainstorm, a full question card per round, a poll loop that waits for each answer on the page.
+The scope-fixing question (Q0) and the Phase 3 approach pick go on the same page.
 
 **Rules:**
-- ONE question per message — never batch
-- Multi-choice options preferred (3-5 options + free-text), with **your recommendation** clearly marked
+- ONE question per page update — post it, wait for its answer, then post the next. Never batch
+- 2-4 suggested options per question with **your recommendation** clearly marked, plus a **"Khác (tự nhập)" option on every question** for the user's own answer (the page adds it; in the chat fallback, list it yourself)
 - Each question targets the **biggest current gap** in your understanding
 - After each answer, decide: do I need to re-explore the code? If yes, mini-explore (1-3 actions) BEFORE the next question
 - Brutal honesty injection: at least once during the loop, challenge the user's framing or preferred direction with a "what if X were not true?" question
@@ -160,7 +167,9 @@ Anchor findings to the design and cite them in the Phase 3 approaches. Prefer th
 
 ## Phase 3: Propose 2-3 Approaches
 
-After Q&A, present 2-3 viable approaches with clear trade-offs:
+After Q&A, present 2-3 viable approaches as the last question on the interview page: one option
+per approach (`means`, `example`, `pros`, `cons`, `effort`), the recommended one marked, the
+reason in `recommendation`. In content terms:
 
 ```
 **Approach A — [name]** (RECOMMENDED)
@@ -177,7 +186,7 @@ After Q&A, present 2-3 viable approaches with clear trade-offs:
 - Cons: ...
 ```
 
-Lead with your recommendation and the reason. If user prefers a non-recommended option, **brutally honest pushback** — but accept the user's call if they reconfirm with reason.
+Lead with your recommendation and the reason. If user prefers a non-recommended option, **brutally honest pushback** as the next question on the page (stage `Phản biện`: the risk you see, keep vs. switch) — but accept the user's call if they reconfirm with reason. Once the approach is settled, close the page (`meta/state` → `done`) and continue in chat.
 
 ---
 
@@ -331,7 +340,7 @@ The only thing that stops the chain at the plan is the user explicitly saying so
 - `Read` / `Glob` / `Grep` for scout (Phase 1)
 - `Bash` for `ls`, `find`, `git log` etc. during scout
 - `context7` (library docs), `WebSearch`, or a `document-specialist` sub-agent for Phase 1.5 best-practice research
-- Free-text questions or `AskUserQuestion` (if available) for Phase 2
+- `Artifact` + `ArtifactData` + background `Bash` `sleep` for every interview question (Q0, Phase 2, Phase 3) — `references/artifact-interview.md`; chat only as its fallback
 - Sub-agents OK for parallel research IF Phase 1 reveals multiple unknown areas — but keep it focused
 - `Write` to save spec in Phase 5
 - `Skill` to invoke `ck-plan` in Phase 8
@@ -382,6 +391,7 @@ Why bad: scout would reveal `TypeORM` instantly. Wastes a round.
 - [ ] Phase 1 scout actions logged (≥5 actions; cited in later questions)
 - [ ] Phase 1.5 best-practice research done right after scout when warranted (all 3 conditions), or consciously skipped (reuse/bespoke/no real fork); deep-dive reserved for a real open fork
 - [ ] Q&A respected one-per-round rule, max 8 rounds
+- [ ] Every interview question (Q0, Q&A, approach pick) went on the interview page as a full card (why, context with evidence, options with example/pros/cons, recommendation); each answer read from its db before the next question
 - [ ] Mid-stream re-explore happened at least once if answer reshaped scope
 - [ ] At least one brutal honesty pushback on premise/assumption
 - [ ] 2-3 approaches presented with trade-offs + recommendation

@@ -17,6 +17,8 @@ be delegated. Sub-agents are allowed only as parallel research helpers inside 1A
 - **YAGNI / KISS / DRY** — every design decision must honour these.
 - **Reuse over rewrite** — scout first; if a similar feature exists, design ON TOP of it.
 - **One question at a time** — never batch; follow-ups depend on prior answers.
+- **Decide from the card** — each question goes on the interview page with the context, evidence,
+  concrete examples and trade-offs the user needs to decide without reading the code or the chat.
 - **Brutal honesty** — challenge the premise, the user's preferred option, unexamined assumptions.
 - **Evidence over assumption** — never ask the user what the code already reveals.
 
@@ -28,6 +30,8 @@ be delegated. Sub-agents are allowed only as parallel research helpers inside 1A
 | "I already know the solution" | Then writing it down takes 30 seconds. Do it. |
 | "Cook is supposed to run without stopping" | The no-stop rule starts at Step 2. Step 1 is interactive by design. |
 | "I'll just batch the questions" | Batching breaks adaptive follow-up. One at a time. |
+| "This one is quick, I'll ask it in chat" | Every interview question goes on the interview page. Chat carries the link and status lines only. |
+| "A short question is easier to answer" | A short question makes the user reconstruct the context. Fill the card: why, evidence, example per option, pros/cons, recommendation. |
 | "Skip scout, the ticket is detailed" | Tickets often miss existing infra. Scout anyway, briefly. |
 | "Just propose one approach" | Always 2-3. Lead with rec, but show alternatives. |
 | "Research the best practice first, then scout" | Scout first — the repo may already solve it. Research is 1B, AFTER scout. |
@@ -40,9 +44,9 @@ be delegated. Sub-agents are allowed only as parallel research helpers inside 1A
 ```mermaid
 flowchart TD
     A[1A: Deep Scout] --> W{Know WHAT to build, or only HOW?}
-    W -->|WHAT fuzzy| Q0[Ask ONE scope-fixing question] --> R
+    W -->|WHAT fuzzy| Q0[Ask ONE scope-fixing question<br/>on the interview page] --> R
     W -->|WHAT clear| R[1B: Best-Practice Research<br/>orienting; deep only on a real fork]
-    R --> B[1C: Q&A Loop]
+    R --> B[1C: Q&A Loop<br/>interview page, poll for each answer]
     B --> C{Round cap or scope clear?}
     C -->|need more| B
     C -->|new fork surfaced| R
@@ -117,11 +121,18 @@ conventions + large-system precedents over novel invention.
 
 ---
 
-## 1C: Q&A Loop (one question at a time)
+## 1C: Q&A Loop (one question at a time, on the interview page)
+
+**REQUIRED:** run the interview through `../brainstorm-pro/references/artifact-interview.md`
+(relative to the cook skill directory) — one Artifact page per run, a full question card per
+round, a poll loop that waits for each answer on the page. The scope-fixing question (Q0) and the
+1D approach pick go on the same page.
 
 **Rules:**
-- ONE question per message — never batch.
-- Multi-choice options preferred (3-5 options + free-text), with **your recommendation** marked.
+- ONE question per page update — post it, wait for its answer, then post the next. Never batch.
+- 2-4 suggested options per question with **your recommendation** marked, plus a **"Khác (tự
+  nhập)" option on every question** for the user's own answer (the page adds it; in the chat
+  fallback, list it yourself).
 - Each question targets the **biggest current gap** in your understanding.
 - After each answer, decide: do I need to re-explore the code? If yes, mini-explore (1-3 actions)
   BEFORE the next question.
@@ -148,6 +159,10 @@ decompose into sub-projects. Cook only runs the first one.
 
 ## 1D: Propose 2-3 Approaches
 
+Present them as the last question on the interview page: one option per approach (`means`,
+`example`, `pros`, `cons`, `effort`), the recommended one marked, the reason in `recommendation`.
+In content terms:
+
 ```
 **Approach A — [name]** (RECOMMENDED)
 - Pros: ...
@@ -164,7 +179,9 @@ decompose into sub-projects. Cook only runs the first one.
 ```
 
 Lead with your recommendation and the reason. If the user prefers a non-recommended option,
-**brutally honest pushback** — but accept the user's call if they reconfirm with reason.
+**brutally honest pushback** as the next question on the page (stage `Phản biện`: the risk you
+see, keep vs. switch) — but accept the user's call if they reconfirm with reason. Once the
+approach is settled, close the page (`meta/state` → `done`) and continue 1E in chat.
 
 **Output:** `✓ Step 1D: Approach selected - [name]`
 
@@ -223,7 +240,8 @@ Selected approach from 1D, with rationale (cite 1B research if used).
   (≤3 actions) + one confirmation question + a 5-line design block, then go to Step 2.
 - **Bug fix handed off by `routing-bug-fixes-to-cook`** (root cause confirmed) → same collapse, with
   the investigation as the scout: Q&A only for a genuinely open question, the candidate fixes with a
-  recommendation + a 5-line design block, one approval, then Step 2.
+  recommendation (2+ candidates → one question on the interview page) + a 5-line design block, one
+  approval in chat, then Step 2.
 - **Topic too large** → decompose into sub-projects; cook only the first.
 - **Scope keeps drifting** → freeze scope explicitly; document drifted items as Open Items.
 - **No clear recommendation possible** → present approaches with trade-offs, ask the user to
@@ -234,6 +252,9 @@ Selected approach from 1D, with rationale (cite 1B research if used).
 - [ ] 1A scout actions logged (≥5 actions; cited in later questions)
 - [ ] 1B research done when warranted (all 3 conditions), or consciously skipped with reason
 - [ ] Q&A respected one-per-round rule, max 8 rounds
+- [ ] Every interview question (Q0, Q&A, approach pick) went on the interview page as a full card
+      (why, context with evidence, options with example/pros/cons, recommendation); each answer
+      read from its db before the next question
 - [ ] Mid-stream re-explore happened at least once if an answer reshaped scope
 - [ ] At least one brutal honesty pushback on premise/assumption
 - [ ] 2-3 approaches presented with trade-offs + recommendation

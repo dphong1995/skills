@@ -43,7 +43,8 @@ the writing.
         → [Plan] → [Phase sub-agents] → [Test sub-agent] → [Review: 3-agent fan-out] → [Finalize sub-agents]
 ```
 
-Step 1 (Design) is interactive — one question per message, approval per design section.
+Step 1 (Design) is interactive — one question at a time on an interview Artifact page (answers
+polled from the page), approval per design section in chat.
 From Step 2 onward it runs end to end without pausing; only the final commit is confirmed.
 
 ## Sub-agent Roles
@@ -73,6 +74,7 @@ cook/
 
 ## Version
 
+5.1.0 - Step 1 interview questions (1C, 1D approach pick) asked on an Artifact page shared with brainstorm-pro, answers polled from its db
 4.0.0 - Step 1 replaced by the brainstorm-pro design flow (scout → research → Q&A → approaches → sectioned design), no spec handoff
 3.0.0 - Single workflow, mandatory sub-agent per phase (modes removed)
 2.1.0 - Review gates added for human-in-the-loop mode

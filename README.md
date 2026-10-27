@@ -41,7 +41,7 @@ git add -A && git commit -m "..." && git push
 
 ```
 skills/
-├── brainstorm-pro/   Thiết kế feature: deep scout → Q&A từng câu một → design theo section
+├── brainstorm-pro/   Thiết kế feature: deep scout → Q&A từng câu một trên trang artifact → design theo section
 │                     → viết spec → user duyệt → gọi ck-plan
 ├── ck-plan/          Lập kế hoạch: research → phân tích codebase → plan.md + phase-XX-*.md
 │                     → tự động gọi cook

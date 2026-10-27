@@ -1,0 +1,407 @@
+<title>Phỏng vấn thiết kế</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column. Sticky bar with topic + whose turn it is; the open question is the main card; answered questions fold below it. */
+:root {
+  --bg: #f3f5f8;
+  --surface: #ffffff;
+  --sunken: #edf0f5;
+  --ink: #172031;
+  --muted: #5b6678;
+  --line: #d8dee8;
+  --accent: #2b4fbf;
+  --accent-ink: #ffffff;
+  --accent-soft: #e7ecfa;
+  --pro: #1d7348;
+  --con: #a93838;
+  --note: #845400;
+  --note-soft: #fbf2df;
+  --font-body: "Be Vietnam Pro", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e131b; --surface: #151c27; --sunken: #1b2330; --ink: #e5eaf2; --muted: #9ba7b9; --line: #2a3445;
+    --accent: #93aaff; --accent-ink: #0e131b; --accent-soft: #1c2747; --pro: #74d3a0; --con: #f08d8d;
+    --note: #e8bb5f; --note-soft: #2a2213; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e131b; --surface: #151c27; --sunken: #1b2330; --ink: #e5eaf2; --muted: #9ba7b9; --line: #2a3445;
+  --accent: #93aaff; --accent-ink: #0e131b; --accent-soft: #1c2747; --pro: #74d3a0; --con: #f08d8d;
+  --note: #e8bb5f; --note-soft: #2a2213; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.6; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface); }
+.wrap { max-width: 48rem; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+.topbar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line); }
+.topbar .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding-block: 12px; }
+.topbar .who { min-width: 0; }
+.eyebrow, .label { font-family: var(--font-mono); font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0; }
+.topic { font-size: 17px; font-weight: 600; line-height: 1.35; margin: 2px 0 0; text-wrap: balance; }
+.pill { font-family: var(--font-mono); font-size: 12px; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--sunken); color: var(--muted); white-space: nowrap; }
+.pill[data-state="you"] { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.pill[data-state="claude"] { background: var(--note-soft); color: var(--note); border-color: transparent; }
+.pill[data-state="done"] { color: var(--pro); }
+
+main.wrap { display: grid; gap: 32px; padding-block: 24px 64px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 24px; display: grid; gap: 22px; min-width: 0; }
+@media (max-width: 520px) { .card { padding: 18px 16px; } }
+.q-num { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-family: var(--font-mono); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+.tag { color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; }
+.q-title { font-size: 22px; line-height: 1.35; font-weight: 700; letter-spacing: -0.01em; margin: 6px 0 0; text-wrap: balance; }
+.why { background: var(--accent-soft); border-radius: var(--radius); padding: 12px 16px; display: grid; gap: 4px; }
+.why .label { color: var(--accent); }
+.why p { margin: 0; }
+section { display: grid; gap: 10px; min-width: 0; }
+.section-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.hint { font-size: 13px; color: var(--muted); }
+
+.blocks { display: grid; gap: 12px; min-width: 0; }
+.blocks p { margin: 0; white-space: pre-line; max-width: 68ch; }
+.blocks ul, .blocks ol { margin: 0; padding-left: 1.3em; display: grid; gap: 4px; max-width: 68ch; }
+code { font-family: var(--font-mono); font-size: .86em; background: var(--sunken); border-radius: 4px; padding: .1em .35em; overflow-wrap: anywhere; }
+figure.code { margin: 0; border: 1px solid var(--line); border-radius: var(--radius); background: var(--sunken); min-width: 0; overflow: hidden; }
+figure.code figcaption { font-family: var(--font-mono); font-size: 11px; color: var(--muted); padding: 6px 12px; border-bottom: 1px solid var(--line); }
+figure.code pre { margin: 0; padding: 12px; overflow-x: auto; font-size: 13px; line-height: 1.5; }
+figure.code pre code { background: none; padding: 0; font-size: inherit; overflow-wrap: normal; }
+.table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; vertical-align: top; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+th { background: var(--sunken); font-weight: 600; }
+tbody tr:last-child td { border-bottom: 0; }
+.callout { background: var(--note-soft); border-radius: var(--radius); padding: 10px 14px; margin: 0; }
+.callout strong:first-child { color: var(--note); }
+
+.options { display: grid; gap: 12px; }
+.opt { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 12px; border: 1.5px solid var(--line); border-radius: 12px; padding: 14px 16px; background: var(--surface); cursor: pointer; transition: border-color .15s, background-color .15s; }
+.opt:hover { border-color: var(--accent); }
+.opt:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.opt:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.read .opt { cursor: default; }
+.read .opt:hover { border-color: var(--line); }
+.read .opt:has(input:checked) { border-color: var(--accent); }
+.opt input { width: 18px; height: 18px; margin: 3px 0 0; accent-color: var(--accent); }
+.opt-body { display: grid; gap: 8px; min-width: 0; }
+.opt-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.opt-key { font-family: var(--font-mono); font-weight: 500; color: var(--accent); }
+.opt-label { font-size: 16px; font-weight: 600; }
+.badge-rec { font-family: var(--font-mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; background: var(--accent); color: var(--accent-ink); border-radius: 999px; padding: 1px 8px; }
+.effort { font-size: 13px; color: var(--muted); }
+.opt-body > p { margin: 0; }
+.example { background: var(--sunken); border-radius: 8px; padding: 8px 12px; font-size: 14px; display: grid; gap: 2px; }
+.example p { margin: 0; white-space: pre-line; }
+.pc { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; }
+@media (max-width: 560px) { .pc { grid-template-columns: 1fr; } }
+.pc > div { display: grid; gap: 2px; align-content: start; min-width: 0; }
+.pc ul { margin: 0; padding-left: 1.2em; font-size: 14px; display: grid; gap: 3px; }
+.pros .label { color: var(--pro); }
+.cons .label { color: var(--con); }
+.pros ul { list-style-type: "+  "; }
+.cons ul { list-style-type: "–  "; }
+.pros li::marker { color: var(--pro); font-weight: 700; }
+.cons li::marker { color: var(--con); font-weight: 700; }
+.rec { border: 1px dashed var(--accent); border-radius: var(--radius); padding: 12px 16px; display: grid; gap: 4px; }
+.rec .label { color: var(--accent); }
+.rec p { margin: 0; }
+
+.answer { display: grid; gap: 10px; border-top: 1px solid var(--line); padding-top: 20px; }
+.answer label { font-weight: 600; }
+textarea { width: 100%; min-height: 96px; resize: vertical; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; }
+.other-input { min-height: 0; background: var(--surface); }
+textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+button { font: inherit; font-weight: 600; border-radius: 10px; padding: 10px 18px; border: 1px solid transparent; cursor: pointer; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:disabled { opacity: .55; cursor: default; }
+.btn-primary { background: var(--accent); color: var(--accent-ink); }
+.btn-ghost { background: transparent; color: var(--ink); border-color: var(--line); }
+.msg { font-size: 14px; color: var(--muted); margin: 0; min-height: 1.6em; }
+.msg[data-kind="warn"] { color: var(--note); }
+.msg[data-kind="error"] { color: var(--con); }
+
+.panel { display: grid; gap: 8px; }
+.panel h2 { font-size: 18px; margin: 0; display: flex; align-items: center; gap: 10px; }
+.panel p { margin: 0; max-width: 68ch; }
+.pulse { width: 10px; height: 10px; flex: none; border-radius: 50%; background: var(--note); animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .pulse { animation: none; } * { transition: none !important; } }
+
+.history { display: grid; gap: 10px; }
+.history[hidden] { display: none; }
+details.past { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; min-width: 0; }
+details.past > summary { list-style: none; cursor: pointer; padding: 12px 16px; display: grid; gap: 2px; }
+details.past > summary::-webkit-details-marker { display: none; }
+details.past > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 12px; }
+.past-title { font-weight: 600; }
+.past-answer { font-size: 14px; color: var(--muted); }
+.past-answer strong { color: var(--ink); font-weight: 600; }
+details.past > .card { border: 0; border-top: 1px solid var(--line); border-radius: 0 0 12px 12px; }
+</style>
+
+<header class="topbar">
+  <div class="wrap">
+    <div class="who">
+      <p class="eyebrow">Phỏng vấn thiết kế</p>
+      <h1 class="topic" id="topic">Đang tải…</h1>
+    </div>
+    <span class="pill" id="status">Đang kết nối</span>
+  </div>
+</header>
+
+<main class="wrap">
+  <div id="current">
+    <article class="card panel">
+      <h2><span class="pulse" aria-hidden="true"></span>Đang tải câu hỏi</h2>
+      <p>Trang lấy câu hỏi từ dữ liệu của artifact. Nếu chờ quá lâu, hãy mở trang trong claude.ai khi đã đăng nhập.</p>
+    </article>
+  </div>
+  <section class="history" id="history" hidden>
+    <h2 class="label" id="history-head">Đã trả lời</h2>
+    <div class="history" id="history-list"></div>
+  </section>
+</main>
+
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const el = (tag, props = {}, ...kids) => {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(props)) {
+      if (v == null || v === false) continue;
+      if (k === 'class') n.className = v;
+      else if (k === 'text') n.textContent = v;
+      else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v === true ? '' : v);
+    }
+    for (const c of kids.flat()) if (c != null && c !== false) n.append(c);
+    return n;
+  };
+
+  // Inline `code` and **bold** only; everything else is plain text.
+  const inline = (text) => {
+    const frag = document.createDocumentFragment();
+    String(text ?? '').split(/(`[^`]+`|\*\*[^*]+\*\*)/).forEach((part) => {
+      if (!part) return;
+      if (part.length > 2 && part[0] === '`' && part.endsWith('`')) frag.append(el('code', { text: part.slice(1, -1) }));
+      else if (part.length > 4 && part.startsWith('**') && part.endsWith('**')) frag.append(el('strong', { text: part.slice(2, -2) }));
+      else frag.append(document.createTextNode(part));
+    });
+    return frag;
+  };
+
+  const block = (b) => {
+    switch (b && b.t) {
+      case 'p': return el('p', {}, inline(b.text));
+      case 'list': return el(b.ordered ? 'ol' : 'ul', {}, (b.items || []).map((i) => el('li', {}, inline(i))));
+      case 'code': return el('figure', { class: 'code' }, b.label ? el('figcaption', { text: b.label }) : null, el('pre', {}, el('code', { text: b.text || '' })));
+      case 'table': return el('div', { class: 'table-scroll' }, el('table', {},
+        el('thead', {}, el('tr', {}, (b.head || []).map((h) => el('th', {}, inline(h))))),
+        el('tbody', {}, (b.rows || []).map((r) => el('tr', {}, r.map((c) => el('td', {}, inline(c))))))));
+      case 'note': return el('p', { class: 'callout' }, el('strong', { text: 'Lưu ý: ' }), inline(b.text));
+      default: return b && b.text ? el('p', {}, inline(b.text)) : null;
+    }
+  };
+
+  const KEYS = 'ABCDEFGHIJ';
+  const OTHER = { id: 'other', label: 'Khác (tự nhập)', means: 'Không phương án nào ở trên đúng ý? Gõ phương án của bạn vào ô dưới đây.' };
+  const S = { meta: null, questions: [], answers: new Map(), ready: { meta: false, q: false, a: false } };
+  let DB = null;
+  let draft = { qid: null, choice: new Set(), other: '', note: '' };
+  let currentKey = null;
+  let historyKey = null;
+  let sending = false;
+
+  const optionCard = (q, o, i, { readOnly, chosen }) => {
+    const multi = !!q.multi;
+    const otherBox = o.id === 'other' && !readOnly ? el('textarea', { id: 'other-' + q.id, class: 'other-input', rows: '2', placeholder: 'Phương án của bạn…', 'aria-label': 'Phương án tự nhập' }) : null;
+    const input = el('input', { type: multi ? 'checkbox' : 'radio', name: 'choice-' + q.id, id: 'opt-' + q.id + '-' + o.id, value: o.id });
+    if (readOnly) { input.disabled = true; input.checked = chosen.includes(o.id); }
+    else {
+      input.checked = draft.choice.has(o.id);
+      input.addEventListener('change', () => {
+        if (multi) { if (input.checked) draft.choice.add(o.id); else draft.choice.delete(o.id); }
+        else draft.choice = new Set([o.id]);
+        if (otherBox && input.checked) otherBox.focus();
+        say('');
+      });
+    }
+    const key = o.id === 'other' ? null : (KEYS[i] || String(i + 1)) + '.';
+    const pros = o.pros && o.pros.length ? el('div', { class: 'pros' }, el('p', { class: 'label', text: 'Được' }), el('ul', {}, o.pros.map((p) => el('li', {}, inline(p))))) : null;
+    const cons = o.cons && o.cons.length ? el('div', { class: 'cons' }, el('p', { class: 'label', text: 'Mất' }), el('ul', {}, o.cons.map((c) => el('li', {}, inline(c))))) : null;
+    return el('label', { class: 'opt', for: input.id }, input, el('div', { class: 'opt-body' },
+      el('div', { class: 'opt-head' },
+        key ? el('span', { class: 'opt-key', text: key }) : null,
+        el('span', { class: 'opt-label' }, inline(o.label)),
+        o.recommended ? el('span', { class: 'badge-rec', text: 'Claude đề xuất' }) : null,
+        o.effort ? el('span', { class: 'effort' }, 'Công sức: ', inline(o.effort)) : null),
+      o.means ? el('p', {}, inline(o.means)) : null,
+      o.example ? el('div', { class: 'example' }, el('p', { class: 'label', text: 'Ví dụ cụ thể' }), el('p', {}, inline(o.example))) : null,
+      pros || cons ? el('div', { class: 'pc' }, pros, cons) : null,
+      otherBox));
+  };
+
+  const questionCard = (q, { readOnly = false, answer = null } = {}) => {
+    const chosen = answer ? [].concat(answer.choice || []) : [];
+    const card = el('article', { class: 'card' + (readOnly ? ' read' : '') });
+    if (!readOnly) card.append(el('header', {},
+      el('div', { class: 'q-num' }, el('span', { text: 'Câu ' + (q.n ?? '') }), q.stage ? el('span', { class: 'tag', text: q.stage }) : null),
+      el('h2', { class: 'q-title' }, inline(q.title))));
+    if (q.why) card.append(el('div', { class: 'why' }, el('p', { class: 'label', text: 'Vì sao cần chốt' }), el('p', {}, inline(q.why))));
+    if (q.context && q.context.length) card.append(el('section', {}, el('h3', { class: 'label', text: 'Bối cảnh' }), el('div', { class: 'blocks' }, q.context.map(block))));
+    const options = [...(q.options || [])];
+    if (!readOnly) options.push(OTHER);
+    else if (chosen.includes('other')) options.push(Object.assign({}, OTHER, { means: answer.other || answer.note || '' }));
+    if (options.length) card.append(el('section', {},
+      el('div', { class: 'section-head' }, el('h3', { class: 'label', text: 'Các lựa chọn' }), readOnly ? null : el('span', { class: 'hint', text: q.multi ? 'Chọn một hoặc nhiều, hoặc tự nhập ở mục Khác' : 'Chọn một, hoặc tự nhập ở mục Khác' })),
+      el('div', { class: 'options' }, options.map((o, i) => optionCard(q, o, i, { readOnly, chosen })))));
+    if (q.recommendation) card.append(el('div', { class: 'rec' }, el('p', { class: 'label', text: 'Claude đề xuất vì' }), el('p', {}, inline(q.recommendation))));
+    return card;
+  };
+
+  const say = (text, kind) => { const m = $('#msg'); if (m) { m.textContent = text; m.dataset.kind = kind || ''; } };
+
+  const openCard = (q) => {
+    if (draft.qid !== q.id) draft = { qid: q.id, choice: new Set(), other: '', note: '' };
+    const card = questionCard(q);
+    const otherBox = card.querySelector('.other-input');
+    const otherInput = document.getElementById('opt-' + q.id + '-other') || card.querySelector('input[value="other"]');
+    if (otherBox && otherInput) {
+      otherBox.value = draft.other;
+      const pickOther = () => {
+        if (otherInput.checked) return;
+        otherInput.checked = true;
+        otherInput.dispatchEvent(new Event('change'));
+      };
+      otherBox.addEventListener('focus', pickOther);
+      otherBox.addEventListener('input', () => { draft.other = otherBox.value; pickOther(); });
+    }
+    const note = el('textarea', { id: 'note', placeholder: 'Lý do, điều kiện kèm theo, hoặc điều bạn chưa rõ…' });
+    note.value = draft.note;
+    note.addEventListener('input', () => { draft.note = note.value; });
+    note.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(q, 'answer'); } });
+    card.append(el('form', { class: 'answer', onsubmit: (e) => { e.preventDefault(); submit(q, 'answer'); } },
+      el('label', { for: 'note', text: 'Ghi chú cho Claude' }),
+      el('span', { class: 'hint', text: 'Không bắt buộc. Lý do, điều kiện kèm theo, hoặc điều bạn chưa rõ khi bấm "Chưa đủ thông tin".' }),
+      note,
+      el('div', { class: 'actions' },
+        el('button', { type: 'submit', class: 'btn-primary', id: 'send' }, 'Gửi câu trả lời'),
+        el('button', { type: 'button', class: 'btn-ghost', id: 'explain', onclick: () => submit(q, 'explain') }, 'Chưa đủ thông tin, giải thích thêm')),
+      el('p', { class: 'msg', id: 'msg', role: 'status' })));
+    return card;
+  };
+
+  const submit = async (q, kind) => {
+    if (sending || !DB) return;
+    const note = draft.note.trim();
+    let choice = 'explain';
+    let other = '';
+    if (kind === 'answer') {
+      const picked = [...draft.choice];
+      if (!picked.length) return say('Chọn một phương án, tự nhập ở mục Khác, hoặc bấm "Chưa đủ thông tin, giải thích thêm".', 'warn');
+      if (picked.includes('other')) {
+        other = draft.other.trim();
+        if (!other) return say('Bạn chọn "Khác": gõ phương án của bạn vào ô ngay dưới lựa chọn đó.', 'warn');
+      }
+      choice = q.multi ? picked : picked[0];
+    }
+    sending = true;
+    for (const id of ['send', 'explain']) { const b = document.getElementById(id); if (b) b.disabled = true; }
+    say('Đang gửi…');
+    try {
+      await DB.doc('answers/' + q.id).set({ choice, other, note, answeredAt: new Date().toISOString() });
+    } catch (e) {
+      for (const id of ['send', 'explain']) { const b = document.getElementById(id); if (b) b.disabled = false; }
+      const code = e && e.code;
+      say(code === 'invalid_argument' ? 'Không lưu được: tài khoản đang xem không có quyền ghi trên trang này.'
+        : 'Chưa gửi được (' + (code || 'lỗi') + '). Bấm gửi lại sau vài giây.', 'error');
+    } finally {
+      sending = false;
+    }
+  };
+
+  const panel = (title, lines, busy) => el('article', { class: 'card panel' },
+    el('h2', {}, busy ? el('span', { class: 'pulse', 'aria-hidden': 'true' }) : null, title),
+    lines.map((l) => el('p', {}, inline(l))));
+
+  const answerText = (q, a) => {
+    const picked = [].concat(a.choice || []).map((id) => {
+      if (id === 'other') return 'Khác: ' + (a.other || '(xem ghi chú)');
+      if (id === 'explain') return 'Cần giải thích thêm';
+      const i = (q.options || []).findIndex((o) => o.id === id);
+      return i < 0 ? id : (KEYS[i] || i + 1) + '. ' + q.options[i].label;
+    });
+    return el('span', { class: 'past-answer' }, 'Trả lời: ', el('strong', {}, inline(picked.join(', '))),
+      a.note ? ' — "' + a.note + '"' : '', a.source === 'chat' ? ' (trả lời trong chat)' : '');
+  };
+
+  const setPill = (state, text) => { const p = $('#status'); p.dataset.state = state; p.textContent = text; };
+
+  const render = () => {
+    if (!(S.ready.meta && S.ready.q && S.ready.a)) return;
+    $('#topic').textContent = (S.meta && S.meta.topic) || 'Phỏng vấn thiết kế';
+    const answered = S.questions.filter((q) => S.answers.has(q.id));
+    const open = S.questions.find((q) => !S.answers.has(q.id));
+    const done = !open && S.meta && S.meta.status === 'done';
+
+    if (open) setPill('you', 'Đến lượt bạn · câu ' + (open.n ?? ''));
+    else if (done) setPill('done', 'Đã xong · ' + answered.length + ' câu');
+    else setPill('claude', 'Claude đang soạn câu tiếp');
+
+    const key = open ? 'q:' + JSON.stringify(open) : done ? 'done:' + (S.meta.summary || '') : 'wait:' + answered.length;
+    if (key !== currentKey) {
+      currentKey = key;
+      $('#current').replaceChildren(open ? openCard(open)
+        : done ? panel('Phỏng vấn đã xong', [S.meta.summary || '', 'Quay lại terminal: Claude tiếp tục bước thiết kế ở đó.'].filter(Boolean))
+        : answered.length ? panel('Đã nhận câu trả lời', ['Claude đọc câu trả lời trong khoảng một phút rồi đưa câu tiếp theo lên đây. Trang tự cập nhật, không cần tải lại.'], true)
+        : panel('Claude đang chuẩn bị câu hỏi đầu tiên', ['Trang tự cập nhật khi câu hỏi sẵn sàng.'], true));
+    }
+
+    const hKey = JSON.stringify(answered.map((q) => [q, S.answers.get(q.id)]));
+    if (hKey !== historyKey) {
+      historyKey = hKey;
+      $('#history').hidden = !answered.length;
+      $('#history-head').textContent = 'Đã trả lời (' + answered.length + ')';
+      $('#history-list').replaceChildren(...answered.slice().reverse().map((q) => {
+        const a = S.answers.get(q.id);
+        return el('details', { class: 'past' },
+          el('summary', {}, el('span', { class: 'q-num' }, 'Câu ' + (q.n ?? '')), el('span', { class: 'past-title' }, inline(q.title)), answerText(q, a)),
+          questionCard(q, { readOnly: true, answer: a }));
+      }));
+    }
+  };
+
+  const fail = (e) => {
+    currentKey = 'error';
+    setPill('', 'Mất kết nối');
+    $('#current').replaceChildren(panel('Không đọc được dữ liệu của trang', ['Lỗi: ' + ((e && e.code) || 'không rõ') + '. Tải lại trang để thử lại.']));
+  };
+
+  const start = async () => {
+    let db = null;
+    try { db = window.claude && window.claude.use ? await window.claude.use('db') : null; } catch (e) { db = null; }
+    if (!db) {
+      setPill('', 'Chỉ xem');
+      $('#topic').textContent = 'Phỏng vấn thiết kế';
+      $('#current').replaceChildren(panel('Trang này cần mở trong claude.ai', ['Câu hỏi và câu trả lời được lưu trong dữ liệu của artifact. Mở trang trong claude.ai khi đã đăng nhập để xem và trả lời.']));
+      return;
+    }
+    DB = db;
+    db.doc('meta/state').onSnapshot((s) => { S.meta = s.exists ? s.data() : null; S.ready.meta = true; render(); }, fail);
+    db.collection('questions').onSnapshot((s) => {
+      S.questions = s.docs.map((d) => Object.assign({ id: d.id }, d.data()))
+        .sort((a, b) => ((a.n ?? 0) - (b.n ?? 0)) || a.id.localeCompare(b.id));
+      S.ready.q = true; render();
+    }, fail);
+    db.collection('answers').onSnapshot((s) => { S.answers = new Map(s.docs.map((d) => [d.id, d.data()])); S.ready.a = true; render(); }, fail);
+  };
+
+  start();
+})();
+</script>
