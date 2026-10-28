@@ -24,6 +24,11 @@ round. A page counts as one round toward the round cap.
 
 ## Asking a round
 
+Ask a question in the turn it comes up. If a result it depends on is still running (a background
+job, a long scan), ask now with what you have and mark partial numbers as partial; if the full
+result changes the picture, ask again in a later round under a new id. A turn never ends by
+announcing a question for later.
+
 1. `Write` the round as JSON to `<scratchpad>/interview-<slug>/round-NN.json` (fields below).
 2. In the same message, serve it with a foreground `Bash` call with `timeout: 600000`:
    `node ~/.claude/skills/brainstorm-pro/assets/render-interview.mjs <dir>/round-NN.json <dir>/round-NN.html --serve`
