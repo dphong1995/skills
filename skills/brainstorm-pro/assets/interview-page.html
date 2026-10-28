@@ -112,6 +112,17 @@
   const btnCls = (kind, small) => ['btn', small ? 'btn-xs' : 'btn-sm',
     kind === 'primary' ? 'btn-primary' : kind === 'file' ? 'btn-soft btn-primary whitespace-nowrap' : ''].join(' ');
   const KEY_HINT = /Mac|iP/.test(navigator.platform) ? '⌘ Enter' : 'Ctrl Enter';
+  const MARK = 'bg-hl text-inherit rounded-[2px] cursor-pointer data-[active=true]:bg-hl-active';
+  const HL_BOX = 'grid gap-1.5 border border-base-300 rounded-box bg-base-100 p-2 my-1.5';
+  const HL_QUOTE_ROW = 'flex items-start gap-2';
+  const HL_QUOTE = 'flex-1 min-w-0 text-[12.5px] text-muted wrap-anywhere';
+  const NOTE_BTN = btnCls('', true) + ' btn-ghost text-muted font-normal';
+  const THUMB = 'relative m-0 grid justify-items-center gap-px';
+  const THUMB_IMG = 'block h-16 w-auto max-w-40 object-contain rounded-md border border-base-300 cursor-zoom-in';
+  const THUMB_NUM = 'font-mono text-[11px] text-muted';
+  const THUMB_DEL = 'btn btn-circle btn-xs absolute -top-1.5 -right-1.5 size-5 min-h-0 p-0';
+  // Elements built when the user acts take their classes from here, so Tailwind compiles them at load (@source inline alone still rebuilds on first use).
+  document.body.append(el('div', { hidden: true, class: [MARK, HL_BOX, HL_QUOTE_ROW, HL_QUOTE, NOTE_BTN, THUMB, THUMB_IMG, THUMB_NUM, THUMB_DEL].join(' ') }));
 
   // Inline `code` and **bold** only; everything else is plain text. A `path:N-M` the render script found on disk opens in the file viewer.
   const PATH = /^(.+?)(?::(\d+)(?:-(\d+))?)?$/;
@@ -353,6 +364,7 @@
   const fabMsg = el('p', { class: 'alert alert-soft block max-w-[24rem] text-[13px] leading-normal px-2.5 py-1.5 shadow-lg empty:hidden', role: 'status' });
   const out = el('textarea', { id: 'out', class: TEXTAREA + ' w-[min(26rem,calc(100vw-32px))] font-mono text-[12px] max-h-[40vh] bg-base-200', readonly: true, hidden: true, 'aria-label': 'Nội dung để dán vào Claude' });
   const say = (kind, ...parts) => {
+    if (!kind && !parts.length && !fabMsg.dataset.kind && !fabMsg.firstChild) return;
     fabMsg.dataset.kind = kind || '';
     fabMsg.classList.toggle('alert-success', kind === 'ok');
     fabMsg.classList.toggle('alert-warning', kind === 'warn');
@@ -390,12 +402,12 @@
     const thumb = (n) => {
       const { url } = images.get(n);
       const title = 'Ảnh #' + n;
-      return el('figure', { class: 'relative m-0 grid justify-items-center gap-px' },
-        el('img', { src: url, alt: title, title, class: 'block h-16 w-auto max-w-40 object-contain rounded-md border border-base-300 cursor-zoom-in', onclick: () => {
+      return el('figure', { class: THUMB },
+        el('img', { src: url, alt: title, title, class: THUMB_IMG, onclick: () => {
           showInViewer(title, el('div', { class: 'overflow-auto min-h-0 p-4' }, el('img', { src: url, alt: title, class: 'max-w-none mx-auto' })));
         } }),
-        el('span', { class: 'font-mono text-[11px] text-muted', text: '#' + n }),
-        el('button', { type: 'button', class: 'btn btn-circle btn-xs absolute -top-1.5 -right-1.5 size-5 min-h-0 p-0', 'aria-label': 'Bỏ ' + title, onclick: () => {
+        el('span', { class: THUMB_NUM, text: '#' + n }),
+        el('button', { type: 'button', class: THUMB_DEL, 'aria-label': 'Bỏ ' + title, onclick: () => {
           for (const ta of tas) {
             if (!ta.value.includes('[' + title + ']')) continue;
             ta.value = ta.value.split('[' + title + ']').join('');
@@ -472,8 +484,12 @@
     const count = el('span', { class: 'font-mono text-[12px] text-muted whitespace-nowrap' });
     const update = () => {
       const n = filled();
-      count.textContent = n.length + ' góp ý';
-      for (const x of notes) if (x.btn) x.btn.textContent = x.ta.value.trim() ? 'Góp ý ✓' : 'Góp ý';
+      const total = n.length + ' góp ý';
+      if (count.textContent !== total) count.textContent = total;
+      for (const x of notes) if (x.btn) {
+        const label = x.ta.value.trim() ? 'Góp ý ✓' : 'Góp ý';
+        if (x.btn.textContent !== label) x.btn.textContent = label;
+      }
       store.set(n.length ? { n: Object.fromEntries(n.filter((x) => !x.hl).map((x) => [x.key, x.ta.value])),
         h: n.filter((x) => x.hl).map((x) => ({ s: x.hl.s, e: x.hl.e, q: x.hl.text, t: x.ta.value })), img: Object.fromEntries(images) } : null);
       say('');
@@ -490,7 +506,7 @@
     const noteFor = (key) => {
       const n = noteBox(key, 'Góp ý cho mục này…');
       n.box.hidden = true;
-      n.btn = el('button', { type: 'button', class: btnCls('', true) + ' btn-ghost text-muted font-normal', onclick: () => {
+      n.btn = el('button', { type: 'button', class: NOTE_BTN, onclick: () => {
         if (n.box.hidden) { n.box.hidden = false; n.ta.focus(); }
         else if (!n.ta.value.trim()) n.box.hidden = true;
         else n.ta.focus();
@@ -615,7 +631,6 @@
 
     // Comments on a selected passage: the passage gets a mark and a note opens under it. Offsets count the text a passage can be selected in, so a draft marks the same passage again after a reload.
     const SKIP = 'textarea, input, button, svg, [data-note], [data-mmd]';
-    const MARK = 'bg-hl text-inherit rounded-[2px] cursor-pointer data-[active=true]:bg-hl-active';
     const selectable = (t) => !t.parentElement.closest(SKIP) && !!t.parentElement.closest('#main > article');
     const walk = () => document.createTreeWalker(main, NodeFilter.SHOW_TEXT,
       { acceptNode: (t) => (t.parentElement.closest(SKIP) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
@@ -673,10 +688,10 @@
         notes.splice(notes.indexOf(n), 1);
         update();
       };
-      n.hl.box = el('div', { class: 'grid gap-1.5 border border-base-300 rounded-box bg-base-100 p-2 my-1.5', 'data-note': '', 'data-hl': id },
-        el('div', { class: 'flex items-start gap-2' },
-          el('span', { class: 'flex-1 min-w-0 text-[12.5px] text-muted wrap-anywhere', text: '«' + short(n.hl.quote) + '»' }),
-          el('button', { type: 'button', class: btnCls('', true) + ' btn-ghost text-muted font-normal', onclick: remove }, 'Xóa')),
+      n.hl.box = el('div', { class: HL_BOX, 'data-note': '', 'data-hl': id },
+        el('div', { class: HL_QUOTE_ROW },
+          el('span', { class: HL_QUOTE, text: '«' + short(n.hl.quote) + '»' }),
+          el('button', { type: 'button', class: NOTE_BTN, onclick: remove }, 'Xóa')),
         n.box);
       // Under the bullet the passage ends in, else after its block (and after the comments already there).
       const li = last.closest('li');
@@ -757,7 +772,7 @@
       document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); deliver('Sửa'); } });
 
       // The Góp ý button by a selection; mousedown keeps the selection.
-      const adder = el('button', { type: 'button', class: btnCls('primary', true) + ' fixed z-20 shadow-lg', hidden: true, onmousedown: (e) => e.preventDefault(), onclick: () => {
+      const adder = el('button', { type: 'button', class: btnCls('primary', true) + ' absolute z-20 shadow-lg', hidden: true, onmousedown: (e) => e.preventDefault(), onclick: () => {
         const sel = getSelection();
         const n = sel.rangeCount ? addComment(sel.getRangeAt(0)) : null;
         adder.hidden = true;
@@ -774,12 +789,24 @@
         if (adder.hidden) return;
         const rects = r.getClientRects();
         const b = rects.length ? rects[rects.length - 1] : r.getBoundingClientRect();
-        adder.style.left = Math.max(8, Math.min(b.right + 4, innerWidth - adder.offsetWidth - 8)) + 'px';
-        adder.style.top = Math.max(8, Math.min(b.bottom + 4, innerHeight - adder.offsetHeight - 8)) + 'px';
+        adder.style.left = scrollX + Math.max(8, Math.min(b.right + 4, document.documentElement.clientWidth - adder.offsetWidth - 8)) + 'px';
+        adder.style.top = scrollY + b.bottom + 4 + 'px';
       };
-      const later = () => { clearTimeout(placing); placing = setTimeout(place, 120); };
-      document.addEventListener('selectionchange', later);
-      addEventListener('scroll', later, { passive: true });
+      const later = (ms) => { clearTimeout(placing); placing = setTimeout(place, ms); };
+      // Timing as in Hypothesis: nothing while the mouse is down, 10 ms after mouseup, 100 ms after other selection changes (a change right after mouseup keeps 10 ms).
+      let down = false, upAt = -Infinity;
+      document.addEventListener('mousedown', (e) => {
+        if (e.button !== 0 || adder.contains(e.target)) return;
+        down = true;
+        clearTimeout(placing);
+        adder.hidden = true;
+      });
+      document.addEventListener('mouseup', () => { down = false; upAt = performance.now(); later(10); });
+      document.addEventListener('dragend', () => { down = false; later(10); });
+      // Ctrl+click on macOS reports button 0 but opens the context menu, which swallows mouseup.
+      document.addEventListener('contextmenu', () => { down = false; });
+      document.addEventListener('selectionchange', () => { if (!down) later(performance.now() - upAt < 50 ? 10 : 100); });
+      addEventListener('resize', () => later(100), { passive: true });
       main.addEventListener('click', (e) => {
         const m = e.target.closest('mark[data-c]');
         if (!m || String(getSelection()).trim()) return;
