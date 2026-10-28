@@ -4,7 +4,7 @@ description: Hybrid brainstorm — deep scout (ck-style) + one-question-at-a-tim
 license: MIT
 metadata:
   author: phong
-  version: "1.4.0"
+  version: "1.5.0"
   combines: [ck:brainstorm, superpowers:brainstorming]
 ---
 
@@ -340,7 +340,7 @@ The only thing that stops the chain at the plan is the user explicitly saying so
 - `Read` / `Glob` / `Grep` for scout (Phase 1)
 - `Bash` for `ls`, `find`, `git log` etc. during scout
 - `context7` (library docs), `WebSearch`, or a `document-specialist` sub-agent for Phase 1.5 best-practice research
-- `Write` (question JSON) + `Bash` (`render-interview.mjs`, then the same with `--serve` as a background task) for every interview question (Q0, Phase 2, Phase 3) — `references/html-interview.md`; chat only as its fallback
+- `Write` (question JSON) + `Bash` (`render-interview.mjs --serve` in the foreground, 10-minute timeout, same message) for every interview question (Q0, Phase 2, Phase 3) — `references/html-interview.md`; chat only as its fallback
 - Sub-agents OK for parallel research IF Phase 1 reveals multiple unknown areas — but keep it focused
 - `Write` to save spec in Phase 5
 - `Skill` to invoke `ck-plan` in Phase 8

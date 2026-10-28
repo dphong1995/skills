@@ -1,7 +1,7 @@
 // Usage: node render-interview.mjs <round.json> <out.html> [--serve]
 // Puts one round of questions (see references/html-interview.md) into interview-page.html.
 // Code with a "file" (code blocks, both sides of a diff, an option's code) and file paths written as `inline code` get the whole file embedded, for the page's file viewer; images get embedded as data URIs.
-// --serve then serves the page on 127.0.0.1 under a random token, opens it, prints the answers the page sends back and exits.
+// --serve then serves the page on 127.0.0.1 under a random token, opens it, prints the answers the page sends back and exits (4 when no browser opens).
 import { execFile } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -177,7 +177,10 @@ if (serve) {
     const url = origin + base;
     console.log(`Serving ${url}`);
     execFile(process.platform === 'darwin' ? 'open' : 'xdg-open', [url], (err) => {
-      if (err) console.error(`Could not open a browser (${err.message}); open ${url}`);
+      if (err) {
+        console.error(`Could not open a browser (${err.message})`);
+        process.exit(4);
+      }
     });
   });
   setTimeout(() => {
