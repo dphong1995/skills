@@ -52,10 +52,10 @@ flowchart TD
     C -->|need more| B
     C -->|new fork surfaced| R
     C -->|clear| D[1D: Propose 2-3 Approaches]
-    D --> E[1E: Sectioned Design]
-    E --> F{All sections approved?}
-    F -->|no| E
-    F -->|yes| G[Step 2: Plan]
+    D --> E[1E: design.md on a review page]
+    E --> F{Duyệt?}
+    F -->|Sửa| E
+    F -->|Duyệt| G[Step 2: Plan]
 ```
 
 ---
@@ -184,7 +184,7 @@ In content terms:
 Lead with your recommendation and the reason. If the user prefers a non-recommended option,
 **brutally honest pushback** as the next question on the page (stage `Phản biện`: the risk you
 see, keep vs. switch) — but accept the user's call if they reconfirm with reason. Once the
-approach is settled, continue 1E in chat.
+approach is settled, go on to 1E.
 
 **Output:** `✓ Step 1D: Approach selected - [name]`
 
@@ -195,7 +195,7 @@ approach is settled, continue 1E in chat.
 1. Resolve the plan directory now (ck-plan's SKILL.md § "Plan Directory Resolution"; see
    `workflow-steps.md` § Step 2).
 2. Write the design to `<plan-dir>/design.md` in Vietnamese, in brainstorm-pro's spec structure
-   (`../brainstorm-pro/SKILL.md` § Phase 5: Tóm tắt, Cần bạn xem kỹ, Bối cảnh, Mục tiêu / Không
+   (`../brainstorm-pro/SKILL.md` § Phase 4: Tóm tắt, Cần bạn xem kỹ, Bối cảnh, Mục tiêu / Không
    làm, Quyết định, Cách làm with its "Phương án đã loại" table, Thiết kế (Kiến trúc, Thành phần /
    File, Luồng dữ liệu / Kiểu), Rủi ro & xử lý lỗi, Kiểm thử & triển khai, Tiêu chí hoàn thành,
    Còn mở, Phụ lục: File thay đổi). Scale each section to its complexity.
@@ -204,8 +204,8 @@ approach is settled, continue 1E in chat.
 4. Show it on its review page (`../brainstorm-pro/references/html-doc.md`), served from a
    foreground `Bash` call with `timeout: 600000`:
    `node ~/.claude/skills/brainstorm-pro/assets/render-interview.mjs <plan-dir>/design.md <scratchpad>/review-<slug>/review-NN.html --serve`
-   Every `##` and `###` section takes the user's notes: that is the per-section approval. Do not
-   present the sections in chat first.
+   Every `##` and `###` section takes the user's notes: The design goes straight into the file; it
+   is not walked through in chat.
 5. `Quyết định: Duyệt` (or an approving reply in chat) → apply any notes, then Step 2 in the same
    turn. `Quyết định: Sửa` → edit `design.md`, re-check, show the next round.
 

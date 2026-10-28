@@ -4,7 +4,7 @@ description: "ALWAYS activate this skill before implementing EVERY feature, plan
 argument-hint: "[task|plan-path]"
 metadata:
   author: claudekit
-  version: "5.6.0"
+  version: "5.6.1"
 ---
 
 # Cook - Smart Feature Implementation
@@ -40,7 +40,7 @@ A bug fix handed off by `routing-bug-fixes-to-cook` collapses Step 1 the same wa
 </HARD-GATE>
 
 <HARD-GATE>
-Steps 1 and 2 are NOT delegated. Scout, Q&A and sectioned design are conversational, and the plan is
+Steps 1 and 2 are NOT delegated. Scout, Q&A and the design review are conversational, and the plan is
 written by the orchestrator itself — it holds the full design conversation in context, so handing it
 to a sub-agent only loses fidelity. Research / codebase-exploration sub-agents may assist with
 parallel reading inside 1A/1B only. Never write `spec.md`, never invoke the `ck-plan` skill, and
