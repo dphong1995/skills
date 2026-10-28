@@ -1,0 +1,307 @@
+<body class="bg-page text-base-content font-sans text-[14px] leading-normal">
+<header class="sticky top-0 z-5 bg-base-100 border-b border-base-300">
+  <div class="navbar min-h-0 max-w-[1312px] mx-auto px-4 py-2 flex-wrap justify-between gap-x-3 gap-y-1.5">
+    <h1 class="text-[15px] font-semibold leading-[1.35] min-w-0" id="topic">Fixture round</h1>
+    <nav class="flex flex-wrap gap-1" id="qnav" aria-label="Các câu hỏi">
+<a href="#card-q01" class="btn btn-xs btn-primary btn-outline font-mono font-medium">Câu 1</a>
+<a href="#card-q02" class="btn btn-xs btn-primary btn-outline font-mono font-medium">Câu 2</a>
+</nav>
+  </div>
+</header>
+<main class="max-w-[1312px] mx-auto px-4 pt-3.5 pb-20 grid gap-3.5" id="main">
+<details class="collapse collapse-arrow bg-base-100 border border-base-300 text-[13px]">
+<summary class="collapse-title min-h-0 py-1.5 ps-3 font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]">Đã chốt trước đó (2)</summary>
+<div class="collapse-content px-3 pb-2">
+<ul class="m-0 pl-[2em] grid gap-0.5 list-disc">
+<li>Use <a href="#" class="font-mono text-[.86em] bg-base-200 rounded px-[.3em] py-[.05em] wrap-anywhere link link-primary decoration-dotted underline-offset-2 hover:decoration-solid" title="Xem file">fixtures/code.ts</a> as the sample</li>
+<li>Keep the page one file</li>
+</ul>
+</div>
+</details>
+<article class="card card-border border-base-300 bg-base-100 px-[18px] py-4 max-[520px]:px-3 max-[520px]:py-3.5 grid gap-3 min-w-0 transition-[border-color,box-shadow] duration-200 motion-reduce:transition-none [&amp;.attention]:border-[var(--color-warning)] [&amp;.attention]:[box-shadow:0_0_0_3px_color-mix(in_oklab,var(--color-warning)_22%,transparent)]" id="card-q01">
+<header class="grid gap-1">
+<div class="flex flex-wrap items-center gap-1.5 font-mono tracking-[.06em] uppercase">
+<span class="badge badge-sm badge-primary badge-outline">Câu 1</span>
+<span class="badge badge-sm badge-ghost text-muted">Design</span>
+<span class="badge badge-sm normal-case tracking-normal badge-success badge-outline" title="Only a local helper.">Dễ đổi về sau</span>
+<span class="badge badge-sm ml-auto normal-case tracking-normal badge-ghost">Chưa chọn</span>
+</div>
+<h2 class="text-[18px] leading-[1.35] font-bold text-balance">Which adder?</h2>
+</header>
+<div class="alert alert-soft alert-info block text-base-content text-[14px] leading-normal px-3 py-1.5 [&amp;_strong]:text-[var(--color-info)]">
+<p>
+<strong>Vì sao cần chốt: </strong>The module needs one before the next step.</p>
+<p>
+<strong>Dễ đổi về sau: </strong>Only a local helper.</p>
+</div>
+<div class="grid gap-2 min-w-0">
+<p class="whitespace-pre-line">See <a href="#" class="font-mono text-[.86em] bg-base-200 rounded px-[.3em] py-[.05em] wrap-anywhere link link-primary decoration-dotted underline-offset-2 hover:decoration-solid" title="Xem file">fixtures/code.ts:2-4</a> for the current adder.</p>
+<figure class="m-0 min-w-0 overflow-hidden border border-base-300 rounded-box block bg-base-200">
+<figcaption class="flex items-center justify-between gap-2 min-h-7 py-0.5 pr-1 pl-2.5 border-b border-base-300 font-mono text-[11px] text-muted">
+<span class="min-w-0 wrap-anywhere">
+<FIXTURES>/code.ts:2-4</span>
+<button type="button" class="btn btn-xs btn-soft btn-primary whitespace-nowrap">Xem toàn file</button>
+</figcaption>
+<div class="flex items-start overflow-x-auto">
+<pre class="m-0 py-2 font-mono text-[12.5px] leading-[19px] [tab-size:2] flex-none sticky left-0 z-1 text-right text-muted bg-base-200 border-r border-base-300 select-none" aria-hidden="true">
+<span class="block min-h-[19px] px-2">2</span>
+<span class="block min-h-[19px] px-2">3</span>
+<span class="block min-h-[19px] px-2">4</span>
+</pre>
+<pre class="m-0 py-2 font-mono text-[12.5px] leading-[19px] [tab-size:2] flex-[1_0_auto]">
+<code class="block">
+<span class="block min-h-[19px] px-2.5">
+<span class="hljs-keyword">export</span> <span class="hljs-keyword">const</span> add = (<span class="hljs-attr">a</span>: <span class="hljs-built_in">number</span>, <span class="hljs-attr">b</span>: <span class="hljs-built_in">number</span>): <span class="hljs-function">
+<span class="hljs-params">number</span> =&gt;</span> {</span>
+<span class="block min-h-[19px] px-2.5">  <span class="hljs-keyword">const</span> sum = a + b;</span>
+<span class="block min-h-[19px] px-2.5">  <span class="hljs-keyword">return</span> sum;</span>
+</code>
+</pre>
+</div>
+</figure>
+<figure class="m-0 min-w-0 overflow-hidden border border-base-300 rounded-box block bg-base-200">
+<figcaption class="flex items-center justify-between gap-2 min-h-7 py-0.5 pr-1 pl-2.5 border-b border-base-300 font-mono text-[11px] text-muted">
+<span class="min-w-0 wrap-anywhere">Before and after</span>
+</figcaption>
+<div class="grid grid-cols-2 max-[720px]:grid-cols-1">
+<div class="min-w-0">
+<div class="flex items-center justify-between gap-2 min-h-7 py-0.5 pr-1 pl-2.5 border-b border-base-300 font-mono text-[11px] text-muted">
+<span class="min-w-0 wrap-anywhere">Trước</span>
+</div>
+<div class="flex items-start overflow-x-auto">
+<pre class="m-0 py-2 font-mono text-[12.5px] leading-[19px] [tab-size:2] flex-[1_0_auto]">
+<code class="block">
+<span class="block min-h-[19px] px-2.5">
+<span class="hljs-keyword">const</span> a = <span class="hljs-number">1</span>;</span>
+<span class="block min-h-[19px] px-2.5 bg-[repeating-linear-gradient(135deg,transparent_0_5px,var(--color-base-300)_5px_6px)]">
+</span>
+<span class="block min-h-[19px] px-2.5">
+<span class="hljs-keyword">const</span> b = <span class="hljs-number">2</span>;</span>
+</code>
+</pre>
+</div>
+</div>
+<div class="min-w-0 border-l border-base-300 max-[720px]:border-l-0 max-[720px]:border-t">
+<div class="flex items-center justify-between gap-2 min-h-7 py-0.5 pr-1 pl-2.5 border-b border-base-300 font-mono text-[11px] text-muted">
+<span class="min-w-0 wrap-anywhere">Sau</span>
+</div>
+<div class="flex items-start overflow-x-auto">
+<pre class="m-0 py-2 font-mono text-[12.5px] leading-[19px] [tab-size:2] flex-[1_0_auto]">
+<code class="block">
+<span class="block min-h-[19px] px-2.5">
+<span class="hljs-keyword">const</span> a = <span class="hljs-number">1</span>;</span>
+<span class="block min-h-[19px] px-2.5 bg-add">
+<span class="hljs-keyword">const</span> c = <span class="hljs-number">3</span>;</span>
+<span class="block min-h-[19px] px-2.5">
+<span class="hljs-keyword">const</span> b = <span class="hljs-number">2</span>;</span>
+</code>
+</pre>
+</div>
+</div>
+</div>
+</figure>
+<figure class="m-0 min-w-0 overflow-hidden border border-base-300 rounded-box block bg-base-100">
+<figcaption class="flex items-center justify-between gap-2 min-h-7 py-0.5 pr-1 pl-2.5 border-b border-base-300 font-mono text-[11px] text-muted">
+<span class="min-w-0 wrap-anywhere">Flow</span>
+</figcaption>
+<div class="p-2.5 overflow-x-auto [&amp;&gt;svg]:mx-auto [&amp;&gt;svg]:max-w-full [&amp;&gt;svg]:h-auto">
+<!--mermaid drawing-->
+</div>
+</figure>
+<figure class="m-0 min-w-0 overflow-hidden border border-base-300 rounded-box block bg-base-100">
+<figcaption class="flex items-center justify-between gap-2 min-h-7 py-0.5 pr-1 pl-2.5 border-b border-base-300 font-mono text-[11px] text-muted">
+<span class="min-w-0 wrap-anywhere">Tiny image</span>
+<button type="button" class="btn btn-xs btn-soft btn-primary whitespace-nowrap">Phóng to</button>
+</figcaption>
+<div class="p-2.5">
+<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==" alt="Tiny image" class="block mx-auto max-w-full max-h-[480px] w-auto h-auto object-contain cursor-zoom-in">
+</div>
+</figure>
+<figure class="m-0 min-w-0 overflow-hidden border border-base-300 rounded-box bg-base-100 flex flex-col items-stretch justify-start">
+<figcaption class="flex items-center justify-between gap-2 min-h-7 py-0.5 pr-1 pl-2.5 border-b border-base-300 font-mono text-[11px] text-muted">
+<span class="min-w-0 wrap-anywhere">Mockup</span>
+<button type="button" class="btn btn-xs btn-soft btn-primary whitespace-nowrap">Phóng to</button>
+</figcaption>
+<div class="flex-1 bg-white">
+<iframe sandbox="allow-scripts" data-mock="" title="Bản phác" class="block w-full h-20 border-0" srcdoc="&lt;!doctype html&gt;&lt;html data-theme=&quot;wireframe&quot;&gt;&lt;head&gt;&lt;meta charset=&quot;utf-8&quot;&gt;&lt;link rel=&quot;stylesheet&quot; href=&quot;https://cdn.jsdelivr.net/npm/daisyui@5.7.47/daisyui.css&quot;&gt;&lt;link rel=&quot;stylesheet&quot; href=&quot;https://cdn.jsdelivr.net/npm/daisyui@5.7.47/themes.css&quot;&gt;&lt;script src=&quot;https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.3&quot;&gt;&lt;/script&gt;&lt;style&gt;body{margin:0;padding:8px;font-family:system-ui,sans-serif;font-size:14px}&lt;/style&gt;&lt;/head&gt;&lt;body&gt;&lt;button class=&quot;btn&quot;&gt;Mock&lt;/button&gt;&lt;script&gt;new ResizeObserver(() =&gt; parent.postMessage({ mockH: Math.ceil(document.body.getBoundingClientRect().height) }, &quot;*&quot;)).observe(document.body);&lt;/script&gt;&lt;/body&gt;&lt;/html&gt;">
+</iframe>
+</div>
+</figure>
+<div class="overflow-x-auto border border-base-300 rounded-box">
+<table class="table table-sm text-[13px] [&amp;_thead]:whitespace-normal [&amp;_th]:align-top [&amp;_td]:align-top">
+<thead>
+<tr class="bg-base-200">
+<th class="text-base-content">Name</th>
+<th class="text-base-content">Cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>alpha</td>
+<td>
+<code class="font-mono text-[.86em] bg-base-200 rounded px-[.3em] py-[.05em] wrap-anywhere">1</code>
+</td>
+</tr>
+<tr>
+<td>beta</td>
+<td>
+<strong>2</strong>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="alert alert-soft alert-warning block text-base-content text-[14px] leading-normal px-3 py-1.5 whitespace-pre-line">
+<strong class="text-warning">Lưu ý: </strong>Check the numbers before choosing.</div>
+</div>
+<div class="grid gap-x-2 gap-y-1.5 grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))]">
+<div class="card border px-3 py-2.5 grid grid-rows-subgrid min-w-0 cursor-pointer transition-[border-color,background-color] duration-150 motion-reduce:transition-none hover:border-[var(--color-primary)] data-[chosen=true]:bg-tint data-[chosen=true]:border-[var(--color-primary)] data-[chosen=true]:[box-shadow:inset_0_0_0_1px_var(--color-primary)] border-base-300" style="grid-row: span 4" data-chosen="false">
+<div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+<span class="font-mono font-semibold text-primary">A.</span>
+<span class="font-semibold">Plain add</span>
+<span class="ml-auto text-[12px] text-muted">Công sức: small</span>
+</div>
+<p>Add two numbers.</p>
+<p class="text-[13px] bg-base-200 rounded-md px-2 py-1 whitespace-pre-line">
+<strong>Ví dụ: </strong>add(1, 2) is 3</p>
+<ul class="grid gap-px content-start text-[13px]">
+<li class="pl-[1.1em] -indent-[1.1em] before:inline-block before:w-[1.1em] before:indent-0 before:font-bold before:content-['+'] before:text-[var(--color-success)]">Simple</li>
+<li class="pl-[1.1em] -indent-[1.1em] before:inline-block before:w-[1.1em] before:indent-0 before:font-bold before:content-['–'] before:text-[var(--color-error)]">Slow</li>
+</ul>
+</div>
+<div class="card border px-3 py-2.5 grid grid-rows-subgrid min-w-0 cursor-pointer transition-[border-color,background-color] duration-150 motion-reduce:transition-none hover:border-[var(--color-primary)] data-[chosen=true]:bg-tint data-[chosen=true]:border-[var(--color-primary)] data-[chosen=true]:[box-shadow:inset_0_0_0_1px_var(--color-primary)] border-primary" style="grid-row: span 4" data-chosen="false">
+<div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+<span class="font-mono font-semibold text-primary">B.</span>
+<span class="font-semibold">Checked add</span>
+<span class="badge badge-xs badge-primary font-mono tracking-[.06em] uppercase">Đề xuất</span>
+<span class="ml-auto text-[12px] text-muted">Công sức: medium</span>
+</div>
+<p>Add with a guard, see <a href="#" class="font-mono text-[.86em] bg-base-200 rounded px-[.3em] py-[.05em] wrap-anywhere link link-primary decoration-dotted underline-offset-2 hover:decoration-solid" title="Xem file">fixtures/code.ts:1-2</a>.</p>
+<p class="text-[13px] bg-base-200 rounded-md px-2 py-1 whitespace-pre-line">
+<strong>Ví dụ: </strong>add(1, NaN) throws</p>
+<ul class="grid gap-px content-start text-[13px]">
+<li class="pl-[1.1em] -indent-[1.1em] before:inline-block before:w-[1.1em] before:indent-0 before:font-bold before:content-['+'] before:text-[var(--color-success)]">Safe</li>
+<li class="pl-[1.1em] -indent-[1.1em] before:inline-block before:w-[1.1em] before:indent-0 before:font-bold before:content-['+'] before:text-[var(--color-success)]">Clear</li>
+<li class="pl-[1.1em] -indent-[1.1em] before:inline-block before:w-[1.1em] before:indent-0 before:font-bold before:content-['–'] before:text-[var(--color-error)]">More code</li>
+</ul>
+</div>
+<div class="card border px-3 py-2.5 grid grid-rows-subgrid min-w-0 cursor-pointer transition-[border-color,background-color] duration-150 motion-reduce:transition-none hover:border-[var(--color-primary)] data-[chosen=true]:bg-tint data-[chosen=true]:border-[var(--color-primary)] data-[chosen=true]:[box-shadow:inset_0_0_0_1px_var(--color-primary)] border-base-300" style="grid-row: span 4" data-chosen="false">
+<div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+<span class="font-mono font-semibold text-primary">C.</span>
+<span class="font-semibold">Lazy add</span>
+<span class="ml-auto text-[12px] text-muted">Công sức: large</span>
+</div>
+<p>Add on demand.</p>
+<p class="text-[13px] bg-base-200 rounded-md px-2 py-1 whitespace-pre-line">
+<strong>Ví dụ: </strong>add(1)(2)</p>
+<ul class="grid gap-px content-start text-[13px]">
+<li class="pl-[1.1em] -indent-[1.1em] before:inline-block before:w-[1.1em] before:indent-0 before:font-bold before:content-['+'] before:text-[var(--color-success)]">Flexible</li>
+<li class="pl-[1.1em] -indent-[1.1em] before:inline-block before:w-[1.1em] before:indent-0 before:font-bold before:content-['–'] before:text-[var(--color-error)]">Odd</li>
+</ul>
+</div>
+</div>
+<p class="border-l-[3px] border-primary px-2.5 py-0.5">
+<strong class="text-primary">Claude đề xuất B. Checked add: </strong>B is the smallest change.</p>
+<div class="border-t border-dashed border-base-300 pt-2.5 grid gap-2">
+<div class="flex items-baseline gap-2">
+<span class="font-mono text-[11px] font-medium tracking-[.06em] uppercase text-muted">Trả lời</span>
+<span class="text-[12px] text-muted">chọn một</span>
+</div>
+<div class="flex flex-wrap gap-1.5">
+<input type="radio" name="choice-q01" id="q01-opt-a" value="a" aria-label="A. Plain add" class="btn btn-sm font-medium checked:font-semibold">
+<input type="radio" name="choice-q01" id="q01-opt-b" value="b" aria-label="B. Checked add ★" title="Claude đề xuất" class="btn btn-sm font-medium checked:font-semibold">
+<input type="radio" name="choice-q01" id="q01-opt-c" value="c" aria-label="C. Lazy add" class="btn btn-sm font-medium checked:font-semibold">
+<input type="radio" name="choice-q01" id="q01-opt-other" value="other" aria-label="Khác (tự nhập)" title="Không phương án nào ở trên đúng ý: gõ phương án của bạn." class="btn btn-sm font-medium checked:font-semibold btn-dash checked:bg-tint checked:text-[var(--color-primary)] checked:border-[var(--color-primary)]">
+<input type="radio" name="choice-q01" id="q01-opt-explain" value="explain" aria-label="Cần giải thích thêm" title="Claude giải thích rõ hơn rồi hỏi lại câu này. Ghi điều bạn chưa rõ vào ô ghi chú." class="btn btn-sm font-medium checked:font-semibold btn-dash checked:bg-tint checked:text-[var(--color-primary)] checked:border-[var(--color-primary)]">
+</div>
+<div class="flex flex-wrap gap-2">
+<textarea id="q01-other" rows="1" hidden="" class="textarea w-full min-h-0 resize-y text-[13px] leading-normal px-2.5 py-[5px] flex-[1_1_18rem]" placeholder="Phương án của bạn…" aria-label="Phương án tự nhập">
+</textarea>
+<textarea id="q01-note" rows="1" class="textarea w-full min-h-0 resize-y text-[13px] leading-normal px-2.5 py-[5px] flex-[1_1_18rem]" placeholder="Ghi chú (không bắt buộc): lý do, điều kiện kèm theo, hoặc điều bạn chưa rõ…" aria-label="Ghi chú cho câu 1">
+</textarea>
+</div>
+<div class="flex flex-wrap gap-1.5 empty:hidden" data-refs="">
+</div>
+</div>
+</article>
+<article class="card card-border border-base-300 bg-base-100 px-[18px] py-4 max-[520px]:px-3 max-[520px]:py-3.5 grid gap-3 min-w-0 transition-[border-color,box-shadow] duration-200 motion-reduce:transition-none [&amp;.attention]:border-[var(--color-warning)] [&amp;.attention]:[box-shadow:0_0_0_3px_color-mix(in_oklab,var(--color-warning)_22%,transparent)]" id="card-q02">
+<header class="grid gap-1">
+<div class="flex flex-wrap items-center gap-1.5 font-mono tracking-[.06em] uppercase">
+<span class="badge badge-sm badge-primary badge-outline">Câu 2</span>
+<span class="badge badge-sm ml-auto normal-case tracking-normal badge-ghost">Chưa chọn</span>
+</div>
+<h2 class="text-[18px] leading-[1.35] font-bold text-balance">Which extras?</h2>
+</header>
+<div class="grid gap-x-2 gap-y-1.5 grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))]">
+<div class="card border px-3 py-2.5 grid grid-rows-subgrid min-w-0 cursor-pointer transition-[border-color,background-color] duration-150 motion-reduce:transition-none hover:border-[var(--color-primary)] data-[chosen=true]:bg-tint data-[chosen=true]:border-[var(--color-primary)] data-[chosen=true]:[box-shadow:inset_0_0_0_1px_var(--color-primary)] border-base-300" style="grid-row: span 2" data-chosen="false">
+<div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+<span class="font-mono font-semibold text-primary">A.</span>
+<span class="font-semibold">Extra X</span>
+</div>
+<p>The first extra.</p>
+</div>
+<div class="card border px-3 py-2.5 grid grid-rows-subgrid min-w-0 cursor-pointer transition-[border-color,background-color] duration-150 motion-reduce:transition-none hover:border-[var(--color-primary)] data-[chosen=true]:bg-tint data-[chosen=true]:border-[var(--color-primary)] data-[chosen=true]:[box-shadow:inset_0_0_0_1px_var(--color-primary)] border-base-300" style="grid-row: span 2" data-chosen="false">
+<div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+<span class="font-mono font-semibold text-primary">B.</span>
+<span class="font-semibold">Extra Y</span>
+</div>
+<p>The second extra.</p>
+</div>
+</div>
+<div class="border-t border-dashed border-base-300 pt-2.5 grid gap-2">
+<div class="flex items-baseline gap-2">
+<span class="font-mono text-[11px] font-medium tracking-[.06em] uppercase text-muted">Trả lời</span>
+<span class="text-[12px] text-muted">chọn một hoặc nhiều</span>
+</div>
+<div class="flex flex-wrap gap-1.5">
+<input type="checkbox" name="choice-q02" id="q02-opt-x" value="x" aria-label="A. Extra X" class="btn btn-sm font-medium checked:font-semibold">
+<input type="checkbox" name="choice-q02" id="q02-opt-y" value="y" aria-label="B. Extra Y" class="btn btn-sm font-medium checked:font-semibold">
+<input type="checkbox" name="choice-q02" id="q02-opt-other" value="other" aria-label="Khác (tự nhập)" title="Không phương án nào ở trên đúng ý: gõ phương án của bạn." class="btn btn-sm font-medium checked:font-semibold btn-dash checked:bg-tint checked:text-[var(--color-primary)] checked:border-[var(--color-primary)]">
+<input type="checkbox" name="choice-q02" id="q02-opt-explain" value="explain" aria-label="Cần giải thích thêm" title="Claude giải thích rõ hơn rồi hỏi lại câu này. Ghi điều bạn chưa rõ vào ô ghi chú." class="btn btn-sm font-medium checked:font-semibold btn-dash checked:bg-tint checked:text-[var(--color-primary)] checked:border-[var(--color-primary)]">
+</div>
+<div class="flex flex-wrap gap-2">
+<textarea id="q02-other" rows="1" hidden="" class="textarea w-full min-h-0 resize-y text-[13px] leading-normal px-2.5 py-[5px] flex-[1_1_18rem]" placeholder="Phương án của bạn…" aria-label="Phương án tự nhập">
+</textarea>
+<textarea id="q02-note" rows="1" class="textarea w-full min-h-0 resize-y text-[13px] leading-normal px-2.5 py-[5px] flex-[1_1_18rem]" placeholder="Ghi chú (không bắt buộc): lý do, điều kiện kèm theo, hoặc điều bạn chưa rõ…" aria-label="Ghi chú cho câu 2">
+</textarea>
+</div>
+<div class="flex flex-wrap gap-1.5 empty:hidden" data-refs="">
+</div>
+</div>
+</article>
+</main>
+
+<div hidden="" class="bg-hl text-inherit rounded-[2px] cursor-pointer data-[active=true]:bg-hl-active grid gap-1.5 border border-base-300 rounded-box bg-base-100 p-2 my-1.5 flex items-start gap-2 flex-1 min-w-0 text-[12.5px] text-muted wrap-anywhere btn btn-xs  btn-ghost text-muted font-normal relative m-0 grid justify-items-center gap-px block h-16 w-auto max-w-40 object-contain rounded-md border border-base-300 cursor-zoom-in font-mono text-[11px] text-muted btn btn-circle btn-xs absolute -top-1.5 -right-1.5 size-5 min-h-0 p-0">
+</div>
+<dialog class="modal">
+<div class="modal-box p-0 w-[min(1400px,calc(100vw-32px))] max-w-none h-[calc(100vh-48px)] max-h-none bg-base-200 border border-base-300 grid grid-rows-[auto_minmax(0,1fr)] overflow-hidden">
+<div class="flex items-center gap-3 py-1.5 pr-1.5 pl-3.5 bg-base-100 border-b border-base-300">
+<span class="flex-1 min-w-0 font-mono text-[12px] wrap-anywhere">
+</span>
+<form method="dialog">
+<button class="btn btn-sm ">Đóng<kbd class="kbd kbd-xs">Esc</kbd>
+</button>
+</form>
+</div>
+<div class="grid min-h-0">
+</div>
+</div>
+<form method="dialog" class="modal-backdrop">
+<button>Đóng</button>
+</form>
+</dialog>
+<aside class="toast toast-end z-10 items-end" aria-label="Gửi câu trả lời">
+<p class="alert alert-soft block max-w-[24rem] text-[13px] leading-normal px-2.5 py-1.5 shadow-lg empty:hidden" role="status">
+</p>
+<textarea id="out" class="textarea w-full min-h-0 resize-y text-[13px] leading-normal px-2.5 py-[5px] w-[min(26rem,calc(100vw-32px))] font-mono text-[12px] max-h-[40vh] bg-base-200" readonly="" hidden="" aria-label="Nội dung để dán vào Claude">
+</textarea>
+<div class="flex items-center gap-1.5 bg-base-100 border border-base-300 rounded-box py-1 pr-1 pl-3 shadow-lg">
+<span class="font-mono text-[12px] text-muted whitespace-nowrap">0/2 câu</span>
+<button type="button" class="btn btn-sm " title="Chọn phương án Claude đề xuất cho các câu chưa chọn">Theo đề xuất</button>
+<button type="button" class="btn btn-sm btn-primary">Copy câu trả lời<kbd class="kbd kbd-xs">⌘ Enter</kbd>
+</button>
+</div>
+</aside>
+
+
+</body>
