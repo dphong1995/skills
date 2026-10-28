@@ -9,7 +9,8 @@ git clone git@github.com:dphong1995/skills.git ~/.claude/skills-repo
 bash ~/.claude/skills-repo/install.sh
 ```
 
-`install.sh` copy nội dung vào `~/.claude/skills/` và `~/.claude/agents/`. Vị trí clone không quan
+`install.sh` copy nội dung vào `~/.claude/skills/` và `~/.claude/agents/`, và ghi các khối quy tắc
+`claude-md/` vào `~/.claude/CLAUDE.md` (xem mục "Quy tắc luôn bật"). Vị trí clone không quan
 trọng (script tự dò đường dẫn của chính nó) — `~/.claude/skills-repo` chỉ là mặc định gợi ý.
 
 File cùng tên đang có sẵn sẽ được **chuyển vào `~/.claude/backups/skills-install-<timestamp>/`**
@@ -26,6 +27,20 @@ cd ~/.claude/skills-repo && git pull && bash install.sh
 Đây là chế độ **copy**, không phải symlink — `git pull` xong phải chạy lại `install.sh` thì thay đổi
 mới có hiệu lực.
 
+## Quy tắc luôn bật trong `~/.claude/CLAUDE.md`
+
+Mỗi file `claude-md/<tên>.md` là một khối quy tắc mà `install.sh` giữ trong `~/.claude/CLAUDE.md`
+của máy, giữa hai dòng `<!-- skills-repo: <tên> -->` và `<!-- /skills-repo: <tên> -->`: chưa có
+thì thêm vào cuối file, có rồi thì thay đúng đoạn giữa hai dòng đó; phần còn lại của file giữ
+nguyên, và file cũ được sao lưu vào `~/.claude/backups/skills-install-<timestamp>/` trước khi ghi.
+Khối nằm trong CLAUDE.md riêng của máy, không nằm trong repo dự án nào, nên không ảnh hưởng ai pull
+code về. Sửa quy tắc trong repo (`claude-md/`) chứ không sửa trong CLAUDE.md: lần cài sau sẽ ghi đè
+đoạn giữa hai dòng đánh dấu.
+
+- `web-pages.md`: câu hỏi cho người dùng đi trang phỏng vấn HTML; file Markdown đưa người dùng đọc
+  hoặc duyệt (spec, thiết kế của cook, plan, draft ticket, báo cáo) mở bằng trang web dựng từ file
+  md (`render-interview.mjs <file.md> … --serve | --open`).
+
 ## Đẩy thay đổi ngược lên repo
 
 Nếu sửa skill trực tiếp ở `~/.claude/skills/`, copy ngược lại repo rồi commit:
@@ -41,8 +56,8 @@ git add -A && git commit -m "..." && git push
 
 ```
 skills/
-├── brainstorm-pro/   Thiết kế feature: deep scout → Q&A từng câu một trên trang artifact → design theo section
-│                     → viết spec → user duyệt → gọi ck-plan
+├── brainstorm-pro/   Thiết kế feature: deep scout → Q&A từng câu một trên trang HTML cục bộ → viết spec theo
+│                     section → user duyệt trên trang web (góp ý từng mục) → gọi ck-plan
 ├── ck-plan/          Lập kế hoạch: research → phân tích codebase → plan.md + phase-XX-*.md
 │                     → tự động gọi cook
 ├── cook/             Triển khai: mỗi phase một subagent → test → review fan-out 2 agent → finalize
@@ -52,6 +67,8 @@ skills/
                       gọn); nhỏ hơn → sửa thẳng
 
 agents/               19 subagent definition mà cook/ck-plan gọi tới
+
+claude-md/            Khối quy tắc luôn bật, install.sh giữ trong ~/.claude/CLAUDE.md (xem mục bên trên)
 
 cmux/                 Settings của cmux (không thuộc install.sh ở trên, xem mục cmux bên dưới)
 

@@ -1,10 +1,10 @@
 ---
 name: brainstorm-pro
-description: Hybrid brainstorm — deep scout (ck-style) + one-question-at-a-time with follow-ups (superpowers-style) + sectioned design + spec self-review + user review gate. Terminates by invoking the ck-plan skill. Use when designing a new feature where reuse-discovery AND rigorous design both matter.
+description: Hybrid brainstorm — deep scout (ck-style) + one-question-at-a-time with follow-ups (superpowers-style) + spec written in sections, self-reviewed and approved section by section on a local web page. Terminates by invoking the ck-plan skill. Use when designing a new feature where reuse-discovery AND rigorous design both matter.
 license: MIT
 metadata:
   author: phong
-  version: "1.7.0"
+  version: "1.8.0"
   combines: [ck:brainstorm, superpowers:brainstorming]
 ---
 
@@ -30,9 +30,9 @@ Combine the best parts of `ck:brainstorm` and `superpowers:brainstorming`:
 This gate is a **precondition on implementation, not a ban on it.** Once it is satisfied, implementation proceeds automatically via the `ck-plan` → `cook` skill chain without a further permission prompt (see Phase 8).
 
 Do NOT invoke any implementation skill, write any code, scaffold any project, or take any implementation action until you have:
-1. Presented a design
-2. The user has approved it section-by-section
-3. The spec has been written, self-reviewed, and the user has reviewed the written spec
+1. Written the design as the spec, in sections, and self-reviewed it
+2. Shown the spec on its review page, where every section takes the user's notes
+3. The user has approved the written spec (Duyệt on the page, or an approving reply in chat)
 
 This applies to EVERY project regardless of perceived simplicity. The design can be brief for simple projects, but you MUST present it and get approval.
 
@@ -51,7 +51,8 @@ This applies to EVERY project regardless of perceived simplicity. The design can
 | "Just propose one approach" | Always 2-3. Lead with rec, but show alternatives. |
 | "Research the best practice first, then scout" | Scout first — the repo may already solve it (reuse beats research) and you'd research the wrong stack. Best-practice research is Phase 1.5, AFTER scout. |
 | "Deep-dive the pattern now, before Q&A" | If WHAT is still fuzzy you may deep-dive a direction the user descopes. Orient lightly; deep-dive only a real, still-open fork. |
-| "User said skip the sections, so skip the spec review too" | Two different gates. "Skip sections" retires **Phase 4** (per-section approval). **Phase 7** (review the written spec) is untouched and still blocks. |
+| "The design is all in the spec now, so the review can be skipped" | The spec IS what the user approves, section by section on the review page (Phase 7). Writing it is not approving it. |
+| "Duyệt came with notes, they can wait for the plan" | Notes sent with Duyệt are small fixes: apply them to the spec before invoking ck-plan. |
 | "No open questions left, so nothing to wait for" | Having no *questions* is why you write the spec. It is not permission to hand it off. The user reviews the artifact, not your confidence in it. |
 | "Phase 8 says invoke ck-plan immediately, so go" | "Immediately" means *in the same turn as the approval* — not *without* it. The sentence opens with "Once user approves the spec". |
 
@@ -67,14 +68,11 @@ flowchart TD
     C -->|need more| B
     C -->|new fork surfaced| R
     C -->|clear| D[Phase 3: Propose 2-3 Approaches]
-    D --> E[Phase 4: Sectioned Design]
-    E --> F{All sections approved?}
-    F -->|no| E
-    F -->|yes| G[Phase 5: Write Spec]
+    D --> G[Phase 4-5: Write the Spec<br/>the design, in sections]
     G --> H[Phase 6: Spec Self-Review]
     H --> I{Issues found?}
     I -->|yes| G
-    I -->|no| J[Phase 7: User Review Gate]
+    I -->|no| J[Phase 7: User Review Gate<br/>spec on a review page, notes per section]
     J --> K{User approves spec?}
     K -->|changes| G
     K -->|approved| L[Phase 8: Invoke ck-plan]
@@ -190,18 +188,18 @@ Lead with your recommendation and the reason. If user prefers a non-recommended 
 
 ---
 
-## Phase 4: Sectioned Design (with per-section approval)
+## Phase 4: Sectioned Design (approved on the spec's review page)
 
-Present the design in sections, get **explicit approval after each section** before moving on.
+Write the design straight into the spec (Phase 5), in its sections; the user approves it section by
+section on the review page in Phase 7, where every `##` and `###` section takes a note. Do not
+present the sections in chat first: one read of the spec replaces a chat round per section.
 
-Standard sections (scale each to its complexity — a few sentences if simple, 200-300 words if nuanced):
+Design sections (scale each to its complexity — a few sentences if simple, 200-300 words if nuanced):
 1. **Architecture** — high-level components and how they fit
 2. **Components / Files** — concrete files to create/modify, REUSING existing infra from scout
 3. **Data flow / Types** — request/response shapes, type contracts
-4. **Error handling**
+4. **Risks & error handling**
 5. **Testing & rollout** — what tests, what feature flag (if any), rollback strategy
-
-Between sections, ask: *"Does this section look right? Any changes before we move to the next?"*
 
 ---
 
@@ -211,51 +209,55 @@ Between sections, ask: *"Does this section look right? Any changes before we mov
 
 **NOT** `docs/superpowers/specs/` and **NOT** `.omc/specs/` — keep within the project's plan root for the ck-plan handoff.
 
-**Spec structure:**
+**Spec structure** (a Google-style design doc with the bottom line first; the reader decides from the
+first two sections whether to skim or read closely):
 ```markdown
-# Spec: <topic>
+# Spec: <chủ đề>
 
-## Context
-Brief problem statement + scout findings (what existing infra is being reused).
+## Tóm tắt
+- **Thay đổi:** what the user or system gets, in one line
+- **Cách làm:** the chosen approach, in one line
+- **Công sức:** phases, repos, size
+- **Còn cần bạn quyết:** what needs the user, or "không"
 
-## Goal
-One-sentence objective.
+## Cần bạn xem kỹ
+1-3 places that most need the reader's judgement: hard-to-reverse choices, risks, assumptions.
 
-## Constraints
-- ...
+## Bối cảnh
+Today, with `file:line` evidence and the scout's reuse findings; no solution yet.
 
-## Non-Goals
-- ...
+## Mục tiêu / Không làm
 
-## Approach
-(Recommended approach from Phase 3, with rationale.)
+## Quyết định
+The interview's picks, one row each (question, pick).
 
-## Architecture
-(From Phase 4 section 1.)
+## Cách làm
+The chosen approach and why, then a "Phương án đã loại" table (each alternative, including
+"không làm", with one reason it lost).
 
-## Components / Files
-- File X: create/modify, what changes, reuses Y
-- ...
+## Thiết kế
+### Kiến trúc              (a Mermaid diagram when there are 3+ parts)
+### Thành phần / File      (create/modify, what changes, what it reuses)
+### Luồng dữ liệu / Kiểu   (shapes, not full code; cite file:line)
 
-## Data Flow / Types
-(Type contracts, API shapes.)
+## Rủi ro & xử lý lỗi
 
-## Error Handling
-...
+## Kiểm thử & triển khai
 
-## Testing & Rollout
-...
-
-## Acceptance Criteria
+## Tiêu chí hoàn thành
 - [ ] Concrete, testable items
 
-## Open Items
+## Còn mở
 - Genuinely deferred decisions (with options to revisit)
 
-## Files Touched
+## Phụ lục: File thay đổi
 FE: ...
 BE: ...
 ```
+
+Write the spec in Vietnamese: the user reads it on the review page. Code, identifiers, file paths,
+commands and text meant for Jira or a PR stay as they are. Each section opens with its conclusion.
+Keep code short and cite `file:line`: the review page opens the file.
 
 ---
 
@@ -274,25 +276,34 @@ Fix issues inline. No re-review loop — fix and move on.
 
 ## Phase 7: User Review Gate
 
-**This gate is not optional and cannot be waived by inference. End your turn here.**
+**This gate is not optional and cannot be waived by inference.**
 
-After self-review, ask the user to review the written spec:
+After self-review, show the spec on its review page (`references/html-doc.md`), served from a
+foreground `Bash` call with `timeout: 600000`:
 
-> "Spec written to `plans/{date}-{slug}/spec.md`. Please review and let me know if you want to make any changes before we move to the implementation plan."
+```
+node ~/.claude/skills/brainstorm-pro/assets/render-interview.mjs plans/{date}-{slug}/spec.md <scratchpad>/review-{slug}/review-NN.html --serve
+```
 
-Wait for response. If changes requested, edit and re-run Phase 6. Only proceed once user approves.
+- `Quyết định: Duyệt` → apply any notes to the spec, then Phase 8 in the same turn.
+- `Quyết định: Sửa` → edit the spec as the notes ask, re-run Phase 6, show the next round
+  (`review-NN+1.html`).
+- Moved to the background after 10 minutes → end the turn with one line; the answer arrives as the
+  task's notification. A reply in chat counts the same (stop the serve command).
+- No browser (exit 4) → ask in chat: "Spec written to `plans/{date}-{slug}/spec.md`. Please review
+  and let me know if you want any changes before we move to the implementation plan." and wait.
 
 ### What does NOT satisfy this gate
 
-The only thing that opens it is the user responding to the message above, in this conversation,
-after the spec file exists. None of the following count — each is a real way this gate has been
+The only things that open it are the user's **Duyệt** on the spec's review page, or their approving
+reply in chat, in this conversation, after the spec file exists. None of the following count — each is a real way this gate has been
 skipped by mistake:
 
 - **"Skip presenting the sections"** / "no need to walk me through it" → that is **Phase 4**. It
   means *stop narrating the design section by section*, not *stop letting me read the spec*. The
   user is asking for fewer intermediate summaries and MORE reliance on the written artifact — which
   makes Phase 7 more important, not less.
-- **Approval of a design section during Phase 4** — that approved a section, not the spec.
+- **A question answered on the interview page** — that settled one decision, not the spec.
 - **"No open questions left"** — that is the precondition for writing the spec, not for shipping it.
 - **A standing preference to auto-run `cook`** — that governs the plan→implementation handoff
   *after* this gate, never the spec→plan one.
@@ -306,8 +317,8 @@ the words they used when you proceed, so the assumption is visible and correctab
 
 ## Phase 8: Terminal — Invoke ck-plan (which runs on into cook)
 
-**Precondition: Phase 7 passed — the user replied to the spec-review message and approved.** If you
-cannot point to that reply, you are not in Phase 8. Go back and ask.
+**Precondition: Phase 7 passed — the user approved the spec (Duyệt on its review page, or a reply in
+chat).** If you cannot point to that answer, you are not in Phase 8. Go back and ask.
 
 Once user approves the spec, invoke the `ck-plan` skill immediately (`Skill` tool, `skill: "ck-plan"`) — same turn, no confirmation prompt.
 "Immediately" qualifies *when* the handoff happens relative to the approval, never *whether* the
@@ -342,7 +353,7 @@ The only thing that stops the chain at the plan is the user explicitly saying so
 - `context7` (library docs), `WebSearch`, or a `document-specialist` sub-agent for Phase 1.5 best-practice research
 - `Write` (question JSON) + `Bash` (`render-interview.mjs --serve` in the foreground, 10-minute timeout, same message) for every interview question (Q0, Phase 2, Phase 3) — `references/html-interview.md`; chat only as its fallback
 - Sub-agents OK for parallel research IF Phase 1 reveals multiple unknown areas — but keep it focused
-- `Write` to save spec in Phase 5
+- `Write` to save spec in Phase 5; `Bash` (`render-interview.mjs <spec.md> … --serve`, foreground, 10-minute timeout) to show it in Phase 7 — `references/html-doc.md`
 - `Skill` to invoke `ck-plan` in Phase 8
 
 ## Examples
@@ -395,10 +406,10 @@ Why bad: scout would reveal `TypeORM` instantly. Wastes a round.
 - [ ] Mid-stream re-explore happened at least once if answer reshaped scope
 - [ ] At least one brutal honesty pushback on premise/assumption
 - [ ] 2-3 approaches presented with trade-offs + recommendation
-- [ ] Each design section approved before next
+- [ ] Design written into the spec's sections, not presented section by section in chat
 - [ ] Spec written to `plans/{date}-{slug}/spec.md`
 - [ ] Spec self-review completed (4 checks)
-- [ ] User reviewed spec and approved — you can quote their reply; a Phase 4 "skip the sections" is NOT this
+- [ ] Spec shown on its review page (`--serve`); notes applied; the user approved it — you can quote the Duyệt or the reply
 - [ ] Terminal: `ck-plan` invoked with spec path + skip scout/discovery instruction
 - [ ] No implementation code written *before* Phase 7 approval (after it, `ck-plan` → `cook` implements — do not stop to ask)
 - [ ] Did NOT stop at the written plan to ask permission to run cook

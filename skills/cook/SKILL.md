@@ -4,7 +4,7 @@ description: "ALWAYS activate this skill before implementing EVERY feature, plan
 argument-hint: "[task|plan-path]"
 metadata:
   author: claudekit
-  version: "5.5.0"
+  version: "5.6.0"
 ---
 
 # Cook - Smart Feature Implementation
@@ -22,7 +22,7 @@ End-to-end implementation. Every implementation phase is executed by a dedicated
 - **Plan path given** (`plan.md` / `phase-*.md`) → load it, skip Steps 1–2, start at Step 3.
 - **No plan** → Step 1 runs the full `brainstorm-pro` design flow in-line (deep scout →
   best-practice research → one-round-at-a-time Q&A on a local HTML question page → 2-3
-  approaches → sectioned design with per-section approval). Where brainstorm-pro would write `spec.md` and hand off to `ck-plan`,
+  approaches → the design written to `design.md` and approved section by section on a local review page). Where brainstorm-pro would write `spec.md` and hand off to `ck-plan`,
   cook instead goes straight to Step 2 (write the plan) and executes it in the same run.
 
 **Example:**
@@ -72,7 +72,7 @@ The orchestrator NEVER edits source files itself during Step 3. Every phase MUST
 | "The task is clear, skip scout and go straight to planning" | Scout is what makes the plan reuse existing infra instead of duplicating it. |
 | "Batch the design questions to save turns" | Batching dependent questions breaks adaptive follow-up. Only independent ones share a page (up to 4). |
 | "This design question is quick, ask it in chat" | Every 1C question and the 1D approach pick go on the interview page (`references/design-phase.md` § 1C). |
-| "Write spec.md first, then plan from it" | No spec in cook. The approved design block goes straight into the plan files. |
+| "Write spec.md first, then plan from it" | No spec and no ck-plan in cook. The design lives in `<plan-dir>/design.md`, which `plan.md` links. |
 | "Let a `planner` sub-agent write the plan" | No. The orchestrator writes the plan itself — it holds the design conversation. Sub-agents start at Step 3. |
 | "Cook forbids invoking ck-plan, so its format doesn't apply either" | Delegation is forbidden; the format is shared. Load ck-plan's `plan-organization.md` + `output-standards.md` and match them. |
 | "I'll write the plan free-form — cook is the only reader" | Wrong. Step 5 Section A and every ck-plan subcommand (`red-team`, `validate`, `archive`) read these files. Frontmatter + Phases table + per-phase sections are mandatory. |
@@ -98,7 +98,7 @@ flowchart TD
       C1[1A: Deep Scout] --> C2[1B: Best-Practice Research<br/>conditional]
       C2 --> C3[1C: Q&A Loop — one round at a time<br/>on an HTML question page, answers sent back]
       C3 --> C4[1D: Propose 2-3 Approaches]
-      C4 --> C5[1E: Sectioned Design + per-section approval]
+      C4 --> C5[1E: design.md on a review page<br/>notes per section, Duyệt]
     end
     C5 --> D[Step 2: Plan — orchestrator writes plan files itself<br/>from the approved design block, NOT a spec, NO sub-agent]
     D --> F
@@ -113,12 +113,12 @@ flowchart TD
 ## Workflow Overview
 
 ```
-[Setup] → [Design: scout → research → Q&A → approaches → sectioned design] → [Plan: orchestrator writes it] → [Phase sub-agents] → [Test sub-agent] → [Review: 2-agent fan-out — compliance+bugs / reuse+simplification+efficiency+altitude] → [Finalize sub-agents]
+[Setup] → [Design: scout → research → Q&A → approaches → design.md reviewed on a page] → [Plan: orchestrator writes it] → [Phase sub-agents] → [Test sub-agent] → [Review: 2-agent fan-out — compliance+bugs / reuse+simplification+efficiency+altitude] → [Finalize sub-agents]
 
 Steps 1–2 are orchestrator-run (design + plan). Steps 3–6 are sub-agent-run (execution).
 ```
 
-Step 1 is interactive (Q&A rounds, per-section approval). **From Step 2 onward the workflow runs straight through without stopping for approval.** **Claude Tasks (ALWAYS create AND update):** A task list MUST always be created — use `TaskCreate` to seed tasks up front — AND MUST be kept in lock-step throughout: `TaskUpdate` → `in_progress` before each phase dispatch, `TaskUpdate` → `complete` immediately after that phase returns (one phase at a time, same turn — never batched to the end). **Fallback:** `TaskCreate`/`TaskUpdate`/`TaskGet`/`TaskList` are CLI-only — unavailable in the VSCode extension. If they error, still create AND update the list via `TodoWrite`. Never skip creating or updating the task list.
+Step 1 is interactive (Q&A rounds, the design review page). **From Step 2 onward the workflow runs straight through without stopping for approval.** **Claude Tasks (ALWAYS create AND update):** A task list MUST always be created — use `TaskCreate` to seed tasks up front — AND MUST be kept in lock-step throughout: `TaskUpdate` → `in_progress` before each phase dispatch, `TaskUpdate` → `complete` immediately after that phase returns (one phase at a time, same turn — never batched to the end). **Fallback:** `TaskCreate`/`TaskUpdate`/`TaskGet`/`TaskList` are CLI-only — unavailable in the VSCode extension. If they error, still create AND update the list via `TodoWrite`. Never skip creating or updating the task list.
 
 ## Step Output Format
 
@@ -128,7 +128,7 @@ Step 1 is interactive (Q&A rounds, per-section approval). **From Step 2 onward t
 
 ## Gates
 
-**Step 1 has real gates** (it is a design conversation): one round at a time on the HTML question page during 1C (independent questions may share a page; the 1D approach pick too), and explicit approval after every design section in 1E. Do not shortcut them.
+**Step 1 has real gates** (it is a design conversation): one round at a time on the HTML question page during 1C (independent questions may share a page; the 1D approach pick too), and the user's approval of `design.md` on its review page in 1E (notes per section). Do not shortcut them.
 
 **No approval stops from Step 2 onward.** Plan → implement → test → review fan-out → finalize runs end to end without pausing for the user. Report progress as you go (`✓ Step [N]: …`) so the user can interrupt if they want to redirect, but never block waiting for a go-ahead. In particular, once implementation and testing finish, go straight into the review fan-out in the same turn.
 

@@ -26,14 +26,12 @@ design stage only. Summary:
 | 1B Best-Practice Research | Conditional — only if no in-repo precedent AND well-trodden externally AND a real design fork. Orienting pass by default. | Orchestrator; `document-specialist` / context7 / WebSearch optional |
 | 1C Q&A Loop | ONE round at a time (one question, or up to 4 independent ones) on a local HTML question page (`../brainstorm-pro/references/html-interview.md`): full card, multi-choice + recommendation, answers sent back from the page (or pasted), mini re-explore between rounds, ≥1 brutal-honesty pushback. **Cap 8 rounds.** | Orchestrator only |
 | 1D Approaches | 2-3 approaches with pros/cons/effort, recommendation first — the last question on the interview page. | Orchestrator only |
-| 1E Sectioned Design | Architecture / Components & Files / Data Flow & Types / Error Handling / Testing & Rollout — **approval after each section**. | Orchestrator only |
+| 1E Design review | The design written to `<plan-dir>/design.md` (brainstorm-pro's spec structure), self-reviewed, shown on a review page (`--serve`) — **notes per section, then Duyệt**. | Orchestrator only |
 
 **This step is interactive.** The "no approval stops" rule does NOT apply here — it starts at Step 2.
 
 **Terminal difference vs `brainstorm-pro`:** no `spec.md` is written and the `ck-plan` skill is NOT invoked.
-On final section approval, assemble the **Approved Design Block** (Context / Goal / Constraints /
-Non-Goals / Approach / the five approved sections / Acceptance Criteria / Open Items) and carry it
-into Step 2.
+The approved `<plan-dir>/design.md` is the design; Step 2 writes the plan next to it.
 
 **Output:** `✓ Step 1: Design approved - scout [N] actions, Q&A [M] rounds, [K] sections, [J] acceptance criteria`
 
@@ -42,7 +40,7 @@ into Step 2.
 <HARD-GATE>
 The orchestrator writes the plan ITSELF using Write. Do NOT dispatch a `planner` (or any other)
 sub-agent for this step. The orchestrator just held the design conversation — it has the scout
-findings, the Q&A answers, and every per-section approval in context. A sub-agent has none of that
+findings, the Q&A answers, and the design review's notes in context. A sub-agent has none of that
 and would re-derive (and distort) requirements the user already settled. Sub-agent delegation begins
 at Step 3.
 </HARD-GATE>
@@ -80,8 +78,8 @@ Concretely that means:
 
 | Cook concept | Goes into |
 |---|---|
-| Approved Design Block (Context / Goal / Constraints / Non-Goals / Approach + the 5 approved sections) | `plan.md`, **verbatim**, right after `## Overview` — it replaces `spec.md` |
-| Acceptance Criteria (verbatim from the design) | `plan.md` `## Acceptance Criteria` — Step 5 Section A verifies against it, so it is the authoritative contract |
+| Approved design (`design.md`, already in the plan dir) | `plan.md` links it right after `## Overview` (`Design: [design.md](./design.md)`) — never copy it in |
+| Acceptance criteria (`design.md` § Tiêu chí hoàn thành, verbatim) | `plan.md` `## Acceptance Criteria` — Step 5 Section A verifies against it, so it is the authoritative contract |
 | Per-phase "Done when" | that phase file's **Success Criteria** section |
 | Per-phase file ownership | that phase file's **Related Code Files** section — must be disjoint across phases marked parallel |
 | Open Items | `plan.md` `## Open Items` |
@@ -190,6 +188,7 @@ Agent(
 
   ## Plan files (authoritative)
   - <plan-dir>/plan.md  (carries the approved design's Acceptance Criteria)
+  - <plan-dir>/design.md  (the approved design, when cook wrote it)
   - <plan-dir>/spec.md  (only if the plan was authored outside cook and one exists)
   - <plan-dir>/phase-01-*.md, phase-02-*.md, ... (list ALL phase files verbatim)
 
@@ -207,7 +206,8 @@ Agent(
   ## Return TWO sections — both required, no exceptions
 
   ### Section A — Plan Compliance
-  For every § Acceptance Criteria checkbox in plan.md (or spec.md if present)
+  For every § Acceptance Criteria checkbox in plan.md (or spec.md's § Tiêu chí hoàn thành /
+  Acceptance Criteria if present)
   AND every phase "Done when" item:
     1. List the criterion verbatim.
     2. Mark ✅ / ❌ MISSING / ❌ WRONG / ⚠ EXTRA.
@@ -381,7 +381,7 @@ box in its file is ticked. Re-read the phase file before writing its row.
 Legend: `[R]` = human gate
 
 ```
-0 → 1A scout → 1B research → 1C Q&A [R per round] → 1D approaches → 1E sectioned design [R per section]
+0 → 1A scout → 1B research → 1C Q&A [R per round] → 1D approaches → 1E design.md review page [R, notes per section]
   → 2 (orchestrator writes plan + self-review) → 3 (sub-agent per phase) → 4 (test sub-agent) → 5 (review fan-out x2) → 6 (finalize sub-agents)
 ```
 
@@ -391,7 +391,7 @@ If a plan path is provided at Step 0, skip Steps 1–2 and start at Step 3.
 ## Critical Rules
 
 - Never skip steps without explicit user instruction.
-- **STEP 1 IS NOT DELEGATED.** The design conversation (1C Q&A, 1D approaches, 1E sectioned design) is run by the orchestrator. Sub-agents assist with reading in 1A/1B only. Never write `spec.md`, never invoke `ck-plan` — Step 2 continues in this run.
+- **STEP 1 IS NOT DELEGATED.** The design conversation (1C Q&A, 1D approaches, 1E design review) is run by the orchestrator. Sub-agents assist with reading in 1A/1B only. Never write `spec.md`, never invoke `ck-plan` — Step 2 continues in this run.
 - **MANDATORY SUBAGENT DELEGATION:** Steps 3, 4, 5, 6 MUST spawn subagents via the `Agent` tool. DO NOT implement, test, or review directly. Resolve every type through `subagent-patterns.md` § Agent Name Mapping first.
   - Step 3: `executor` / `designer` for frontend (one per phase)
   - Step 4: `test-engineer` (and `debugger` if failures)

@@ -8,8 +8,8 @@ Copy-and-paste into the chat stays as the fallback. Nothing is published and not
 
 **Covers:** the scope-fixing question (Q0), every Q&A round, and the approach pick (brainstorm-pro
 Phase 3 / cook 1D, including a collapsed bug-fix's candidate fixes). **Does not cover:**
-approve/changes gates on something already written (per-section design approval, the spec review,
-the "just code it" confirmation). Those stay in chat.
+reviews of something already written (the spec, cook's design): those go on a document page,
+`html-doc.md`. The "just code it" confirmation stays in chat.
 
 Files (brainstorm-pro skill directory, normally `~/.claude/skills/brainstorm-pro`):
 `assets/interview-page.html` (the page) and `assets/render-interview.mjs` (puts one round's JSON
@@ -81,7 +81,8 @@ stays plain text.
 
 The page shows the options side by side, lined up part by part (`means`, `mockup`, `code`, `example`,
 `pros`/`cons`), so give every option the same fields and keep them short and parallel. The
-recommendation sits under the options, above the answer strip; nothing is preselected, but a
+recommendation sits under the options, above the answer strip; a click on an option's card picks
+it like its button in the strip. Nothing is preselected, but a
 "Theo đề xuất" button on the floating bar picks the recommended option on every unanswered
 question, and the top bar links to each question with its answered state.
 
@@ -127,7 +128,8 @@ Pictures of screens:
   same content in every option, so the difference is all that changes.
 
 **Card test before writing:** someone who has not read the code or this conversation can decide
-from the card alone. If deciding needs a fact you have not shown, add it to `context`.
+from the card alone. If deciding needs a fact you have not shown, add it to `context`. Every
+question gets the full card, easy-to-change ones included; do not shorten cards to save tokens.
 
 ## Reading the answer
 
@@ -165,7 +167,8 @@ match it to the open questions, and ask in chat if it is unclear which question 
 ## Finishing
 
 Nothing to close once every serve command has exited or been stopped. Continue the flow in chat with a one-line count of the rounds; the decisions go
-into the spec (or cook's Approved Design Block) as usual.
+into the spec (or cook's `design.md`) as usual. When the questions came from a plan or a spec
+(Open Items, Unresolved Questions), write the answers back into it.
 
 ## Fallback
 

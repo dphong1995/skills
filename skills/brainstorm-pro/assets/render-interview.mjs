@@ -1,13 +1,14 @@
-// Usage: node render-interview.mjs <round.json> <out.html> [--serve]
-// Puts one round of questions (see references/html-interview.md) into interview-page.html.
-// Code with a "file" (code blocks, both sides of a diff, an option's code) and file paths written as `inline code` get the whole file embedded, for the page's file viewer; images get embedded as data URIs.
-// --serve then serves the page on 127.0.0.1 under a random token, opens it, prints the answers the page sends back and exits (4 when no browser opens).
+// Usage: node render-interview.mjs <round.json | document.md> <out.html> [--serve | --open]
+// Puts one round of questions (references/html-interview.md), or a Markdown document (references/html-doc.md), into interview-page.html.
+// Code with a "file" (code blocks, both sides of a diff, an option's code), file paths written as `inline code` and a document's links to local files get the whole file embedded, for the page's file viewer; images get embedded as data URIs.
+// --serve then serves the page on 127.0.0.1 under a random token, opens it, prints the answers (or the document review) the page sends back and exits (4 when no browser opens).
+// --open opens the written page as a file and exits: a document to read only.
 import { execFile } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { readFileSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { homedir } from 'node:os';
-import { dirname, extname, isAbsolute, join, resolve } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const MAX_FILE = 512 * 1024;
@@ -18,19 +19,48 @@ const IMAGE_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image
 
 const args = process.argv.slice(2);
 const serve = args.includes('--serve');
-const [src, out] = args.filter((a) => a !== '--serve');
-if (!src || !out) {
-  console.error('Usage: node render-interview.mjs <round.json> <out.html> [--serve]');
+const open = args.includes('--open');
+const [src, out] = args.filter((a) => a !== '--serve' && a !== '--open');
+if (!src || !out || (serve && open)) {
+  console.error('Usage: node render-interview.mjs <round.json | document.md> <out.html> [--serve | --open]');
   process.exit(1);
 }
+const isDoc = /\.(md|markdown)$/i.test(src);
 
-const data = JSON.parse(readFileSync(src, 'utf8'));
-if (!Array.isArray(data.questions) || !data.questions.length) throw new Error(`${src}: "questions" must be a non-empty array`);
-data.questions.forEach((q, i) => {
-  for (const key of ['id', 'n', 'title', 'options']) {
-    if (q[key] == null) throw new Error(`${src}: questions[${i}] is missing "${key}"`);
+// "## A" and "### B" headings outside code fences, keyed "A" and "A › B" as the page keys them, each with the text up to the next one.
+const sections = (md) => {
+  const map = new Map();
+  let fence = null, h2 = '', key = null, body = [];
+  const flush = () => { if (key != null) map.set(key, body.join('\n').trim()); };
+  for (const line of md.split('\n')) {
+    const f = /^ {0,3}(`{3,}|~{3,})/.exec(line);
+    if (f && (!fence || f[1][0] === fence)) fence = fence ? null : f[1][0];
+    const h = !fence && !f && /^ {0,3}(#{2,3})\s+(.+?)(?:\s+#+)?\s*$/.exec(line);
+    if (!h) { body.push(line); continue; }
+    flush();
+    const text = h[2].replace(/`|\*\*/g, '');
+    if (h[1].length === 2) key = h2 = text;
+    else key = h2 ? h2 + ' › ' + text : text;
+    body = [];
   }
-});
+  flush();
+  return map;
+};
+
+let data;
+if (isDoc) {
+  const md = readFileSync(src, 'utf8');
+  const h1 = /^ {0,3}#\s+(.+?)\s*$/m.exec(md);
+  data = { doc: { md, path: resolve(src).replace(homedir(), '~'), title: h1 ? h1[1].replace(/`|\*\*/g, '') : basename(src), review: serve } };
+} else {
+  data = JSON.parse(readFileSync(src, 'utf8'));
+  if (!Array.isArray(data.questions) || !data.questions.length) throw new Error(`${src}: "questions" must be a non-empty array`);
+  data.questions.forEach((q, i) => {
+    for (const key of ['id', 'n', 'title', 'options']) {
+      if (q[key] == null) throw new Error(`${src}: questions[${i}] is missing "${key}"`);
+    }
+  });
+}
 
 const root = data.root || process.cwd();
 if (!isAbsolute(root)) throw new Error(`${src}: "root" must be an absolute path: ${root}`);
@@ -59,8 +89,9 @@ const prep = (b) => {
 const link = (text) => {
   if (typeof text !== 'string') return;
   for (const [, span] of text.matchAll(/`([^`]+)`/g)) {
+    if (/\s/.test(span)) continue;
     const path = /^(.+?)(?::(\d+)(?:-(\d+))?)?$/.exec(span)[1];
-    if (data.paths[path] || /\s/.test(path) || !(path.includes('/') || path.startsWith('~'))) continue;
+    if (data.paths[path] || !(path.includes('/') || path.startsWith('~'))) continue;
     const abs = resolvePath(path);
     let size;
     try {
@@ -91,8 +122,48 @@ const image = (b) => {
   b.src = `data:${type};base64,${buf.toString('base64')}`;
 };
 
+// A document's Markdown links to local files, resolved against its own directory.
+const docLinks = (md) => {
+  data.links = {};
+  for (const [, href] of md.matchAll(/\]\(<?([^)\s>]+)>?(?:\s+"[^"]*")?\)/g)) {
+    if (data.links[href] || /^[a-z][\w+.-]*:/i.test(href) || href.startsWith('#') || IMAGE_TYPES[extname(href).toLowerCase()]) continue;
+    const abs = resolve(dirname(resolve(src)), decodeURIComponent(href.split('#')[0]));
+    try {
+      const st = statSync(abs);
+      if (!st.isFile() || st.size > MAX_FILE) continue;
+    } catch (e) {
+      continue;
+    }
+    data.files[abs] ??= readFileSync(abs, 'utf8');
+    data.links[href] = abs;
+  }
+};
+
+// Review rounds of a document: the state file beside the page keeps the Markdown last served, so the next round marks what changed.
+const STATE = join(dirname(resolve(out)), '.review-state.json');
+const reviewRound = () => {
+  let state = {};
+  try { state = JSON.parse(readFileSync(STATE, 'utf8')); } catch (e) { state = {}; }
+  const key = resolve(src);
+  const prev = state[key];
+  const changes = { round: prev ? prev.round + 1 : 1 };
+  if (prev) {
+    const [a, b] = [sections(prev.md), sections(data.doc.md)];
+    changes.changed = [...b.keys()].filter((k) => a.has(k) && a.get(k) !== b.get(k));
+    changes.added = [...b.keys()].filter((k) => !a.has(k));
+    changes.removed = [...a.keys()].filter((k) => !b.has(k));
+  }
+  data.doc.changes = changes;
+  state[key] = { round: changes.round, md: data.doc.md };
+  return () => writeFileSync(STATE, JSON.stringify(state));
+};
+
+if (isDoc) {
+  link(data.doc.md);
+  docLinks(data.doc.md);
+}
 (data.decided || []).forEach(link);
-for (const q of data.questions) {
+for (const q of data.questions || []) {
   [q.title, q.why, q.reversibleWhy, q.recommendation].forEach(link);
   for (const b of q.context || []) {
     if (!b) continue;
@@ -114,8 +185,20 @@ const placeholder = '/*__INTERVIEW_DATA__*/null';
 if (!template.includes(placeholder)) throw new Error('interview-page.html: data placeholder not found');
 const page = (d) => template.replace(placeholder, () => JSON.stringify(d).replace(/</g, '\\u003c'));
 
+const saveRound = isDoc && serve ? reviewRound() : null;
+mkdirSync(dirname(resolve(out)), { recursive: true });
 writeFileSync(out, page(data));
+if (saveRound) saveRound();
 console.log(out);
+
+if (open) {
+  execFile(process.platform === 'darwin' ? 'open' : 'xdg-open', [resolve(out)], (err) => {
+    if (err) {
+      console.error(`Could not open a browser (${err.message})`);
+      process.exit(4);
+    }
+  });
+}
 
 if (serve) {
   const base = `/${randomBytes(16).toString('hex')}/`;

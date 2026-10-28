@@ -44,7 +44,7 @@ Agent(subagent_type="Explore", prompt="Find files related to [feature] in codeba
 ## Planning Phase — NO SUB-AGENT
 
 There is no planning sub-agent in cook. The orchestrator writes `plan.md` + `phase-XX-*.md`
-itself with the Write tool, straight from the Step 1E Approved Design Block (there is no
+itself with the Write tool, next to the design the user approved in Step 1E (`<plan-dir>/design.md`; there is no
 `spec.md` in the cook flow). Dispatching `planner` here is FORBIDDEN — it would re-derive
 requirements the user already settled in the design conversation.
 

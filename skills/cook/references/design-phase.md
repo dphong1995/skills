@@ -2,12 +2,12 @@
 
 Runs ONLY when no plan path was provided. This is the `brainstorm-pro` flow verbatim through
 its design stage — deep scout → best-practice research → one-question-at-a-time Q&A →
-2-3 approaches → sectioned design with per-section approval.
+2-3 approaches → the design written to `design.md` and approved on a review page.
 
 **Terminal difference vs `brainstorm-pro`:** where brainstorm-pro writes `spec.md` and hands
-off to `ck-plan`, cook does NOT write a spec. Once the last design section is approved, the
-approved design is carried verbatim into Step 2, where the **orchestrator itself** writes the
-plan files (no `planner` sub-agent), and execution continues in the same run.
+off to `ck-plan`, cook writes the design to `<plan-dir>/design.md` and, once the user approves it,
+goes to Step 2, where the **orchestrator itself** writes the plan files next to it (no `planner`
+sub-agent), and execution continues in the same run.
 
 **The orchestrator runs this step itself** — scout/Q&A/design are conversational and must not
 be delegated. Sub-agents are allowed only as parallel research helpers inside 1A/1B.
@@ -190,50 +190,28 @@ approach is settled, continue 1E in chat.
 
 ---
 
-## 1E: Sectioned Design (per-section approval)
+## 1E: Design on a review page (per-section notes)
 
-Present the design in sections, get **explicit approval after each section** before moving on.
+1. Resolve the plan directory now (ck-plan's SKILL.md § "Plan Directory Resolution"; see
+   `workflow-steps.md` § Step 2).
+2. Write the design to `<plan-dir>/design.md` in Vietnamese, in brainstorm-pro's spec structure
+   (`../brainstorm-pro/SKILL.md` § Phase 5: Tóm tắt, Cần bạn xem kỹ, Bối cảnh, Mục tiêu / Không
+   làm, Quyết định, Cách làm with its "Phương án đã loại" table, Thiết kế (Kiến trúc, Thành phần /
+   File, Luồng dữ liệu / Kiểu), Rủi ro & xử lý lỗi, Kiểm thử & triển khai, Tiêu chí hoàn thành,
+   Còn mở, Phụ lục: File thay đổi). Scale each section to its complexity.
+3. Re-read it with brainstorm-pro's 4 self-review checks (placeholders, consistency, scope,
+   ambiguity) and fix inline.
+4. Show it on its review page (`../brainstorm-pro/references/html-doc.md`), served from a
+   foreground `Bash` call with `timeout: 600000`:
+   `node ~/.claude/skills/brainstorm-pro/assets/render-interview.mjs <plan-dir>/design.md <scratchpad>/review-<slug>/review-NN.html --serve`
+   Every `##` and `###` section takes the user's notes: that is the per-section approval. Do not
+   present the sections in chat first.
+5. `Quyết định: Duyệt` (or an approving reply in chat) → apply any notes, then Step 2 in the same
+   turn. `Quyết định: Sửa` → edit `design.md`, re-check, show the next round.
 
-Standard sections (scale each to its complexity — a few sentences if simple, 200-300 words if nuanced):
-1. **Architecture** — high-level components and how they fit
-2. **Components / Files** — concrete files to create/modify, REUSING existing infra from scout
-3. **Data flow / Types** — request/response shapes, type contracts
-4. **Error handling**
-5. **Testing & rollout** — what tests, what feature flag (if any), rollback strategy
+`design.md` is not a `spec.md` handoff: no ck-plan, and the plan files land next to it.
 
-Between sections, ask: *"Does this section look right? Any changes before we move to the next?"*
-
-**On final approval, assemble the Approved Design Block** (kept in working memory, written
-verbatim into the Step 2 plan files by the orchestrator — this replaces `spec.md`; the plan files
-themselves follow `ck-plan`'s format, see `workflow-steps.md` § Step 2):
-
-```markdown
-## Context
-Problem statement + scout findings (what existing infra is being reused).
-
-## Goal
-One-sentence objective.
-
-## Constraints
-- ...
-
-## Non-Goals
-- ...
-
-## Approach
-Selected approach from 1D, with rationale (cite 1B research if used).
-
-## Architecture / Components & Files / Data Flow & Types / Error Handling / Testing & Rollout
-(The five approved sections, verbatim.)
-
-## Acceptance Criteria
-- [ ] Concrete, testable items
-
-## Open Items
-- Genuinely deferred decisions.
-```
-
-**Output:** `✓ Step 1E: Design approved - [N] sections, [M] acceptance criteria`
+**Output:** `✓ Step 1E: Design approved - [N] sections, [M] acceptance criteria, [K] review rounds`
 
 ---
 
@@ -244,7 +222,7 @@ Selected approach from 1D, with rationale (cite 1B research if used).
 - **Bug fix handed off by `routing-bug-fixes-to-cook`** (root cause confirmed) → same collapse, with
   the investigation as the scout: Q&A only for a genuinely open question, the candidate fixes with a
   recommendation (2+ candidates → one question on the interview page) + a 5-line design block, one
-  approval in chat, then Step 2.
+  approval in chat (no `design.md`, no review page), then Step 2.
 - **Topic too large** → decompose into sub-projects; cook only the first.
 - **Scope keeps drifting** → freeze scope explicitly; document drifted items as Open Items.
 - **No clear recommendation possible** → present approaches with trade-offs, ask the user to
@@ -261,7 +239,6 @@ Selected approach from 1D, with rationale (cite 1B research if used).
 - [ ] Mid-stream re-explore happened at least once if an answer reshaped scope
 - [ ] At least one brutal honesty pushback on premise/assumption
 - [ ] 2-3 approaches presented with trade-offs + recommendation
-- [ ] Each design section approved before the next
-- [ ] Approved Design Block assembled (with Acceptance Criteria)
+- [ ] `<plan-dir>/design.md` written in Vietnamese (with its Tiêu chí hoàn thành), self-reviewed, approved on its review page
 - [ ] No implementation code written during Step 1
 - [ ] No `spec.md` written and no handoff to `ck-plan` — Step 2 continues in this run

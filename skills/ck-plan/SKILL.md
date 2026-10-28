@@ -5,7 +5,7 @@ argument-hint: "[task] OR [archive|red-team|validate]"
 license: MIT
 metadata:
   author: claudekit
-  version: "2.0.0"
+  version: "2.1.0"
 ---
 
 # Planning
@@ -129,7 +129,11 @@ Skip the auto-handoff **only** when:
   "just plan", "don't implement yet"), or
 - this skill was invoked as a subcommand (`archive`, `red-team`, `validate`).
 
-In those cases, print `/cook {absolute-plan-path}/plan.md` as the suggested next step instead.
+In those cases, print `/cook {absolute-plan-path}/plan.md` as the suggested next step instead. When
+the chain stops at a plan the user asked for (planning only), write `plan.md` in Vietnamese (they
+read it on a page; phase files stay as usual) and open it for them
+(`../brainstorm-pro/references/html-doc.md`):
+`node ~/.claude/skills/brainstorm-pro/assets/render-interview.mjs {absolute-plan-path}/plan.md <scratchpad>/review-{slug}/plan.html --open`
 
 **Nothing else qualifies.** These do NOT skip the handoff:
 - this skill was reached from another skill (`brainstorm-pro`, `superpowers:brainstorming`, …)

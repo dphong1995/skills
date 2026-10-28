@@ -32,6 +32,37 @@ done
 
 find "$DEST/skills" "$DEST/agents" -name '.DS_Store' -delete 2>/dev/null || true
 
+# Always-on rules: each claude-md/<name>.md is kept in $DEST/CLAUDE.md between its own markers.
+# The rest of that file is left alone; the text between the markers is replaced on every install.
+for block in "$SRC"/claude-md/*.md; do
+  [ -e "$block" ] || continue
+  name="$(basename "$block" .md)"
+  target="$DEST/CLAUDE.md"
+  begin="<!-- skills-repo: $name -->"
+  end="<!-- /skills-repo: $name -->"
+  if [ -e "$target" ] && [ ! -e "$BACKUP/CLAUDE.md" ]; then
+    mkdir -p "$BACKUP"
+    cp "$target" "$BACKUP/CLAUDE.md"
+  fi
+  tmp="$(mktemp)"
+  if [ -f "$target" ] && grep -qxF "$begin" "$target"; then
+    if ! grep -qxF "$end" "$target"; then
+      echo "$target has \"$begin\" without \"$end\"; fix it by hand and run again." >&2
+      exit 1
+    fi
+    awk -v b="$begin" -v e="$end" -v f="$block" '
+      $0 == b { print; while ((getline line < f) > 0) print line; skip = 1; next }
+      $0 == e { skip = 0 }
+      !skip { print }' "$target" > "$tmp"
+  else
+    if [ -s "$target" ]; then cat "$target"; printf '\n'; fi > "$tmp"
+    { printf '%s\n' "$begin"; cat "$block"; printf '%s\n' "$end"; } >> "$tmp"
+  fi
+  cat "$tmp" > "$target"
+  rm -f "$tmp"
+  echo "  block  $name -> CLAUDE.md"
+done
+
 echo
 echo "Installed into $DEST"
 if [ -d "$BACKUP" ]; then echo "Replaced files backed up to $BACKUP"; fi

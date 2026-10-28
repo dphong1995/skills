@@ -14,6 +14,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.3"></script>
 <style>
 /* Layout: sticky bar with the topic and a jump link per question; settled decisions fold at the top; one card per question with everything to read first (why, context, options side by side, recommendation) and a compact answer strip last; a small floating bar picks the recommendations and sends or copies every answer at once.
+   Document mode (a Markdown file): the same bar with the section links, one card per ## section, a note per ## and ### heading in review mode, and a bar that approves or sends the notes.
    Parts are daisyUI components (navbar, card, badge, alert, table, collapse, btn, textarea, modal, toast, kbd) placed with Tailwind utilities. The theme is the page's own colors, light and dark following the system; muted text, the page background, the chosen-option tint and the code line tints have no daisyUI name and are tokens of their own. */
 :root {
   --color-base-100: #ffffff;
@@ -109,19 +110,19 @@
 
   // Inline `code` and **bold** only; everything else is plain text. A `path:N-M` the render script found on disk opens in the file viewer.
   const PATH = /^(.+?)(?::(\d+)(?:-(\d+))?)?$/;
+  const codeSpan = (t) => {
+    const m = PATH.exec(t);
+    const abs = D && D.paths && D.paths[m[1]];
+    return abs
+      ? el('a', { href: '#', class: CODE + ' link link-primary decoration-dotted underline-offset-2 hover:decoration-solid', title: 'Xem file',
+        onclick: (e) => { e.preventDefault(); openFile(abs, extLang(abs), m[2] ? [+m[2], +(m[3] || m[2])] : null); } }, t)
+      : el('code', { class: CODE, text: t });
+  };
   const inline = (text) => {
     const frag = document.createDocumentFragment();
     String(text ?? '').split(/(`[^`]+`|\*\*[^*]+\*\*)/).forEach((part) => {
       if (!part) return;
-      if (part.length > 2 && part[0] === '`' && part.endsWith('`')) {
-        const t = part.slice(1, -1);
-        const m = PATH.exec(t);
-        const abs = D && D.paths && D.paths[m[1]];
-        frag.append(abs
-          ? el('a', { href: '#', class: CODE + ' link link-primary decoration-dotted underline-offset-2 hover:decoration-solid', title: 'Xem file',
-            onclick: (e) => { e.preventDefault(); openFile(abs, extLang(abs), m[2] ? [+m[2], +(m[3] || m[2])] : null); } }, t)
-          : el('code', { class: CODE, text: t }));
-      }
+      if (part.length > 2 && part[0] === '`' && part.endsWith('`')) frag.append(codeSpan(part.slice(1, -1)));
       else if (part.length > 4 && part.startsWith('**') && part.endsWith('**')) frag.append(el('strong', { text: part.slice(2, -2) }));
       else frag.append(document.createTextNode(part));
     });
@@ -254,18 +255,19 @@
   };
 
   // Diagrams: Mermaid loads from the CDN only when the page has one; until it draws (or when it cannot) the source shows as text.
+  const loadScript = (src) => new Promise((resolve, reject) => {
+    const s = el('script', { src });
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.append(s);
+  });
   let mermaidLoad = null;
   let mermaidQueue = Promise.resolve();
   let diagrams = 0;
-  const loadMermaid = () => mermaidLoad || (mermaidLoad = new Promise((resolve, reject) => {
-    const s = el('script', { src: 'https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js' });
-    s.onload = () => {
-      window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', fontFamily: 'Be Vietnam Pro, system-ui, sans-serif',
-        theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default' });
-      resolve(window.mermaid);
-    };
-    s.onerror = reject;
-    document.head.append(s);
+  const loadMermaid = () => mermaidLoad || (mermaidLoad = loadScript('https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.1/mermaid.min.js').then(() => {
+    window.mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', fontFamily: 'Be Vietnam Pro, system-ui, sans-serif',
+      theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default' });
+    return window.mermaid;
   }));
   const mermaidBlock = (b) => {
     const text = b.text || '';
@@ -336,6 +338,225 @@
 
   const CARD = 'card card-border border-base-300 bg-base-100 px-[18px] py-4 max-[520px]:px-3 max-[520px]:py-3.5 grid gap-3 min-w-0 transition-[border-color,box-shadow] duration-200 motion-reduce:transition-none [&.attention]:border-[var(--color-warning)] [&.attention]:[box-shadow:0_0_0_3px_color-mix(in_oklab,var(--color-warning)_22%,transparent)]';
   const main = $('#main');
+  const fit = (ta) => {
+    ta.style.height = 'auto';
+    if (ta.value && ta.offsetParent) ta.style.height = ta.scrollHeight + 2 + 'px';
+  };
+
+  // The floating bar's message, copy fallback and drafts, used by both modes. Served by render-interview.mjs --serve, a page sends its text to Claude itself; opened as a file, it copies the text for pasting.
+  const sendMode = !!(D && D.send);
+  const fabMsg = el('p', { class: 'alert alert-soft block max-w-[24rem] text-[13px] leading-normal px-2.5 py-1.5 shadow-lg empty:hidden', role: 'status' });
+  const out = el('textarea', { id: 'out', class: TEXTAREA + ' w-[min(26rem,calc(100vw-32px))] font-mono text-[12px] max-h-[40vh] bg-base-200', readonly: true, hidden: true, 'aria-label': 'Nội dung để dán vào Claude' });
+  const say = (kind, ...parts) => {
+    fabMsg.dataset.kind = kind || '';
+    fabMsg.classList.toggle('alert-success', kind === 'ok');
+    fabMsg.classList.toggle('alert-warning', kind === 'warn');
+    fabMsg.replaceChildren(...parts);
+  };
+  const copyText = async (text) => {
+    out.value = text;
+    let ok = false;
+    // writeText can wait forever for a permission the browser never asks for, so it gets two seconds.
+    try { await Promise.race([navigator.clipboard.writeText(text), new Promise((_, no) => setTimeout(() => no(new Error('timeout')), 2000))]); ok = true; }
+    catch (e) { out.hidden = false; out.focus(); out.select(); try { ok = document.execCommand('copy'); } catch (e2) { ok = false; } }
+    out.hidden = ok;
+    return ok;
+  };
+  const postText = async (text) => {
+    const r = await fetch(D.send, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+  };
+  // Drafts are kept in this browser per page file, so a reload or a closed tab loses nothing.
+  const storage = (key) => ({
+    get: () => { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) { return null; } },
+    set: (v) => { try { if (v) localStorage.setItem(key, JSON.stringify(v)); else localStorage.removeItem(key); } catch (e) { /* storage blocked */ } },
+  });
+
+  // Document mode: a Markdown file (spec, design, plan, report) drawn with marked, one card per ## section. In review mode every ## and ### heading takes a note, and the bar approves or sends the notes.
+  const docPage = (doc) => {
+    const review = !!doc.review;
+    const ch = doc.changes || {};
+    const store = storage('doc-draft:' + location.pathname);
+    const notes = [];
+    const ids = new Map();
+    const nav = $('#qnav');
+    let md = null;
+
+    document.title = (review ? 'Duyệt · ' : '') + doc.title;
+    document.documentElement.classList.replace('scroll-pt-14', 'scroll-pt-24');
+    $('#topic').textContent = doc.title;
+    if (review) $('#topic').after(el('span', { class: 'badge badge-sm badge-warning badge-soft whitespace-nowrap', text: 'Chờ duyệt · lần ' + (ch.round || 1) }));
+    nav.setAttribute('aria-label', 'Các mục');
+    nav.className = 'flex gap-1 w-full overflow-x-auto pb-0.5';
+
+    const filled = () => notes.filter((n) => n.ta.value.trim());
+    const count = el('span', { class: 'font-mono text-[12px] text-muted whitespace-nowrap' });
+    const update = () => {
+      const n = filled();
+      count.textContent = n.length + ' góp ý';
+      for (const x of notes) if (x.btn) x.btn.textContent = x.ta.value.trim() ? 'Góp ý ✓' : 'Góp ý';
+      store.set(n.length ? Object.fromEntries(n.map((x) => [x.key, x.ta.value])) : null);
+      say('');
+    };
+    const noteBox = (key, placeholder) => {
+      const ta = el('textarea', { rows: '2', class: TEXTAREA, placeholder, 'aria-label': 'Góp ý: ' + key });
+      ta.addEventListener('input', () => { fit(ta); update(); });
+      const n = { key, ta, btn: null };
+      notes.push(n);
+      return n;
+    };
+    const noteFor = (key) => {
+      const n = noteBox(key, 'Góp ý cho mục này…');
+      n.ta.hidden = true;
+      n.btn = el('button', { type: 'button', class: btnCls('', true) + ' btn-ghost text-muted font-normal', onclick: () => {
+        if (n.ta.hidden) { n.ta.hidden = false; n.ta.focus(); }
+        else if (!n.ta.value.trim()) n.ta.hidden = true;
+        else n.ta.focus();
+      } }, 'Góp ý');
+      return n;
+    };
+    const changeBadge = (key) => ((ch.changed || []).includes(key) ? el('span', { class: 'badge badge-xs badge-warning badge-soft', text: 'Đã sửa' })
+      : (ch.added || []).includes(key) ? el('span', { class: 'badge badge-xs badge-success badge-soft', text: 'Mới' }) : null);
+
+    // marked's HTML gets the page's classes; file paths and links to embedded files open in the viewer, other relative links are dropped.
+    const decorate = (root) => {
+      for (const a of root.querySelectorAll('a')) {
+        const href = a.getAttribute('href') || '';
+        const abs = D.links && D.links[href];
+        a.className = 'link link-primary';
+        if (abs) a.addEventListener('click', (e) => { e.preventDefault(); openFile(abs, extLang(abs)); });
+        else if (/^(https?:|mailto:)/i.test(href)) { a.target = '_blank'; a.rel = 'noopener'; }
+        else if (!href.startsWith('#')) a.removeAttribute('href');
+      }
+      for (const c of root.querySelectorAll('code')) if (!c.closest('pre')) c.replaceWith(codeSpan(c.textContent));
+      for (const p of root.querySelectorAll('pre')) {
+        const c = p.querySelector('code') || p;
+        const lang = (/language-([\w-]+)/.exec(c.className) || [])[1];
+        p.replaceWith(lang === 'mermaid' ? mermaidBlock({ text: c.textContent }) : codeBlock({ text: c.textContent.replace(/\n$/, ''), lang }));
+      }
+      for (const l of root.querySelectorAll('ul, ol')) {
+        l.className = LIST + (l.tagName === 'OL' ? ' list-decimal' : l.querySelector(':scope > li > input[type=checkbox]') ? ' list-none pl-0' : ' list-disc');
+      }
+      for (const i of root.querySelectorAll('li > input[type=checkbox]')) i.className = 'checkbox checkbox-xs align-[-2px] me-1.5 disabled:opacity-100 disabled:cursor-default';
+      for (const b of root.querySelectorAll('blockquote')) b.className = 'border-l-[3px] border-base-300 pl-3 text-muted';
+      for (const h of root.querySelectorAll('hr')) h.className = 'border-base-300';
+      for (const t of root.querySelectorAll('table')) {
+        t.className = 'table table-sm text-[13px] [&_thead]:whitespace-normal [&_th]:align-top [&_td]:align-top';
+        for (const r of t.querySelectorAll('thead tr')) r.className = 'bg-base-200';
+        for (const c of t.querySelectorAll('th')) c.classList.add('text-base-content');
+        const wrap = el('div', { class: 'overflow-x-auto border border-base-300 rounded-box' });
+        t.replaceWith(wrap);
+        wrap.append(t);
+      }
+    };
+
+    // A ## or ### heading, keyed as "Section" or "Section › Subsection" (the render script compares rounds with the same keys).
+    let h2key = '';
+    let secs = 0;
+    const heading = (t) => {
+      const text = plain(t.text);
+      const key = t.depth === 2 ? (h2key = text) : t.depth === 3 && h2key ? h2key + ' › ' + text : text;
+      const id = 'sec-' + ++secs;
+      ids.set(key, id);
+      const h = el(t.depth === 2 ? 'h2' : t.depth === 3 ? 'h3' : 'h4', { id,
+        class: t.depth === 2 ? 'text-[18px] leading-[1.35] font-bold' : t.depth === 3 ? 'text-[15.5px] leading-[1.35] font-semibold' : 'text-[14px] font-semibold' });
+      h.innerHTML = md.parseInline(t.text);
+      decorate(h);
+      if (t.depth > 3) return [h];
+      const n = review ? noteFor(key) : null;
+      return [el('div', { class: 'flex flex-wrap items-center gap-x-2 gap-y-1' }, h, changeBadge(key), n && n.btn), n && n.ta].filter(Boolean);
+    };
+
+    const render = (marked) => {
+      md = new marked.Marked({ gfm: true, renderer: { html: ({ text }) => esc(text) } });
+      let card = null;
+      let titled = false;
+      for (const t of md.lexer(doc.md)) {
+        if (t.type === 'space') continue;
+        if (t.type === 'heading' && t.depth === 1 && !titled) { titled = true; continue; }
+        if (!card || (t.type === 'heading' && t.depth === 2)) {
+          card = el('article', { class: CARD });
+          main.append(card);
+          if (t.type === 'heading' && t.depth === 2) {
+            card.append(...heading(t));
+            nav.append(el('a', { href: '#' + ids.get(h2key), class: 'btn btn-xs btn-ghost font-normal whitespace-nowrap', text: h2key }));
+            continue;
+          }
+        }
+        if (t.type === 'heading') card.append(...heading(t));
+        else if (t.type === 'code') {
+          const lang = (t.lang || '').split(/\s/)[0] || undefined;
+          card.append(lang === 'mermaid' ? mermaidBlock({ text: t.text }) : codeBlock({ text: t.text, lang }));
+        }
+        else {
+          const box = el('div', { class: 'grid gap-1.5 min-w-0' });
+          box.innerHTML = md.parser([t]);
+          decorate(box);
+          card.append(box);
+        }
+      }
+    };
+
+    const finish = () => {
+      if (ch.round > 1) {
+        const link = (k) => (ids.has(k) ? el('a', { href: '#' + ids.get(k), class: 'link link-primary', text: k }) : el('span', { text: k }));
+        const list = (label, keys) => (keys && keys.length ? el('p', {}, el('strong', { text: label + ' (' + keys.length + '): ' }), keys.flatMap((k, i) => [i ? ', ' : null, link(k)])) : null);
+        const any = ['changed', 'added', 'removed'].some((k) => (ch[k] || []).length);
+        main.prepend(el('div', { class: 'alert alert-soft alert-info block text-base-content text-[14px] leading-normal px-3 py-1.5 [&_strong]:text-[var(--color-info)]' },
+          el('p', {}, el('strong', { text: 'Lần ' + ch.round + ': ' }), any ? 'các mục thay đổi so với bản bạn xem lần trước.' : 'không mục nào thay đổi so với lần trước.'),
+          list('Đã sửa', ch.changed), list('Mới', ch.added), list('Đã bỏ', ch.removed)));
+      }
+      if (!review) return;
+      const general = noteBox('Chung', 'Góp ý chung cho cả tài liệu…');
+      main.append(el('article', { class: CARD }, el('h2', { class: 'text-[18px] leading-[1.35] font-bold', text: 'Góp ý chung' }), general.ta));
+      const draft = store.get();
+      if (draft) {
+        for (const n of notes) if (draft[n.key]) { n.ta.value = draft[n.key]; n.ta.hidden = false; fit(n.ta); }
+      }
+      update();
+      if (draft) say('', 'Đã khôi phục góp ý đã lưu.');
+    };
+
+    if (review) {
+      const text = (decision) => ['Quyết định: ' + decision, ...filled().map((n) => '[§ ' + n.key + '] ' + n.ta.value.trim())].join('\n');
+      const approveBtn = el('button', { type: 'button', class: btnCls() + ' btn-success', onclick: () => deliver('Duyệt') }, sendMode ? 'Duyệt' : 'Copy: Duyệt');
+      const changeBtn = el('button', { type: 'button', class: btnCls('primary'), onclick: () => deliver('Sửa') }, sendMode ? 'Gửi góp ý' : 'Copy góp ý', el('kbd', { class: 'kbd kbd-xs', text: KEY_HINT }));
+      const deliver = async (decision) => {
+        if (approveBtn.disabled) return;
+        if (decision === 'Sửa' && !filled().length) {
+          say('warn', 'Chưa có góp ý: bấm "Góp ý" ở mục cần sửa, hoặc ghi vào Góp ý chung cuối trang.');
+          return;
+        }
+        const t = text(decision);
+        if (sendMode) {
+          approveBtn.disabled = changeBtn.disabled = true;
+          try {
+            await postText(t);
+            store.set(null);
+            say('ok', (decision === 'Duyệt' ? 'Đã gửi: Duyệt.' : 'Đã gửi ' + filled().length + ' góp ý cho Claude.') + ' Có thể đóng tab này.');
+            return;
+          } catch (e) { approveBtn.disabled = changeBtn.disabled = false; }
+        }
+        const copied = await copyText(t);
+        say(copied && !sendMode ? 'ok' : 'warn', (sendMode ? 'Không gửi được (Claude không còn chờ trang này). ' : '')
+          + (copied ? 'Đã copy: dán vào terminal của Claude.' : 'Không copy tự động được: chọn đoạn bên dưới, copy rồi dán vào terminal của Claude.'));
+      };
+      document.body.append(el('aside', { class: 'toast toast-end z-10 items-end', 'aria-label': 'Duyệt tài liệu' }, fabMsg, out,
+        el('div', { class: 'flex items-center gap-1.5 bg-base-100 border border-base-300 rounded-box py-1 pr-1 pl-3 shadow-lg' }, count, approveBtn, changeBtn)));
+      document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); deliver('Sửa'); } });
+    }
+
+    loadScript('https://cdnjs.cloudflare.com/ajax/libs/marked/15.0.12/marked.min.js').then(() => render(window.marked)).catch(() => {
+      main.append(el('article', { class: CARD },
+        el('p', { class: CALLOUT, text: 'Không dựng được trang từ Markdown (mất mạng?); bên dưới là nội dung gốc.' }),
+        el('pre', { class: 'm-0 whitespace-pre-wrap wrap-anywhere font-mono text-[12.5px]', text: doc.md })));
+    }).then(finish);
+  };
+
+  if (D && D.doc) {
+    docPage(D.doc);
+    return;
+  }
   if (!D || !D.questions || !D.questions.length) {
     main.append(el('article', { class: CARD }, el('p', { text: 'File này là mẫu, chưa có câu hỏi. Tạo trang câu hỏi bằng render-interview.mjs.' })));
     return;
@@ -353,11 +574,6 @@
   $('#topic').textContent = D.topic || 'Phỏng vấn thiết kế';
   const navLinks = Q.map((q) => el('a', { href: '#card-' + q.id, class: 'btn btn-xs btn-primary btn-outline font-mono font-medium' }));
   $('#qnav').append(...navLinks);
-
-  const fit = (ta) => {
-    ta.style.height = 'auto';
-    if (ta.value && ta.offsetParent) ta.style.height = ta.scrollHeight + 2 + 'px';
-  };
 
   // One card per question: what to read first, the answer strip last. The card's DOM is the answer state.
   const questionCard = (q) => {
@@ -388,9 +604,16 @@
         (o.cons || []).map((c) => el('li', { class: PC + " before:content-['–'] before:text-[var(--color-error)]" }, inline(c)))) : null,
     ]);
     const used = [0, 1, 2, 3, 4, 5].filter((s) => parts.some((p) => p[s]));
+    // A click on the card picks the option like its button in the answer strip, unless it lands on a control or ends a text selection.
     const optCard = (o, i) => {
-      const box = el('div', { class: 'card border px-3 py-2.5 grid grid-rows-subgrid min-w-0 transition-[border-color,background-color] duration-150 motion-reduce:transition-none data-[chosen=true]:bg-tint data-[chosen=true]:border-[var(--color-primary)] data-[chosen=true]:[box-shadow:inset_0_0_0_1px_var(--color-primary)] '
-        + (o.recommended ? 'border-primary' : 'border-base-300'), style: 'grid-row: span ' + used.length },
+      const box = el('div', { class: 'card border px-3 py-2.5 grid grid-rows-subgrid min-w-0 cursor-pointer transition-[border-color,background-color] duration-150 motion-reduce:transition-none hover:border-[var(--color-primary)] data-[chosen=true]:bg-tint data-[chosen=true]:border-[var(--color-primary)] data-[chosen=true]:[box-shadow:inset_0_0_0_1px_var(--color-primary)] '
+        + (o.recommended ? 'border-primary' : 'border-base-300'), style: 'grid-row: span ' + used.length,
+        onclick: (e) => {
+          if (e.target.closest('a, button, input, textarea, iframe') || String(getSelection())) return;
+          const input = inputs.find((x) => x.value === o.id);
+          input.checked = multi ? !input.checked : true;
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        } },
         used.map((s) => parts[i][s] || el('div')));
       optCards.set(o.id, box);
       return box;
@@ -495,25 +718,10 @@
     };
   };
 
-  // Served by render-interview.mjs --serve, the page sends the answers to Claude itself; opened as a file, it copies them for pasting.
-  const sendMode = !!D.send;
   const fabCount = el('span', { class: 'font-mono text-[12px] text-muted whitespace-nowrap' });
-  const fabMsg = el('p', { class: 'alert alert-soft block max-w-[24rem] text-[13px] leading-normal px-2.5 py-1.5 shadow-lg empty:hidden', role: 'status' });
-  const out = el('textarea', { id: 'out', class: TEXTAREA + ' w-[min(26rem,calc(100vw-32px))] font-mono text-[12px] max-h-[40vh] bg-base-200', readonly: true, hidden: true, 'aria-label': 'Câu trả lời để dán vào Claude' });
-  const say = (kind, ...parts) => {
-    fabMsg.dataset.kind = kind || '';
-    fabMsg.classList.toggle('alert-success', kind === 'ok');
-    fabMsg.classList.toggle('alert-warning', kind === 'warn');
-    fabMsg.replaceChildren(...parts);
-  };
   let cards = [];
 
-  // Draft: answers are kept in this browser per page file, so a reload or a closed tab loses nothing.
-  const KEY = 'interview-draft:' + location.pathname;
-  const store = {
-    get: () => { try { return JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { return null; } },
-    set: (v) => { try { if (v) localStorage.setItem(KEY, JSON.stringify(v)); else localStorage.removeItem(KEY); } catch (e) { /* storage blocked */ } },
-  };
+  const store = storage('interview-draft:' + location.pathname);
   const save = () => store.set(Object.fromEntries(cards.map((c) => [c.q.id, c.get()])));
 
   const acceptBtn = el('button', { type: 'button', class: btnCls(), title: 'Chọn phương án Claude đề xuất cho các câu chưa chọn', onclick: () => {
@@ -555,15 +763,6 @@
     }
     return cards.map((c) => c.text()).join('\n\n');
   };
-  const copyText = async (text) => {
-    out.value = text;
-    let ok = false;
-    // writeText can wait forever for a permission the browser never asks for, so it gets two seconds.
-    try { await Promise.race([navigator.clipboard.writeText(text), new Promise((_, no) => setTimeout(() => no(new Error('timeout')), 2000))]); ok = true; }
-    catch (e) { out.hidden = false; out.focus(); out.select(); try { ok = document.execCommand('copy'); } catch (e2) { ok = false; } }
-    out.hidden = ok;
-    return ok;
-  };
   const copyAll = async () => {
     const text = collect();
     if (text == null) return;
@@ -579,8 +778,7 @@
     if (text == null) return;
     sendBtn.disabled = true;
     try {
-      const r = await fetch(D.send, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
-      if (!r.ok) throw new Error('HTTP ' + r.status);
+      await postText(text);
       store.set(null);
       sendBtn.textContent = 'Đã gửi';
       say('ok', 'Đã gửi cho Claude. Có thể đóng tab này.');
