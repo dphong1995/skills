@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="vi" class="scroll-pt-14">
+<html lang="vi" class="bg-page scroll-pt-14">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -9,57 +9,53 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css" media="(prefers-color-scheme: light)">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" media="(prefers-color-scheme: dark)">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.7.47/daisyui.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.3"></script>
 <style>
 /* Layout: sticky bar with the topic and a jump link per question; settled decisions fold at the top; one card per question with everything to read first (why, context, options side by side, recommendation) and a compact answer strip last; a small floating bar picks the recommendations and sends or copies every answer at once.
-   Styling is Tailwind utilities on the elements; these are the color tokens they use, light and dark. */
+   Parts are daisyUI components (navbar, card, badge, alert, table, collapse, btn, textarea, modal, toast, kbd) placed with Tailwind utilities. The theme is the page's own colors, light and dark following the system; muted text, the page background, the chosen-option tint and the code line tints have no daisyUI name and are tokens of their own. */
 :root {
-  --bg: #f3f5f8;
-  --surface: #ffffff;
-  --sunken: #edf0f5;
-  --ink: #172031;
+  --color-base-100: #ffffff;
+  --color-base-200: #edf0f5;
+  --color-base-300: #d8dee8;
+  --color-base-content: #172031;
+  --color-primary: #2b4fbf;
+  --color-primary-content: #ffffff;
+  --color-info: #2b4fbf;
+  --color-info-content: #ffffff;
+  --color-success: #1d7348;
+  --color-success-content: #ffffff;
+  --color-warning: #845400;
+  --color-warning-content: #ffffff;
+  --color-error: #a93838;
+  --color-error-content: #ffffff;
+  --page: #f3f5f8;
   --muted: #5b6678;
-  --line: #d8dee8;
-  --accent: #2b4fbf;
-  --accent-ink: #ffffff;
-  --accent-soft: #e7ecfa;
-  --pro: #1d7348;
-  --con: #a93838;
-  --note: #845400;
-  --note-soft: #fbf2df;
+  --tint: #e7ecfa;
   --mark: rgb(255 200 0 / .22);
   --add: rgb(26 127 55 / .14);
   --del: rgb(207 34 46 / .12);
-  --shadow: 0 6px 20px rgb(23 32 49 / .18);
   --font-body: "Be Vietnam Pro", "Segoe UI", system-ui, -apple-system, sans-serif;
   --font-code: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0e131b; --surface: #151c27; --sunken: #1b2330; --ink: #e5eaf2; --muted: #9ba7b9; --line: #2a3445;
-    --accent: #93aaff; --accent-ink: #0e131b; --accent-soft: #1c2747; --pro: #74d3a0; --con: #f08d8d;
-    --note: #e8bb5f; --note-soft: #2a2213; --mark: rgb(255 200 0 / .14); --add: rgb(46 160 67 / .2); --del: rgb(248 81 73 / .18);
-    --shadow: 0 6px 20px rgb(0 0 0 / .5); color-scheme: dark;
+    --color-base-100: #151c27; --color-base-200: #1b2330; --color-base-300: #2a3445; --color-base-content: #e5eaf2;
+    --color-primary: #93aaff; --color-primary-content: #0e131b; --color-info: #93aaff; --color-info-content: #0e131b;
+    --color-success: #74d3a0; --color-success-content: #0e131b; --color-warning: #e8bb5f; --color-warning-content: #0e131b;
+    --color-error: #f08d8d; --color-error-content: #0e131b;
+    --page: #0e131b; --muted: #9ba7b9; --tint: #1c2747; --mark: rgb(255 200 0 / .14); --add: rgb(46 160 67 / .2); --del: rgb(248 81 73 / .18);
+    color-scheme: dark;
   }
 }
 </style>
 <style type="text/tailwindcss">
 @theme inline {
-  --color-page: var(--bg);
-  --color-surface: var(--surface);
-  --color-sunken: var(--sunken);
-  --color-ink: var(--ink);
+  --color-page: var(--page);
   --color-muted: var(--muted);
-  --color-line: var(--line);
-  --color-accent: var(--accent);
-  --color-accent-ink: var(--accent-ink);
-  --color-accent-soft: var(--accent-soft);
-  --color-pro: var(--pro);
-  --color-con: var(--con);
-  --color-note: var(--note);
-  --color-note-soft: var(--note-soft);
+  --color-tint: var(--tint);
   --color-mark: var(--mark);
   --color-add: var(--add);
   --color-del: var(--del);
@@ -68,9 +64,9 @@
 }
 </style>
 </head>
-<body class="bg-page text-ink font-sans text-[14px] leading-normal">
-<header class="sticky top-0 z-5 bg-surface border-b border-line">
-  <div class="max-w-[1312px] mx-auto px-4 py-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+<body class="bg-page text-base-content font-sans text-[14px] leading-normal">
+<header class="sticky top-0 z-5 bg-base-100 border-b border-base-300">
+  <div class="navbar min-h-0 max-w-[1312px] mx-auto px-4 py-2 flex-wrap justify-between gap-x-3 gap-y-1.5">
     <h1 class="text-[15px] font-semibold leading-[1.35] min-w-0" id="topic">Phỏng vấn thiết kế</h1>
     <nav class="flex flex-wrap gap-1" id="qnav" aria-label="Các câu hỏi"></nav>
   </div>
@@ -95,20 +91,21 @@
   };
   const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-  // Class sets used in more than one place.
-  const FOCUS = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent';
-  const CODE = 'font-mono text-[.86em] bg-sunken rounded px-[.3em] py-[.05em] wrap-anywhere';
-  const FIG = 'm-0 min-w-0 overflow-hidden border border-line rounded-lg';
-  const CAPTION = 'flex items-center justify-between gap-2 min-h-7 py-0.5 pr-1 pl-2.5 border-b border-line font-mono text-[11px] text-muted';
+  // Class sets used in more than one place. daisyUI's color classes take no Tailwind variant, so a variant reads the color variable instead.
+  const FOCUS = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]';
+  const CODE = 'font-mono text-[.86em] bg-base-200 rounded px-[.3em] py-[.05em] wrap-anywhere';
+  // daisyUI centers a figure inside a card as a flex box, so each figure sets its own display.
+  const FIG = 'm-0 min-w-0 overflow-hidden border border-base-300 rounded-box';
+  const CAPTION = 'flex items-center justify-between gap-2 min-h-7 py-0.5 pr-1 pl-2.5 border-b border-base-300 font-mono text-[11px] text-muted';
   const CAP_TEXT = 'min-w-0 wrap-anywhere';
-  const CALLOUT = 'm-0 bg-note-soft rounded-lg px-3 py-1.5';
-  const LIST = 'm-0 pl-[1.3em] grid gap-0.5 max-w-[90ch]';
+  // daisyUI lays an alert's children out as columns; `block` keeps its text flowing as one paragraph.
+  const CALLOUT = 'alert alert-soft alert-warning block text-base-content text-[14px] leading-normal px-3 py-1.5';
+  const LIST = 'm-0 pl-[1.3em] grid gap-0.5';
   const PC = 'pl-[1.1em] -indent-[1.1em] before:inline-block before:w-[1.1em] before:indent-0 before:font-bold';
-  const TEXTAREA = 'w-full resize-y text-[13px] text-ink bg-page border border-line rounded-lg px-2.5 py-[5px] focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent';
-  const btnCls = (kind, small) => ['font-sans font-semibold rounded-full border cursor-pointer disabled:opacity-60 disabled:cursor-default', FOCUS,
-    small ? 'text-[12px] px-2.5 py-px' : 'text-[13px] px-3.5 py-1.5',
-    kind === 'primary' ? 'border-transparent bg-accent text-accent-ink'
-      : kind === 'file' ? 'border-line bg-surface text-accent whitespace-nowrap' : 'border-line bg-sunken text-ink'].join(' ');
+  const TEXTAREA = 'textarea w-full min-h-0 resize-y text-[13px] leading-normal px-2.5 py-[5px]';
+  const btnCls = (kind, small) => ['btn', small ? 'btn-xs' : 'btn-sm',
+    kind === 'primary' ? 'btn-primary' : kind === 'file' ? 'btn-soft btn-primary whitespace-nowrap' : ''].join(' ');
+  const KEY_HINT = /Mac|iP/.test(navigator.platform) ? '⌘ Enter' : 'Ctrl Enter';
 
   // Inline `code` and **bold** only; everything else is plain text. A `path:N-M` the render script found on disk opens in the file viewer.
   const PATH = /^(.+?)(?::(\d+)(?:-(\d+))?)?$/;
@@ -121,7 +118,7 @@
         const m = PATH.exec(t);
         const abs = D && D.paths && D.paths[m[1]];
         frag.append(abs
-          ? el('a', { href: '#', class: CODE + ' text-accent underline decoration-dotted underline-offset-2 hover:decoration-solid', title: 'Xem file',
+          ? el('a', { href: '#', class: CODE + ' link link-primary decoration-dotted underline-offset-2 hover:decoration-solid', title: 'Xem file',
             onclick: (e) => { e.preventDefault(); openFile(abs, extLang(abs), m[2] ? [+m[2], +(m[3] || m[2])] : null); } }, t)
           : el('code', { class: CODE, text: t }));
       }
@@ -130,11 +127,13 @@
     });
     return frag;
   };
+  // The same text without the markup, for a label drawn by CSS.
+  const plain = (text) => String(text ?? '').replace(/`|\*\*/g, '');
 
   // Code: highlight.js from the CDN (plain text when it did not load), one block per line so lines can be numbered and tinted.
   const LH = 19, PAD = 8;
   const AUTO = ['typescript', 'javascript', 'json', 'sql', 'bash', 'python', 'css', 'scss', 'xml', 'yaml'];
-  const TINT = { mark: 'bg-mark', add: 'bg-add', del: 'bg-del', pad: 'bg-[repeating-linear-gradient(135deg,transparent_0_5px,var(--line)_5px_6px)]' };
+  const TINT = { mark: 'bg-mark', add: 'bg-add', del: 'bg-del', pad: 'bg-[repeating-linear-gradient(135deg,transparent_0_5px,var(--color-base-300)_5px_6px)]' };
   const highlight = (text, lang) => {
     const h = window.hljs;
     if (!h) return null;
@@ -169,21 +168,22 @@
     src.innerHTML = '<code class="block">' + lines.map((l, i) => row(l, i, 'px-2.5')).join('') + '</code>';
     let gutter = null;
     if (nums) {
-      gutter = el('pre', { class: PRE + ' flex-none sticky left-0 z-1 text-right text-muted bg-sunken border-r border-line select-none', 'aria-hidden': 'true' });
+      gutter = el('pre', { class: PRE + ' flex-none sticky left-0 z-1 text-right text-muted bg-base-200 border-r border-base-300 select-none', 'aria-hidden': 'true' });
       gutter.innerHTML = nums.map((n, i) => row(n == null ? '' : String(n), i, 'px-2')).join('');
     }
     return el('div', { class: 'flex items-start overflow-x-auto' }, gutter, src);
   };
   const extLang = (file) => (/\.([\w-]+)$/.exec(file || '') || [])[1];
 
-  // One dialog shows a whole file, an image or a mockup at full size.
+  // One modal shows a whole file, an image or a mockup at full size; Esc, the backdrop or Đóng closes it.
   const viewerTitle = el('span', { class: 'flex-1 min-w-0 font-mono text-[12px] wrap-anywhere' });
   const viewerBody = el('div', { class: 'grid min-h-0' });
-  const viewer = el('dialog', { class: 'm-auto w-[min(1400px,calc(100vw-32px))] h-[calc(100vh-48px)] max-w-none max-h-none p-0 border border-line rounded-xl bg-sunken text-ink [box-shadow:var(--shadow)] overflow-hidden backdrop:bg-black/45 open:grid open:grid-rows-[auto_minmax(0,1fr)]',
-    onclick: (e) => { if (e.target === viewer) viewer.close(); } },
-    el('div', { class: 'flex items-center gap-3 py-1.5 pr-1.5 pl-3.5 bg-surface border-b border-line' }, viewerTitle,
-      el('button', { type: 'button', class: btnCls('ghost'), onclick: () => viewer.close() }, 'Đóng (Esc)')),
-    viewerBody);
+  const viewer = el('dialog', { class: 'modal' },
+    el('div', { class: 'modal-box p-0 w-[min(1400px,calc(100vw-32px))] max-w-none h-[calc(100vh-48px)] max-h-none bg-base-200 border border-base-300 grid grid-rows-[auto_minmax(0,1fr)] overflow-hidden' },
+      el('div', { class: 'flex items-center gap-3 py-1.5 pr-1.5 pl-3.5 bg-base-100 border-b border-base-300' }, viewerTitle,
+        el('form', { method: 'dialog' }, el('button', { class: btnCls() }, 'Đóng', el('kbd', { class: 'kbd kbd-xs', text: 'Esc' })))),
+      viewerBody),
+    el('form', { method: 'dialog', class: 'modal-backdrop' }, el('button', { text: 'Đóng' })));
   document.body.append(viewer);
   const showInViewer = (title, node) => {
     viewerTitle.textContent = title;
@@ -206,7 +206,7 @@
     const lang = b.lang || extLang(b.file);
     const btn = fileButton(b, lang);
     const lines = hlLines(b.text || '', lang);
-    return el('figure', { class: FIG + ' bg-sunken' },
+    return el('figure', { class: FIG + ' block bg-base-200' },
       b.label || btn ? el('figcaption', { class: CAPTION }, el('span', { class: CAP_TEXT, text: b.label || '' }), btn) : null,
       linesView(lines, b.lines ? lines.map((_, i) => b.lines[0] + i) : null, null));
   };
@@ -243,13 +243,13 @@
       const lang = s.lang || b.lang || extLang(s.file);
       const hl = hlLines(texts[k], lang);
       const key = k ? 'b' : 'a';
-      return el('div', { class: 'min-w-0' + (k ? ' border-l border-line max-[720px]:border-l-0 max-[720px]:border-t' : '') },
+      return el('div', { class: 'min-w-0' + (k ? ' border-l border-base-300 max-[720px]:border-l-0 max-[720px]:border-t' : '') },
         el('div', { class: CAPTION }, el('span', { class: CAP_TEXT, text: (k ? 'Sau' : 'Trước') + (s.label ? ' · ' + s.label : '') }), fileButton(s, lang)),
         linesView(rows.map((r) => (r[key] == null ? '' : hl[r[key]])),
           s.lines ? rows.map((r) => (r[key] == null ? null : s.lines[0] + r[key])) : null,
           rows.map((r) => (r[key] == null ? 'pad' : r.same ? null : k ? 'add' : 'del'))));
     });
-    return el('figure', { class: FIG + ' bg-sunken' }, b.label ? el('figcaption', { class: CAPTION }, el('span', { class: CAP_TEXT, text: b.label })) : null,
+    return el('figure', { class: FIG + ' block bg-base-200' }, b.label ? el('figcaption', { class: CAPTION }, el('span', { class: CAP_TEXT, text: b.label })) : null,
       el('div', { class: 'grid grid-cols-2 max-[720px]:grid-cols-1' }, cols));
   };
 
@@ -279,14 +279,14 @@
         if (left) left.remove();
         body.prepend(el('p', { class: CALLOUT + ' mb-2', text: 'Không vẽ được sơ đồ (mất mạng hoặc sai cú pháp Mermaid); bên dưới là mã nguồn.' }));
       });
-    return el('figure', { class: FIG + ' bg-surface' }, b.label ? el('figcaption', { class: CAPTION }, el('span', { class: CAP_TEXT, text: b.label })) : null, body);
+    return el('figure', { class: FIG + ' block bg-base-100' }, b.label ? el('figcaption', { class: CAPTION }, el('span', { class: CAP_TEXT, text: b.label })) : null, body);
   };
 
   const imgBlock = (b) => {
     const title = b.label || b.file || 'Ảnh';
     const alt = b.alt || b.label || '';
     const open = () => showInViewer(title, el('div', { class: 'overflow-auto min-h-0 p-4' }, el('img', { src: b.src, alt, class: 'max-w-none mx-auto' })));
-    return el('figure', { class: FIG + ' bg-surface' },
+    return el('figure', { class: FIG + ' block bg-base-100' },
       el('figcaption', { class: CAPTION }, el('span', { class: CAP_TEXT, text: title }), zoomButton(open)),
       el('div', { class: 'p-2.5' }, el('img', { src: b.src, alt, class: 'block mx-auto max-w-full max-h-[480px] w-auto h-auto object-contain cursor-zoom-in', onclick: open })));
   };
@@ -310,7 +310,7 @@
   const mockBlock = (html, label) => {
     const title = label || 'Bản phác';
     // White below the frame too, so a mockup in a taller option row reads as one box.
-    return el('figure', { class: FIG + ' bg-surface flex flex-col' },
+    return el('figure', { class: FIG + ' bg-base-100 flex flex-col items-stretch justify-start' },
       el('figcaption', { class: CAPTION }, el('span', { class: CAP_TEXT, text: title }),
         zoomButton(() => showInViewer(title, el('div', { class: 'overflow-auto min-h-0 p-4' }, mockFrame(html))))),
       el('div', { class: 'flex-1 bg-white' }, mockFrame(html)));
@@ -318,26 +318,23 @@
 
   const block = (b) => {
     switch (b && b.t) {
-      case 'p': return el('p', { class: 'whitespace-pre-line max-w-[90ch]' }, inline(b.text));
+      case 'p': return el('p', { class: 'whitespace-pre-line' }, inline(b.text));
       case 'list': return el(b.ordered ? 'ol' : 'ul', { class: LIST + (b.ordered ? ' list-decimal' : ' list-disc') }, (b.items || []).map((i) => el('li', {}, inline(i))));
       case 'code': return codeBlock(b);
       case 'diff': return diffBlock(b);
       case 'mermaid': return mermaidBlock(b);
       case 'img': return b.src ? imgBlock(b) : null;
       case 'mockup': return mockBlock(b.html || '', b.label);
-      case 'table': {
-        const rows = b.rows || [];
-        const cell = 'text-left align-top px-2.5 py-[5px] border-line';
-        return el('div', { class: 'overflow-x-auto border border-line rounded-lg' }, el('table', { class: 'border-collapse w-full text-[13px]' },
-          el('thead', {}, el('tr', {}, (b.head || []).map((h) => el('th', { class: cell + ' border-b bg-sunken font-semibold' }, inline(h))))),
-          el('tbody', {}, rows.map((r, k) => el('tr', {}, r.map((c) => el('td', { class: cell + (k < rows.length - 1 ? ' border-b' : '') }, inline(c))))))));
-      }
-      case 'note': return el('p', { class: CALLOUT + ' whitespace-pre-line max-w-[90ch]' },el('strong', { class: 'text-note', text: 'Lưu ý: ' }), inline(b.text));
-      default: return b && b.text ? el('p', { class: 'whitespace-pre-line max-w-[90ch]' }, inline(b.text)) : null;
+      case 'table': return el('div', { class: 'overflow-x-auto border border-base-300 rounded-box' },
+        el('table', { class: 'table table-sm text-[13px] [&_thead]:whitespace-normal [&_th]:align-top [&_td]:align-top' },
+          el('thead', {}, el('tr', { class: 'bg-base-200' }, (b.head || []).map((h) => el('th', { class: 'text-base-content' }, inline(h))))),
+          el('tbody', {}, (b.rows || []).map((r) => el('tr', {}, r.map((c) => el('td', {}, inline(c))))))));
+      case 'note': return el('div', { class: CALLOUT + ' whitespace-pre-line' }, el('strong', { class: 'text-warning', text: 'Lưu ý: ' }), inline(b.text));
+      default: return b && b.text ? el('p', { class: 'whitespace-pre-line' }, inline(b.text)) : null;
     }
   };
 
-  const CARD = 'bg-surface border border-line rounded-xl px-[18px] py-4 max-[520px]:px-3 max-[520px]:py-3.5 grid gap-3 min-w-0 transition-[border-color,box-shadow] duration-200 motion-reduce:transition-none [&.attention]:border-note [&.attention]:[box-shadow:0_0_0_3px_var(--note-soft)]';
+  const CARD = 'card card-border border-base-300 bg-base-100 px-[18px] py-4 max-[520px]:px-3 max-[520px]:py-3.5 grid gap-3 min-w-0 transition-[border-color,box-shadow] duration-200 motion-reduce:transition-none [&.attention]:border-[var(--color-warning)] [&.attention]:[box-shadow:0_0_0_3px_color-mix(in_oklab,var(--color-warning)_22%,transparent)]';
   const main = $('#main');
   if (!D || !D.questions || !D.questions.length) {
     main.append(el('article', { class: CARD }, el('p', { text: 'File này là mẫu, chưa có câu hỏi. Tạo trang câu hỏi bằng render-interview.mjs.' })));
@@ -354,8 +351,7 @@
 
   document.title = range + ' · ' + (D.topic || 'Phỏng vấn thiết kế');
   $('#topic').textContent = D.topic || 'Phỏng vấn thiết kế';
-  const navLinks = Q.map((q) => el('a', { href: '#card-' + q.id,
-    class: 'font-mono text-[12px] px-2.5 py-px rounded-full border border-accent text-accent whitespace-nowrap data-[done=true]:bg-accent data-[done=true]:text-accent-ink ' + FOCUS }));
+  const navLinks = Q.map((q) => el('a', { href: '#card-' + q.id, class: 'btn btn-xs btn-primary btn-outline font-mono font-medium' }));
   $('#qnav').append(...navLinks);
 
   const fit = (ta) => {
@@ -368,7 +364,7 @@
     const multi = !!q.multi;
     const own = q.options || [];
     const options = [...own, OTHER, EXPLAIN];
-    const state = el('span', { class: 'ml-auto rounded-full px-2 bg-sunken text-muted normal-case tracking-normal data-[done=true]:text-pro' });
+    const state = el('span', { class: 'badge badge-sm ml-auto normal-case tracking-normal' });
     const inputs = [];
     const optCards = new Map();
     const otherBox = el('textarea', { id: q.id + '-other', rows: '1', hidden: true, class: TEXTAREA + ' flex-[1_1_18rem]', placeholder: 'Phương án của bạn…', 'aria-label': 'Phương án tự nhập' });
@@ -379,30 +375,34 @@
     // Option cards sit side by side and share rows (subgrid), so each part lines up across options.
     const parts = own.map((o, i) => [
       el('div', { class: 'flex flex-wrap items-baseline gap-x-2 gap-y-0.5' },
-        el('span', { class: 'font-mono font-semibold text-accent', text: keyOf(i) + '.' }),
+        el('span', { class: 'font-mono font-semibold text-primary', text: keyOf(i) + '.' }),
         el('span', { class: 'font-semibold' }, inline(o.label)),
-        o.recommended ? el('span', { class: 'font-mono text-[10px] tracking-[.06em] uppercase bg-accent text-accent-ink rounded-full px-1.5', text: 'Đề xuất' }) : null,
+        o.recommended ? el('span', { class: 'badge badge-xs badge-primary font-mono tracking-[.06em] uppercase', text: 'Đề xuất' }) : null,
         o.effort ? el('span', { class: 'ml-auto text-[12px] text-muted' }, 'Công sức: ', inline(o.effort)) : null),
       o.means ? el('p', {}, inline(o.means)) : null,
       o.mockup ? mockBlock(o.mockup) : null,
       o.code ? codeBlock(o.code) : null,
-      o.example ? el('p', { class: 'text-[13px] bg-sunken rounded-md px-2 py-1 whitespace-pre-line' }, el('strong', { text: 'Ví dụ: ' }), inline(o.example)) : null,
+      o.example ? el('p', { class: 'text-[13px] bg-base-200 rounded-md px-2 py-1 whitespace-pre-line' }, el('strong', { text: 'Ví dụ: ' }), inline(o.example)) : null,
       (o.pros && o.pros.length) || (o.cons && o.cons.length) ? el('ul', { class: 'grid gap-px content-start text-[13px]' },
-        (o.pros || []).map((p) => el('li', { class: PC + " before:content-['+'] before:text-pro" }, inline(p))),
-        (o.cons || []).map((c) => el('li', { class: PC + " before:content-['–'] before:text-con" }, inline(c)))) : null,
+        (o.pros || []).map((p) => el('li', { class: PC + " before:content-['+'] before:text-[var(--color-success)]" }, inline(p))),
+        (o.cons || []).map((c) => el('li', { class: PC + " before:content-['–'] before:text-[var(--color-error)]" }, inline(c)))) : null,
     ]);
     const used = [0, 1, 2, 3, 4, 5].filter((s) => parts.some((p) => p[s]));
     const optCard = (o, i) => {
-      const box = el('div', { class: 'border rounded-[10px] px-3 py-2.5 grid grid-rows-subgrid min-w-0 transition-[border-color,background-color] duration-150 motion-reduce:transition-none data-[chosen=true]:bg-accent-soft data-[chosen=true]:border-accent data-[chosen=true]:[box-shadow:inset_0_0_0_1px_var(--accent)] '
-        + (o.recommended ? 'border-accent' : 'border-line'), style: 'grid-row: span ' + used.length },
+      const box = el('div', { class: 'card border px-3 py-2.5 grid grid-rows-subgrid min-w-0 transition-[border-color,background-color] duration-150 motion-reduce:transition-none data-[chosen=true]:bg-tint data-[chosen=true]:border-[var(--color-primary)] data-[chosen=true]:[box-shadow:inset_0_0_0_1px_var(--color-primary)] '
+        + (o.recommended ? 'border-primary' : 'border-base-300'), style: 'grid-row: span ' + used.length },
         used.map((s) => parts[i][s] || el('div')));
       optCards.set(o.id, box);
       return box;
     };
 
+    // Each choice is a daisyUI button that is itself the radio (or checkbox); its label is drawn from aria-label.
     const choice = (o, i) => {
       const builtin = o === OTHER || o === EXPLAIN;
-      const input = el('input', { type: multi ? 'checkbox' : 'radio', name: 'choice-' + q.id, id: q.id + '-opt-' + o.id, value: o.id, class: 'm-0 size-[15px] accent-accent' });
+      const input = el('input', { type: multi ? 'checkbox' : 'radio', name: 'choice-' + q.id, id: q.id + '-opt-' + o.id, value: o.id,
+        'aria-label': (builtin ? '' : keyOf(i) + '. ') + plain(o.label) + (o.recommended ? ' ★' : ''),
+        title: builtin ? o.means : o.recommended ? 'Claude đề xuất' : null,
+        class: 'btn btn-sm font-medium checked:font-semibold' + (builtin ? ' btn-dash checked:bg-tint checked:text-[var(--color-primary)] checked:border-[var(--color-primary)]' : '') });
       inputs.push(input);
       input.addEventListener('change', () => {
         if (multi && input.checked) {
@@ -412,35 +412,31 @@
         if (input.checked && o === OTHER) otherBox.focus();
         if (input.checked && o === EXPLAIN) note.focus();
       });
-      return el('label', { class: 'inline-flex items-center gap-1.5 border border-line rounded-full py-[3px] pr-3 pl-2 text-[13px] cursor-pointer bg-surface transition-[border-color,background-color] duration-150 motion-reduce:transition-none hover:border-accent has-checked:border-accent has-checked:bg-accent-soft has-checked:font-semibold has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent'
-        + (builtin ? ' border-dashed' : ''), for: input.id, title: builtin ? o.means : null }, input,
-        builtin ? null : el('span', { class: 'font-mono font-semibold text-accent', text: keyOf(i) + '.' }),
-        el('span', {}, inline(o.label)),
-        o.recommended ? el('span', { class: 'text-accent', title: 'Claude đề xuất', text: '★' }) : null);
+      return input;
     };
 
     const recI = own.findIndex((o) => o.recommended);
     const hasUndo = q.reversible != null;
     const undoText = q.reversible ? 'Dễ đổi về sau' : 'Khó đổi về sau';
     const card = el('article', { class: CARD, id: 'card-' + q.id },
-      el('header', { class: 'grid gap-0.5' },
-        el('div', { class: 'flex flex-wrap items-center gap-1.5 font-mono text-[11px] tracking-[.06em] uppercase text-accent' },
-          el('span', { text: 'Câu ' + (q.n ?? '') }),
-          q.stage ? el('span', { class: 'text-muted border border-line rounded-full px-2', text: q.stage }) : null,
-          hasUndo ? el('span', { class: 'rounded-full px-2 normal-case tracking-normal ' + (q.reversible ? 'text-pro border border-current' : 'text-note bg-note-soft font-semibold'),
+      el('header', { class: 'grid gap-1' },
+        el('div', { class: 'flex flex-wrap items-center gap-1.5 font-mono tracking-[.06em] uppercase' },
+          el('span', { class: 'badge badge-sm badge-primary badge-outline', text: 'Câu ' + (q.n ?? '') }),
+          q.stage ? el('span', { class: 'badge badge-sm badge-ghost text-muted', text: q.stage }) : null,
+          hasUndo ? el('span', { class: 'badge badge-sm normal-case tracking-normal ' + (q.reversible ? 'badge-success badge-outline' : 'badge-warning badge-soft font-semibold'),
             title: q.reversibleWhy || null, text: undoText }) : null,
           state),
         el('h2', { class: 'text-[18px] leading-[1.35] font-bold text-balance' }, inline(q.title))),
-      q.why || (hasUndo && q.reversibleWhy) ? el('div', { class: 'bg-accent-soft rounded-lg px-3 py-1.5 grid gap-0.5 [&_strong]:text-accent' },
+      q.why || (hasUndo && q.reversibleWhy) ? el('div', { class: 'alert alert-soft alert-info block text-base-content text-[14px] leading-normal px-3 py-1.5 [&_strong]:text-[var(--color-info)]' },
         q.why ? el('p', {}, el('strong', { text: 'Vì sao cần chốt: ' }), inline(q.why)) : null,
         hasUndo && q.reversibleWhy ? el('p', {}, el('strong', { text: undoText + ': ' }), inline(q.reversibleWhy)) : null) : null,
       q.context && q.context.length ? el('div', { class: 'grid gap-2 min-w-0' }, q.context.map(block)) : null,
       own.length ? el('div', { class: 'grid gap-x-2 gap-y-1.5 grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))]'
         + (own.length === 4 ? ' max-[1060px]:grid-cols-[repeat(auto-fit,minmax(min(100%,22rem),1fr))]' : '') }, own.map(optCard)) : null,
-      q.recommendation ? el('p', { class: 'border-l-[3px] border-accent px-2.5 py-0.5' },
-        el('strong', { class: 'text-accent' }, 'Claude đề xuất', recI >= 0 ? [' ' + keyOf(recI) + '. ', inline(own[recI].label)] : null, ': '),
+      q.recommendation ? el('p', { class: 'border-l-[3px] border-primary px-2.5 py-0.5' },
+        el('strong', { class: 'text-primary' }, 'Claude đề xuất', recI >= 0 ? [' ' + keyOf(recI) + '. ', inline(own[recI].label)] : null, ': '),
         inline(q.recommendation)) : null,
-      el('div', { class: 'border-t border-dashed border-line pt-2.5 grid gap-2' },
+      el('div', { class: 'border-t border-dashed border-base-300 pt-2.5 grid gap-2' },
         el('div', { class: 'flex items-baseline gap-2' },
           el('span', { class: 'font-mono text-[11px] font-medium tracking-[.06em] uppercase text-muted', text: 'Trả lời' }),
           el('span', { class: 'text-[12px] text-muted', text: multi ? 'chọn một hoặc nhiều' : 'chọn một' })),
@@ -450,8 +446,10 @@
 
     function refresh() {
       const done = inputs.some((i) => i.checked);
-      state.dataset.done = String(done);
       state.textContent = done ? 'Đã chọn' : 'Chưa chọn';
+      state.classList.toggle('badge-success', done);
+      state.classList.toggle('badge-soft', done);
+      state.classList.toggle('badge-ghost', !done);
       for (const i of inputs) if (optCards.has(i.value)) optCards.get(i.value).dataset.chosen = String(i.checked);
       otherBox.hidden = !otherInput.checked;
       card.classList.remove('attention');
@@ -500,9 +498,14 @@
   // Served by render-interview.mjs --serve, the page sends the answers to Claude itself; opened as a file, it copies them for pasting.
   const sendMode = !!D.send;
   const fabCount = el('span', { class: 'font-mono text-[12px] text-muted whitespace-nowrap' });
-  const fabMsg = el('p', { class: 'max-w-[24rem] text-[13px] bg-surface border border-line rounded-lg px-2.5 py-1.5 [box-shadow:var(--shadow)] empty:hidden data-[kind=ok]:text-pro data-[kind=warn]:text-note', role: 'status' });
-  const out = el('textarea', { id: 'out', class: TEXTAREA + ' w-[min(26rem,calc(100vw-32px))] font-mono text-[12px] max-h-[40vh] bg-sunken', readonly: true, hidden: true, 'aria-label': 'Câu trả lời để dán vào Claude' });
-  const say = (kind, ...parts) => { fabMsg.dataset.kind = kind || ''; fabMsg.replaceChildren(...parts); };
+  const fabMsg = el('p', { class: 'alert alert-soft block max-w-[24rem] text-[13px] leading-normal px-2.5 py-1.5 shadow-lg empty:hidden', role: 'status' });
+  const out = el('textarea', { id: 'out', class: TEXTAREA + ' w-[min(26rem,calc(100vw-32px))] font-mono text-[12px] max-h-[40vh] bg-base-200', readonly: true, hidden: true, 'aria-label': 'Câu trả lời để dán vào Claude' });
+  const say = (kind, ...parts) => {
+    fabMsg.dataset.kind = kind || '';
+    fabMsg.classList.toggle('alert-success', kind === 'ok');
+    fabMsg.classList.toggle('alert-warning', kind === 'warn');
+    fabMsg.replaceChildren(...parts);
+  };
   let cards = [];
 
   // Draft: answers are kept in this browser per page file, so a reload or a closed tab loses nothing.
@@ -513,7 +516,7 @@
   };
   const save = () => store.set(Object.fromEntries(cards.map((c) => [c.q.id, c.get()])));
 
-  const acceptBtn = el('button', { type: 'button', class: btnCls('ghost'), title: 'Chọn phương án Claude đề xuất cho các câu chưa chọn', onclick: () => {
+  const acceptBtn = el('button', { type: 'button', class: btnCls(), title: 'Chọn phương án Claude đề xuất cho các câu chưa chọn', onclick: () => {
     const todo = cards.filter((c) => !c.done() && c.rec);
     for (const c of todo) c.pick(c.rec);
     save();
@@ -525,16 +528,16 @@
     acceptBtn.hidden = !cards.some((c) => !c.done() && c.rec);
     cards.forEach((c, k) => {
       const done = c.done();
-      navLinks[k].dataset.done = String(done);
+      navLinks[k].classList.toggle('btn-outline', !done);
       navLinks[k].textContent = 'Câu ' + (c.q.n ?? '') + (done ? ' ✓' : '');
     });
     say('');
   }
 
   if (D.decided && D.decided.length) {
-    main.append(el('details', { class: 'bg-surface border border-line rounded-[10px] text-[13px]' },
-      el('summary', { class: 'cursor-pointer px-3 py-1.5 font-semibold rounded-[10px] ' + FOCUS, text: 'Đã chốt trước đó (' + D.decided.length + ')' }),
-      el('ul', { class: 'm-0 pt-0 pr-3 pb-2 pl-[2em] grid gap-0.5 list-disc' }, D.decided.map((d) => el('li', {}, inline(d))))));
+    main.append(el('details', { class: 'collapse collapse-arrow bg-base-100 border border-base-300 text-[13px]' },
+      el('summary', { class: 'collapse-title min-h-0 py-1.5 ps-3 font-semibold ' + FOCUS, text: 'Đã chốt trước đó (' + D.decided.length + ')' }),
+      el('div', { class: 'collapse-content px-3 pb-2' }, el('ul', { class: 'm-0 pl-[2em] grid gap-0.5 list-disc' }, D.decided.map((d) => el('li', {}, inline(d)))))));
   }
   cards = Q.map(questionCard);
   for (const c of cards) main.append(c.card);
@@ -570,7 +573,7 @@
     }
     else say('warn', 'Không copy tự động được: chọn đoạn bên dưới, copy rồi dán vào terminal của Claude.');
   };
-  const sendBtn = el('button', { type: 'button', class: btnCls('primary'), title: 'Cmd/Ctrl+Enter', onclick: () => sendAll() }, 'Gửi câu trả lời');
+  const sendBtn = el('button', { type: 'button', class: btnCls('primary'), onclick: () => sendAll() }, 'Gửi câu trả lời', el('kbd', { class: 'kbd kbd-xs', text: KEY_HINT }));
   const sendAll = async () => {
     const text = collect();
     if (text == null) return;
@@ -590,17 +593,17 @@
   };
   const submit = () => (sendMode ? (sendBtn.disabled ? null : sendAll()) : copyAll());
 
-  document.body.append(el('aside', { class: 'fixed right-4 bottom-4 z-10 max-w-[calc(100vw-32px)] grid justify-items-end gap-1.5', 'aria-label': 'Gửi câu trả lời' }, fabMsg, out,
-    el('div', { class: 'flex items-center gap-1.5 bg-surface border border-line rounded-full py-1 pr-1 pl-3 [box-shadow:var(--shadow)]' }, fabCount, acceptBtn,
-      sendMode ? [el('button', { type: 'button', class: btnCls('ghost'), title: 'Copy để dán vào terminal', onclick: copyAll }, 'Copy'), sendBtn]
-        : el('button', { type: 'button', class: btnCls('primary'), title: 'Cmd/Ctrl+Enter', onclick: copyAll }, 'Copy câu trả lời'))));
+  document.body.append(el('aside', { class: 'toast toast-end z-10 items-end', 'aria-label': 'Gửi câu trả lời' }, fabMsg, out,
+    el('div', { class: 'flex items-center gap-1.5 bg-base-100 border border-base-300 rounded-box py-1 pr-1 pl-3 shadow-lg' }, fabCount, acceptBtn,
+      sendMode ? [el('button', { type: 'button', class: btnCls(), title: 'Copy để dán vào terminal', onclick: copyAll }, 'Copy'), sendBtn]
+        : el('button', { type: 'button', class: btnCls('primary'), onclick: copyAll }, 'Copy câu trả lời', el('kbd', { class: 'kbd kbd-xs', text: KEY_HINT })))));
   document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); } });
   updateFab();
 
   const draft = store.get();
   if (draft && cards.some((c) => { const s = draft[c.q.id]; return s && ((s.c || []).length || s.o || s.n); })) {
     for (const c of cards) if (draft[c.q.id]) c.set(draft[c.q.id]);
-    say('', 'Đã khôi phục câu trả lời đã lưu.', el('button', { type: 'button', class: btnCls('ghost', true) + ' ml-2', onclick: () => {
+    say('', 'Đã khôi phục câu trả lời đã lưu.', el('button', { type: 'button', class: btnCls('', true) + ' ml-2', onclick: () => {
       for (const c of cards) c.set(null);
       store.set(null);
       say('');
