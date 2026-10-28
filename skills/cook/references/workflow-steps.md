@@ -156,31 +156,30 @@ The task list MUST be kept in lock-step with reality after EVERY phase: `in_prog
 
 Report the test results and dispatch the Step 5 review fan-out in the same turn — do not stop for approval. Tests must be 100% green first; if they are not, fix them before proceeding.
 
-## Step 5: Combined Review — 3-agent fan-out (MANDATORY, single message)
+## Step 5: Combined Review — 2-agent fan-out (MANDATORY, single message)
 
-After phase implementation and testing, dispatch **three** fresh review sub-agents **in one message** so they run concurrently:
+After phase implementation and testing, dispatch **two** fresh review sub-agents **in one message** so they run concurrently:
 
 | # | Agent | Lens | Gating? |
 |---|-------|------|---------|
 | 1 | `code-reviewer` | Section A plan-compliance + Section B bugs by severity | **YES** |
-| 2 | `code-reviewer` | **Reuse** — does the diff re-implement something the codebase already has? | no |
-| 3 | `code-reviewer` | **Simplification + Efficiency + Altitude** — one agent, three lenses | no |
+| 2 | `code-reviewer` | **Reuse + Simplification + Efficiency + Altitude** — one agent, four lenses, Reuse first | no |
 
-Agents 2-3 run the four cleanup lenses of the `simplify` skill as review-only sub-agents. Use `code-reviewer` for all three: it is read-only (no Write/Edit), so no reviewer can violate the Step 3 gate. Fall back to `critic`, then `general-purpose`.
+Agent 2 runs the four cleanup lenses of the `simplify` skill as a review-only sub-agent. Use `code-reviewer` for both: it is read-only (no Write/Edit), so no reviewer can violate the Step 3 gate. Fall back to `critic`, then `general-purpose`.
 
-**Model:** dispatch all three with `model: "opus"` — this is the post-implementation verification pass.
+**Model:** dispatch both with `model: "opus"` — this is the post-implementation verification pass.
 
-**Why Reuse gets its own agent:** it is the only search-heavy lens — it must Grep the shared modules and read files *outside* the diff to learn what already exists (15-30 tool calls, vs ~5 for a diff-local lens). Bundled with the others, that search either crowds them out or gets skipped entirely, and Reuse findings are the highest-value ones: they **delete** code where the other lenses only reshape it.
+**Why the four cleanup lenses share one agent:** they work off the same working set — the changed files, the mechanism beneath them, and the shared modules they could have used — and their fixes subsume each other. Copied code is both a Reuse finding ("call the existing helper") and a Simplification finding ("this duplicates X"). The Altitude fix routinely absorbs a Simplification and an Efficiency finding: repair the shared mechanism and the special cases, the duplication and the redundant work all vanish together. One agent holding all four can report "these are one change"; isolated agents cannot, and the orchestrator — which sees only their summaries, not the code — collapses them badly.
 
-**Why the other three share one agent:** they work off the same working set — the changed files plus the mechanism beneath them — and their fixes subsume each other. The Altitude fix routinely absorbs a Simplification and an Efficiency finding: repair the shared mechanism and the special cases, the duplication and the redundant work all vanish together. Altitude is close to meaningless in isolation, since "is this fix deep enough?" requires naming the simpler general change, which is a Simplification judgment. One agent holding all three can report "these are one change at the mechanism level"; three isolated agents cannot, and the orchestrator — which sees only their summaries, not the code — collapses them badly.
+**Why Reuse no longer gets its own agent:** it was split out as the search-heavy lens, but on past cook runs the separate Simplification+Efficiency+Altitude agent made just as many tool calls (median 40 each) and read many of the same files, and about a third of the Reuse agent's findings came back as Simplification findings for the orchestrator to dedup. Reuse findings are still the highest-value ones — they **delete** code — so the merged prompt runs the Reuse pass first and requires a `Reuse searched:` line, which keeps that search from being skipped.
 
-**Why not four cleanup agents like `simplify` does:** `simplify` dedups **and applies** the fixes in the same head, so the cross-lens collapse just moves from review time to apply time. Cook forbids that (§ Forbidden: fixes always go to a sub-agent), so in cook the collapse would land in the orchestrator working from summaries — the weakest possible place. Fewer, fatter reviewers keep the synthesis where the code understanding is.
+**Why not one agent per lens like `simplify` does:** `simplify` dedups **and applies** the fixes in the same head, so the cross-lens collapse just moves from review time to apply time. Cook forbids that (§ Forbidden: fixes always go to a sub-agent), so in cook the collapse would land in the orchestrator working from summaries — the weakest possible place. One cleanup reviewer keeps the synthesis where the code understanding is.
 
 **Why one fan-out instead of two steps:** same wall-clock as the old single reviewer, and one gate for the user instead of two. The cost is that gating and non-gating findings arrive together — § Verdict below is what keeps them from turning to mush. Read it before acting on any finding.
 
-**Why quality is a separate lens from bugs:** agents 2-3 are looking at reuse/complexity/efficiency/depth, NOT correctness. Agent 1 owns bugs. Do not let a cleanup agent argue a correctness defect — if one does, re-file it under Section B severity and treat it as gating.
+**Why quality is a separate lens from bugs:** agent 2 is looking at reuse/complexity/efficiency/depth, NOT correctness. Agent 1 owns bugs. Do not let the cleanup agent argue a correctness defect — if it does, re-file it under Section B severity and treat it as gating.
 
-### Dispatch 1/3 — compliance + bugs (gating)
+### Dispatch 1/2 — compliance + bugs (gating)
 
 ```
 Agent(
@@ -231,11 +230,11 @@ Agent(
 )
 ```
 
-### Dispatch 2-3/3 — cleanup lenses (non-gating)
+### Dispatch 2/2 — cleanup lenses (non-gating)
 
-Same message as dispatch 1. Both get the same plan files + diff scope, plus their lens block below — **agent 2 gets Reuse; agent 3 gets all three of Simplification, Efficiency and Altitude in one prompt.** Each returns findings as `file`, `line`, one-line `summary`, and **the concrete cost** — what is duplicated, wasted, or made harder to maintain. No severity ratings; these are not bugs.
+Same message as dispatch 1. It gets the same plan files + diff scope, plus the preamble and all four lens blocks below in one prompt. It returns findings as `file`, `line`, one-line `summary`, and **the concrete cost** — what is duplicated, wasted, or made harder to maintain — plus the `Reuse searched:` line. No severity ratings; these are not bugs.
 
-Shared preamble for both:
+Preamble:
 
 ```
   Quality review of the diff below — you are improving code quality, NOT hunting
@@ -257,22 +256,20 @@ Shared preamble for both:
   Return findings only. Do NOT edit any file.
 ```
 
-**Agent 2 — Reuse** (the whole prompt; this agent has one job)
+Lens blocks (all four, in this order):
 ```
-  ## Lens: Reuse
+  ## Lens R: Reuse — do this pass first
   Flag new code that re-implements something the codebase already has. Grep the
   shared/utility modules and the files adjacent to the change, and NAME the
   existing helper to call instead — a finding without a named replacement is not
   actionable, so drop it.
 
-  Budget the search: this is the search-heavy lens and it is the reason you were
-  dispatched separately. Do not settle for reading the diff. Look at the shared
-  libs, the sibling modules, and the barrel/index files the changed code could
-  have imported from.
-```
+  Search before you start the other lenses: the shared libs, the sibling
+  modules, and the barrel/index files the changed code could have imported from.
+  Reading the diff alone is not a Reuse pass. Your report MUST contain a line
+  `Reuse searched: <modules and directories you checked>`, whether or not you
+  found anything.
 
-**Agent 3 — Simplification + Efficiency + Altitude** (all three blocks in one prompt)
-```
   ## Lens A: Simplification
   Flag unnecessary complexity the diff adds: redundant or derivable state,
   copy-paste with slight variation, deep nesting, dead code left behind. Name
@@ -293,33 +290,39 @@ Shared preamble for both:
   more general change to the underlying mechanism over adding special cases, and
   name that change.
 
-  ## Collapse before you report — this is why you hold all three lenses
-  These three overlap on purpose. Before returning, merge findings that are ONE
-  change at the mechanism level and say so explicitly: "Lens A #2 and Lens B #1
-  are the same fix as Lens C #1 — repairing <mechanism> removes both." Report
-  the deep change once, list what it subsumes, and do NOT also report the
-  shallow findings separately.
+  ## Collapse before you report — this is why you hold all four lenses
+  These lenses overlap on purpose. Copied code is both a Reuse and a
+  Simplification finding; an Altitude fix often removes a Simplification and an
+  Efficiency finding. Before returning, merge findings that are ONE change and
+  say so explicitly: "Lens A #2 and Lens B #1 are the same fix as Lens C #1 —
+  repairing <mechanism> removes both." Report the change once, list what it
+  subsumes, and do NOT also report the subsumed findings separately.
 
-  Altitude outranks the other two. If a Simplification fix would polish code
-  that Altitude says should be deleted or generalised away, drop the
-  Simplification finding — applying it is wasted work and makes the code look
-  intentional, which is harder to delete later.
+  Reuse and Altitude outrank Simplification and Efficiency. If a Simplification
+  or Efficiency fix would polish code that Reuse says to replace with an
+  existing helper, or that Altitude says should be deleted or generalised away,
+  drop it — applying it is wasted work and makes the code look intentional,
+  which is harder to delete later.
 
-  Tag every finding with its lens (A / B / C) so the orchestrator can bucket it.
+  If that higher fix changes behaviour or reaches beyond the diff, the
+  orchestrator may skip it. Then put the smallest in-diff fix for the same
+  problem under it as `Fallback:` instead of dropping it.
+
+  Tag every finding with its lens (R / A / B / C) so the orchestrator can bucket it.
 ```
 
 ### Verdict — gating vs non-gating
 
-Wait for **all three**, then split the findings. This split is the whole point of the step; do not blend them into one score.
+Wait for **both**, then split the findings. This split is the whole point of the step; do not blend them into one score.
 
 | Bucket | Source | Effect |
 |--------|--------|--------|
 | **Blocking** | Section A any ❌ | **Non-overridable.** Dispatch a fix sub-agent or abort. Nothing else. |
 | **Blocking** | Section B Critical or High | Dispatch a fix sub-agent, cycle++ |
 | **Non-blocking** | Section B Medium / Low | Apply what is worth applying; state each skip and why |
-| **Non-blocking** | Agents 2-3 (all four lenses) | Same — apply-or-skip-with-reason. **Never** blocks Step 6, **never** increments the cycle counter |
+| **Non-blocking** | Agent 2 (all four lenses) | Same — apply-or-skip-with-reason. **Never** blocks Step 6, **never** increments the cycle counter |
 
-**Dedup across all three before applying.** Agent 3 has already collapsed its own three lenses; do not undo that by re-splitting its merged findings. Findings pointing at the same line or the same mechanism collapse into one; when a cleanup lens and Section B overlap, keep Section B's (it carries the severity that drives the gate).
+**Dedup across both before applying.** Agent 2 has already collapsed its own four lenses; do not undo that by re-splitting its merged findings. Findings pointing at the same line or the same mechanism collapse into one; when a cleanup lens and Section B overlap, keep Section B's (it carries the severity that drives the gate). When you skip a cleanup finding for behaviour change or scope and it carries a `Fallback:`, judge the fallback on its own.
 
 **Apply blocking and non-blocking fixes in the SAME dispatch**, blocking first. Tell the applier that blocking fixes take precedence and to **drop any cleanup finding that the blocking fix already resolved or made stale** — otherwise it patches code that no longer exists.
 
@@ -330,12 +333,12 @@ Applier: `code-simplifier` for a cleanup-only batch (it is purpose-built for thi
 Cleanup edits change working code, so the step is NOT done when the fixes land:
 
 1. Re-run Step 4's test command. Must be back to 100%.
-2. Run the project's own verification gate if it declares one — the command its CLAUDE.md says must stay green (`pnpm verify` in talos-v2). Lint + typecheck + unit tests passing is **not** the same thing; a repo-level gate catches invariant violations that none of the three see.
+2. Run the project's own verification gate if it declares one — the command its CLAUDE.md says must stay green (`pnpm verify` in talos-v2). Lint + typecheck + unit tests passing is **not** the same thing; a repo-level gate catches invariant violations that neither reviewer sees.
 3. If either fails, the cleanup caused it. Revert the offending finding rather than layering a fix on it, and record it as skipped.
 
 Skipping this is how a "quality pass" ships a regression. `simplify` on its own has no verification phase — that gap is closed here, not inherited.
 
-**Cycle (max 3):** as defined in `review-cycle.md`. **Re-dispatch only agent 1** on cycle 2 and 3 — agents 2-3 fan out **once**, on the first pass. Re-running them per cycle doubles the review cost for findings you already hold.
+**Cycle (max 3):** as defined in `review-cycle.md`. **Re-dispatch only agent 1** on cycle 2 and 3 — agent 2 fans out **once**, on the first pass. Re-running it per cycle doubles the review cost for findings you already hold.
 
 **Forbidden:** patching code in-line based on the review. Fixes are always dispatched to a sub-agent. Running the fan-out more than once per cook run. Letting a cleanup finding block Step 6.
 
@@ -379,7 +382,7 @@ Legend: `[R]` = human gate
 
 ```
 0 → 1A scout → 1B research → 1C Q&A [R per round] → 1D approaches → 1E sectioned design [R per section]
-  → 2 (orchestrator writes plan + self-review) → 3 (sub-agent per phase) → 4 (test sub-agent) → 5 (review fan-out x3) → 6 (finalize sub-agents)
+  → 2 (orchestrator writes plan + self-review) → 3 (sub-agent per phase) → 4 (test sub-agent) → 5 (review fan-out x2) → 6 (finalize sub-agents)
 ```
 
 All human gates live in Step 1. Steps 2–6 run straight through; only the final commit is confirmed.
@@ -392,7 +395,7 @@ If a plan path is provided at Step 0, skip Steps 1–2 and start at Step 3.
 - **MANDATORY SUBAGENT DELEGATION:** Steps 3, 4, 5, 6 MUST spawn subagents via the `Agent` tool. DO NOT implement, test, or review directly. Resolve every type through `subagent-patterns.md` § Agent Name Mapping first.
   - Step 3: `executor` / `designer` for frontend (one per phase)
   - Step 4: `test-engineer` (and `debugger` if failures)
-  - Step 5: `code-reviewer` ×3 in ONE message — agent 1 returns the dual-section gating report (Section A plan-compliance, non-overridable + Section B bugs by severity); agent 2 runs Reuse; agent 3 runs Simplification+Efficiency+Altitude and collapses findings that are one mechanism change. Cleanup lenses never gate. Re-verify after any fix batch.
+  - Step 5: `code-reviewer` ×2 in ONE message — agent 1 returns the dual-section gating report (Section A plan-compliance, non-overridable + Section B bugs by severity); agent 2 runs Reuse (first) + Simplification + Efficiency + Altitude and collapses findings that are one change. Cleanup lenses never gate. Re-verify after any fix batch.
   - Step 6: `executor` (sync-back), `writer` (docs), `git-master` (commit)
 - **ALWAYS** create a task list — use `TaskCreate` for each unchecked item with priority order and dependencies (or `TodoWrite` if Task tools unavailable). This is never skipped.
 - **ALWAYS** keep the task list updated in lock-step, not just at the end:

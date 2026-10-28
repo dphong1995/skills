@@ -45,7 +45,7 @@ skills/
 │                     → viết spec → user duyệt → gọi ck-plan
 ├── ck-plan/          Lập kế hoạch: research → phân tích codebase → plan.md + phase-XX-*.md
 │                     → tự động gọi cook
-├── cook/             Triển khai: mỗi phase một subagent → test → review fan-out 3 agent → finalize
+├── cook/             Triển khai: mỗi phase một subagent → test → review fan-out 2 agent → finalize
 └── routing-bug-fixes-to-cook/
                       Cổng sau khi debug xong root cause: fix ≥ 3 file production, > 50 dòng
                       production (đếm gộp các repo) hoặc có nhiều cách sửa → gọi cook (Step 1 rút

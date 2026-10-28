@@ -40,7 +40,7 @@ the writing.
 
 ```
 [Setup] → [Design: scout → research → Q&A → approaches → sectioned design]
-        → [Plan] → [Phase sub-agents] → [Test sub-agent] → [Review: 3-agent fan-out] → [Finalize sub-agents]
+        → [Plan] → [Phase sub-agents] → [Test sub-agent] → [Review: 2-agent fan-out] → [Finalize sub-agents]
 ```
 
 Step 1 (Design) is interactive — one round at a time on a local HTML question page (independent
@@ -55,7 +55,7 @@ From Step 2 onward it runs end to end without pausing; only the final commit is 
 | Planning | **none** — orchestrator writes the plan itself from the approved design block, in `ck-plan`'s format |
 | Implementation (one per phase) | `executor` / `designer` (frontend) |
 | Testing | `test-engineer`, `debugger` |
-| Review (one fan-out) | `code-reviewer` ×3 — compliance+bugs (gating) / reuse / simplification+efficiency+altitude |
+| Review (one fan-out) | `code-reviewer` ×2 — compliance+bugs (gating) / reuse+simplification+efficiency+altitude |
 | Fix application | `code-simplifier` (cleanup-only) / `executor` / `debugger` |
 | Finalize | `executor` (sync-back), `writer` (docs), `git-master` (commit) |
 
@@ -74,6 +74,7 @@ cook/
 
 ## Version
 
+5.5.0 - Step 5 review is a 2-agent fan-out: one cleanup agent runs Reuse (first, with a `Reuse searched:` line) + Simplification + Efficiency + Altitude, so Reuse/Simplification duplicates are collapsed by the agent that read the code; a subsumed finding whose higher fix changes behaviour or leaves the diff is kept as a `Fallback:`
 5.4.0 - The interview page sends the answers back through a local server started in the background (copy-and-paste stays as the fallback); file paths in the text open in the viewer; screenshots and wireframe mockups; the page is styled with Tailwind
 5.3.0 - Interview questions shown as a local HTML page, one round at a time (up to 4 independent questions per page); a floating button copies every answer for the user to paste back (no Artifact, no polling)
 5.2.0 - The interview page wakes the session when the user answers (comment sent to Claude); polling only as a fallback
