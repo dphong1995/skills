@@ -9,8 +9,9 @@ git clone git@github.com:dphong1995/skills.git ~/.claude/skills-repo
 bash ~/.claude/skills-repo/install.sh
 ```
 
-`install.sh` copy nội dung vào `~/.claude/skills/` và `~/.claude/agents/`, và ghi các khối quy tắc
-`claude-md/` vào `~/.claude/CLAUDE.md` (xem mục "Quy tắc luôn bật"). Vị trí clone không quan
+`install.sh` copy nội dung vào `~/.claude/skills/`, `~/.claude/agents/` và `~/.claude/hooks/`, ghi các
+khối quy tắc `claude-md/` vào `~/.claude/CLAUDE.md` (xem mục "Quy tắc luôn bật") và trộn
+`settings/settings.json` vào `~/.claude/settings.json` (xem mục "Settings và hook"). Vị trí clone không quan
 trọng (script tự dò đường dẫn của chính nó) — `~/.claude/skills-repo` chỉ là mặc định gợi ý.
 
 File cùng tên đang có sẵn sẽ được **chuyển vào `~/.claude/backups/skills-install-<timestamp>/`**
@@ -40,6 +41,21 @@ code về. Sửa quy tắc trong repo (`claude-md/`) chứ không sửa trong CL
 - `web-pages.md`: câu hỏi cho người dùng đi trang phỏng vấn HTML; file Markdown đưa người dùng đọc
   hoặc duyệt (spec, thiết kế của cook, plan, draft ticket, báo cáo) mở bằng trang web dựng từ file
   md (`render-interview.mjs <file.md> … --serve | --open`).
+- `language.md`: mọi tin nhắn cho người dùng viết bằng tiếng Việt (cả dòng báo tiến độ, tin nhắn
+  sau compact, khi chuyển tiếp tài liệu tiếng Anh); tiếng Anh chỉ ở memory, commit, prompt cho
+  subagent, nội dung cho Jira/PR.
+
+## Settings và hook
+
+`settings/settings.json` được trộn vào `~/.claude/settings.json` (cần `node`): khoá ở cấp cao nhất
+được ghi đè, một nhóm hook được thêm nếu lệnh của nó chưa có cho event đó; phần còn lại của file giữ
+nguyên, file cũ được sao lưu trước. Chạy lại `install.sh` không tạo hook trùng.
+
+- `"language": "vietnamese"`: setting có sẵn của Claude Code, đưa ngôn ngữ trả lời vào system prompt.
+- Hook `Stop` chạy `hooks/reply-language.mjs` (copy vào `~/.claude/hooks/`): khi câu trả lời cuối là
+  văn xuôi tiếng Anh (bỏ qua code, blockquote, đường dẫn; câu dưới 8 chữ bỏ qua), nó chặn một lần
+  để Claude viết lại bằng tiếng Việt. Tắt bằng `/hooks` hoặc xoá nhóm hook đó trong
+  `~/.claude/settings.json`.
 
 ## Đẩy thay đổi ngược lên repo
 

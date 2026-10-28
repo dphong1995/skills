@@ -30,7 +30,43 @@ for agent in "$SRC"/agents/*.md; do
   echo "  agent  $name"
 done
 
+for hook in "$SRC"/hooks/*; do
+  [ -e "$hook" ] || continue
+  name="$(basename "$hook")"
+  install_entry "$hook" "$DEST/hooks/$name"
+  echo "  hook   $name"
+done
+
 find "$DEST/skills" "$DEST/agents" -name '.DS_Store' -delete 2>/dev/null || true
+
+# Settings: settings/settings.json is merged into $DEST/settings.json. Top-level values are set;
+# a hook group is added unless every command in it is already registered for that event.
+if [ -f "$SRC/settings/settings.json" ]; then
+  if command -v node >/dev/null 2>&1; then
+    target="$DEST/settings.json"
+    if [ -e "$target" ] && [ ! -e "$BACKUP/settings.json" ]; then
+      mkdir -p "$BACKUP"
+      cp "$target" "$BACKUP/settings.json"
+    fi
+    node - "$SRC/settings/settings.json" "$target" <<'EOF'
+const fs = require('fs');
+const [fragment, target] = process.argv.slice(2);
+const add = JSON.parse(fs.readFileSync(fragment, 'utf8'));
+const cur = fs.existsSync(target) ? JSON.parse(fs.readFileSync(target, 'utf8')) : {};
+for (const [key, value] of Object.entries(add)) if (key !== 'hooks') cur[key] = value;
+for (const [event, groups] of Object.entries(add.hooks || {})) {
+  cur.hooks ??= {};
+  cur.hooks[event] ??= [];
+  const have = new Set(cur.hooks[event].flatMap((g) => (g.hooks || []).map((h) => h.command)));
+  for (const g of groups) if (!g.hooks.every((h) => have.has(h.command))) cur.hooks[event].push(g);
+}
+fs.writeFileSync(target, JSON.stringify(cur, null, 2) + '\n');
+EOF
+    echo "  settings  settings/settings.json -> settings.json"
+  else
+    echo "node not found: settings/settings.json was not merged into $DEST/settings.json" >&2
+  fi
+fi
 
 # Always-on rules: each claude-md/<name>.md is kept in $DEST/CLAUDE.md between its own markers.
 # The rest of that file is left alone; the text between the markers is replaced on every install.
