@@ -1,0 +1,12 @@
+@theme inline {
+  --color-page: var(--page);
+  --color-muted: var(--muted);
+  --color-tint: var(--tint);
+  --color-mark: var(--mark);
+  --color-add: var(--add);
+  --color-del: var(--del);
+  --color-hl: var(--hl);
+  --color-hl-active: var(--hl-active);
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-code);
+}

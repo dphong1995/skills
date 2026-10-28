@@ -1,0 +1,41 @@
+/* Layout: sticky bar with the topic and a jump link per question; settled decisions fold at the top; one card per question with everything to read first (why, context, options side by side, recommendation) and a compact answer strip last; a small floating bar picks the recommendations and sends or copies every answer at once.
+   Document mode (a Markdown file): the same bar with the section links, one card per ## section, a note per ## and ### heading and per selected passage in review mode, and a bar that approves or sends the notes.
+   Parts are daisyUI components (navbar, card, badge, alert, table, collapse, btn, textarea, modal, toast, kbd) placed with Tailwind utilities. The theme is the page's own colors, light and dark following the system; muted text, the page background, the chosen-option tint and the code line tints have no daisyUI name and are tokens of their own. */
+:root {
+  --color-base-100: #ffffff;
+  --color-base-200: #edf0f5;
+  --color-base-300: #d8dee8;
+  --color-base-content: #172031;
+  --color-primary: #2b4fbf;
+  --color-primary-content: #ffffff;
+  --color-info: #2b4fbf;
+  --color-info-content: #ffffff;
+  --color-success: #1d7348;
+  --color-success-content: #ffffff;
+  --color-warning: #845400;
+  --color-warning-content: #ffffff;
+  --color-error: #a93838;
+  --color-error-content: #ffffff;
+  --page: #f3f5f8;
+  --muted: #5b6678;
+  --tint: #e7ecfa;
+  --mark: rgb(255 200 0 / .22);
+  --add: rgb(26 127 55 / .14);
+  --del: rgb(207 34 46 / .12);
+  --hl: rgb(255 200 0 / .35);
+  --hl-active: rgb(255 170 0 / .65);
+  --font-body: "Be Vietnam Pro", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-code: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-base-100: #151c27; --color-base-200: #1b2330; --color-base-300: #2a3445; --color-base-content: #e5eaf2;
+    --color-primary: #93aaff; --color-primary-content: #0e131b; --color-info: #93aaff; --color-info-content: #0e131b;
+    --color-success: #74d3a0; --color-success-content: #0e131b; --color-warning: #e8bb5f; --color-warning-content: #0e131b;
+    --color-error: #f08d8d; --color-error-content: #0e131b;
+    --page: #0e131b; --muted: #9ba7b9; --tint: #1c2747; --mark: rgb(255 200 0 / .14); --add: rgb(46 160 67 / .2); --del: rgb(248 81 73 / .18);
+    --hl: rgb(255 200 0 / .22); --hl-active: rgb(255 190 0 / .45);
+    color-scheme: dark;
+  }
+}
