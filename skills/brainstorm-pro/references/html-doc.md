@@ -33,8 +33,9 @@ compared with the one before (state in `review-<slug>/.review-state.json`), so t
 `lần N`, lists the sections changed, added and removed, and badges them.
 
 On a served page every `##` and `###` heading has a **Góp ý** button and a **Góp ý chung** box
-closes the page; the bar has **Duyệt** and **Gửi góp ý** (Cmd/Ctrl+Enter). Notes autosave in the
-browser.
+closes the page; selecting text shows a **Góp ý** button that marks the passage and opens a note
+under it; the bar has **Duyệt** and **Gửi góp ý** (Cmd/Ctrl+Enter). Note boxes take pasted or
+dropped images (`[Ảnh #N]`). Notes autosave in the browser.
 
 ## Reading the answer
 
@@ -43,8 +44,13 @@ The command prints `ANSWERS <md path>` and then:
 ```
 Quyết định: Duyệt | Sửa
 [§ <section>] <note>            (subsections: "<section> › <subsection>")
+[§ <section> · dòng N-M] «<quote>» → <note>      (a selected passage; long quotes cut "head … tail")
 [§ Chung] <note>
+Ảnh #1: <path>
 ```
+
+`dòng N-M` are lines of the `.md`: Read only those when the file is no longer in context. Read
+each `Ảnh #N` file before acting on the note that mentions it.
 
 - `Duyệt`: apply any notes (they are small fixes), then go on in the same turn. This opens the
   gate the document was shown for (brainstorm-pro Phase 7, cook 1E).

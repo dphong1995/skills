@@ -4,7 +4,7 @@ description: Hybrid brainstorm — deep scout (ck-style) + one-question-at-a-tim
 license: MIT
 metadata:
   author: phong
-  version: "1.8.0"
+  version: "1.9.0"
   combines: [ck:brainstorm, superpowers:brainstorming]
 ---
 

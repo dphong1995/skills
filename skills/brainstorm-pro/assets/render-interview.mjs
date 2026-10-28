@@ -1,7 +1,7 @@
 // Usage: node render-interview.mjs <round.json | document.md> <out.html> [--serve | --open]
 // Puts one round of questions (references/html-interview.md), or a Markdown document (references/html-doc.md), into interview-page.html.
 // Code with a "file" (code blocks, both sides of a diff, an option's code), file paths written as `inline code` and a document's links to local files get the whole file embedded, for the page's file viewer; images get embedded as data URIs.
-// --serve then serves the page on 127.0.0.1 under a random token, opens it, prints the answers (or the document review) the page sends back and exits (4 when no browser opens).
+// --serve then serves the page on 127.0.0.1 under a random token (also taking the images it uploads, saved beside <out.html>), opens it, prints the answers (or the document review) the page sends back and exits (4 when no browser opens).
 // --open opens the written page as a file and exits: a document to read only.
 import { execFile } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -14,7 +14,9 @@ import { fileURLToPath } from 'node:url';
 const MAX_FILE = 512 * 1024;
 const MAX_IMAGE = 3 * 1024 * 1024;
 const MAX_BODY = 1024 * 1024;
+const MAX_UPLOAD = 20 * 1024 * 1024;
 const WAIT_MS = 8 * 60 * 60 * 1000;
+const UPLOAD_TYPES = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/webp': '.webp' };
 const IMAGE_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml' };
 
 const args = process.argv.slice(2);
@@ -59,6 +61,9 @@ if (isDoc) {
     for (const key of ['id', 'n', 'title', 'options']) {
       if (q[key] == null) throw new Error(`${src}: questions[${i}] is missing "${key}"`);
     }
+    const k = q.options.filter((o) => o && o.recommended).length;
+    if (k > 1) throw new Error(`${src}: questions[${i}] marks ${k} options "recommended"; mark one`);
+    if (q.recommendation && !k) throw new Error(`${src}: questions[${i}] has "recommendation" but no option with "recommended": true`);
   });
 }
 
@@ -204,13 +209,25 @@ if (serve) {
   const base = `/${randomBytes(16).toString('hex')}/`;
   let origin = '';
   let html = '';
+  const uploads = new Map();
   const server = createServer((req, res) => {
     if (req.method === 'GET' && req.url === base) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       res.end(html);
       return;
     }
-    if (req.method !== 'POST' || req.url !== base + 'answers') {
+    if (req.method === 'GET' && req.url.startsWith(base + 'images/')) {
+      const file = uploads.get(req.url.slice(base.length + 7));
+      if (!file) {
+        res.writeHead(404).end();
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': file.type, 'Cache-Control': 'no-store' });
+      res.end(readFileSync(file.path));
+      return;
+    }
+    const route = req.method === 'POST' && { [base + 'answers']: answers, [base + 'image']: upload }[req.url];
+    if (!route) {
       res.writeHead(404).end();
       return;
     }
@@ -219,6 +236,9 @@ if (serve) {
       res.writeHead(403).end();
       return;
     }
+    route(req, res);
+  });
+  const answers = (req, res) => {
     if (!/^application\/json\b/.test(req.headers['content-type'] || '')) {
       res.writeHead(415).end();
       return;
@@ -249,14 +269,49 @@ if (serve) {
         process.stdout.write(`ANSWERS ${resolve(src)}\n${text.trim()}\n`, () => process.exit(0));
       });
     });
-  });
+  };
+  // A pasted or dropped image, saved beside the page as <out>-<n>.<ext>; the page shows it back from images/<name>.
+  const upload = (req, res) => {
+    const type = (req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+    if (!UPLOAD_TYPES[type]) {
+      res.writeHead(415).end();
+      return;
+    }
+    const chunks = [];
+    let size = 0;
+    req.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > MAX_UPLOAD) {
+        res.writeHead(413).end();
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      if (res.writableEnded) return;
+      if (!size) {
+        res.writeHead(400).end();
+        return;
+      }
+      const n = uploads.size + 1;
+      const name = `${basename(out).replace(/\.html$/i, '')}-${n}${UPLOAD_TYPES[type]}`;
+      const dir = join(dirname(resolve(out)), 'images');
+      mkdirSync(dir, { recursive: true });
+      const path = join(dir, name);
+      writeFileSync(path, Buffer.concat(chunks));
+      uploads.set(name, { path, type });
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ n, path, url: `${base}images/${name}` }));
+    });
+  };
   server.on('error', (e) => {
     console.error(`Cannot serve the page: ${e.message}`);
     process.exit(1);
   });
   server.listen(0, '127.0.0.1', () => {
     origin = `http://127.0.0.1:${server.address().port}`;
-    html = page({ ...data, send: base + 'answers' });
+    html = page({ ...data, send: base + 'answers', upload: base + 'image' });
     const url = origin + base;
     console.log(`Serving ${url}`);
     execFile(process.platform === 'darwin' ? 'open' : 'xdg-open', [url], (err) => {

@@ -33,7 +33,8 @@ announcing a question for later.
 2. In the same message, serve it with a foreground `Bash` call with `timeout: 600000`:
    `node ~/.claude/skills/brainstorm-pro/assets/render-interview.mjs <dir>/round-NN.json <dir>/round-NN.html --serve`
    It checks the round (it rejects malformed JSON, an empty `questions`, a question missing
-   `id`/`n`/`title`/`options`, and a bad image or code range; fix and rerun), writes
+   `id`/`n`/`title`/`options`, a `recommendation` without exactly one `recommended` option, and a
+   bad image or code range; fix and rerun), writes
    `round-NN.html`, serves the page on `127.0.0.1` under a random token, opens it in the browser and
    waits.
 3. When the command returns:
@@ -152,9 +153,10 @@ The text has one block per question, separated by a blank line:
 [q03] <title>
 Chọn: B. <label>            (several: "A. …; B. …"; own answer: "Khác (tự nhập): <text>")
 Ghi chú: <note>             (only when the user wrote one)
+Ảnh #1: <path>              (an image pasted or dropped into a box, `[Ảnh #1]` in the text)
 ```
 
-`Chọn: Cần giải thích thêm` means the user needs more information on that question (`Ghi chú` may
+Read each `Ảnh #N` file before using the answer. `Chọn: Cần giải thích thêm` means the user needs more information on that question (`Ghi chú` may
 say what is unclear). A reply without `[qNN]` headers is the user answering in their own words:
 match it to the open questions, and ask in chat if it is unclear which question it answers.
 
