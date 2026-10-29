@@ -12,9 +12,10 @@ reviews of something already written (the spec, cook's design): those go on a do
 `html-doc.md`. The "just code it" confirmation stays in chat.
 
 Files (brainstorm-pro skill directory, normally `~/.claude/skills/brainstorm-pro`):
-`assets/interview-page.html` (the page) and `assets/render-interview.mjs` (puts one round's JSON
-into it; with `--serve` it also serves the page and waits for the answers). Never edit the page by
-hand.
+`assets/render-interview.mjs` (puts one round's JSON into the page; with `--serve` it also serves the
+page and waits for the answers) builds the page from the modules in `assets/page/` into one HTML. Never
+edit a built page; to change the page or the script, read `DEVELOPING.md`. The page has keyboard
+shortcuts; `?` on the page lists them.
 
 ## What goes in one round
 

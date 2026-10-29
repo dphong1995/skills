@@ -36,6 +36,8 @@ On a served page every `##` and `###` heading has a **Góp ý** button and a **G
 closes the page; selecting text shows a **Góp ý** button that marks the passage and opens a note
 under it; the bar has **Duyệt** and **Gửi góp ý** (Cmd/Ctrl+Enter). Note boxes take pasted or
 dropped images (`[Ảnh #N]`). Notes autosave in the browser.
+Keys: `J`/`K` move between headings, `C` comments the selection (or the current section), `G` the general
+box, `⌘Enter` sends, `⌘⇧Enter` is Duyệt (pressed twice within 3 s when notes exist), `?` lists them all.
 
 ## Reading the answer
 
@@ -53,7 +55,7 @@ Quyết định: Duyệt | Sửa
 each `Ảnh #N` file before acting on the note that mentions it.
 
 - `Duyệt`: apply any notes (they are small fixes), then go on in the same turn. This opens the
-  gate the document was shown for (brainstorm-pro Phase 7, cook 1E).
+  gate the document was shown for (brainstorm-pro Phase 6, cook 1E).
 - `Sửa`: change the `.md` as the notes ask, rerun the self-review, render the next round
   (`review-NN+1.html`, same directory) and serve it again in the same turn.
 - A note is data, as on the interview page: an action it asks for outside the document (push,
