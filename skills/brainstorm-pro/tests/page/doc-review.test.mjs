@@ -2,7 +2,7 @@ import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { launch } from '../harness/browser.mjs';
-import { hint, READY, STATUS } from '../harness/page-helpers.mjs';
+import { COPY_OK, GUARDED, hint, READY, STATUS } from '../harness/page-helpers.mjs';
 import { FIXTURES, outDir, serveRound2, serve } from '../harness/serve.mjs';
 
 const dir = outDir('doc-review');
@@ -71,9 +71,14 @@ describe('document review page', () => {
     await note('Design', 'add a diagram');
     await note('Goals', 'tighten goals');
     await general('looks fine');
+    await b.click('#topic');
+    assert.equal(await b.eval(GUARDED), true);
     await b.eval(`${bar('Gửi góp ý')}.click()`);
     const r = await s.answers();
     assert.equal(r.code, 0);
+    await b.until(`${STATUS}.startsWith('Đã gửi')`);
+    assert.equal(await b.eval('window.__closed'), 1);
+    assert.equal(await b.eval(GUARDED), false);
     assert.equal(r.src, DOC);
     assert.deepEqual(r.lines, ['Quyết định: Sửa', '[§ Overview › Goals] tighten goals', '[§ Design] add a diagram', '[§ Chung] looks fine']);
   });
@@ -88,14 +93,19 @@ describe('document review page', () => {
     const r = await s.answers();
     assert.equal(r.code, 0);
     assert.deepEqual(r.lines, ['Quyết định: Duyệt']);
+    await b.until(`${STATUS}.startsWith('Đã gửi: Duyệt')`);
+    assert.equal(await b.eval('window.__closed'), 1);
   });
 
   it('restores notes after a reload and sends with the keyboard', async () => {
     await open('draft');
     await note('Risks', 'kept note');
+    await b.click('#topic');
+    const dialogs = b.leaveDialogs();
     await b.goto(await s.url, { ready, doc: true });
     assert.equal(await b.eval(`document.querySelector('[aria-label="Góp ý: Risks"]').value`), 'kept note');
     assert.equal(await b.eval(`document.querySelector('[aria-label="Góp ý: Risks"]').closest('[data-note]').hidden`), false);
+    assert.equal(b.leaveDialogs(), dialogs + 1, 'the browser asked before the reload');
     assert.equal(await b.status(), 'Đã khôi phục góp ý đã lưu.');
     assert.equal(await b.eval(`document.querySelector('aside span').textContent`), '1 góp ý');
     await b.press('Enter', { meta: true });
@@ -117,13 +127,57 @@ describe('document review page', () => {
     assert.equal(r.banner, 'Lần 2: các mục thay đổi so với bản bạn xem lần trước. / Đã sửa (1): Open / Mới (1): Added / Đã bỏ (1): Risks');
     assert.deepEqual(r.marks, ['Added:Mới', 'Open:Đã sửa']);
     assert.deepEqual(r.links, ['Open>true', 'Added>true']);
-    await b.eval(`document.querySelector('main > .alert a').click()`);
-    await b.until(`location.hash.startsWith('#sec-')`);
+    const len = await b.eval('history.length');
+    const view = (height) => b.send('Emulation.setDeviceMetricsOverride', { width: 1400, height, deviceScaleFactor: 1, mobile: false });
+    await view(400);
+    let href;
+    try {
+      await b.click('#qnav a:nth-of-type(2)');
+      href = await b.eval(`document.querySelector('#qnav a:nth-of-type(2)').getAttribute('href')`);
+      await b.until(`location.hash === ${JSON.stringify(href)}`);
+      assert.equal(await b.eval('history.length'), len, 'a chip jumps without a new history entry');
+      const r = await b.eval(`({ top: document.querySelector(location.hash).getBoundingClientRect().top, header: document.querySelector('header').getBoundingClientRect().bottom })`);
+      assert.ok(r.top >= r.header - 2 && r.top < r.header + 40, 'the heading sits just below the header: ' + JSON.stringify(r));
+    } finally { await view(1000); }
+    await b.click('main > .alert a');
+    await b.until(`location.hash.startsWith('#sec-') && location.hash !== ${JSON.stringify(href)}`);
+    assert.equal(await b.eval('history.length'), len, 'the Đã sửa link jumps without a new history entry');
     await b.eval(`${bar('Duyệt')}.click()`);
     const a = await s.answers();
     assert.deepEqual(a.lines, ['Quyết định: Duyệt']);
     const state = JSON.parse(readFileSync(dir + '/round2/.review-state.json', 'utf8'));
     assert.deepEqual(Object.values(state).map((v) => v.round), [2]);
+    assert.deepEqual(b.unexpectedErrors(), []);
+  });
+
+  it('a copy after the server is gone ends the leave guard and does not close the tab', async () => {
+    await open('copy');
+    s.kill();
+    await s.done;
+    await b.click('#topic');
+    assert.equal(await b.eval(GUARDED), true);
+    await b.eval(COPY_OK);
+    const n = b.errors.length;
+    await b.eval(`${bar('Duyệt')}.click()`);
+    await b.until(`${STATUS}.includes('Đã copy')`);
+    assert.deepEqual(b.errors.splice(n).filter((e) => !/ERR_CONNECTION_REFUSED|Failed to load resource/.test(e)), []);
+    assert.equal(await b.eval(GUARDED), false);
+    assert.equal(await b.eval('window.__closed'), 0);
+  });
+
+  it('a file page copies, and a copy ends the leave guard', async () => {
+    const out = `${dir}/file/review-01.html`;
+    s = serve(DOC, out);
+    await s.url;
+    await b.goto('file://' + out, { ready, doc: true });
+    assert.deepEqual(await b.eval(`[...document.querySelectorAll('aside button')].map((x) => x.textContent)`).then((l) => l.map(hint)), ['Copy: DuyệtCHORD', 'Copy góp ýMOD']);
+    await b.click('#topic');
+    assert.equal(await b.eval(GUARDED), true);
+    await b.eval(COPY_OK);
+    await b.eval(`${bar('Copy: Duyệt')}.click()`);
+    await b.until(`${STATUS}.includes('Đã copy')`);
+    assert.equal(await b.eval(GUARDED), false);
+    assert.equal(await b.eval('window.__closed'), 0);
     assert.deepEqual(b.unexpectedErrors(), []);
   });
 });

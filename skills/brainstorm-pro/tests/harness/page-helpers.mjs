@@ -10,6 +10,11 @@ export const READY = {
 // The floating bar's message as a page expression (b.status() reads it).
 export const STATUS = `document.querySelector('aside p[role=status]').textContent`;
 
+// A synthetic beforeunload: true when the page asks before leaving (only after a real input event, the guard waits for user activation).
+export const GUARDED = `(() => { const e = new Event('beforeunload', { cancelable: true }); dispatchEvent(e); return e.defaultPrevented; })()`;
+// A clipboard that always accepts, so a copy does not wait for the 2 s permission race.
+export const COPY_OK = `navigator.clipboard.writeText = async () => {}`;
+
 // A key hint with the platform's spelling replaced: MOD for ⌘ Enter / Ctrl Enter, CHORD for ⌘⇧ Enter / Ctrl Shift Enter.
 export const hint = (t) => t.replace(/⌘⇧ Enter|Ctrl Shift Enter/, 'CHORD').replace(/⌘ Enter|Ctrl Enter/, 'MOD');
 

@@ -1,4 +1,5 @@
 import { $, el, RING, TEXTAREA } from './dom.js';
+import { markAnswered } from './leave.js';
 
 export const CARD = 'card card-border border-base-300 bg-base-100 px-[18px] py-4 max-[520px]:px-3 max-[520px]:py-3.5 grid gap-3 min-w-0 transition-[border-color,box-shadow] duration-200 motion-reduce:transition-none [&.attention]:border-[var(--color-warning)] [&.attention]:[box-shadow:0_0_0_3px_color-mix(in_oklab,var(--color-warning)_22%,transparent)]';
 // The interview's question cards are the shortcuts' targets, so only they carry the ring (a document card is not one).
@@ -32,6 +33,7 @@ export const copyText = async (text) => {
   try { await Promise.race([navigator.clipboard.writeText(text), new Promise((_, no) => setTimeout(() => no(new Error('timeout')), 2000))]); ok = true; }
   catch (e) { out.hidden = false; out.focus(); out.select(); try { ok = document.execCommand('copy'); } catch (e2) { ok = false; } }
   out.hidden = ok;
+  if (ok) markAnswered();
   return ok;
 };
 export const postText = async (text) => {

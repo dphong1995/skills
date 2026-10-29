@@ -19,6 +19,7 @@ and check with `diff -rq -x out <repo skill> <live skill>` (`tests/out/` is outp
 | `assets/page/main.js` | Picks the mode (interview, review, read-only doc) |
 | `assets/page/interview.js`, `doc.js` | Interview cards and send/copy; document sections, notes, Duyệt/Gửi |
 | `assets/page/fab.js` | Floating bar, `CARD`, `INTERVIEW_CARD`, the status line (`say`, `sayFor`) |
+| `assets/page/leave.js` | `guardLeave()` (beforeunload guard until answered and after user activation; `#` links jump with `location.replace`), `markAnswered()`, `closeTab()` (`fab.js` `copyText` calls `markAnswered()` on a successful copy) |
 | `assets/page/dom.js`, `strings.js`, `text.js`, `code.js` | Class constants, `el()`, `kbd()`, `modal()`; escaping; inline Markdown; code view helpers |
 | `assets/page/blocks.js`, `viewer.js`, `images.js`, `passages.js` | Context blocks; file viewer (also the Tailwind class carrier); pasted images; selection comments |
 | `assets/page/keys.js`, `shortcuts.js`, `interview-keys.js`, `doc-keys.js` | Key rules; ring, `?` dialog and the key listener; per-mode key tables |
@@ -47,7 +48,7 @@ Need Google Chrome (`CHROME=<path>` for another), network (CDNs: Tailwind, highl
 Run from the skill directory:
 
 ```
-node --test --test-concurrency=1 'tests/**/*.test.mjs'    # all (225 tests), ~120 s; a bare tests/ argument fails on Node 24
+node --test --test-concurrency=1 'tests/**/*.test.mjs'    # all (229 tests), ~145 s; a bare tests/ argument fails on Node 24
 node --test 'tests/unit/*.test.mjs'                       # unit only (99 tests), no Chrome, under 2 s
 node --test tests/page/shortcuts.test.mjs                 # one file
 UPDATE_SNAPSHOTS=1 node --test tests/page/snapshot.test.mjs
@@ -56,8 +57,8 @@ UPDATE_SNAPSHOTS=1 node --test tests/page/snapshot.test.mjs
 - After any edit run the tests of that part, then the whole suite. New behaviour gets a test.
 - Snapshots (`tests/snapshots/`) change only on a deliberate DOM change; read the diff before keeping it.
 - Test output goes to `tests/out/<name>/`. Delete with `fs.rmSync` and absolute paths.
-- Shared helpers live in `tests/harness/`: `READY` (what `goto` waits for), `hint()` and `STATUS` in `page-helpers.mjs`;
-  `serve()` returns `answers()`, `serveRound2(dir)` serves a second review round; `b.status()`, `b.twSettle()`.
+- Shared helpers live in `tests/harness/`: `READY` (what `goto` waits for), `hint()`, `STATUS`, `GUARDED` (synthetic beforeunload, true when guarded) and `COPY_OK` (clipboard stub) in `page-helpers.mjs`;
+  `serve()` returns `answers()`, `serveRound2(dir)` serves a second review round; `b.status()`, `b.twSettle()`, `b.leaveDialogs()` (count of accepted beforeunload dialogs; tests assert it).
   One Chrome per test file (a top-level `before`).
 - After a handled key assert `__keys.at(-1).pagePrevented` (see macOS beeps): the harness would hide a missing `preventDefault`.
 
@@ -82,4 +83,12 @@ Cần giải thích (never toggle off on a multi card) and focus the box.
   not consume. The harness (`browser.mjs`) silences it with a last-in-line window `keydown` listener that prevents
   unconsumed non-editable, non-modifier, non-default-action keys, and records `window.__keys` (`pagePrevented`) so
   tests still see what the page did. Never add key-press loops outside the harness.
+- `window.close()` works only while the tab has one history entry, so guarded pages jump `#` links with
+  `location.replace` (a plain `#` jump would add an entry and the tab would stay open after sending).
+- The beforeunload dialog needs user activation, so the guard acts only when `navigator.userActivation.hasBeenActive`
+  (else Chrome logs "Blocked attempt to show a 'beforeunload'…"). A test needs a real input (`b.click('#topic')`, not
+  `eval(...click())` or `insertText`) after each `goto` before `GUARDED` is true; it dispatches a synthetic
+  `new Event('beforeunload', { cancelable: true })` and reads `defaultPrevented`.
+- The harness replaces `window.close` with the `window.__closed` counter, accepts beforeunload dialogs
+  (`b.leaveDialogs()`; otherwise `Page.navigate` waits forever after a real click on a guarded page).
 - The whole-stylesheet rebuild is counted by `b.twWrites()`; a test asserting 0 catches a missing carrier class.

@@ -9,6 +9,7 @@ import { imageInput, images, imageStrip, imgLines } from './images.js';
 import { passages } from './passages.js';
 import { shortcuts } from './shortcuts.js';
 import { docKeys } from './doc-keys.js';
+import { closeTab, guardLeave } from './leave.js';
 
 // Document mode: a Markdown file (spec, design, plan, report) drawn with marked, one card per ## section. In review mode every ## and ### heading and every selected passage takes a note, and the bar approves or sends the notes.
 export const docPage = (doc) => {
@@ -227,6 +228,7 @@ export const docPage = (doc) => {
   const rowBefore = (box) => targets().filter((r) => after(r, box)).pop() || null;
 
   if (review) {
+    guardLeave();
     const noteLine = (n) => (n.hl ? '[§ ' + n.hl.key + (n.hl.lines ? ' · ' + n.hl.lines : '') + '] «' + short(n.hl.quote) + '» → ' : '[§ ' + n.key + '] ') + n.ta.value.trim();
     const text = (decision) => ['Quyết định: ' + decision, ...filled().map(noteLine),
       ...imgLines(filled().map((n) => n.ta.value).join('\n'))].join('\n');
@@ -245,6 +247,7 @@ export const docPage = (doc) => {
           await postText(t);
           store.set(null);
           say('ok', (decision === 'Duyệt' ? 'Đã gửi: Duyệt.' : 'Đã gửi ' + filled().length + ' góp ý cho Claude.') + ' Có thể đóng tab này.');
+          closeTab();
           return;
         } catch (e) { approveBtn.disabled = changeBtn.disabled = false; }
       }

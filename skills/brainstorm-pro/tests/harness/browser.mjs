@@ -52,9 +52,15 @@ export async function launch({ dark = false, width = 1400, height = 1000 } = {})
   let id = 0;
   const pending = new Map();
   const errors = [];
+  let leaveDialogs = 0;
   ws.onmessage = (m) => {
     const d = JSON.parse(m.data);
     if (d.id && pending.has(d.id)) { pending.get(d.id)(d); pending.delete(d.id); return; }
+    // The leave guard asks before a reload or navigation (Page.navigate waits for the answer); the harness leaves, like a click on Leave.
+    if (d.method === 'Page.javascriptDialogOpening' && d.params.type === 'beforeunload') {
+      leaveDialogs++;
+      send('Page.handleJavaScriptDialog', { accept: true }).catch(() => {});
+    }
     if (d.method === 'Runtime.exceptionThrown') errors.push(d.params.exceptionDetails.exception?.description || d.params.exceptionDetails.text);
     if (d.method === 'Runtime.consoleAPICalled' && d.params.type === 'error') errors.push(d.params.args.map((a) => a.value ?? a.description).join(' '));
     if (d.method === 'Log.entryAdded' && d.params.entry.level === 'error') errors.push(d.params.entry.text + ' ' + (d.params.entry.url || ''));
@@ -72,6 +78,8 @@ export async function launch({ dark = false, width = 1400, height = 1000 } = {})
   await send('Emulation.setFocusEmulationEnabled', { enabled: true });
   await send('Page.addScriptToEvaluateOnNewDocument', { source: TW_HOOK });
   await send('Page.addScriptToEvaluateOnNewDocument', { source: KEY_HOOK });
+  // Pages close their own tab after sending; the harness drives a single tab.
+  await send('Page.addScriptToEvaluateOnNewDocument', { source: 'window.__closed = 0; window.close = () => { window.__closed++; };' });
 
   const evaluate = async (expr) => {
     const r = await send('Runtime.evaluate', { expression: expr, awaitPromise: true, returnByValue: true });
@@ -110,6 +118,7 @@ export async function launch({ dark = false, width = 1400, height = 1000 } = {})
   const api = {
     send, eval: evaluate, until, errors, mouse,
     // Console errors and exceptions, without the favicon request every file page makes.
+    leaveDialogs: () => leaveDialogs,
     unexpectedErrors: () => errors.filter((e) => !/favicon/.test(e)),
     // Waits for the load event and the caller's `ready` expression; `doc` pages also need marked from the CDN.
     goto: async (url, { ready = 'true', doc = false } = {}) => {

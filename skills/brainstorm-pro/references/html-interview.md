@@ -2,7 +2,7 @@
 
 Interview questions are shown as a local HTML page in the user's browser, one round at a time. The
 render script serves the page from a foreground command and waits; the user answers there and
-presses "Gửi câu trả lời", the script prints every answer of the round and exits, and the answers
+presses "Gửi câu trả lời", the script prints every answer of the round and exits (the page then closes its tab), and the answers
 come back as the command's output in the same turn, at the cost of asking in the terminal.
 Copy-and-paste into the chat stays as the fallback. Nothing is published and nothing is polled.
 
@@ -37,7 +37,8 @@ announcing a question for later.
    `id`/`n`/`title`/`options`, a `recommendation` without exactly one `recommended` option, and a
    bad image or code range; fix and rerun), writes
    `round-NN.html`, serves the page on `127.0.0.1` under a random token, opens it in the browser and
-   waits.
+   waits. Before an answer is sent or copied, closing or reloading the tab asks first (the browser's own
+   dialog, shown only after the user has clicked or typed on the page).
 3. When the command returns:
    - With the answers (exit 0): read them from its output (below) and go on in the same turn.
    - Moved to the background after the 10 minutes: end the turn with one chat line, the question

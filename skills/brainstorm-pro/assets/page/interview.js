@@ -6,6 +6,7 @@ import { copyText, fabMsg, fit, INTERVIEW_CARD, main, out, postText, say, sayFor
 import { imageInput, images, imageStrip, imgLines } from './images.js';
 import { shortcuts } from './shortcuts.js';
 import { interviewKeys } from './interview-keys.js';
+import { closeTab, guardLeave } from './leave.js';
 
 export const interviewPage = () => {
   const KEYS = 'ABCDEFGHIJ';
@@ -16,6 +17,7 @@ export const interviewPage = () => {
   const nums = Q.map((q) => q.n);
   const range = nums.length > 1 ? 'Câu ' + Math.min(...nums) + '–' + Math.max(...nums) : 'Câu ' + (nums[0] ?? '');
 
+  guardLeave();
   document.title = range + ' · ' + (D.topic || 'Phỏng vấn thiết kế');
   $('#topic').textContent = D.topic || 'Phỏng vấn thiết kế';
   const navLinks = Q.map((q) => el('a', { href: '#card-' + q.id, class: 'btn btn-xs btn-primary btn-outline font-mono font-medium' }));
@@ -237,6 +239,7 @@ export const interviewPage = () => {
       store.set(null);
       sendBtn.textContent = 'Đã gửi';
       say('ok', 'Đã gửi cho Claude. Có thể đóng tab này.');
+      closeTab();
     } catch (e) {
       sendBtn.disabled = false;
       say('warn', await copyText(text)

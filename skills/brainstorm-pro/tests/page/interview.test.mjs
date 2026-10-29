@@ -1,7 +1,7 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from '../harness/browser.mjs';
-import { READY, STATUS } from '../harness/page-helpers.mjs';
+import { COPY_OK, GUARDED, READY, STATUS } from '../harness/page-helpers.mjs';
 import { outDir, render, serve } from '../harness/serve.mjs';
 import { writeRound } from '../fixtures/round.mjs';
 
@@ -77,8 +77,11 @@ describe('interview page', () => {
 
   it('does not pick from a file link, Xem toàn file or the end of a text selection', async () => {
     await fresh();
+    const len = await b.eval('history.length');
     await b.click(card('q01', 2) + ' a[title="Xem file"]');
     assert.equal(await b.eval(`document.querySelector('dialog').open`), true);
+    assert.equal(await b.eval('history.length'), len, 'a file link does not navigate');
+    assert.equal(await b.eval(`location.href.endsWith('#')`), false);
     assert.equal(await checked('q01'), '');
     await b.eval(`document.querySelector('dialog').close()`);
     await b.click('#card-q01 figcaption button');
@@ -167,17 +170,62 @@ describe('interview page', () => {
     assert.equal(await status(), '');
   });
 
+  it('asks before leaving until copied; a nav chip jumps without a new history entry', async () => {
+    await fresh();
+    await b.click('#topic');
+    assert.equal(await b.eval(GUARDED), true);
+    const len = await b.eval('history.length');
+    const view = (height) => b.send('Emulation.setDeviceMetricsOverride', { width: 1400, height, deviceScaleFactor: 1, mobile: false });
+    await view(400);
+    try {
+      await b.click('#qnav a:nth-of-type(2)');
+      await b.until(`location.hash === '#card-q02'`);
+      const r = await b.eval(`({ len: history.length, top: document.querySelector('#card-q02').getBoundingClientRect().top, header: document.querySelector('header').getBoundingClientRect().bottom })`);
+      assert.equal(r.len, len);
+      assert.ok(r.top >= r.header - 2 && r.top < r.header + 40, 'the card sits just below the header: ' + JSON.stringify(r));
+    } finally { await view(1000); }
+    await b.click('#q01-opt-b');
+    await b.click('#q02-opt-x');
+    await b.eval(COPY_OK);
+    await b.eval(`[...document.querySelectorAll('aside button')].find((x) => x.textContent === 'Copy').click()`);
+    await b.until(`${STATUS}.startsWith('Đã copy 2 câu trả lời')`);
+    assert.equal(await b.eval(GUARDED), false);
+    assert.equal(await b.eval('window.__closed'), 0);
+  });
+
   it('falls back to copying when the server is gone', async () => {
     await fresh();
     s.kill();
     await s.done;
     await b.click('#q01-opt-b');
     await b.click('#q02-opt-x');
+    assert.equal(await b.eval(GUARDED), true);
+    await b.eval(COPY_OK);
     await b.click('aside .btn-primary');
-    await b.until(`${STATUS}.startsWith('Không gửi được (Claude không còn chờ trang này)')`);
+    await b.until(`${STATUS}.startsWith('Không gửi được (Claude không còn chờ trang này). Đã copy')`);
+    assert.equal(await b.eval(GUARDED), false);
+    assert.equal(await b.eval('window.__closed'), 0);
     assert.equal(await b.eval(`[...document.querySelectorAll('aside button')].find((x) => x.textContent.startsWith('Gửi')).disabled`), false, 'the send button works again');
     const text = await b.eval(`document.querySelector('#out').value`);
     assert.equal(text, '[q01] Which adder?\nChọn: B. Checked add\n\n[q02] Which extras?\nChọn: A. Extra X');
+  });
+
+  it('closes its tab after sending and then stops asking', async () => {
+    s = serve(writeRound(dir), dir + '/send/round.html');
+    await b.goto(await s.url, { ready });
+    await b.click('#topic');
+    assert.equal(await b.eval(GUARDED), true);
+    await b.click('#q01-opt-b');
+    await b.click('#q02-opt-x');
+    await b.click('aside .btn-primary');
+    const r = await s.answers();
+    assert.equal(r.code, 0);
+    await b.until(`${STATUS}.startsWith('Đã gửi cho Claude')`);
+    assert.equal(await b.eval('window.__closed'), 1);
+    assert.equal(await b.eval(GUARDED), false);
+    const dialogs = b.leaveDialogs();
+    await b.send('Page.navigate', { url: 'about:blank' });
+    assert.equal(b.leaveDialogs(), dialogs, 'an answered page leaves without asking');
   });
 
   it('a file page has no server and offers a copy button', async () => {
@@ -190,8 +238,12 @@ describe('interview page', () => {
     assert.ok(!labels.some((x) => x.startsWith('Gửi')));
     await b.click('#q01-opt-a');
     await b.click('#q02-opt-x');
+    assert.equal(await b.eval(GUARDED), true);
+    await b.eval(COPY_OK);
     await b.eval(`[...document.querySelectorAll('aside button')].find((x) => x.textContent.startsWith('Copy câu trả lời')).click()`);
     await b.until(`${STATUS} !== ''`, { timeout: 6000 });
-    assert.match(await status(), /^(Đã copy 2 câu trả lời|Không copy tự động được)/);
+    assert.match(await status(), /^Đã copy 2 câu trả lời/);
+    assert.equal(await b.eval(GUARDED), false);
+    assert.equal(await b.eval('window.__closed'), 0);
   });
 });

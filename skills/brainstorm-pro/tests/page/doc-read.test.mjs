@@ -1,6 +1,7 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from '../harness/browser.mjs';
+import { GUARDED } from '../harness/page-helpers.mjs';
 import { FIXTURES, outDir, render } from '../harness/serve.mjs';
 
 const dir = outDir('doc-read');
@@ -41,10 +42,14 @@ describe('read-only document page', () => {
   });
 
   it('nav links jump to their section', async () => {
+    const len = await b.eval('history.length');
     await b.click('#qnav a:nth-of-type(3)');
     const href = await b.eval(`document.querySelector('#qnav a:nth-of-type(3)').getAttribute('href')`);
     await b.until(`location.hash === ${JSON.stringify(href)}`);
     assert.equal(await b.eval(`document.querySelector(location.hash).textContent`), 'Risks');
+    assert.equal(await b.eval('history.length'), len + 1, 'native links keep their history entry');
+    await b.click('#topic');
+    assert.equal(await b.eval(GUARDED), false, 'no leave guard');
   });
 
   it('opens a file span and a Markdown file link in the viewer, and Esc closes it', async () => {

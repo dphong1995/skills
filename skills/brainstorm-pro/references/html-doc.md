@@ -35,7 +35,9 @@ compared with the one before (state in `review-<slug>/.review-state.json`), so t
 On a served page every `##` and `###` heading has a **Góp ý** button and a **Góp ý chung** box
 closes the page; selecting text shows a **Góp ý** button that marks the passage and opens a note
 under it; the bar has **Duyệt** and **Gửi góp ý** (Cmd/Ctrl+Enter). Note boxes take pasted or
-dropped images (`[Ảnh #N]`). Notes autosave in the browser.
+dropped images (`[Ảnh #N]`). Notes autosave in the browser. A sent Duyệt or Gửi góp ý closes the tab. Before
+an answer is sent or copied, closing or reloading the tab asks first (the browser's own dialog, shown only after
+the user has clicked or typed on the page).
 Keys: `J`/`K` move between headings, `C` comments the selection (or the current section), `G` the general
 box, `⌘Enter` sends, `⌘⇧Enter` is Duyệt (pressed twice within 3 s when notes exist), `?` lists them all.
 
