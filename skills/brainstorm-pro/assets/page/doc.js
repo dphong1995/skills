@@ -30,8 +30,11 @@ export const docPage = (doc) => {
   $('#topic').textContent = doc.title;
   if (review) $('#topic').after(el('span', { class: 'badge badge-sm badge-warning badge-soft whitespace-nowrap', text: 'Chờ duyệt · lần ' + (ch.round || 1) }));
   nav.setAttribute('aria-label', 'Các mục');
-  // order-last keeps the nav on its own line below the title, the badge and the shortcuts button.
-  nav.className = 'order-last flex gap-1 w-full overflow-x-auto pb-0.5';
+  // The nav and the shortcuts button (added by shortcuts) share one row below the title and the badge, so the button never takes a row of its own.
+  nav.className = 'flex-1 min-w-0 flex gap-1 overflow-x-auto pb-0.5';
+  const navRow = el('div', { class: 'w-full flex items-center gap-1' });
+  nav.replaceWith(navRow);
+  navRow.append(nav);
 
   // Notes in document order, so comments on passages and section notes read top to bottom.
   const filled = () => notes.filter((n) => n.ta.value.trim())

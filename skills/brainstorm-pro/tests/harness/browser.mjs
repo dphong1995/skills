@@ -7,6 +7,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isTyping } from '../../assets/page/keys.js';
+import { STATUS } from './page-helpers.mjs';
 
 const CHROME = process.env.CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -169,7 +170,7 @@ export async function launch({ dark = false, width = 1400, height = 1000 } = {})
       await api.twReset();
     },
     // The floating bar's message.
-    status: () => evaluate(`document.querySelector('aside p[role=status]').textContent`),
+    status: () => evaluate(STATUS),
     close: async () => {
       try { ws.close(); } catch (e) { /* already closed */ }
       proc.kill();

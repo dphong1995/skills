@@ -30,15 +30,18 @@ const ignored = async (k, mods) => {
   assert.equal(await b.eval('__keys.at(-1).pagePrevented'), false, k + ' must not be prevented');
 };
 const helpRows = async () => (await b.eval(`(() => { const out = [];
-  for (const x of document.querySelector('dialog:has(dl) dl').children) {
-    if (x.tagName === 'H3') out.push([x.textContent, []]);
-    else if (x.tagName === 'DT') out[out.length - 1][1].push(x.textContent + ' ' + x.nextElementSibling.textContent);
+  for (const g of document.querySelectorAll('dialog:has(dl) section')) {
+    out.push([g.querySelector('h3').textContent, [...g.querySelectorAll('dl > dt')].map((x) => x.textContent + ' ' + x.nextElementSibling.textContent)]);
   }
   return out; })()`)).map(([g, rows]) => [g, rows.map(hint)]);
 // Waits until the page has not scrolled for 300 ms, and returns scrollY.
 const still = () => b.eval(`new Promise((r) => { let last = -1, n = 0; (function f() { n = scrollY === last ? n + 1 : 0; last = scrollY; n >= 6 ? r(scrollY) : setTimeout(f, 50); })(); })`);
 // A wheel turn is the user's own scroll: it ends the lock a shortcut's scroll holds (the page waits for 150 ms of quiet, or 1 s when nothing scrolls).
-const unlocked = async () => { await still(); await b.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 700, y: 450, deltaX: 0, deltaY: 1 }); };
+const unlocked = async () => {
+  await still();
+  const [x, y] = await b.eval(`[innerWidth / 2, innerHeight / 2]`);
+  await b.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX: 0, deltaY: 1 });
+};
 const lockEnds = () => sleep(1200);
 const noTwWrites = async (what) => { await sleep(400); assert.equal(await b.twWrites(), 0, what + ' must not rebuild the stylesheet'); };
 
@@ -320,6 +323,30 @@ describe('interview page keys', () => {
     await b.until(`${RING} === 'card-q01'`, { what: 'the wheel scroll up to the top moves the ring, though it began inside the lock window' });
   });
 
+  // Two J presses start a scroll that locks the ring; `scroll` is what the user does next, then the page jumps to the top at once.
+  // The ring follows that jump (to card-q01) only when the user's action ended the lock.
+  const afterUserAction = async (scroll) => {
+    await toTop();
+    await unlocked();
+    await b.press('j');
+    await b.press('j');
+    assert.equal(await ring(), 'card-q03');
+    await scroll();
+    await b.eval(`scrollTo({ top: 0, behavior: 'instant' })`);
+    await sleep(300);
+    return ring();
+  };
+
+  it('a sideways wheel turn is not a scroll of the page: the lock stays', async () => {
+    const [x, y] = await b.eval(`[innerWidth / 2, innerHeight / 2]`);
+    assert.equal(await afterUserAction(() => b.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX: 40, deltaY: 0 })), 'card-q03');
+  });
+
+  it('PageDown outside a text box is the user\'s own scroll: it ends the lock', async () => {
+    await b.eval('document.activeElement.blur()');
+    assert.equal(await afterUserAction(() => b.press('PageDown')), 'card-q01');
+  });
+
 
   it('reports no console errors', async () => assert.deepEqual(b.unexpectedErrors(), []));
 });
@@ -541,16 +568,30 @@ describe('review document keys', () => {
     await b.press('c');
     await b.type('design note');
     await b.press('Escape');
+    const intro = `Góp ý: hl:${id}`;
+    // A short screen shows one box at a time: the boxes on screen say where N scrolled to.
+    const NEAR = `['Góp ý: Design', ${JSON.stringify(intro)}].filter((l) => { const r = document.querySelector('[aria-label=' + JSON.stringify(l) + ']').getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }).join()`;
     const seen = [];
-    for (let i = 0; i < 3; i++) {
-      await b.eval(`scrollTo({ top: ${i === 1 ? 'document.documentElement.scrollHeight' : 0}, behavior: 'instant' })`);
-      await still();
-      await b.press('n');
-      const want = i === 1 ? `Góp ý: hl:${id}` : 'Góp ý: Design';
-      await b.until(boxVisible(want), { what: 'the ' + want + ' box is on screen' });
-      seen.push(want);
-    }
-    assert.deepEqual(seen, ['Góp ý: Design', `Góp ý: hl:${id}`, 'Góp ý: Design']);
+    await b.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 400, deviceScaleFactor: 1, mobile: false });
+    try {
+      for (let i = 0; i < 3; i++) {
+        await b.eval(`scrollTo({ top: ${i === 1 ? 'document.documentElement.scrollHeight' : 0}, behavior: 'instant' })`);
+        await still();
+        await b.press('n');
+        const want = i === 1 ? intro : 'Góp ý: Design';
+        await b.until(`${NEAR} === ${JSON.stringify(want)}`, { what: 'only the ' + want + ' box is on screen' });
+        await still();
+        seen.push([await b.eval(NEAR), await ring()]);
+      }
+    } finally { await b.send('Emulation.setDeviceMetricsOverride', { width: 1400, height: 1000, deviceScaleFactor: 1, mobile: false }); }
+    // The intro note has no heading above it: the ring is cleared, so the next J goes to the first heading.
+    assert.deepEqual(seen, [['Góp ý: Design', 'Design'], [intro, null], ['Góp ý: Design', 'Design']]);
+    assert.equal(await ring(), 'Design');
+    await b.press('n');
+    await still();
+    assert.equal(await ring(), null);
+    await b.press('j');
+    await b.until(`${RING} === 'Overview'`, { what: 'J after the intro note goes to the first heading' });
   });
 
   it('⌘⇧ Enter with no note approves at once', async () => {

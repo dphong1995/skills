@@ -15,6 +15,7 @@ and check with `diff -rq -x out <repo skill> <live skill>` (`tests/out/` is outp
 | `assets/lib/build.mjs` | Bundle `assets/page/` and fill `assets/page/shell.html` into the one HTML |
 | `assets/lib/server.mjs` | `--serve`: token URL on 127.0.0.1, `ANSWERS` output, pasted images, 8 h timeout |
 | `assets/page/shell.html`, `theme.css`, `tailwind.css` | Page skeleton and styles |
+| `assets/page/package.json` | `{"type":"module"}`, so Node reads the page modules `lib/` and the tests import (`strings.js`, `keys.js`, `code.js`) as ESM; `build.mjs` only follows `.js` imports and ignores it |
 | `assets/page/main.js` | Picks the mode (interview, review, read-only doc) |
 | `assets/page/interview.js`, `doc.js` | Interview cards and send/copy; document sections, notes, Duyệt/Gửi |
 | `assets/page/fab.js` | Floating bar, `CARD`, `INTERVIEW_CARD`, the status line (`say`, `sayFor`) |
@@ -46,7 +47,7 @@ Need Google Chrome (`CHROME=<path>` for another), network (CDNs: Tailwind, highl
 Run from the skill directory:
 
 ```
-node --test --test-concurrency=1 'tests/**/*.test.mjs'    # all (196 tests), ~100 s; a bare tests/ argument fails on Node 24
+node --test --test-concurrency=1 'tests/**/*.test.mjs'    # all (205 tests), ~100 s; a bare tests/ argument fails on Node 24
 node --test 'tests/unit/*.test.mjs'                       # unit only (99 tests), no Chrome, under 2 s
 node --test tests/page/shortcuts.test.mjs                 # one file
 UPDATE_SNAPSHOTS=1 node --test tests/page/snapshot.test.mjs
@@ -65,7 +66,7 @@ UPDATE_SNAPSHOTS=1 node --test tests/page/snapshot.test.mjs
 Interview: `J K 1-9 N A-D R X E G Cmd+Enter ? Esc`. Document review: `J K 1-9 N C G Cmd+Enter Cmd+Shift+Enter ? Esc`
 (Cmd+Shift+Enter is Duyệt; with notes it needs a second press within 3 s). Read-only document: `J K 1-9 ? Esc`.
 `J`/`K` stop at the ends, `N` wraps. Handlers call `preventDefault`. `?` also opens from the header button, the last
-item of the header in every mode (the document nav row has `order-last` and keeps its own line). `X`/`E` check Khác /
+item of the header's nav: at the end of `#qnav` on the interview (it wraps with the chips), and after the nav in the document's own row (`doc.js` wraps `#qnav` in a `w-full` row that always exists, nav `flex-1`), so it never takes a header row of its own (`tests/page/header.test.mjs` pins the old heights). `X`/`E` check Khác /
 Cần giải thích (never toggle off on a multi card) and focus the box.
 
 ## Traps
@@ -75,7 +76,7 @@ Cần giải thích (never toggle off on a multi card) and focus the box.
 - `navigator.clipboard.writeText` can hang for a permission never asked, hence the 2 s race in `fab.js`.
 - Smooth scroll vs the current target: while the page scrolls itself, ring tracking is locked and unlocks
   150 ms after the last scroll event (1 s fallback). `scrollend` was flaky with repeated presses. A `wheel` or
-  `touchstart` unlocks at once (the user's scroll), and `sc.hold()` locks for a scroll the page causes by focusing a box.
+  `touchmove`, or a scrolling key outside a text box (PageUp/PageDown/Space/arrows/Home/End), unlocks at once (the user's scroll; a sideways or ctrl+wheel does not), and `sc.hold()` locks for a scroll the page causes by focusing a box.
 - IME: ignore keys while `isComposing`, or a shortcut fires mid-composition.
 - Headless Chrome needs focus emulation (the harness sets it), or `:focus` and `document.activeElement` lie.
 - macOS beeps: observed with headless Chrome on macOS, which plays the system alert for any key event the page does

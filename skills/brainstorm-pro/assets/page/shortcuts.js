@@ -54,6 +54,7 @@ export const shortcuts = ({ targets, level1 = targets, owner, keys }) => {
   };
   const sc = {
     current: () => current,
+    clear: () => setCurrent(null),
     go,
     hold,
     move: (d) => {
@@ -71,8 +72,11 @@ export const shortcuts = ({ targets, level1 = targets, owner, keys }) => {
   const track = (e) => { if (started && e.target instanceof Element) { const t = own(e.target); if (t) setCurrent(t); } };
   document.addEventListener('focusin', track);
   document.addEventListener('click', track);
-  // A wheel or touch is the user's own scroll, even inside the lock window.
-  for (const type of ['wheel', 'touchstart']) addEventListener(type, unlock, { passive: true });
+  // The user's own scroll, even inside the lock window: a vertical wheel turn (not a pinch zoom), a touch drag or a scrolling key outside a text box.
+  addEventListener('wheel', (e) => { if (e.deltaY !== 0 && !e.ctrlKey) unlock(); }, { passive: true });
+  addEventListener('touchmove', unlock, { passive: true });
+  const SCROLL_KEYS = ['PageUp', 'PageDown', ' ', 'ArrowUp', 'ArrowDown', 'Home', 'End'];
+  addEventListener('keydown', (e) => { if (SCROLL_KEYS.includes(e.key) && !isTyping(document.activeElement)) unlock(); });
   addEventListener('scroll', () => {
     if (locked) { clearTimeout(lockTimer); lockTimer = setTimeout(unlock, 150); return; }
     if (!started || frame) return;
@@ -86,17 +90,22 @@ export const shortcuts = ({ targets, level1 = targets, owner, keys }) => {
       run: () => { if (isTyping(document.activeElement)) document.activeElement.blur(); else getSelection().removeAllRanges(); } }];
   const byKey = new Map(list.flatMap((x) => [].concat(x.k).map((k) => [k, x])));
 
-  // One grid for all groups, so the label column is as wide as the widest key.
+  // One outer grid, so the key column is as wide as the widest key in every group (each group's section and list are subgrids).
   const help = modal('max-w-xl grid gap-3',
     el('h2', { class: 'text-[16px] font-semibold', text: 'Phím tắt' }),
-    el('dl', { class: 'm-0 grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5' }, GROUPS.flatMap((g) => {
+    el('div', { class: 'grid grid-cols-[auto_1fr] gap-x-3' }, GROUPS.flatMap((g) => {
       const rows = list.filter((x) => x.group === g);
-      return rows.length ? [el('h3', { class: 'col-span-2 [&:not(:first-child)]:mt-2 font-mono text-[11px] font-medium tracking-[.06em] uppercase text-muted', text: g }),
-        ...rows.flatMap((x) => [el('dt', {}, kbd(x.show || [].concat(x.k)[0].toUpperCase())), el('dd', { class: 'm-0', text: x.label })])] : [];
+      return rows.length ? [el('section', { class: 'col-span-2 grid grid-cols-subgrid gap-y-1.5 [&:not(:first-child)]:mt-2' },
+        el('h3', { class: 'col-span-2 font-mono text-[11px] font-medium tracking-[.06em] uppercase text-muted', text: g }),
+        el('dl', { class: 'm-0 col-span-2 grid grid-cols-subgrid items-center gap-y-1.5' },
+          ...rows.flatMap((x) => [el('dt', {}, kbd(x.show || [].concat(x.k)[0].toUpperCase())), el('dd', { class: 'm-0', text: x.label })])))] : [];
     })),
     closeForm('flex justify-end'));
   document.body.append(help);
-  $('.navbar').append(el('button', { type: 'button', class: 'btn btn-xs btn-ghost -my-0.5', title: 'Phím tắt', 'aria-label': 'Phím tắt', onclick: toggleHelp }, kbd('?', 'kbd-xs')));
+  // Last in the nav, so it wraps with the chips; on the document page the nav sits in its own row, and the button follows it there.
+  const helpBtn = el('button', { type: 'button', class: 'btn btn-xs btn-ghost -my-0.5', title: 'Phím tắt', 'aria-label': 'Phím tắt', onclick: toggleHelp }, kbd('?', 'kbd-xs'));
+  const nav = $('#qnav');
+  if (nav.parentElement.matches('.navbar')) nav.append(helpBtn); else nav.after(helpBtn);
 
   document.addEventListener('keydown', (e) => {
     if (e.defaultPrevented) return;

@@ -3,16 +3,18 @@
   <div class="navbar min-h-0 max-w-[1312px] mx-auto px-4 py-2 flex-wrap justify-between gap-x-3 gap-y-1.5">
     <h1 class="text-[15px] font-semibold leading-[1.35] min-w-0 me-auto" id="topic">Sample Spec</h1>
 <span class="badge badge-sm badge-warning badge-soft whitespace-nowrap">Chờ duyệt · lần 2</span>
-    <nav class="order-last flex gap-1 w-full overflow-x-auto pb-0.5" id="qnav" aria-label="Các mục">
+    <div class="w-full flex items-center gap-1">
+<nav class="flex-1 min-w-0 flex gap-1 overflow-x-auto pb-0.5" id="qnav" aria-label="Các mục">
 <a href="#sec-1" class="btn btn-xs btn-ghost font-normal whitespace-nowrap">Overview</a>
 <a href="#sec-4" class="btn btn-xs btn-ghost font-normal whitespace-nowrap">Design</a>
 <a href="#sec-6" class="btn btn-xs btn-ghost font-normal whitespace-nowrap">Added</a>
 <a href="#sec-7" class="btn btn-xs btn-ghost font-normal whitespace-nowrap">Open</a>
 </nav>
-  <button type="button" class="btn btn-xs btn-ghost -my-0.5" title="Phím tắt" aria-label="Phím tắt">
+<button type="button" class="btn btn-xs btn-ghost -my-0.5" title="Phím tắt" aria-label="Phím tắt">
 <kbd class="kbd kbd-xs">?</kbd>
 </button>
 </div>
+  </div>
 </header>
 <main class="max-w-[1312px] mx-auto px-4 pt-3.5 pb-20 grid gap-3.5" id="main">
 <div class="alert alert-soft alert-info block text-base-content text-[14px] leading-normal px-3 py-1.5 [&amp;_strong]:text-[var(--color-info)]">
@@ -231,8 +233,10 @@
 <dialog class="modal">
 <div class="modal-box max-w-xl grid gap-3">
 <h2 class="text-[16px] font-semibold">Phím tắt</h2>
-<dl class="m-0 grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5">
-<h3 class="col-span-2 [&amp;:not(:first-child)]:mt-2 font-mono text-[11px] font-medium tracking-[.06em] uppercase text-muted">Điều hướng</h3>
+<div class="grid grid-cols-[auto_1fr] gap-x-3">
+<section class="col-span-2 grid grid-cols-subgrid gap-y-1.5 [&amp;:not(:first-child)]:mt-2">
+<h3 class="col-span-2 font-mono text-[11px] font-medium tracking-[.06em] uppercase text-muted">Điều hướng</h3>
+<dl class="m-0 col-span-2 grid grid-cols-subgrid items-center gap-y-1.5">
 <dt>
 <kbd class="kbd kbd-sm">J</kbd>
 </dt>
@@ -249,7 +253,11 @@
 <kbd class="kbd kbd-sm">N</kbd>
 </dt>
 <dd class="m-0">Góp ý đã viết kế tiếp</dd>
-<h3 class="col-span-2 [&amp;:not(:first-child)]:mt-2 font-mono text-[11px] font-medium tracking-[.06em] uppercase text-muted">Thao tác</h3>
+</dl>
+</section>
+<section class="col-span-2 grid grid-cols-subgrid gap-y-1.5 [&amp;:not(:first-child)]:mt-2">
+<h3 class="col-span-2 font-mono text-[11px] font-medium tracking-[.06em] uppercase text-muted">Thao tác</h3>
+<dl class="m-0 col-span-2 grid grid-cols-subgrid items-center gap-y-1.5">
 <dt>
 <kbd class="kbd kbd-sm">C</kbd>
 </dt>
@@ -266,7 +274,11 @@
 <kbd class="kbd kbd-sm">⌘⇧ Enter</kbd>
 </dt>
 <dd class="m-0">Duyệt (có góp ý thì bấm hai lần)</dd>
-<h3 class="col-span-2 [&amp;:not(:first-child)]:mt-2 font-mono text-[11px] font-medium tracking-[.06em] uppercase text-muted">Chung</h3>
+</dl>
+</section>
+<section class="col-span-2 grid grid-cols-subgrid gap-y-1.5 [&amp;:not(:first-child)]:mt-2">
+<h3 class="col-span-2 font-mono text-[11px] font-medium tracking-[.06em] uppercase text-muted">Chung</h3>
+<dl class="m-0 col-span-2 grid grid-cols-subgrid items-center gap-y-1.5">
 <dt>
 <kbd class="kbd kbd-sm">?</kbd>
 </dt>
@@ -276,6 +288,8 @@
 </dt>
 <dd class="m-0">Rời ô đang gõ, hoặc bỏ chọn chữ</dd>
 </dl>
+</section>
+</div>
 <form method="dialog" class="flex justify-end">
 <button class="btn btn-sm ">Đóng<kbd class="kbd kbd-xs">Esc</kbd>
 </button>

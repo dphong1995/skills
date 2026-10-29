@@ -34,9 +34,11 @@ export const docKeys = (sc, review) => {
       const cur = sc.current();
       const i = last && last.row === cur ? all.indexOf(last.n) : -1;
       const n = i >= 0 ? all[(i + 1) % all.length] : all.find((x) => cur && after(cur, x.box)) || all[0];
-      // A note before the first heading has no row: the ring stays where it is and the page still scrolls to the box.
-      sc.go(rowBefore(n.box), { to: n.box, block: 'center' });
-      last = { n, row: sc.current() };
+      // A note before the first heading has no row: the ring is cleared (the next J goes to the first heading) and the page still scrolls to the box.
+      const row = rowBefore(n.box);
+      if (!row) sc.clear();
+      sc.go(row, { to: n.box, block: 'center' });
+      last = { n, row };
     } },
     { k: 'c', group: 'Thao tác', label: 'Góp ý đoạn đang chọn, hoặc góp ý của mục đang chọn', run: () => {
       const n = commentSelection() || rowNote.get(sc.current());
