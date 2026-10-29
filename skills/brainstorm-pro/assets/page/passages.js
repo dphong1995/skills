@@ -83,7 +83,6 @@ export const passages = ({ notes, noteBox, update }) => {
     return n;
   };
 
-  // The Góp ý button by a selection; mousedown keeps the selection.
   // Comments on the current selection: the new note, or null when nothing in it can take one.
   const commentSelection = () => {
     const sel = getSelection();
@@ -92,6 +91,7 @@ export const passages = ({ notes, noteBox, update }) => {
     if (n) sel.removeAllRanges();
     return n;
   };
+  // The Góp ý button by a selection; mousedown keeps the selection.
   const adder = el('button', { type: 'button', class: btnCls('primary', true) + ' absolute z-20 shadow-lg', hidden: true, onmousedown: (e) => e.preventDefault(), onclick: () => {
     const n = commentSelection();
     if (n) n.ta.focus();

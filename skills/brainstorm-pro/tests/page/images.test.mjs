@@ -2,13 +2,16 @@ import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { launch, sleep } from '../harness/browser.mjs';
-import { IMAGE_HELPERS } from '../harness/page-helpers.mjs';
+import { IMAGE_HELPERS, READY, STATUS } from '../harness/page-helpers.mjs';
 import { FIXTURES, outDir, parseAnswers, render, serve } from '../harness/serve.mjs';
 import { writeRound } from '../fixtures/round.mjs';
 
 const dir = outDir('images');
 let b;
-const status = () => b.eval(`document.querySelector('aside p[role=status]').textContent`);
+
+before(async () => { b = await launch(); });
+after(async () => { await b.close(); });
+const status = () => b.status();
 const thumbs = (sel) => b.eval(`document.querySelectorAll(${JSON.stringify(sel + ' figure.relative img')}).length`);
 const pathsOf = (stdout) => [...stdout.matchAll(/^Ảnh #(\d+): (.+)$/gm)].map((m) => ({ n: +m[1], path: m[2] }));
 const sendBtn = (re) => b.eval(`[...document.querySelectorAll('aside button')].find((x) => ${re}.test(x.textContent) && x.classList.contains('btn-primary')).click()`);
@@ -16,15 +19,13 @@ const sample = (path) => readFileSync(path).toString('base64');
 
 describe('images on the interview page', () => {
   let s, url, p1;
-  const ready = `!!document.querySelector('#card-q02') && !!document.querySelector('aside')`;
   before(async () => {
-    b = await launch();
     s = serve(writeRound(dir), dir + '/int/round.html');
     url = await s.url;
-    await b.goto(url, { ready });
+    await b.goto(url, { ready: READY.interview });
     await b.eval(IMAGE_HELPERS);
   });
-  after(async () => { s.kill(); await b.close(); });
+  after(() => { s.kill(); });
 
   it('a paste puts a chip at the caret and shows a thumbnail that loads', async () => {
     await b.click('#q01-opt-a');
@@ -69,12 +70,12 @@ describe('images on the interview page', () => {
     const r = await b.eval(`(() => { const dt = new DataTransfer(); dt.items.add(new File([new Uint8Array(3)], 'a.png', { type: 'image/png' }));
       const href = location.href; const over = new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true }); document.body.dispatchEvent(over);
       const ev = new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }); document.body.dispatchEvent(ev);
-      return { over: over.defaultPrevented, prevented: ev.defaultPrevented, same: location.href === href, msg: document.querySelector('aside p[role=status]').textContent }; })()`);
+      return { over: over.defaultPrevented, prevented: ev.defaultPrevented, same: location.href === href, msg: ${STATUS} }; })()`);
     assert.deepEqual(r, { over: true, prevented: true, same: true, msg: 'Thả ảnh vào một ô nhập.' });
   });
 
   it('keeps chips and thumbnails over a reload, saving paths in the draft and no image data', async () => {
-    await b.goto(url, { ready });
+    await b.goto(url, { ready: READY.interview });
     await b.eval(IMAGE_HELPERS);
     const re = await b.eval(`({ note: document.querySelector('#q01-note').value, t1: document.querySelectorAll('#card-q01 figure.relative img').length,
       ls: localStorage.getItem('interview-draft:' + location.pathname) })`);
@@ -101,15 +102,13 @@ describe('images on the interview page', () => {
 
 describe('images on the document page', () => {
   let s, url;
-  const ready = `document.querySelectorAll('main > article').length >= 5 && !!document.querySelector('[aria-label="Góp ý: Chung"]')`;
   before(async () => {
-    b = await launch();
     s = serve(FIXTURES + '/doc.md', dir + '/doc/review-01.html');
     url = await s.url;
-    await b.goto(url, { ready, doc: true });
+    await b.goto(url, { ready: READY.review, doc: true });
     await b.eval(IMAGE_HELPERS);
   });
-  after(async () => { s.kill(); await b.close(); });
+  after(() => { s.kill(); });
 
   const box = (t) => `[aria-label="Góp ý: ${t}"]`;
   const open = (t) => b.eval(`[...document.querySelectorAll('main h2')].find((h) => h.textContent === ${JSON.stringify(t)}).parentElement.querySelector('button').click()`);
@@ -126,7 +125,7 @@ describe('images on the document page', () => {
   });
 
   it('restores them after a reload with the draft shape {n, h, img}', async () => {
-    await b.goto(url, { ready, doc: true });
+    await b.goto(url, { ready: READY.review, doc: true });
     const re = await b.eval(`({ vals: [...document.querySelectorAll('main textarea')].map((t) => t.value).filter(Boolean), th: document.querySelectorAll('main figure img[title^="Ảnh"]').length,
       vis: [...document.querySelectorAll('main textarea')].filter((t) => t.value).every((t) => t.offsetParent), ls: localStorage.getItem('doc-draft:' + location.pathname) })`);
     assert.equal(re.vals.length, 3);
@@ -148,9 +147,6 @@ describe('images on the document page', () => {
 });
 
 describe('images on a file page', () => {
-  before(async () => { b = await launch(); });
-  after(async () => { await b.close(); });
-
   it('warns that nothing can be saved, adds no chip and blocks only a drop', async () => {
     const out = dir + '/file/round.html';
     assert.equal(render(writeRound(dir), out).code, 0);

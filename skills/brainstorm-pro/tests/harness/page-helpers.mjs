@@ -1,4 +1,17 @@
-// Page-side helper scripts, evaluated in the page under test.
+// Page-side helper scripts, evaluated in the page under test, and expressions shared by the test files.
+
+// What `ready` waits for in b.goto: the interview page, the read-only document and the review page.
+export const READY = {
+  interview: `!!document.querySelector('#card-q02') && !!document.querySelector('aside')`,
+  doc: `document.querySelectorAll('main > article').length >= 5`,
+  review: `document.querySelectorAll('main > article').length >= 5 && !!document.querySelector('[aria-label="Góp ý: Chung"]')`,
+};
+
+// The floating bar's message as a page expression (b.status() reads it).
+export const STATUS = `document.querySelector('aside p[role=status]').textContent`;
+
+// A key hint with the platform's spelling replaced: MOD for ⌘ Enter / Ctrl Enter, CHORD for ⌘⇧ Enter / Ctrl Shift Enter.
+export const hint = (t) => t.replace(/⌘⇧ Enter|Ctrl Shift Enter/, 'CHORD').replace(/⌘ Enter|Ctrl Enter/, 'MOD');
 
 // window.mk(color) makes a real PNG; window.send(sel, 'paste' | 'drop', color, type, size) puts it into a textarea as a clipboard or drop event and resolves
 // with the bytes sent, whether the event was prevented and the textarea's value once it changed (or after 2 s).

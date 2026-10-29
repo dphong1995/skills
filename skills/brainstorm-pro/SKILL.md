@@ -184,7 +184,7 @@ reason in `recommendation`. In content terms:
 - Cons: ...
 ```
 
-Lead with your recommendation and the reason. If user prefers a non-recommended option, **brutally honest pushback** as the next question on the page (stage `Phản biện`: the risk you see, keep vs. switch) — but accept the user's call if they reconfirm with reason. Once the approach is settled, continue in chat.
+Lead with your recommendation and the reason. If user prefers a non-recommended option, **brutally honest pushback** as the next question on the page (stage `Phản biện`: the risk you see, keep vs. switch) — but accept the user's call if they reconfirm with reason. Once the approach is settled, go on to Phase 4.
 
 ---
 
@@ -293,7 +293,7 @@ skipped by mistake:
 - **A standing preference to auto-run `cook`** — that governs the plan→implementation handoff
   *after* this gate, never the spec→plan one.
 - **The spec looking obviously right to you.** Self-review is Phase 5 and it already happened. Phase
-  7 exists because the author is the worst reviewer of their own scope calls.
+  6 exists because the author is the worst reviewer of their own scope calls.
 
 If the user has genuinely pre-authorized skipping this ("just build it", "don't wait for me"), quote
 the words they used when you proceed, so the assumption is visible and correctable.

@@ -6,14 +6,31 @@ import { fileURLToPath } from 'node:url';
 
 export const PAGE_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'page');
 
-const IMPORT = /^import \{[^}]*\} from '\.\/([\w-]+\.js)';\s*$/;
+const IMPORT = /^import \{([^}]*)\} from '\.\/([\w-]+\.js)';\s*$/;
 const DECL = /^(?:async\s+)?(?:const|let|var|function\*?|class)\s+(?:([\w$]+)|[{[]([^}\]]*)[}\]])/;
+
+// The names after the first in a one-line `const a = 1, b = 2;` (commas inside brackets and strings do not count).
+const laterNames = (line) => {
+  const out = [];
+  let depth = 0, quote = '';
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (quote) { if (c === '\\') i++; else if (c === quote) quote = ''; continue; }
+    if (c === "'" || c === '"' || c === '`') quote = c;
+    else if ('([{'.includes(c)) depth++;
+    else if (')]}'.includes(c)) depth--;
+    else if (c === ';') break;
+    else if (c === ',' && depth === 0) { const m = /^\s*([\w$]+)\s*=/.exec(line.slice(i + 1)); if (m) out.push(m[1]); }
+  }
+  return out;
+};
 
 // { script, names }: the bundled modules, and each top-level name with the file that declares it.
 export const bundle = (pageDir = PAGE_DIR) => {
   const done = new Set();
   const chain = [];
   const order = [];
+  const imports = [];
   const visit = (file) => {
     if (chain.includes(file)) throw new Error(`import cycle: ${[...chain.slice(chain.indexOf(file)), file].join(' -> ')}`);
     if (done.has(file)) return;
@@ -22,7 +39,11 @@ export const bundle = (pageDir = PAGE_DIR) => {
     const kept = [];
     lines.forEach((line, i) => {
       const m = IMPORT.exec(line);
-      if (m) { visit(m[1]); return; }
+      if (m) {
+        imports.push({ file, line: i + 1, target: m[2], names: m[1].split(',').map((n) => n.trim()).filter(Boolean) });
+        visit(m[2]);
+        return;
+      }
       if (/^export\s+(default|\{|\*)/.test(line)) throw new Error(`${file}:${i + 1}: only "export const|let|function|class" is supported: ${line.trim()}`);
       kept.push(line.replace(/^export /, ''));
     });
@@ -39,14 +60,22 @@ export const bundle = (pageDir = PAGE_DIR) => {
       if (/^\s*(import|export)\b/.test(line)) throw new Error(`${file}:${i + 1}: unsupported import/export: ${line.trim()}`);
       const m = DECL.exec(line);
       if (!m) return;
-      for (const name of m[1] ? [m[1]] : m[2].split(',').map((s) => s.split(/[:=]/).pop().trim()).filter(Boolean)) {
+      const own = m[1] ? [m[1]] : m[2].split(',').map((x) => x.split('=')[0].split(':').pop().trim()).filter(Boolean);
+      for (const name of /^(?:const|let|var)\b/.test(line) ? [...own, ...laterNames(line)] : own) {
         if (names.has(name)) throw new Error(`duplicate top-level name "${name}": ${names.get(name)} and ${file}`);
         names.set(name, file);
       }
     });
     parts.push(lines.join('\n').trimEnd());
   }
-  return { script: parts.join('\n\n') + '\n', names };
+  for (const { file, line, target, names: wanted } of imports) {
+    for (const name of wanted) if (names.get(name) !== target) throw new Error(`${file}:${line}: "${name}" is not declared by ${target}`);
+  }
+  const script = parts.join('\n\n') + '\n';
+  if (/<\/script|<!--/i.test(script)) throw new Error('the script holds "</script" or "<!--", which the HTML parser would read as markup');
+  // Any redeclaration or syntax error the name scan misses (`const a = 1, b = 2;`, destructuring defaults) fails here.
+  try { new Function("'use strict';const D=null;\n" + script); } catch (e) { throw new Error(`bundle does not parse: ${e.message}`); }
+  return { script, names };
 };
 
 // `bundled` is a bundle() result, to build several pages from one bundle.

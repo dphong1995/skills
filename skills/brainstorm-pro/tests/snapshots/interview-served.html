@@ -1,12 +1,12 @@
 <body class="bg-page text-base-content font-sans text-[14px] leading-normal">
 <header class="sticky top-0 z-5 bg-base-100 border-b border-base-300">
   <div class="navbar min-h-0 max-w-[1312px] mx-auto px-4 py-2 flex-wrap justify-between gap-x-3 gap-y-1.5">
-    <h1 class="text-[15px] font-semibold leading-[1.35] min-w-0" id="topic">Fixture round</h1>
+    <h1 class="text-[15px] font-semibold leading-[1.35] min-w-0 me-auto" id="topic">Fixture round</h1>
     <nav class="flex flex-wrap gap-1" id="qnav" aria-label="Các câu hỏi">
 <a href="#card-q01" class="btn btn-xs btn-primary btn-outline font-mono font-medium">Câu 1</a>
 <a href="#card-q02" class="btn btn-xs btn-primary btn-outline font-mono font-medium">Câu 2</a>
 </nav>
-  <button type="button" class="btn btn-xs btn-ghost" title="Phím tắt" aria-label="Phím tắt">
+  <button type="button" class="btn btn-xs btn-ghost -my-0.5" title="Phím tắt" aria-label="Phím tắt">
 <kbd class="kbd kbd-xs">?</kbd>
 </button>
 </div>
@@ -309,9 +309,8 @@
 <dialog class="modal">
 <div class="modal-box max-w-xl grid gap-3">
 <h2 class="text-[16px] font-semibold">Phím tắt</h2>
-<section class="grid gap-1.5">
-<h3 class="font-mono text-[11px] font-medium tracking-[.06em] uppercase text-muted">Điều hướng</h3>
 <dl class="m-0 grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5">
+<h3 class="col-span-2 [&amp;:not(:first-child)]:mt-2 font-mono text-[11px] font-medium tracking-[.06em] uppercase text-muted">Điều hướng</h3>
 <dt>
 <kbd class="kbd kbd-sm">J</kbd>
 </dt>
@@ -328,11 +327,7 @@
 <kbd class="kbd kbd-sm">N</kbd>
 </dt>
 <dd class="m-0">Câu chưa trả lời kế tiếp</dd>
-</dl>
-</section>
-<section class="grid gap-1.5">
-<h3 class="font-mono text-[11px] font-medium tracking-[.06em] uppercase text-muted">Thao tác</h3>
-<dl class="m-0 grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5">
+<h3 class="col-span-2 [&amp;:not(:first-child)]:mt-2 font-mono text-[11px] font-medium tracking-[.06em] uppercase text-muted">Thao tác</h3>
 <dt>
 <kbd class="kbd kbd-sm">A–D</kbd>
 </dt>
@@ -357,11 +352,7 @@
 <kbd class="kbd kbd-sm">⌘ Enter</kbd>
 </dt>
 <dd class="m-0">Gửi câu trả lời</dd>
-</dl>
-</section>
-<section class="grid gap-1.5">
-<h3 class="font-mono text-[11px] font-medium tracking-[.06em] uppercase text-muted">Chung</h3>
-<dl class="m-0 grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5">
+<h3 class="col-span-2 [&amp;:not(:first-child)]:mt-2 font-mono text-[11px] font-medium tracking-[.06em] uppercase text-muted">Chung</h3>
 <dt>
 <kbd class="kbd kbd-sm">?</kbd>
 </dt>
@@ -371,7 +362,6 @@
 </dt>
 <dd class="m-0">Rời ô đang gõ, hoặc bỏ chọn chữ</dd>
 </dl>
-</section>
 <form method="dialog" class="flex justify-end">
 <button class="btn btn-sm ">Đóng<kbd class="kbd kbd-xs">Esc</kbd>
 </button>

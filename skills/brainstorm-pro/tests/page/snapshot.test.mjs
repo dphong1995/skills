@@ -1,10 +1,11 @@
 // The DOM of each page after load, as text. A snapshot is written when missing or when UPDATE_SNAPSHOTS=1; otherwise the page must match it.
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { launch } from '../harness/browser.mjs';
-import { FIXTURES, TESTS, outDir, render, serve } from '../harness/serve.mjs';
+import { READY } from '../harness/page-helpers.mjs';
+import { FIXTURES, TESTS, outDir, render, serve, serveRound2 } from '../harness/serve.mjs';
 import { writeRound } from '../fixtures/round.mjs';
 
 const dir = outDir('snapshot');
@@ -61,30 +62,21 @@ describe('page snapshots', () => {
     try { await snap('interview-served', await s.url, `!!document.querySelector('#card-q02')`, false); } finally { s.kill(); }
   });
 
-  const docReady = `document.querySelectorAll('main > article').length >= 5`;
   it('the read-only document', async () => {
     const d = outDir('snapshot/doc-read');
     assert.equal(render(FIXTURES + '/doc.md', d + '/page.html', ['--open']).code, 0);
-    await snap('doc-read', 'file://' + d + '/page.html', docReady, true);
+    await snap('doc-read', 'file://' + d + '/page.html', READY.doc, true);
   });
 
   it('review round 1', async () => {
     const d = outDir('snapshot/review-1');
     const s = serve(FIXTURES + '/doc.md', d + '/review-01.html');
-    try { await snap('review-1', await s.url, docReady + ` && !!document.querySelector('[aria-label="Góp ý: Chung"]')`, true); } finally { s.kill(); }
+    try { await snap('review-1', await s.url, READY.review, true); } finally { s.kill(); }
   });
 
   it('review round 2', async () => {
     const d = outDir('snapshot/review-2');
-    const md = d + '/doc.md';
-    copyFileSync(FIXTURES + '/doc.md', md);
-    copyFileSync(FIXTURES + '/code.ts', d + '/code.ts');
-    const first = serve(md, d + '/review-01.html');
-    await first.url;
-    first.kill();
-    await first.done;
-    copyFileSync(FIXTURES + '/doc-v2.md', md);
-    const s = serve(md, d + '/review-02.html');
-    try { await snap('review-2', await s.url, docReady + ` && !!document.querySelector('main > .alert')`, true); } finally { s.kill(); }
+    const s = await serveRound2(d);
+    try { await snap('review-2', await s.url, READY.doc + ` && !!document.querySelector('main > .alert')`, true); } finally { s.kill(); }
   });
 });

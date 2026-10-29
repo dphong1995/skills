@@ -2,7 +2,7 @@ import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { launch, sleep } from '../harness/browser.mjs';
-import { PASSAGE_HELPERS, IMAGE_HELPERS } from '../harness/page-helpers.mjs';
+import { IMAGE_HELPERS, PASSAGE_HELPERS, READY } from '../harness/page-helpers.mjs';
 import { FIXTURES, outDir, parseAnswers, serve } from '../harness/serve.mjs';
 
 const dir = outDir('passages');
@@ -10,8 +10,7 @@ const DOC = FIXTURES + '/doc.md';
 const lines = readFileSync(DOC, 'utf8').split('\n');
 const lineOf = (s) => lines.findIndex((l) => l.includes(s)) + 1;
 const fenceOf = (s) => { let a = lineOf(s); while (!lines[a - 1].startsWith('```')) a--; let z = lineOf(s); while (!lines[z - 1].startsWith('```')) z++; return a + '-' + z; };
-const ready = `document.querySelectorAll('main > article').length >= 5 && !!document.querySelector('[aria-label="Góp ý: Chung"]')
-  && (!!document.querySelector('main [data-mmd] svg') || !!document.querySelector('main [data-mmd] .alert'))`;
+const ready = READY.review + ` && (!!document.querySelector('main [data-mmd] svg') || !!document.querySelector('main [data-mmd] .alert'))`;
 let b, s, url;
 
 const load = async (name) => {
@@ -58,9 +57,7 @@ describe('highlight comments on the review page', () => {
 
   it('the first comment makes Tailwind rewrite nothing, and the box sits in the bullet and takes focus', async () => {
     // Tailwind may still be settling after load; wait for a quiet stretch, then count from zero.
-    let n;
-    do { n = await b.twWrites(); await sleep(500); } while (n !== (await b.twWrites()));
-    await b.twReset();
+    await b.twSettle();
     ids.bullet = await comment('second goal bullet');
     assert.equal(await b.twWrites(), 0, 'the first comment must not rebuild the stylesheet');
     assert.equal(await b.eval(`!!document.querySelector('[data-hl="${ids.bullet}"]').closest('li')`), true);
@@ -208,7 +205,7 @@ describe('highlight comments on the review page', () => {
     assert.equal(await state(), before);
     assert.equal(await b.eval(`document.querySelector('[aria-label="Góp ý: Risks"]').value`), 'c-section');
     assert.equal(await b.eval(`document.querySelectorAll('figure img[title="Ảnh #1"]').length`), 1);
-    assert.equal(await b.eval(`document.querySelector('aside p[role=status]').textContent`), 'Đã khôi phục góp ý đã lưu.');
+    assert.equal(await b.status(), 'Đã khôi phục góp ý đã lưu.');
   });
 
   it('sends every comment with its section, lines and quote on Cmd+Enter', async () => {
@@ -242,7 +239,7 @@ describe('highlight comments on the review page', () => {
     assert.ok(id);
     await b.eval(`(() => { const k = 'doc-draft:' + location.pathname; const d = JSON.parse(localStorage.getItem(k)); d.h[0].q = 'text the document does not have'; localStorage.setItem(k, JSON.stringify(d)); })()`);
     await b.goto(url, { ready, doc: true });
-    assert.equal(await b.eval(`document.querySelector('aside p[role=status]').textContent`), 'Không khôi phục được 1 góp ý tô đen (tài liệu đã đổi).');
+    assert.equal(await b.status(), 'Không khôi phục được 1 góp ý tô đen (tài liệu đã đổi).');
     assert.equal(await b.eval('T === undefined').catch(() => true), true);
     s.kill();
   });

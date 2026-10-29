@@ -1,8 +1,7 @@
-import { $, btnCls, el } from './dom.js';
+import { $, closeForm, el, kbd, modal } from './dom.js';
 import { isTyping, keyName, step } from './keys.js';
 
 const GROUPS = ['Điều hướng', 'Thao tác', 'Chung'];
-const kbd = (text, size = 'kbd-sm') => el('kbd', { class: 'kbd ' + size, text });
 
 // The one keyboard engine of every mode. `targets()` are the items J/K walk, in page order; `level1()` those the digits pick; `owner(node)` the target a node belongs to.
 // `keys(sc)` returns the mode's list of { k, show?, group, label, run, typing? }: k is a keyName() result (or a list of them), typing true lets it run inside a text box.
@@ -19,29 +18,44 @@ export const shortcuts = ({ targets, level1 = targets, owner, keys }) => {
     current = t;
     if (t) t.dataset.current = 'true';
   };
-  // The last target whose top is above the point just under the header.
+  // The y just under the header, measured again only when the header or the page is resized.
+  let under = null;
+  const measure = new ResizeObserver(() => { under = null; });
+  measure.observe($('header'));
+  measure.observe(document.documentElement);
+  const topY = () => {
+    if (under == null) {
+      const pad = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
+      under = Math.max($('header').getBoundingClientRect().bottom, pad) + 8;
+    }
+    return under;
+  };
+  // The last target whose top is above that point.
   const topTarget = () => {
     const all = targets();
-    const pad = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
-    const y = Math.max($('header').getBoundingClientRect().bottom, pad) + 8;
+    const y = topY();
     let at = all[0] || null;
     for (const t of all) if (t.getBoundingClientRect().top <= y) at = t; else break;
     return at;
   };
   // Scrolling the page started itself must not move the ring: tracking waits until the scrolling has been quiet for 150 ms (1 s when nothing scrolls).
   const unlock = () => { locked = false; clearTimeout(lockTimer); };
-  const go = (t, { to = t, block = 'start' } = {}) => {
-    if (!t) return;
-    setCurrent(t);
+  // hold() is for a scroll the page causes by itself, such as focusing a box.
+  const hold = () => {
     locked = true;
     clearTimeout(lockTimer);
     lockTimer = setTimeout(unlock, 1000);
+  };
+  const go = (t, { to = t, block = 'start' } = {}) => {
+    if (!t && !to) return;
+    if (t) setCurrent(t);
+    hold();
     to.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block });
   };
   const sc = {
     current: () => current,
-    targets,
     go,
+    hold,
     move: (d) => {
       const all = targets();
       go(all[step(all.indexOf(current), all.length, d)]);
@@ -57,34 +71,32 @@ export const shortcuts = ({ targets, level1 = targets, owner, keys }) => {
   const track = (e) => { if (started && e.target instanceof Element) { const t = own(e.target); if (t) setCurrent(t); } };
   document.addEventListener('focusin', track);
   document.addEventListener('click', track);
+  // A wheel or touch is the user's own scroll, even inside the lock window.
+  for (const type of ['wheel', 'touchstart']) addEventListener(type, unlock, { passive: true });
   addEventListener('scroll', () => {
     if (locked) { clearTimeout(lockTimer); lockTimer = setTimeout(unlock, 150); return; }
     if (!started || frame) return;
     frame = requestAnimationFrame(() => { frame = 0; if (!locked) setCurrent(topTarget()); });
   }, { passive: true });
 
-  const help = el('dialog', { class: 'modal' });
-  const toggleHelp = () => { if (help.open) help.close(); else if (!$('dialog[open]')) help.showModal(); };
+  const toggleHelp = () => { if (help.open) help.close(); else help.showModal(); };
   const list = [...keys(sc),
     { k: '?', group: 'Chung', label: 'Mở hoặc đóng bảng phím', run: toggleHelp },
     { k: 'Escape', show: 'Esc', group: 'Chung', label: 'Rời ô đang gõ, hoặc bỏ chọn chữ', typing: true,
       run: () => { if (isTyping(document.activeElement)) document.activeElement.blur(); else getSelection().removeAllRanges(); } }];
   const byKey = new Map(list.flatMap((x) => [].concat(x.k).map((k) => [k, x])));
 
-  help.append(
-    el('div', { class: 'modal-box max-w-xl grid gap-3' },
-      el('h2', { class: 'text-[16px] font-semibold', text: 'Phím tắt' }),
-      GROUPS.map((g) => (list.some((x) => x.group === g) ? el('section', { class: 'grid gap-1.5' },
-        el('h3', { class: 'font-mono text-[11px] font-medium tracking-[.06em] uppercase text-muted', text: g }),
-        el('dl', { class: 'm-0 grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5' },
-          list.filter((x) => x.group === g).flatMap((x) => [el('dt', {}, kbd(x.show || [].concat(x.k)[0].toUpperCase())), el('dd', { class: 'm-0', text: x.label })]))) : null)),
-      el('form', { method: 'dialog', class: 'flex justify-end' }, el('button', { class: btnCls() }, 'Đóng', kbd('Esc', 'kbd-xs')))),
-    el('form', { method: 'dialog', class: 'modal-backdrop' }, el('button', { text: 'Đóng' })));
+  // One grid for all groups, so the label column is as wide as the widest key.
+  const help = modal('max-w-xl grid gap-3',
+    el('h2', { class: 'text-[16px] font-semibold', text: 'Phím tắt' }),
+    el('dl', { class: 'm-0 grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5' }, GROUPS.flatMap((g) => {
+      const rows = list.filter((x) => x.group === g);
+      return rows.length ? [el('h3', { class: 'col-span-2 [&:not(:first-child)]:mt-2 font-mono text-[11px] font-medium tracking-[.06em] uppercase text-muted', text: g }),
+        ...rows.flatMap((x) => [el('dt', {}, kbd(x.show || [].concat(x.k)[0].toUpperCase())), el('dd', { class: 'm-0', text: x.label })])] : [];
+    })),
+    closeForm('flex justify-end'));
   document.body.append(help);
-  const button = el('button', { type: 'button', class: 'btn btn-xs btn-ghost', title: 'Phím tắt', 'aria-label': 'Phím tắt', onclick: toggleHelp }, kbd('?', 'kbd-xs'));
-  // A document header holds the title row and a full-width nav, so the button joins the title row there.
-  if (D.doc) ($('#topic + .badge') || $('#topic')).after(button);
-  else $('.navbar').append(button);
+  $('.navbar').append(el('button', { type: 'button', class: 'btn btn-xs btn-ghost -my-0.5', title: 'Phím tắt', 'aria-label': 'Phím tắt', onclick: toggleHelp }, kbd('?', 'kbd-xs')));
 
   document.addEventListener('keydown', (e) => {
     if (e.defaultPrevented) return;
@@ -98,5 +110,4 @@ export const shortcuts = ({ targets, level1 = targets, owner, keys }) => {
     if (!started && !x.typing && k !== '?') { started = true; setCurrent(topTarget()); }
     x.run(k);
   });
-  return sc;
 };

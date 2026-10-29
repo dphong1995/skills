@@ -59,6 +59,34 @@ describe('bundle', () => {
       assert.throws(() => bundle(dir), { message: /^main\.js:2: unsupported import\/export: import/ });
     }
   });
+  it('reads every name of a one-line const list and of destructuring defaults', () => {
+    const dir = pageDir({ 'main.js': "const a = 1, b = [1, 2], c = 'x, d = 3', e = (p, q) => p;\nconst { f = 1, g: h = 2 } = o;\n" });
+    assert.deepEqual([...bundle(dir).names.keys()], ['D', 'a', 'b', 'c', 'e', 'f', 'h']);
+  });
+  it('throws on a duplicate that is not the first name of its line', () => {
+    const dir = pageDir({ 'main.js': "import { a } from './a.js';\nconst x = 1, a2 = 2, dup = 3;\n", 'a.js': 'export const a = 1;\nconst dup = 1;\n' });
+    assert.throws(() => bundle(dir), { message: 'duplicate top-level name "dup": a.js and main.js' });
+  });
+  it('fails on a redeclaration the name scan cannot see, saying the bundle does not parse', () => {
+    const dir = pageDir({ 'main.js': 'const { a = [1, 2], b } = o;\nlet b = 1;\n' });
+    assert.throws(() => bundle(dir), { message: /^bundle does not parse: .*'b'/ });
+  });
+  it('fails on a syntax error', () => {
+    assert.throws(() => bundle(pageDir({ 'main.js': 'const = ;\n' })), { message: /^bundle does not parse: / });
+  });
+  it('throws when the script holds </script or <!--', () => {
+    for (const text of ["const a = '</script>';\n", 'const a = "</SCRIPT";\n', "const a = '<!--';\n"]) {
+      assert.throws(() => bundle(pageDir({ 'main.js': text })), { message: /the script holds "<\/script" or "<!--"/ });
+    }
+  });
+  it('throws on an imported name the file does not declare, with file and line', () => {
+    const dir = pageDir({ 'main.js': "const k = 1;\nimport { a, nope } from './a.js';\n", 'a.js': 'export const a = 1;\n' });
+    assert.throws(() => bundle(dir), { message: 'main.js:2: "nope" is not declared by a.js' });
+  });
+  it('throws on a name that another file declares, imported from the wrong file', () => {
+    const dir = pageDir({ 'main.js': "import { a } from './b.js';\n", 'a.js': 'export const a = 1;\n', 'b.js': "import { a } from './a.js';\nexport const b = 1;\n" });
+    assert.throws(() => bundle(dir), { message: 'main.js:1: "a" is not declared by b.js' });
+  });
   it('throws on a missing file', () => {
     assert.throws(() => bundle(pageDir({ 'main.js': "import { a } from './nope.js';\n" })), { code: 'ENOENT' });
   });

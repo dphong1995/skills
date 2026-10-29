@@ -1,12 +1,13 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { copyFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { launch } from '../harness/browser.mjs';
-import { FIXTURES, outDir, parseAnswers, serve } from '../harness/serve.mjs';
+import { hint, READY, STATUS } from '../harness/page-helpers.mjs';
+import { FIXTURES, outDir, serveRound2, serve } from '../harness/serve.mjs';
 
 const dir = outDir('doc-review');
 const DOC = FIXTURES + '/doc.md';
-const ready = `document.querySelectorAll('main > article').length >= 5 && !!document.querySelector('[aria-label="Góp ý: Chung"]')`;
+const ready = READY.review;
 let b, s;
 const heading = (t) => `[...document.querySelectorAll('main h2, main h3')].find((h) => h.textContent === ${JSON.stringify(t)})`;
 // Serves a review into its own directory (the round state lives beside the page) and opens it.
@@ -21,10 +22,6 @@ const note = async (title, text) => {
 };
 const general = async (text) => { await b.eval(`document.querySelector('[aria-label="Góp ý: Chung"]').focus()`); await b.type(text); };
 const bar = (label) => `[...document.querySelectorAll('aside button')].find((x) => x.textContent.startsWith(${JSON.stringify(label)}))`;
-const answers = async () => {
-  const r = await s.done;
-  return { code: r.code, ...parseAnswers(r.stdout) };
-};
 
 describe('document review page', () => {
   before(async () => { b = await launch(); });
@@ -46,7 +43,7 @@ describe('document review page', () => {
     assert.equal(r.hidden, 7);
     assert.equal(r.general, 'Góp ý chung');
     assert.match(r.hint, /^Tô đen một đoạn rồi bấm Góp ý để góp ý ngay chỗ đó; (⌘ Enter|Ctrl Enter) gửi tất cả · \? phím tắt\.$/);
-    assert.deepEqual(r.bar.map((x) => x.replace(/⌘⇧ Enter|Ctrl Shift Enter/, 'CHORD').replace(/⌘ Enter|Ctrl Enter/, 'KEY')), ['DuyệtCHORD', 'Gửi góp ýKEY']);
+    assert.deepEqual(r.bar.map(hint), ['DuyệtCHORD', 'Gửi góp ýMOD']);
     assert.equal(r.count, '0 góp ý');
     assert.equal(r.banner, false);
     assert.equal(r.nav, 4);
@@ -75,7 +72,7 @@ describe('document review page', () => {
     await note('Goals', 'tighten goals');
     await general('looks fine');
     await b.eval(`${bar('Gửi góp ý')}.click()`);
-    const r = await answers();
+    const r = await s.answers();
     assert.equal(r.code, 0);
     assert.equal(r.src, DOC);
     assert.deepEqual(r.lines, ['Quyết định: Sửa', '[§ Overview › Goals] tighten goals', '[§ Design] add a diagram', '[§ Chung] looks fine']);
@@ -84,11 +81,11 @@ describe('document review page', () => {
   it('Sửa with no note warns and sends nothing; Duyệt then sends the bare decision', async () => {
     await open('approve');
     await b.eval(`${bar('Gửi góp ý')}.click()`);
-    await b.until(`document.querySelector('aside p[role=status]').textContent.startsWith('Chưa có góp ý')`);
-    assert.match(await b.eval(`document.querySelector('aside p[role=status]').textContent`), /Góp ý chung cuối trang\.$/);
+    await b.until(`${STATUS}.startsWith('Chưa có góp ý')`);
+    assert.match(await b.status(), /Góp ý chung cuối trang\.$/);
     assert.equal(await b.eval(`${bar('Duyệt')}.disabled`), false);
     await b.eval(`${bar('Duyệt')}.click()`);
-    const r = await answers();
+    const r = await s.answers();
     assert.equal(r.code, 0);
     assert.deepEqual(r.lines, ['Quyết định: Duyệt']);
   });
@@ -99,26 +96,17 @@ describe('document review page', () => {
     await b.goto(await s.url, { ready, doc: true });
     assert.equal(await b.eval(`document.querySelector('[aria-label="Góp ý: Risks"]').value`), 'kept note');
     assert.equal(await b.eval(`document.querySelector('[aria-label="Góp ý: Risks"]').closest('[data-note]').hidden`), false);
-    assert.equal(await b.eval(`document.querySelector('aside p[role=status]').textContent`), 'Đã khôi phục góp ý đã lưu.');
+    assert.equal(await b.status(), 'Đã khôi phục góp ý đã lưu.');
     assert.equal(await b.eval(`document.querySelector('aside span').textContent`), '1 góp ý');
     await b.press('Enter', { meta: true });
-    const r = await answers();
+    const r = await s.answers();
     assert.deepEqual(r.lines, ['Quyết định: Sửa', '[§ Risks] kept note']);
-    await b.until(`document.querySelector('aside p[role=status]').textContent.startsWith('Đã gửi 1 góp ý cho Claude.')`);
+    await b.until(`${STATUS}.startsWith('Đã gửi 1 góp ý cho Claude.')`);
   });
 
   it('round 2 marks the sections that changed, were added or were dropped', async () => {
-    const md = dir + '/round2/doc.md';
-    const out = (n) => `${dir}/round2/review-0${n}.html`;
     outDir('doc-review/round2');
-    copyFileSync(DOC, md);
-    copyFileSync(FIXTURES + '/code.ts', dir + '/round2/code.ts');
-    s = serve(md, out(1));
-    await s.url;
-    s.kill();
-    await s.done;
-    writeFileSync(md, readFileSync(FIXTURES + '/doc-v2.md', 'utf8'));
-    s = serve(md, out(2));
+    s = await serveRound2(dir + '/round2');
     await b.goto(await s.url, { ready, doc: true });
     const r = await b.eval(`({
       badge: document.querySelector('header .badge').textContent, banner: document.querySelector('main > .alert').innerText.replace(/\\n+/g, ' / '),
@@ -132,7 +120,7 @@ describe('document review page', () => {
     await b.eval(`document.querySelector('main > .alert a').click()`);
     await b.until(`location.hash.startsWith('#sec-')`);
     await b.eval(`${bar('Duyệt')}.click()`);
-    const a = await answers();
+    const a = await s.answers();
     assert.deepEqual(a.lines, ['Quyết định: Duyệt']);
     const state = JSON.parse(readFileSync(dir + '/round2/.review-state.json', 'utf8'));
     assert.deepEqual(Object.values(state).map((v) => v.round), [2]);

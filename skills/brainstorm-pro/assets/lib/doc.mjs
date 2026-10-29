@@ -2,6 +2,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
+import { plain } from '../page/strings.js';
 import { createEmbed } from './embed.mjs';
 
 // "## A" and "### B" headings outside code fences, keyed "A" and "A › B" as the page keys them, each with the text up to the next one.
@@ -15,7 +16,7 @@ export const sections = (md) => {
     const h = !fence && !f && /^ {0,3}(#{2,3})\s+(.+?)(?:\s+#+)?\s*$/.exec(line);
     if (!h) { body.push(line); continue; }
     flush();
-    const text = h[2].replace(/`|\*\*/g, '');
+    const text = plain(h[2]);
     if (h[1].length === 2) key = h2 = text;
     else key = h2 ? h2 + ' › ' + text : text;
     body = [];
@@ -27,7 +28,7 @@ export const sections = (md) => {
 export const loadDoc = (src, { review }) => {
   const md = readFileSync(src, 'utf8');
   const h1 = /^ {0,3}#\s+(.+?)\s*$/m.exec(md);
-  const data = { doc: { md, path: resolve(src).replace(homedir(), '~'), title: h1 ? h1[1].replace(/`|\*\*/g, '') : basename(src), review } };
+  const data = { doc: { md, path: resolve(src).replace(homedir(), '~'), title: h1 ? plain(h1[1]) : basename(src), review } };
   const { link, docLinks, files, paths, links } = createEmbed({ root: process.cwd(), src });
   data.files = files;
   data.paths = paths;

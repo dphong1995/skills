@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-export const TESTS = dirname(HERE);
+const TESTS = dirname(HERE);
 
 export const round = () => ({
   root: TESTS,

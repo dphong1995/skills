@@ -1,8 +1,8 @@
-import { $, btnCls, el, FOCUS, KEY_HINT, TEXTAREA, PC } from './dom.js';
+import { $, btnCls, el, FOCUS, KEY_HINT, kbd, TEXTAREA, PC } from './dom.js';
 import { plain } from './strings.js';
 import { inline } from './text.js';
 import { block, codeBlock, mockBlock } from './blocks.js';
-import { CARD, copyText, fabMsg, fit, main, out, postText, say, sendMode, storage } from './fab.js';
+import { copyText, fabMsg, fit, INTERVIEW_CARD, main, out, postText, say, sayFor, sendMode, storage } from './fab.js';
 import { imageInput, images, imageStrip, imgLines } from './images.js';
 import { shortcuts } from './shortcuts.js';
 import { interviewKeys } from './interview-keys.js';
@@ -95,7 +95,7 @@ export const interviewPage = () => {
     const recI = own.findIndex((o) => o.recommended);
     const hasUndo = q.reversible != null;
     const undoText = q.reversible ? 'Dễ đổi về sau' : 'Khó đổi về sau';
-    const card = el('article', { class: CARD, id: 'card-' + q.id },
+    const card = el('article', { class: INTERVIEW_CARD, id: 'card-' + q.id },
       el('header', { class: 'grid gap-1' },
         el('div', { class: 'flex flex-wrap items-center gap-1.5 font-mono tracking-[.06em] uppercase' },
           el('span', { class: 'badge badge-sm badge-primary badge-outline', text: 'Câu ' + (q.n ?? '') }),
@@ -144,8 +144,7 @@ export const interviewPage = () => {
 
     refresh();
     return {
-      q, card, note, choose,
-      isChosen: (id) => inputs.some((i) => i.value === id && i.checked),
+      q, card, note, otherBox, choose,
       ids: own.map((o) => o.id),
       rec: recI >= 0 ? own[recI].id : null,
       // null when complete, else what is missing.
@@ -161,9 +160,10 @@ export const interviewPage = () => {
         lines.push(...imgLines((otherInput.checked ? otherBox.value : '') + '\n' + note.value));
         return lines.join('\n');
       },
+      // Choose through the change path unless it is already checked, so a multi card never toggles it off.
       pick: (id) => {
         const input = inputs.find((i) => i.value === id);
-        if (input) { input.checked = true; refresh(); }
+        if (input && !input.checked) choose(id);
       },
       get: () => ({ c: inputs.filter((i) => i.checked).map((i) => i.value), o: otherBox.value, n: note.value }),
       set: (s) => {
@@ -186,7 +186,6 @@ export const interviewPage = () => {
   const acceptBtn = el('button', { type: 'button', class: btnCls(), title: 'Chọn phương án Claude đề xuất cho các câu chưa chọn', onclick: () => {
     const todo = cards.filter((c) => !c.done() && c.rec);
     for (const c of todo) c.pick(c.rec);
-    save();
     say('ok', 'Đã chọn theo đề xuất cho ' + todo.length + ' câu. Xem lại rồi ' + (sendMode ? 'gửi.' : 'copy.'));
   } }, 'Theo đề xuất');
 
@@ -225,13 +224,10 @@ export const interviewPage = () => {
   const copyAll = async () => {
     const text = collect();
     if (text == null) return;
-    if (await copyText(text)) {
-      say('ok', 'Đã copy ' + cards.length + ' câu trả lời. Dán vào terminal của Claude rồi Enter.');
-      setTimeout(() => { if (fabMsg.dataset.kind === 'ok') say(''); }, 4000);
-    }
+    if (await copyText(text)) sayFor('ok', 'Đã copy ' + cards.length + ' câu trả lời. Dán vào terminal của Claude rồi Enter.', 4000);
     else say('warn', 'Không copy tự động được: chọn đoạn bên dưới, copy rồi dán vào terminal của Claude.');
   };
-  const sendBtn = el('button', { type: 'button', class: btnCls('primary'), onclick: () => sendAll() }, 'Gửi câu trả lời', el('kbd', { class: 'kbd kbd-xs', text: KEY_HINT }));
+  const sendBtn = el('button', { type: 'button', class: btnCls('primary'), onclick: () => sendAll() }, 'Gửi câu trả lời', kbd(KEY_HINT, 'kbd-xs'));
   const sendAll = async () => {
     const text = collect();
     if (text == null) return;
@@ -253,7 +249,7 @@ export const interviewPage = () => {
   document.body.append(el('aside', { class: 'toast toast-end z-10 items-end', 'aria-label': 'Gửi câu trả lời' }, fabMsg, out,
     el('div', { class: 'flex items-center gap-1.5 bg-base-100 border border-base-300 rounded-box py-1 pr-1 pl-3 shadow-lg' }, fabCount, acceptBtn,
       sendMode ? [el('button', { type: 'button', class: btnCls(), title: 'Copy để dán vào terminal', onclick: copyAll }, 'Copy'), sendBtn]
-        : el('button', { type: 'button', class: btnCls('primary'), onclick: copyAll }, 'Copy câu trả lời', el('kbd', { class: 'kbd kbd-xs', text: KEY_HINT })))));
+        : el('button', { type: 'button', class: btnCls('primary'), onclick: copyAll }, 'Copy câu trả lời', kbd(KEY_HINT, 'kbd-xs')))));
   shortcuts({ targets: () => cards.map((c) => c.card), keys: (sc) => interviewKeys(sc, { cards, submit }) });
   updateFab();
 

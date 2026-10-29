@@ -1,6 +1,6 @@
 // Runs assets/render-interview.mjs with a fake `open` first on PATH, so no browser window ever opens.
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdirSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -40,7 +40,9 @@ export const serve = (src, out, opts) => {
   p.stdout.on('data', (d) => { stdout += d; const m = /Serving (\S+)/.exec(stdout); if (m) gotUrl.r(m[1]); });
   p.stderr.on('data', (d) => { stderr += d; });
   const done = new Promise((r) => p.on('exit', (code) => { if (!/Serving/.test(stdout)) gotUrl.no(new Error('exited ' + code + ' ' + stderr)); r({ code, stdout, stderr }); }));
-  return { url, done, kill: () => p.kill() };
+  // The decision a finished run printed: { code, src, lines }.
+  const answers = async () => { const r = await done; return { code: r.code, ...parseAnswers(r.stdout) }; };
+  return { url, done, answers, kill: () => p.kill() };
 };
 
 // The lines of a finished run after "ANSWERS <src>": { src, lines }, or null when there is no answer.
@@ -48,4 +50,17 @@ export const parseAnswers = (stdout) => {
   const all = stdout.trimEnd().split('\n');
   const i = all.findIndex((l) => l.startsWith('ANSWERS '));
   return i < 0 ? null : { src: all[i].slice(8), lines: all.slice(i + 1) };
+};
+
+// A review served twice from `dir` (the round state lives beside the page): round 1 of doc.md, then round 2 of doc-v2.md. Returns round 2's server.
+export const serveRound2 = async (dir) => {
+  const md = dir + '/doc.md';
+  copyFileSync(FIXTURES + '/doc.md', md);
+  copyFileSync(FIXTURES + '/code.ts', dir + '/code.ts');
+  const first = serve(md, dir + '/review-01.html');
+  await first.url;
+  first.kill();
+  await first.done;
+  copyFileSync(FIXTURES + '/doc-v2.md', md);
+  return serve(md, dir + '/review-02.html');
 };

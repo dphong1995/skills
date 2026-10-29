@@ -2,6 +2,7 @@
 import { readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, extname, isAbsolute, join, resolve } from 'node:path';
+import { PATH } from '../page/strings.js';
 
 const MAX_FILE = 512 * 1024;
 const MAX_IMAGE = 3 * 1024 * 1024;
@@ -32,27 +33,31 @@ export const createEmbed = ({ root, src }) => {
     else console.error(`${b.file}: over ${MAX_FILE / 1024} KB, shown without "Xem toàn file"`);
   };
 
+  // Puts the regular file at abs into `files`; false when it is missing, not a file or over the limit (onBig then says so).
+  const embedFile = (abs, onBig) => {
+    try {
+      const st = statSync(abs);
+      if (!st.isFile()) return false;
+      if (st.size > MAX_FILE) {
+        if (onBig) onBig();
+        return false;
+      }
+    } catch (e) {
+      return false;
+    }
+    files[abs] ??= readFileSync(abs, 'utf8');
+    return true;
+  };
+
   // `path`, `path:N` or `path:N-M` in text becomes a link when the path has a directory and names a file.
   const link = (text) => {
     if (typeof text !== 'string') return;
     for (const [, span] of text.matchAll(/`([^`]+)`/g)) {
       if (/\s/.test(span)) continue;
-      const path = /^(.+?)(?::(\d+)(?:-(\d+))?)?$/.exec(span)[1];
+      const path = PATH.exec(span)[1];
       if (paths[path] || !(path.includes('/') || path.startsWith('~'))) continue;
       const abs = resolvePath(path);
-      let size;
-      try {
-        const st = statSync(abs);
-        if (!st.isFile()) continue;
-        size = st.size;
-      } catch (e) {
-        continue;
-      }
-      if (size > MAX_FILE) {
-        console.error(`${path}: over ${MAX_FILE / 1024} KB, left as plain text`);
-        continue;
-      }
-      files[abs] ??= readFileSync(abs, 'utf8');
+      if (!embedFile(abs, () => console.error(`${path}: over ${MAX_FILE / 1024} KB, left as plain text`))) continue;
       paths[path] = abs;
     }
   };
@@ -74,13 +79,7 @@ export const createEmbed = ({ root, src }) => {
     for (const [, href] of md.matchAll(/\]\(<?([^)\s>]+)>?(?:\s+"[^"]*")?\)/g)) {
       if (links[href] || /^[a-z][\w+.-]*:/i.test(href) || href.startsWith('#') || IMAGE_TYPES[extname(href).toLowerCase()]) continue;
       const abs = resolve(dirname(resolve(src)), decodeURIComponent(href.split('#')[0]));
-      try {
-        const st = statSync(abs);
-        if (!st.isFile() || st.size > MAX_FILE) continue;
-      } catch (e) {
-        continue;
-      }
-      files[abs] ??= readFileSync(abs, 'utf8');
+      if (!embedFile(abs)) continue;
       links[href] = abs;
     }
   };

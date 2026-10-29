@@ -3,14 +3,12 @@
 //   node --test --test-concurrency=1 'tests/**/*.test.mjs'
 // One file: node --test tests/page/passages.test.mjs. UPDATE_SNAPSHOTS=1 rewrites tests/snapshots/. CHROME=<path> picks another Chrome.
 import { spawn } from 'node:child_process';
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+import { isTyping } from '../../assets/page/keys.js';
 
 const CHROME = process.env.CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-const TESTS_OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'out');
-mkdirSync(TESTS_OUT, { recursive: true });
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // Counts every write to a <style> element's text: Tailwind's browser build rewrites its sheet that way when it meets a class it has not compiled.
@@ -19,17 +17,17 @@ const ts = Object.getOwnPropertyDescriptor(Node.prototype, 'textContent');
 Object.defineProperty(Node.prototype, 'textContent', { get: ts.get, set(v) { if (this.tagName === 'STYLE') __tw.n++; return ts.set.call(this, v); } });`;
 
 // macOS beeps for every key event a page leaves unconsumed. This window listener runs after the page's own (bubble phase) and consumes a key outside a text box
-// that the page left alone, except keys with a default action and modifier combos. It logs what it still sees leave unconsumed, so a run can count them.
-const KEY_HOOK = `addEventListener('keydown', (e) => {
-  const t = e.target, tag = t && t.tagName;
-  const editable = tag === 'TEXTAREA' || tag === 'SELECT' || !!(t && t.isContentEditable) || (tag === 'INPUT' && !/^(radio|checkbox|button|submit|reset)$/i.test(t.type));
+// that the page left alone, except keys with a default action and modifier combos. It records every key in window.__keys, with whether the page prevented it.
+const KEY_HOOK = `(() => {
+const isTyping = ${isTyping};
+addEventListener('keydown', (e) => {
   const mod = e.metaKey || e.ctrlKey || e.altKey;
   const own = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Tab', ' ', 'Enter', 'PageUp', 'PageDown', 'Home', 'End', 'Escape'].includes(e.key);
   (window.__keys = window.__keys || []).push({ key: e.key, pagePrevented: e.defaultPrevented });
-  if (e.defaultPrevented || editable || own) return;
-  if (mod) { console.debug('__KEYMOD ' + e.key); return; }
+  if (e.defaultPrevented || isTyping(e.target) || mod || own) return;
   e.preventDefault();
-}, false);`;
+}, false);
+})();`;
 
 const MODS = { alt: 1, ctrl: 2, meta: 4, shift: 8 };
 const NAMED = { Enter: 13, Escape: 27, Tab: 9, Backspace: 8, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40 };
@@ -53,12 +51,10 @@ export async function launch({ dark = false, width = 1400, height = 1000 } = {})
   let id = 0;
   const pending = new Map();
   const errors = [];
-  let keyMods = 0;
   ws.onmessage = (m) => {
     const d = JSON.parse(m.data);
     if (d.id && pending.has(d.id)) { pending.get(d.id)(d); pending.delete(d.id); return; }
     if (d.method === 'Runtime.exceptionThrown') errors.push(d.params.exceptionDetails.exception?.description || d.params.exceptionDetails.text);
-    if (d.method === 'Runtime.consoleAPICalled' && d.params.type === 'debug' && /^__KEYMOD /.test(d.params.args[0]?.value || '')) keyMods++;
     if (d.method === 'Runtime.consoleAPICalled' && d.params.type === 'error') errors.push(d.params.args.map((a) => a.value ?? a.description).join(' '));
     if (d.method === 'Log.entryAdded' && d.params.entry.level === 'error') errors.push(d.params.entry.text + ' ' + (d.params.entry.url || ''));
   };
@@ -152,7 +148,7 @@ export async function launch({ dark = false, width = 1400, height = 1000 } = {})
       }
       if (release) await mouse('mouseReleased', to.x, to.y, { clickCount: 1 });
     },
-    // One key as the browser sends it: press('Enter', { meta: true }), press('j'), press('ArrowRight', { shift: true }).
+    // One key as the browser sends it: press('Enter', { meta: true }), press('j'), press('ArrowRight', { shift: true }). A printable key is one keyDown with its text, as Puppeteer sends it.
     press: async (key, mods = {}) => {
       const modifiers = Object.entries(MODS).reduce((m, [k, v]) => m | (mods[k] ? v : 0), 0);
       const printable = key.length === 1;
@@ -161,16 +157,20 @@ export async function launch({ dark = false, width = 1400, height = 1000 } = {})
       const base = { key, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk, modifiers };
       const text = printable && !mods.ctrl && !mods.meta;
       await send('Input.dispatchKeyEvent', { type: text ? 'keyDown' : 'rawKeyDown', ...base, ...(text ? { text: key } : {}) });
-      if (text) await send('Input.dispatchKeyEvent', { type: 'char', ...base, text: key });
       await send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
     },
     type: (text) => send('Input.insertText', { text }),
     twWrites: () => evaluate('__tw.n'),
     twReset: () => evaluate('(__tw.n = 0, 1)'),
-    // Key events with Cmd, Ctrl or Alt that no handler consumed (the harness leaves those alone); every other key outside a text box is consumed.
-    keyMods: () => keyMods,
+    // Waits until Tailwind has stopped rewriting its sheet after a load, then counts from zero.
+    twSettle: async () => {
+      let n;
+      do { n = await api.twWrites(); await sleep(500); } while (n !== (await api.twWrites()));
+      await api.twReset();
+    },
+    // The floating bar's message.
+    status: () => evaluate(`document.querySelector('aside p[role=status]').textContent`),
     close: async () => {
-      try { appendFileSync(join(TESTS_OUT, 'keymods.log'), keyMods + '\n'); } catch (e) { /* no out dir */ }
       try { ws.close(); } catch (e) { /* already closed */ }
       proc.kill();
       await Promise.race([exited, sleep(5000)]);

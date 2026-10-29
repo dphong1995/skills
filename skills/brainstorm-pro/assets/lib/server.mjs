@@ -54,72 +54,69 @@ export const serve = ({ src, out, page }) => {
     }
     route(req, res);
   });
-  const answers = (req, res) => {
+  // The request body, or null once the response is over (413 when it passes `max` bytes).
+  const readBody = (req, res, max) => new Promise((done) => {
+    const chunks = [];
+    let size = 0;
+    let over = false;
+    req.on('data', (chunk) => {
+      if (over) return;
+      size += chunk.length;
+      if (size > max) {
+        over = true;
+        res.writeHead(413).end();
+        req.destroy();
+        done(null);
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => done(res.writableEnded ? null : Buffer.concat(chunks)));
+  });
+  const answers = async (req, res) => {
     if (!/^application\/json\b/.test(req.headers['content-type'] || '')) {
       res.writeHead(415).end();
       return;
     }
-    let body = '';
-    req.setEncoding('utf8');
-    req.on('data', (chunk) => {
-      body += chunk;
-      if (Buffer.byteLength(body) > MAX_BODY) {
-        res.writeHead(413).end();
-        req.destroy();
-      }
-    });
-    req.on('end', () => {
-      if (res.writableEnded) return;
-      let text = null;
-      try {
-        text = JSON.parse(body).text;
-      } catch (e) {
-        text = null;
-      }
-      if (typeof text !== 'string' || !text.trim()) {
-        res.writeHead(400).end();
-        return;
-      }
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end('{"ok":true}', () => {
-        process.stdout.write(`ANSWERS ${resolve(src)}\n${text.trim()}\n`, () => process.exit(0));
-      });
+    const body = await readBody(req, res, MAX_BODY);
+    if (!body) return;
+    let text = null;
+    try {
+      text = JSON.parse(body.toString('utf8')).text;
+    } catch (e) {
+      text = null;
+    }
+    if (typeof text !== 'string' || !text.trim()) {
+      res.writeHead(400).end();
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end('{"ok":true}', () => {
+      process.stdout.write(`ANSWERS ${resolve(src)}\n${text.trim()}\n`, () => process.exit(0));
     });
   };
   // A pasted or dropped image, saved beside the page as <out>-<n>.<ext>; the page shows it back from images/<name>.
-  const upload = (req, res) => {
+  const upload = async (req, res) => {
     const type = (req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
     if (!UPLOAD_TYPES[type]) {
       res.writeHead(415).end();
       return;
     }
-    const chunks = [];
-    let size = 0;
-    req.on('data', (chunk) => {
-      size += chunk.length;
-      if (size > MAX_UPLOAD) {
-        res.writeHead(413).end();
-        req.destroy();
-        return;
-      }
-      chunks.push(chunk);
-    });
-    req.on('end', () => {
-      if (res.writableEnded) return;
-      if (!size) {
-        res.writeHead(400).end();
-        return;
-      }
-      const n = uploads.size + 1;
-      const name = `${basename(out).replace(/\.html$/i, '')}-${n}${UPLOAD_TYPES[type]}`;
-      const dir = join(dirname(resolve(out)), 'images');
-      mkdirSync(dir, { recursive: true });
-      const path = join(dir, name);
-      writeFileSync(path, Buffer.concat(chunks));
-      uploads.set(name, { path, type });
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ n, path, url: `${base}images/${name}` }));
-    });
+    const body = await readBody(req, res, MAX_UPLOAD);
+    if (!body) return;
+    if (!body.length) {
+      res.writeHead(400).end();
+      return;
+    }
+    const n = uploads.size + 1;
+    const name = `${basename(out).replace(/\.html$/i, '')}-${n}${UPLOAD_TYPES[type]}`;
+    const dir = join(dirname(resolve(out)), 'images');
+    mkdirSync(dir, { recursive: true });
+    const path = join(dir, name);
+    writeFileSync(path, body);
+    uploads.set(name, { path, type });
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ n, path, url: `${base}images/${name}` }));
   };
   server.on('error', (e) => {
     console.error(`Cannot serve the page: ${e.message}`);

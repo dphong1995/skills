@@ -12,6 +12,10 @@ export const el = (tag, props = {}, ...kids) => {
   return n;
 };
 
+export const kbd = (text, size = 'kbd-sm') => el('kbd', { class: 'kbd ' + size, text });
+// True when b follows a in the document.
+export const after = (a, b) => !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+
 // Class sets used in more than one place. daisyUI's color classes take no Tailwind variant, so a variant reads the color variable instead.
 export const FOCUS = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]';
 export const CODE = 'font-mono text-[.86em] bg-base-200 rounded px-[.3em] py-[.05em] wrap-anywhere';
@@ -40,3 +44,8 @@ export const THUMB = 'relative m-0 grid justify-items-center gap-px';
 export const THUMB_IMG = 'block h-16 w-auto max-w-40 object-contain rounded-md border border-base-300 cursor-zoom-in';
 export const THUMB_NUM = 'font-mono text-[11px] text-muted';
 export const THUMB_DEL = 'btn btn-circle btn-xs absolute -top-1.5 -right-1.5 size-5 min-h-0 p-0';
+// A dialog with a box and a backdrop that closes it; closeForm is the Đóng button with its Esc hint.
+export const closeForm = (cls) => el('form', { method: 'dialog', class: cls }, el('button', { class: btnCls() }, 'Đóng', kbd('Esc', 'kbd-xs')));
+export const modal = (boxClass, ...kids) => el('dialog', { class: 'modal' },
+  el('div', { class: 'modal-box ' + boxClass }, kids),
+  el('form', { method: 'dialog', class: 'modal-backdrop' }, el('button', { text: 'Đóng' })));

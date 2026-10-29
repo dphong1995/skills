@@ -204,7 +204,7 @@ approach is settled, go on to 1E.
 4. Show it on its review page (`../brainstorm-pro/references/html-doc.md`), served from a
    foreground `Bash` call with `timeout: 600000`:
    `node ~/.claude/skills/brainstorm-pro/assets/render-interview.mjs <plan-dir>/design.md <scratchpad>/review-<slug>/review-NN.html --serve`
-   Every `##` and `###` section takes the user's notes: The design goes straight into the file; it
+   Every `##` and `###` section takes the user's notes. The design goes straight into the file; it
    is not walked through in chat.
 5. `Quyết định: Duyệt` (or an approving reply in chat) → apply any notes, then Step 2 in the same
    turn. `Quyết định: Sửa` → edit `design.md`, re-check, show the next round.

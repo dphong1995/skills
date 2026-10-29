@@ -1,4 +1,4 @@
-import { $, btnCls, CALLOUT, el, KEY_HINT, KEY_HINT_SHIFT, LIST, NOTE_BTN, RING, TEXTAREA } from './dom.js';
+import { $, after, btnCls, CALLOUT, el, KEY_HINT, KEY_HINT_SHIFT, kbd, LIST, NOTE_BTN, RING, TEXTAREA } from './dom.js';
 import { esc, plain, short } from './strings.js';
 import { extLang } from './code.js';
 import { openFile } from './viewer.js';
@@ -22,18 +22,20 @@ export const docPage = (doc) => {
   const nav = $('#qnav');
   let md = null;
   let ps = null;
-  let keys = null;
+  // What the key list needs on the review page; null on the read-only page.
+  let reviewKeys = null;
 
   document.title = (review ? 'Duyệt · ' : '') + doc.title;
   document.documentElement.classList.replace('scroll-pt-14', 'scroll-pt-24');
   $('#topic').textContent = doc.title;
   if (review) $('#topic').after(el('span', { class: 'badge badge-sm badge-warning badge-soft whitespace-nowrap', text: 'Chờ duyệt · lần ' + (ch.round || 1) }));
   nav.setAttribute('aria-label', 'Các mục');
-  nav.className = 'flex gap-1 w-full overflow-x-auto pb-0.5';
+  // order-last keeps the nav on its own line below the title, the badge and the shortcuts button.
+  nav.className = 'order-last flex gap-1 w-full overflow-x-auto pb-0.5';
 
   // Notes in document order, so comments on passages and section notes read top to bottom.
   const filled = () => notes.filter((n) => n.ta.value.trim())
-    .sort((a, b) => (a.box.compareDocumentPosition(b.box) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+    .sort((a, b) => (after(a.box, b.box) ? -1 : 1));
   const count = el('span', { class: 'font-mono text-[12px] text-muted whitespace-nowrap' });
   const update = () => {
     const n = filled();
@@ -214,12 +216,17 @@ export const docPage = (doc) => {
     else if (draft) say('', 'Đã khôi phục góp ý đã lưu.');
   };
 
+  // The ## and ### heading rows, which the shortcuts walk, and the row a note box sits under (none before the first heading).
+  const rows = (sel) => () => [...main.querySelectorAll(sel)].map((h) => h.parentElement);
+  const targets = rows('h2[id], h3[id]');
+  const rowBefore = (box) => targets().filter((r) => after(r, box)).pop() || null;
+
   if (review) {
     const noteLine = (n) => (n.hl ? '[§ ' + n.hl.key + (n.hl.lines ? ' · ' + n.hl.lines : '') + '] «' + short(n.hl.quote) + '» → ' : '[§ ' + n.key + '] ') + n.ta.value.trim();
     const text = (decision) => ['Quyết định: ' + decision, ...filled().map(noteLine),
       ...imgLines(filled().map((n) => n.ta.value).join('\n'))].join('\n');
-    const approveBtn = el('button', { type: 'button', class: btnCls() + ' btn-success', onclick: () => deliver('Duyệt') }, sendMode ? 'Duyệt' : 'Copy: Duyệt', el('kbd', { class: 'kbd kbd-xs', text: KEY_HINT_SHIFT }));
-    const changeBtn = el('button', { type: 'button', class: btnCls('primary'), onclick: () => deliver('Sửa') }, sendMode ? 'Gửi góp ý' : 'Copy góp ý', el('kbd', { class: 'kbd kbd-xs', text: KEY_HINT }));
+    const approveBtn = el('button', { type: 'button', class: btnCls() + ' btn-success', onclick: () => deliver('Duyệt') }, sendMode ? 'Duyệt' : 'Copy: Duyệt', kbd(KEY_HINT_SHIFT, 'kbd-xs'));
+    const changeBtn = el('button', { type: 'button', class: btnCls('primary'), onclick: () => deliver('Sửa') }, sendMode ? 'Gửi góp ý' : 'Copy góp ý', kbd(KEY_HINT, 'kbd-xs'));
     const deliver = async (decision) => {
       if (approveBtn.disabled) return;
       if (decision === 'Sửa' && !filled().length) {
@@ -243,12 +250,11 @@ export const docPage = (doc) => {
     document.body.append(el('aside', { class: 'toast toast-end z-10 items-end', 'aria-label': 'Duyệt tài liệu' }, fabMsg, out,
       el('div', { class: 'flex items-center gap-1.5 bg-base-100 border border-base-300 rounded-box py-1 pr-1 pl-3 shadow-lg' }, count, approveBtn, changeBtn)));
     ps = passages({ notes, noteBox, update });
-    keys = (sc) => docKeys(sc, { review, filled, rowNote, commentSelection: ps.commentSelection, general: () => general, deliver });
+    reviewKeys = { filled, rowNote, rowBefore, commentSelection: ps.commentSelection, general: () => general, deliver, sent: () => approveBtn.disabled };
   }
-  const rows = (sel) => () => [...main.querySelectorAll(sel)].map((h) => h.parentElement);
-  // A note box belongs to the heading row before it.
-  shortcuts({ targets: rows('h2[id], h3[id]'), level1: rows('h2[id]'), keys: keys || ((sc) => docKeys(sc, { review })),
-    owner: (n) => { const r = rows('h2[id], h3[id]')(); return r.find((t) => t.contains(n)) || r.find((t) => t.nextElementSibling === n.closest('[data-note]')) || null; } });
+  // A note box belongs to the heading row before it, except the general note, which is no heading's.
+  shortcuts({ targets, level1: rows('h2[id]'), keys: (sc) => docKeys(sc, reviewKeys),
+    owner: (n) => { const box = n.closest('[data-note]'); return targets().find((t) => t.contains(n)) || (box && !box.closest('article[data-note]') ? rowBefore(box) : null); } });
 
   loadScript('https://cdnjs.cloudflare.com/ajax/libs/marked/15.0.12/marked.min.js').then(() => render(window.marked)).catch(() => {
     main.append(el('article', { class: CARD },

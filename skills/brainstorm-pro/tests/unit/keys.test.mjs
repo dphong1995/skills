@@ -20,6 +20,17 @@ describe('keyName', () => {
     assert.equal(keyName(ev({ code: 'NumpadEnter', key: 'Enter' })), 'Enter');
     assert.equal(keyName(ev({ code: 'Escape', key: 'Escape' })), 'Escape');
   });
+  it('reads ? from e.key before the physical key, as AZERTY and Canadian layouts type it on a letter or digit key', () => {
+    assert.equal(keyName(ev({ code: 'KeyM', key: '?', shiftKey: true })), '?');
+    assert.equal(keyName(ev({ code: 'Digit6', key: '?', shiftKey: true })), '?');
+    assert.equal(keyName(ev({ code: 'Comma', key: '?', shiftKey: true })), '?');
+  });
+  it('counts a numpad key as a digit only while it types one (NumLock off sends End, ArrowDown, ...)', () => {
+    assert.equal(keyName(ev({ code: 'Numpad1', key: 'End' })), null);
+    assert.equal(keyName(ev({ code: 'Numpad2', key: 'ArrowDown' })), null);
+    assert.equal(keyName(ev({ code: 'Numpad5', key: 'Clear' })), null);
+    assert.equal(keyName(ev({ code: 'Numpad3', key: '3' })), '3');
+  });
   it('prefixes mod+ for Cmd or Ctrl, then shift+', () => {
     assert.equal(keyName(ev({ code: 'Enter', key: 'Enter', metaKey: true })), 'mod+Enter');
     assert.equal(keyName(ev({ code: 'Enter', key: 'Enter', ctrlKey: true })), 'mod+Enter');

@@ -1,15 +1,16 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { launch } from '../harness/browser.mjs';
+import { READY, STATUS } from '../harness/page-helpers.mjs';
 import { outDir, render, serve } from '../harness/serve.mjs';
 import { writeRound } from '../fixtures/round.mjs';
 
 const dir = outDir('interview');
 let b, s, url;
-const ready = `!!document.querySelector('#card-q02') && !!document.querySelector('aside')`;
+const ready = READY.interview;
 const card = (q, k) => `#card-${q} [style*="grid-row"]:nth-of-type(${k})`;
 const checked = (q) => b.eval(`[...document.querySelectorAll('input[name=choice-${q}]')].filter((i) => i.checked).map((i) => i.value).join(',')`);
-const status = () => b.eval(`document.querySelector('aside p[role=status]').textContent`);
+const status = () => b.status();
 // A reload with the saved draft cleared, so each test starts from an empty page.
 const fresh = async () => { await b.eval('localStorage.clear()'); await b.goto(url, { ready }); };
 
@@ -173,7 +174,7 @@ describe('interview page', () => {
     await b.click('#q01-opt-b');
     await b.click('#q02-opt-x');
     await b.click('aside .btn-primary');
-    await b.until(`document.querySelector('aside p[role=status]').textContent.startsWith('Không gửi được (Claude không còn chờ trang này)')`);
+    await b.until(`${STATUS}.startsWith('Không gửi được (Claude không còn chờ trang này)')`);
     assert.equal(await b.eval(`[...document.querySelectorAll('aside button')].find((x) => x.textContent.startsWith('Gửi')).disabled`), false, 'the send button works again');
     const text = await b.eval(`document.querySelector('#out').value`);
     assert.equal(text, '[q01] Which adder?\nChọn: B. Checked add\n\n[q02] Which extras?\nChọn: A. Extra X');
@@ -190,7 +191,7 @@ describe('interview page', () => {
     await b.click('#q01-opt-a');
     await b.click('#q02-opt-x');
     await b.eval(`[...document.querySelectorAll('aside button')].find((x) => x.textContent.startsWith('Copy câu trả lời')).click()`);
-    await b.until(`document.querySelector('aside p[role=status]').textContent !== ''`, { timeout: 6000 });
+    await b.until(`${STATUS} !== ''`, { timeout: 6000 });
     assert.match(await status(), /^(Đã copy 2 câu trả lời|Không copy tự động được)/);
   });
 });
