@@ -74,6 +74,7 @@ cook/
 
 ## Version
 
+5.6.3 - Step 5 has one severity scale, agent 1's: a cleanup finding gates only when agent 2 labels it OUT-OF-LENS and it grades Critical/High; the old Critical Issues list that made DRY, performance and architecture findings critical is gone
 5.6.2 - Implementation, testing, fix-application and finalize subagents are dispatched with `model: "sonnet"` (no exception for hard fixes), matching the always-on `subagent-models` rule
 5.6.1 - 1E no longer mentions a section-by-section design step; the design goes straight to `design.md` and its review page
 5.6.0 - 1E writes the design to `<plan-dir>/design.md` in Vietnamese (brainstorm-pro's spec structure) and the user approves it on a local review page with notes per section; `plan.md` links `design.md` instead of copying it; question pages pick an option when its card is clicked

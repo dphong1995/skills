@@ -71,14 +71,11 @@ Section A still fans out agent 2 exactly once.
 
 **Fixes are always dispatched to a sub-agent** (e.g. `executor` or `debugger`). The orchestrator does not patch code in-line.
 
-## Critical Issues Definition
-- Security: XSS, SQL injection, OWASP vulnerabilities
-- Performance: bottlenecks, inefficient algorithms
-- Architecture: violations of patterns, coupling
-- Principles: YAGNI, KISS, DRY violations
+## Severity
 
-These are agent 1 / Section B territory. A cleanup lens that lands here has
-found a bug, not a cleanup — re-file it under Section B severity so it gates.
+Section B's severity scale is the one in agent 1's prompt (`workflow-steps.md` § Dispatch 1/2). It is the only scale; do not grade against any other list.
+
+A cleanup finding moves to Section B only when agent 2 labelled it OUT-OF-LENS. Grade it on agent 1's scale; it gates only if Critical or High. Never promote an R/A/B/C finding yourself because it looks serious: duplication, coupling, YAGNI/KISS and wasted work stay cleanup.
 
 ## Output Formats
 - After fix: `✓ Step 5: [old]/10 → Fixed [N] issues → [new]/10 — cleanup [N applied, M skipped] — re-verify ✅`

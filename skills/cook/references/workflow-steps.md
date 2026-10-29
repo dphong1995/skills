@@ -239,8 +239,10 @@ Preamble:
 ```
   Quality review of the diff below — you are improving code quality, NOT hunting
   for correctness bugs. Another reviewer owns bugs; do not duplicate that work.
-  If you believe you found a real correctness defect, say so explicitly and label
-  it OUT-OF-LENS rather than reporting it as a cleanup finding.
+  If you believe you found a real correctness defect (wrong output, crash, data
+  loss, security hole, or work that fails outright with realistic data rather
+  than merely wasting it), say so explicitly and label it OUT-OF-LENS rather
+  than reporting it as a cleanup finding.
 
   ## Diff under review
   Use `git diff <base-branch>...HEAD` (or `git status` + `git diff --staged`

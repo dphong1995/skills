@@ -4,7 +4,7 @@ description: "ALWAYS activate this skill before implementing EVERY feature, plan
 argument-hint: "[task|plan-path]"
 metadata:
   author: claudekit
-  version: "5.6.2"
+  version: "5.6.3"
 ---
 
 # Cook - Smart Feature Implementation
