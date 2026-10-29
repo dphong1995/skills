@@ -45,8 +45,8 @@ describe('document review page', () => {
     assert.equal(r.buttons, 7, 'four ## and three ### headings');
     assert.equal(r.hidden, 7);
     assert.equal(r.general, 'Góp ý chung');
-    assert.match(r.hint, /^Tô đen một đoạn rồi bấm Góp ý để góp ý ngay chỗ đó; (⌘ Enter|Ctrl Enter) gửi tất cả\.$/);
-    assert.deepEqual(r.bar.map((x) => x.replace(/⌘ Enter|Ctrl Enter/, 'KEY')), ['Duyệt', 'Gửi góp ýKEY']);
+    assert.match(r.hint, /^Tô đen một đoạn rồi bấm Góp ý để góp ý ngay chỗ đó; (⌘ Enter|Ctrl Enter) gửi tất cả · \? phím tắt\.$/);
+    assert.deepEqual(r.bar.map((x) => x.replace(/⌘⇧ Enter|Ctrl Shift Enter/, 'CHORD').replace(/⌘ Enter|Ctrl Enter/, 'KEY')), ['DuyệtCHORD', 'Gửi góp ýKEY']);
     assert.equal(r.count, '0 góp ý');
     assert.equal(r.banner, false);
     assert.equal(r.nav, 4);

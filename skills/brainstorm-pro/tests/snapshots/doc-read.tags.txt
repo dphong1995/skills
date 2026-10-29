@@ -3,3 +3,4 @@ main#main
 script
 div
 dialog
+dialog

@@ -26,7 +26,11 @@ export const PC = 'pl-[1.1em] -indent-[1.1em] before:inline-block before:w-[1.1e
 export const TEXTAREA = 'textarea w-full min-h-0 resize-y text-[13px] leading-normal px-2.5 py-[5px]';
 export const btnCls = (kind, small) => ['btn', small ? 'btn-xs' : 'btn-sm',
   kind === 'primary' ? 'btn-primary' : kind === 'file' ? 'btn-soft btn-primary whitespace-nowrap' : ''].join(' ');
-export const KEY_HINT = /Mac|iP/.test(navigator.platform) ? '⌘ Enter' : 'Ctrl Enter';
+const MAC = /Mac|iP/.test(navigator.platform);
+export const KEY_HINT = MAC ? '⌘ Enter' : 'Ctrl Enter';
+export const KEY_HINT_SHIFT = MAC ? '⌘⇧ Enter' : 'Ctrl Shift Enter';
+// The ring around the shortcuts' current target, kept in the static class strings so Tailwind compiles it at load.
+export const RING = 'data-[current=true]:outline-2 data-[current=true]:outline-offset-2 data-[current=true]:outline-[var(--color-primary)]';
 export const MARK = 'bg-hl text-inherit rounded-[2px] cursor-pointer data-[active=true]:bg-hl-active';
 export const HL_BOX = 'grid gap-1.5 border border-base-300 rounded-box bg-base-100 p-2 my-1.5';
 export const HL_QUOTE_ROW = 'flex items-start gap-2';

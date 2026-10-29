@@ -84,13 +84,17 @@ export const passages = ({ notes, noteBox, update }) => {
   };
 
   // The Góp ý button by a selection; mousedown keeps the selection.
-  const adder = el('button', { type: 'button', class: btnCls('primary', true) + ' absolute z-20 shadow-lg', hidden: true, onmousedown: (e) => e.preventDefault(), onclick: () => {
+  // Comments on the current selection: the new note, or null when nothing in it can take one.
+  const commentSelection = () => {
     const sel = getSelection();
     const n = sel.rangeCount ? addComment(sel.getRangeAt(0)) : null;
     adder.hidden = true;
-    if (!n) return;
-    sel.removeAllRanges();
-    n.ta.focus();
+    if (n) sel.removeAllRanges();
+    return n;
+  };
+  const adder = el('button', { type: 'button', class: btnCls('primary', true) + ' absolute z-20 shadow-lg', hidden: true, onmousedown: (e) => e.preventDefault(), onclick: () => {
+    const n = commentSelection();
+    if (n) n.ta.focus();
   } }, 'Góp ý');
   document.body.append(adder);
   let placing = 0;
@@ -126,5 +130,5 @@ export const passages = ({ notes, noteBox, update }) => {
     if (n) n.ta.focus();
   });
 
-  return { addComment, allText, rangeAt };
+  return { addComment, allText, commentSelection, rangeAt };
 };

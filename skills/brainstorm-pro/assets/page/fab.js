@@ -1,6 +1,6 @@
-import { $, el, TEXTAREA } from './dom.js';
+import { $, el, RING, TEXTAREA } from './dom.js';
 
-export const CARD = 'card card-border border-base-300 bg-base-100 px-[18px] py-4 max-[520px]:px-3 max-[520px]:py-3.5 grid gap-3 min-w-0 transition-[border-color,box-shadow] duration-200 motion-reduce:transition-none [&.attention]:border-[var(--color-warning)] [&.attention]:[box-shadow:0_0_0_3px_color-mix(in_oklab,var(--color-warning)_22%,transparent)]';
+export const CARD = 'card card-border border-base-300 bg-base-100 px-[18px] py-4 max-[520px]:px-3 max-[520px]:py-3.5 grid gap-3 min-w-0 transition-[border-color,box-shadow] duration-200 motion-reduce:transition-none [&.attention]:border-[var(--color-warning)] [&.attention]:[box-shadow:0_0_0_3px_color-mix(in_oklab,var(--color-warning)_22%,transparent)] ' + RING;
 export const main = $('#main');
 export const fit = (ta) => {
   ta.style.height = 'auto';

@@ -4,6 +4,8 @@ import { inline } from './text.js';
 import { block, codeBlock, mockBlock } from './blocks.js';
 import { CARD, copyText, fabMsg, fit, main, out, postText, say, sendMode, storage } from './fab.js';
 import { imageInput, images, imageStrip, imgLines } from './images.js';
+import { shortcuts } from './shortcuts.js';
+import { interviewKeys } from './interview-keys.js';
 
 export const interviewPage = () => {
   const KEYS = 'ABCDEFGHIJ';
@@ -51,15 +53,20 @@ export const interviewPage = () => {
         (o.cons || []).map((c) => el('li', { class: PC + " before:content-['–'] before:text-[var(--color-error)]" }, inline(c)))) : null,
     ]);
     const used = [0, 1, 2, 3, 4, 5].filter((s) => parts.some((p) => p[s]));
+    // Picking an option, by a click on its card or by its key: a radio is checked, a checkbox toggles.
+    const choose = (id) => {
+      const input = inputs.find((x) => x.value === id);
+      if (!input) return;
+      input.checked = multi ? !input.checked : true;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    };
     // A click on the card picks the option like its button in the answer strip, unless it lands on a control or ends a text selection.
     const optCard = (o, i) => {
       const box = el('div', { class: 'card border px-3 py-2.5 grid grid-rows-subgrid min-w-0 cursor-pointer transition-[border-color,background-color] duration-150 motion-reduce:transition-none hover:border-[var(--color-primary)] data-[chosen=true]:bg-tint data-[chosen=true]:border-[var(--color-primary)] data-[chosen=true]:[box-shadow:inset_0_0_0_1px_var(--color-primary)] '
         + (o.recommended ? 'border-primary' : 'border-base-300'), style: 'grid-row: span ' + used.length,
         onclick: (e) => {
           if (e.target.closest('a, button, input, textarea, iframe') || String(getSelection())) return;
-          const input = inputs.find((x) => x.value === o.id);
-          input.checked = multi ? !input.checked : true;
-          input.dispatchEvent(new Event('change', { bubbles: true }));
+          choose(o.id);
         } },
         used.map((s) => parts[i][s] || el('div')));
       optCards.set(o.id, box);
@@ -137,7 +144,9 @@ export const interviewPage = () => {
 
     refresh();
     return {
-      q, card,
+      q, card, note, choose,
+      isChosen: (id) => inputs.some((i) => i.value === id && i.checked),
+      ids: own.map((o) => o.id),
       rec: recI >= 0 ? own[recI].id : null,
       // null when complete, else what is missing.
       problem: () => {
@@ -245,7 +254,7 @@ export const interviewPage = () => {
     el('div', { class: 'flex items-center gap-1.5 bg-base-100 border border-base-300 rounded-box py-1 pr-1 pl-3 shadow-lg' }, fabCount, acceptBtn,
       sendMode ? [el('button', { type: 'button', class: btnCls(), title: 'Copy để dán vào terminal', onclick: copyAll }, 'Copy'), sendBtn]
         : el('button', { type: 'button', class: btnCls('primary'), onclick: copyAll }, 'Copy câu trả lời', el('kbd', { class: 'kbd kbd-xs', text: KEY_HINT })))));
-  document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); } });
+  shortcuts({ targets: () => cards.map((c) => c.card), keys: (sc) => interviewKeys(sc, { cards, submit }) });
   updateFab();
 
   const draft = store.get();

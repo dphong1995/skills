@@ -1,4 +1,4 @@
-import { $, btnCls, CALLOUT, el, KEY_HINT, LIST, NOTE_BTN, TEXTAREA } from './dom.js';
+import { $, btnCls, CALLOUT, el, KEY_HINT, KEY_HINT_SHIFT, LIST, NOTE_BTN, RING, TEXTAREA } from './dom.js';
 import { esc, plain, short } from './strings.js';
 import { extLang } from './code.js';
 import { openFile } from './viewer.js';
@@ -7,6 +7,8 @@ import { codeBlock, loadScript, mermaidBlock } from './blocks.js';
 import { CARD, copyText, fabMsg, fit, main, out, postText, say, sendMode, storage } from './fab.js';
 import { imageInput, images, imageStrip, imgLines } from './images.js';
 import { passages } from './passages.js';
+import { shortcuts } from './shortcuts.js';
+import { docKeys } from './doc-keys.js';
 
 // Document mode: a Markdown file (spec, design, plan, report) drawn with marked, one card per ## section. In review mode every ## and ### heading and every selected passage takes a note, and the bar approves or sends the notes.
 export const docPage = (doc) => {
@@ -15,9 +17,12 @@ export const docPage = (doc) => {
   const store = storage('doc-draft:' + location.pathname);
   const notes = [];
   const ids = new Map();
+  const rowNote = new Map();
+  let general = null;
   const nav = $('#qnav');
   let md = null;
   let ps = null;
+  let keys = null;
 
   document.title = (review ? 'Duyệt · ' : '') + doc.title;
   document.documentElement.classList.replace('scroll-pt-14', 'scroll-pt-24');
@@ -112,7 +117,9 @@ export const docPage = (doc) => {
     decorate(h);
     if (t.depth > 3) return [h];
     const n = review ? noteFor(key) : null;
-    return [el('div', { class: 'flex flex-wrap items-center gap-x-2 gap-y-1' }, h, changeBadge(key), n && n.btn), n && n.box].filter(Boolean);
+    const row = el('div', { class: 'flex flex-wrap items-center gap-x-2 gap-y-1 ' + RING }, h, changeBadge(key), n && n.btn);
+    if (n) rowNote.set(row, n);
+    return [row, n && n.box].filter(Boolean);
   };
 
   // Each block carries its section key (data-k) and its lines in the .md (data-l, "from-to"), found from marked's token text; bullets and table rows get their own lines.
@@ -179,7 +186,7 @@ export const docPage = (doc) => {
 
 
   const finish = () => {
-    if (review) main.prepend(el('p', { class: 'text-[13px] text-muted', text: 'Tô đen một đoạn rồi bấm Góp ý để góp ý ngay chỗ đó; ' + KEY_HINT + ' gửi tất cả.' }));
+    if (review) main.prepend(el('p', { class: 'text-[13px] text-muted', text: 'Tô đen một đoạn rồi bấm Góp ý để góp ý ngay chỗ đó; ' + KEY_HINT + ' gửi tất cả · ? phím tắt.' }));
     if (ch.round > 1) {
       const link = (k) => (ids.has(k) ? el('a', { href: '#' + ids.get(k), class: 'link link-primary', text: k }) : el('span', { text: k }));
       const list = (label, keys) => (keys && keys.length ? el('p', {}, el('strong', { text: label + ' (' + keys.length + '): ' }), keys.flatMap((k, i) => [i ? ', ' : null, link(k)])) : null);
@@ -189,7 +196,7 @@ export const docPage = (doc) => {
         list('Đã sửa', ch.changed), list('Mới', ch.added), list('Đã bỏ', ch.removed)));
     }
     if (!review) return;
-    const general = noteBox('Chung', 'Góp ý chung cho cả tài liệu…');
+    general = noteBox('Chung', 'Góp ý chung cho cả tài liệu…');
     main.append(el('article', { class: CARD, 'data-note': '' }, el('h2', { class: 'text-[18px] leading-[1.35] font-bold', text: 'Góp ý chung' }), general.box));
     const draft = store.get();
     let lost = 0;
@@ -211,7 +218,7 @@ export const docPage = (doc) => {
     const noteLine = (n) => (n.hl ? '[§ ' + n.hl.key + (n.hl.lines ? ' · ' + n.hl.lines : '') + '] «' + short(n.hl.quote) + '» → ' : '[§ ' + n.key + '] ') + n.ta.value.trim();
     const text = (decision) => ['Quyết định: ' + decision, ...filled().map(noteLine),
       ...imgLines(filled().map((n) => n.ta.value).join('\n'))].join('\n');
-    const approveBtn = el('button', { type: 'button', class: btnCls() + ' btn-success', onclick: () => deliver('Duyệt') }, sendMode ? 'Duyệt' : 'Copy: Duyệt');
+    const approveBtn = el('button', { type: 'button', class: btnCls() + ' btn-success', onclick: () => deliver('Duyệt') }, sendMode ? 'Duyệt' : 'Copy: Duyệt', el('kbd', { class: 'kbd kbd-xs', text: KEY_HINT_SHIFT }));
     const changeBtn = el('button', { type: 'button', class: btnCls('primary'), onclick: () => deliver('Sửa') }, sendMode ? 'Gửi góp ý' : 'Copy góp ý', el('kbd', { class: 'kbd kbd-xs', text: KEY_HINT }));
     const deliver = async (decision) => {
       if (approveBtn.disabled) return;
@@ -235,9 +242,13 @@ export const docPage = (doc) => {
     };
     document.body.append(el('aside', { class: 'toast toast-end z-10 items-end', 'aria-label': 'Duyệt tài liệu' }, fabMsg, out,
       el('div', { class: 'flex items-center gap-1.5 bg-base-100 border border-base-300 rounded-box py-1 pr-1 pl-3 shadow-lg' }, count, approveBtn, changeBtn)));
-    document.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); deliver('Sửa'); } });
     ps = passages({ notes, noteBox, update });
+    keys = (sc) => docKeys(sc, { review, filled, rowNote, commentSelection: ps.commentSelection, general: () => general, deliver });
   }
+  const rows = (sel) => () => [...main.querySelectorAll(sel)].map((h) => h.parentElement);
+  // A note box belongs to the heading row before it.
+  shortcuts({ targets: rows('h2[id], h3[id]'), level1: rows('h2[id]'), keys: keys || ((sc) => docKeys(sc, { review })),
+    owner: (n) => { const r = rows('h2[id], h3[id]')(); return r.find((t) => t.contains(n)) || r.find((t) => t.nextElementSibling === n.closest('[data-note]')) || null; } });
 
   loadScript('https://cdnjs.cloudflare.com/ajax/libs/marked/15.0.12/marked.min.js').then(() => render(window.marked)).catch(() => {
     main.append(el('article', { class: CARD },

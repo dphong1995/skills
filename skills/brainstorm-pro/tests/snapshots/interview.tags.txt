@@ -4,3 +4,4 @@ script
 div
 dialog
 aside
+dialog

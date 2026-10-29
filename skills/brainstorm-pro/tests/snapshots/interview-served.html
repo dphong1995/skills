@@ -6,7 +6,10 @@
 <a href="#card-q01" class="btn btn-xs btn-primary btn-outline font-mono font-medium">Câu 1</a>
 <a href="#card-q02" class="btn btn-xs btn-primary btn-outline font-mono font-medium">Câu 2</a>
 </nav>
-  </div>
+  <button type="button" class="btn btn-xs btn-ghost" title="Phím tắt" aria-label="Phím tắt">
+<kbd class="kbd kbd-xs">?</kbd>
+</button>
+</div>
 </header>
 <main class="max-w-[1312px] mx-auto px-4 pt-3.5 pb-20 grid gap-3.5" id="main">
 <details class="collapse collapse-arrow bg-base-100 border border-base-300 text-[13px]">
@@ -18,7 +21,7 @@
 </ul>
 </div>
 </details>
-<article class="card card-border border-base-300 bg-base-100 px-[18px] py-4 max-[520px]:px-3 max-[520px]:py-3.5 grid gap-3 min-w-0 transition-[border-color,box-shadow] duration-200 motion-reduce:transition-none [&amp;.attention]:border-[var(--color-warning)] [&amp;.attention]:[box-shadow:0_0_0_3px_color-mix(in_oklab,var(--color-warning)_22%,transparent)]" id="card-q01">
+<article class="card card-border border-base-300 bg-base-100 px-[18px] py-4 max-[520px]:px-3 max-[520px]:py-3.5 grid gap-3 min-w-0 transition-[border-color,box-shadow] duration-200 motion-reduce:transition-none [&amp;.attention]:border-[var(--color-warning)] [&amp;.attention]:[box-shadow:0_0_0_3px_color-mix(in_oklab,var(--color-warning)_22%,transparent)] data-[current=true]:outline-2 data-[current=true]:outline-offset-2 data-[current=true]:outline-[var(--color-primary)]" id="card-q01">
 <header class="grid gap-1">
 <div class="flex flex-wrap items-center gap-1.5 font-mono tracking-[.06em] uppercase">
 <span class="badge badge-sm badge-primary badge-outline">Câu 1</span>
@@ -224,7 +227,7 @@
 </div>
 </div>
 </article>
-<article class="card card-border border-base-300 bg-base-100 px-[18px] py-4 max-[520px]:px-3 max-[520px]:py-3.5 grid gap-3 min-w-0 transition-[border-color,box-shadow] duration-200 motion-reduce:transition-none [&amp;.attention]:border-[var(--color-warning)] [&amp;.attention]:[box-shadow:0_0_0_3px_color-mix(in_oklab,var(--color-warning)_22%,transparent)]" id="card-q02">
+<article class="card card-border border-base-300 bg-base-100 px-[18px] py-4 max-[520px]:px-3 max-[520px]:py-3.5 grid gap-3 min-w-0 transition-[border-color,box-shadow] duration-200 motion-reduce:transition-none [&amp;.attention]:border-[var(--color-warning)] [&amp;.attention]:[box-shadow:0_0_0_3px_color-mix(in_oklab,var(--color-warning)_22%,transparent)] data-[current=true]:outline-2 data-[current=true]:outline-offset-2 data-[current=true]:outline-[var(--color-primary)]" id="card-q02">
 <header class="grid gap-1">
 <div class="flex flex-wrap items-center gap-1.5 font-mono tracking-[.06em] uppercase">
 <span class="badge badge-sm badge-primary badge-outline">Câu 2</span>
@@ -303,6 +306,81 @@
 </button>
 </div>
 </aside>
+<dialog class="modal">
+<div class="modal-box max-w-xl grid gap-3">
+<h2 class="text-[16px] font-semibold">Phím tắt</h2>
+<section class="grid gap-1.5">
+<h3 class="font-mono text-[11px] font-medium tracking-[.06em] uppercase text-muted">Điều hướng</h3>
+<dl class="m-0 grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5">
+<dt>
+<kbd class="kbd kbd-sm">J</kbd>
+</dt>
+<dd class="m-0">Câu kế</dd>
+<dt>
+<kbd class="kbd kbd-sm">K</kbd>
+</dt>
+<dd class="m-0">Câu trước</dd>
+<dt>
+<kbd class="kbd kbd-sm">1–9</kbd>
+</dt>
+<dd class="m-0">Câu thứ n</dd>
+<dt>
+<kbd class="kbd kbd-sm">N</kbd>
+</dt>
+<dd class="m-0">Câu chưa trả lời kế tiếp</dd>
+</dl>
+</section>
+<section class="grid gap-1.5">
+<h3 class="font-mono text-[11px] font-medium tracking-[.06em] uppercase text-muted">Thao tác</h3>
+<dl class="m-0 grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5">
+<dt>
+<kbd class="kbd kbd-sm">A–D</kbd>
+</dt>
+<dd class="m-0">Chọn phương án (câu nhiều lựa chọn: bấm lại để bỏ)</dd>
+<dt>
+<kbd class="kbd kbd-sm">R</kbd>
+</dt>
+<dd class="m-0">Chọn phương án Claude đề xuất</dd>
+<dt>
+<kbd class="kbd kbd-sm">X</kbd>
+</dt>
+<dd class="m-0">Khác (tự nhập)</dd>
+<dt>
+<kbd class="kbd kbd-sm">E</kbd>
+</dt>
+<dd class="m-0">Cần giải thích thêm</dd>
+<dt>
+<kbd class="kbd kbd-sm">G</kbd>
+</dt>
+<dd class="m-0">Ghi chú của câu</dd>
+<dt>
+<kbd class="kbd kbd-sm">⌘ Enter</kbd>
+</dt>
+<dd class="m-0">Gửi câu trả lời</dd>
+</dl>
+</section>
+<section class="grid gap-1.5">
+<h3 class="font-mono text-[11px] font-medium tracking-[.06em] uppercase text-muted">Chung</h3>
+<dl class="m-0 grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5">
+<dt>
+<kbd class="kbd kbd-sm">?</kbd>
+</dt>
+<dd class="m-0">Mở hoặc đóng bảng phím</dd>
+<dt>
+<kbd class="kbd kbd-sm">Esc</kbd>
+</dt>
+<dd class="m-0">Rời ô đang gõ, hoặc bỏ chọn chữ</dd>
+</dl>
+</section>
+<form method="dialog" class="flex justify-end">
+<button class="btn btn-sm ">Đóng<kbd class="kbd kbd-xs">Esc</kbd>
+</button>
+</form>
+</div>
+<form method="dialog" class="modal-backdrop">
+<button>Đóng</button>
+</form>
+</dialog>
 
 
 </body>

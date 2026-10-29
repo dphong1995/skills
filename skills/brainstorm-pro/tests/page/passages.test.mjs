@@ -250,7 +250,7 @@ describe('highlight comments on the review page', () => {
   it('Duyệt sends the decision together with the comments', async () => {
     await load('approve');
     await comment('first goal bullet', null, 'small one');
-    await b.eval(`[...document.querySelectorAll('aside button')].find((x) => x.textContent === 'Duyệt').click()`);
+    await b.eval(`[...document.querySelectorAll('aside button')].find((x) => x.textContent.startsWith('Duyệt')).click()`);
     const r = await s.done;
     assert.deepEqual(parseAnswers(r.stdout).lines, ['Quyết định: Duyệt', `[§ Overview › Goals · dòng ${lineOf('first goal bullet')}] «first goal bullet» → small one`]);
   });
