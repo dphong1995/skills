@@ -44,6 +44,10 @@ code về. Sửa quy tắc trong repo (`claude-md/`) chứ không sửa trong CL
 - `language.md`: mọi tin nhắn cho người dùng viết bằng tiếng Việt (cả dòng báo tiến độ, tin nhắn
   sau compact, khi chuyển tiếp tài liệu tiếng Anh); tiếng Anh chỉ ở memory, commit, prompt cho
   subagent, nội dung cho Jira/PR.
+- `subagent-models.md`: subagent thực thi (executor, test-engineer, debugger, code-simplifier, writer,
+  git-master, general-purpose làm việc) luôn chạy `model: "sonnet"`; subagent chỉ review (red-team,
+  code-reviewer của cook, critic, architect, verifier, security-reviewer) chạy `model: "opus"`, kể cả
+  khi skill ghi model khác.
 
 ## Settings và hook
 
@@ -73,7 +77,9 @@ git add -A && git commit -m "..." && git push
 ```
 skills/
 ├── brainstorm-pro/   Thiết kế feature: deep scout → Q&A từng câu một trên trang HTML cục bộ → viết spec theo
-│                     section → user duyệt trên trang web (góp ý từng mục) → gọi ck-plan
+│                     section → user duyệt trên trang web (góp ý từng mục; phím tắt trên các trang, `?` liệt kê)
+│                     → gọi ck-plan. Gồm `assets/render-interview.mjs` + `assets/lib/` + `assets/page/`,
+│                     `tests/`, `DEVELOPING.md`
 ├── ck-plan/          Lập kế hoạch: research → phân tích codebase → plan.md + phase-XX-*.md
 │                     → tự động gọi cook
 ├── cook/             Triển khai: mỗi phase một subagent → test → review fan-out 2 agent → finalize

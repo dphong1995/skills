@@ -74,6 +74,7 @@ cook/
 
 ## Version
 
+5.6.2 - Implementation, testing, fix-application and finalize subagents are dispatched with `model: "sonnet"` (no exception for hard fixes), matching the always-on `subagent-models` rule
 5.6.1 - 1E no longer mentions a section-by-section design step; the design goes straight to `design.md` and its review page
 5.6.0 - 1E writes the design to `<plan-dir>/design.md` in Vietnamese (brainstorm-pro's spec structure) and the user approves it on a local review page with notes per section; `plan.md` links `design.md` instead of copying it; question pages pick an option when its card is clicked
 5.5.0 - Step 5 review is a 2-agent fan-out: one cleanup agent runs Reuse (first, with a `Reuse searched:` line) + Simplification + Efficiency + Altitude, so Reuse/Simplification duplicates are collapsed by the agent that read the code; a subsumed finding whose higher fix changes behaviour or leaves the diff is kept as a `Fallback:`

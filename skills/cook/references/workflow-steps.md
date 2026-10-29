@@ -326,7 +326,7 @@ Wait for **both**, then split the findings. This split is the whole point of the
 
 **Apply blocking and non-blocking fixes in the SAME dispatch**, blocking first. Tell the applier that blocking fixes take precedence and to **drop any cleanup finding that the blocking fix already resolved or made stale** — otherwise it patches code that no longer exists.
 
-Applier: `code-simplifier` for a cleanup-only batch (it is purpose-built for this and preserves behaviour), `executor` for anything containing a blocking fix, `debugger` when the blocking fix needs root-cause work first. Dispatch with `model: "sonnet"` unless the fix is genuinely hard.
+Applier: `code-simplifier` for a cleanup-only batch (it is purpose-built for this and preserves behaviour), `executor` for anything containing a blocking fix, `debugger` when the blocking fix needs root-cause work first. Dispatch with `model: "sonnet"`.
 
 ### After applying — re-verify (MANDATORY)
 

@@ -4,7 +4,7 @@ description: "ALWAYS activate this skill before implementing EVERY feature, plan
 argument-hint: "[task|plan-path]"
 metadata:
   author: claudekit
-  version: "5.6.1"
+  version: "5.6.2"
 ---
 
 # Cook - Smart Feature Implementation
@@ -150,11 +150,11 @@ The review (Step 5) is a **single fan-out of two sub-agents in one message**: ag
 |-------|----------|-------------|
 | Step 1 Design (1A–1E) | **none — orchestrator-run** | Skip only if plan path provided. `document-specialist` / `Explore` optional helpers inside 1A/1B |
 | Step 2 Plan | **none — orchestrator-run** | Orchestrator writes `plan.md` + `phase-XX-*.md` itself with Write, in **`ck-plan`'s format** (load `../ck-plan/references/plan-organization.md` + `output-standards.md` first). Skip only if plan path provided. Dispatching `planner` here is FORBIDDEN |
-| Implementation (per phase) | `executor` (or `designer` for frontend) | **MUST** spawn one per phase |
-| Testing | `test-engineer`, `debugger` | **MUST** spawn |
+| Implementation (per phase) | `executor` (or `designer` for frontend) | **MUST** spawn one per phase. Dispatch with `model: "sonnet"` |
+| Testing | `test-engineer`, `debugger` | **MUST** spawn. Dispatch with `model: "sonnet"` |
 | Review (compliance + bugs + cleanup) | `code-reviewer` ×2 | **MUST** spawn both in ONE message. Agent 1 = dual-section gating report; agent 2 = Reuse+Simplification+Efficiency+Altitude (non-gating). Dispatch with `model: "opus"` |
-| Fix application | `code-simplifier` (cleanup-only batch) / `executor` / `debugger` | Dispatch with `model: "sonnet"` unless the fix is genuinely hard |
-| Finalize | sync-back (`executor`), docs (`writer`), commit (`git-master`) | **MUST** spawn all 3 |
+| Fix application | `code-simplifier` (cleanup-only batch) / `executor` / `debugger` | Dispatch with `model: "sonnet"` |
+| Finalize | sync-back (`executor`), docs (`writer`), commit (`git-master`) | **MUST** spawn all 3. Dispatch each with `model: "sonnet"` |
 
 **Agent names are per-session.** Verify each type against the session's agent registry before
 dispatching and fall back rightward; never abandon a step because a name is missing. Full mapping
