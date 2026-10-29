@@ -47,7 +47,7 @@ Need Google Chrome (`CHROME=<path>` for another), network (CDNs: Tailwind, highl
 Run from the skill directory:
 
 ```
-node --test --test-concurrency=1 'tests/**/*.test.mjs'    # all (205 tests), ~100 s; a bare tests/ argument fails on Node 24
+node --test --test-concurrency=1 'tests/**/*.test.mjs'    # all (225 tests), ~120 s; a bare tests/ argument fails on Node 24
 node --test 'tests/unit/*.test.mjs'                       # unit only (99 tests), no Chrome, under 2 s
 node --test tests/page/shortcuts.test.mjs                 # one file
 UPDATE_SNAPSHOTS=1 node --test tests/page/snapshot.test.mjs
@@ -65,8 +65,7 @@ UPDATE_SNAPSHOTS=1 node --test tests/page/snapshot.test.mjs
 
 Interview: `J K 1-9 N A-D R X E G Cmd+Enter ? Esc`. Document review: `J K 1-9 N C G Cmd+Enter Cmd+Shift+Enter ? Esc`
 (Cmd+Shift+Enter is Duyệt; with notes it needs a second press within 3 s). Read-only document: `J K 1-9 ? Esc`.
-`J`/`K` stop at the ends, `N` wraps. Handlers call `preventDefault`. `?` also opens from the header button, the last
-item of the header's nav: at the end of `#qnav` on the interview (it wraps with the chips), and after the nav in the document's own row (`doc.js` wraps `#qnav` in a `w-full` row that always exists, nav `flex-1`), so it never takes a header row of its own (`tests/page/header.test.mjs` pins the old heights). `X`/`E` check Khác /
+`J`/`K` stop at the ends, `N` wraps. Handlers call `preventDefault`. `?` also opens from the header button; the page names its slot with `shortcuts({ helpSlot })` (it returns `{ helpBtn }`): the end of `#qnav` on the interview (it wraps with the chips, so the chips may wrap one row earlier), and after the nav in the document's own row (`doc.js` wraps `#qnav` in a `w-full` row, nav `flex-1`), so the doc header keeps its rows. A document with no `##` sections hides that row and `doc.js` moves the button to the title row. The engine sets `scroll-padding-top` on `<html>` to the header height + 12 px on every resize of the header (the static `scroll-pt-*` classes are only the first value), so links, `J` and digits never land a heading under the header. `tests/page/header.test.mjs` pins the relative rule: the header is as tall with the button as without it (not at the interview widths where the button makes a chip wrap). On phones (below `sm`) the review bar hides the key hints on Duyệt / Gửi góp ý. `X`/`E` check Khác /
 Cần giải thích (never toggle off on a multi card) and focus the box.
 
 ## Traps

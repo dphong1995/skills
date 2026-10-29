@@ -6,7 +6,7 @@ const GROUPS = ['Điều hướng', 'Thao tác', 'Chung'];
 // The one keyboard engine of every mode. `targets()` are the items J/K walk, in page order; `level1()` those the digits pick; `owner(node)` the target a node belongs to.
 // `keys(sc)` returns the mode's list of { k, show?, group, label, run, typing? }: k is a keyName() result (or a list of them), typing true lets it run inside a text box.
 // The ring is the data-current attribute on the current target, drawn from the first shortcut on; the `?` dialog is built from the same list.
-export const shortcuts = ({ targets, level1 = targets, owner, keys }) => {
+export const shortcuts = ({ targets, level1 = targets, owner, keys, helpSlot }) => {
   let started = false;
   let current = null;
   let locked = false;
@@ -18,9 +18,12 @@ export const shortcuts = ({ targets, level1 = targets, owner, keys }) => {
     current = t;
     if (t) t.dataset.current = 'true';
   };
-  // The y just under the header, measured again only when the header or the page is resized.
+  // The y just under the header, measured again only when the header or the page is resized. The same resize sets the scroll padding to the header's height plus a small gap, so a link, J or a digit never lands a heading under the header at any width (the static scroll-pt class is the first value).
   let under = null;
-  const measure = new ResizeObserver(() => { under = null; });
+  const measure = new ResizeObserver(() => {
+    under = null;
+    document.documentElement.style.scrollPaddingTop = Math.ceil($('header').getBoundingClientRect().height) + 12 + 'px';
+  });
   measure.observe($('header'));
   measure.observe(document.documentElement);
   const topY = () => {
@@ -76,7 +79,13 @@ export const shortcuts = ({ targets, level1 = targets, owner, keys }) => {
   addEventListener('wheel', (e) => { if (e.deltaY !== 0 && !e.ctrlKey) unlock(); }, { passive: true });
   addEventListener('touchmove', unlock, { passive: true });
   const SCROLL_KEYS = ['PageUp', 'PageDown', ' ', 'ArrowUp', 'ArrowDown', 'Home', 'End'];
-  addEventListener('keydown', (e) => { if (SCROLL_KEYS.includes(e.key) && !isTyping(document.activeElement)) unlock(); });
+  // Space and the up/down arrows act on a focused input, button, select or summary instead of scrolling; a key a handler already took does not scroll either.
+  addEventListener('keydown', (e) => {
+    const a = document.activeElement;
+    if (e.defaultPrevented || !SCROLL_KEYS.includes(e.key) || isTyping(a)) return;
+    if ([' ', 'ArrowUp', 'ArrowDown'].includes(e.key) && a.closest('input, button, select, summary')) return;
+    unlock();
+  });
   addEventListener('scroll', () => {
     if (locked) { clearTimeout(lockTimer); lockTimer = setTimeout(unlock, 150); return; }
     if (!started || frame) return;
@@ -102,10 +111,9 @@ export const shortcuts = ({ targets, level1 = targets, owner, keys }) => {
     })),
     closeForm('flex justify-end'));
   document.body.append(help);
-  // Last in the nav, so it wraps with the chips; on the document page the nav sits in its own row, and the button follows it there.
+  // The page says where the button goes (`helpSlot`, an element it is appended to) and may move it later.
   const helpBtn = el('button', { type: 'button', class: 'btn btn-xs btn-ghost -my-0.5', title: 'Phím tắt', 'aria-label': 'Phím tắt', onclick: toggleHelp }, kbd('?', 'kbd-xs'));
-  const nav = $('#qnav');
-  if (nav.parentElement.matches('.navbar')) nav.append(helpBtn); else nav.after(helpBtn);
+  helpSlot.append(helpBtn);
 
   document.addEventListener('keydown', (e) => {
     if (e.defaultPrevented) return;
@@ -119,4 +127,5 @@ export const shortcuts = ({ targets, level1 = targets, owner, keys }) => {
     if (!started && !x.typing && k !== '?') { started = true; setCurrent(topTarget()); }
     x.run(k);
   });
+  return { helpBtn };
 };

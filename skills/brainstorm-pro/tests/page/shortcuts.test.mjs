@@ -342,6 +342,21 @@ describe('interview page keys', () => {
     assert.equal(await afterUserAction(() => b.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX: 40, deltaY: 0 })), 'card-q03');
   });
 
+  it('ArrowDown inside a focused text box is not a scroll of the page: the lock stays', async () => {
+    assert.equal(await afterUserAction(() => b.eval(`document.querySelector('#q03-note').focus({ preventScroll: true })`).then(() => b.press('ArrowDown'))), 'card-q03');
+  });
+
+  it('ArrowDown on a focused radio button picks an option, it does not scroll: the lock stays', async () => {
+    await b.eval('document.activeElement.blur()');
+    assert.equal(await afterUserAction(() => b.eval(`document.querySelector('#card-q03 input[type=radio]').focus({ preventScroll: true })`).then(() => b.press('ArrowDown'))), 'card-q03');
+  });
+
+  // Chrome zooms the page on a real ctrl+wheel, but headless Chrome scrolls it (an animation that outlives the lock), so the event is dispatched to the page.
+  it('a ctrl+wheel turn (a pinch zoom) is not a scroll of the page: the lock stays', async () => {
+    await b.eval('document.activeElement.blur()');
+    assert.equal(await afterUserAction(() => b.eval(`dispatchEvent(new WheelEvent('wheel', { deltaY: 40, ctrlKey: true }))`)), 'card-q03');
+  });
+
   it('PageDown outside a text box is the user\'s own scroll: it ends the lock', async () => {
     await b.eval('document.activeElement.blur()');
     assert.equal(await afterUserAction(() => b.press('PageDown')), 'card-q01');

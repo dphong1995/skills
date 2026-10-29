@@ -191,6 +191,8 @@ export const docPage = (doc) => {
 
 
   const finish = () => {
+    // Without sections the nav row is empty: the button joins the title row, so the header keeps one row.
+    if (!nav.children.length) { navRow.hidden = true; $('header .navbar').append(helpBtn); }
     if (review) main.prepend(el('p', { class: 'text-[13px] text-muted', text: 'Tô đen một đoạn rồi bấm Góp ý để góp ý ngay chỗ đó; ' + KEY_HINT + ' gửi tất cả · ? phím tắt.' }));
     if (ch.round > 1) {
       const link = (k) => (ids.has(k) ? el('a', { href: '#' + ids.get(k), class: 'link link-primary', text: k }) : el('span', { text: k }));
@@ -228,8 +230,8 @@ export const docPage = (doc) => {
     const noteLine = (n) => (n.hl ? '[§ ' + n.hl.key + (n.hl.lines ? ' · ' + n.hl.lines : '') + '] «' + short(n.hl.quote) + '» → ' : '[§ ' + n.key + '] ') + n.ta.value.trim();
     const text = (decision) => ['Quyết định: ' + decision, ...filled().map(noteLine),
       ...imgLines(filled().map((n) => n.ta.value).join('\n'))].join('\n');
-    const approveBtn = el('button', { type: 'button', class: btnCls() + ' btn-success', onclick: () => deliver('Duyệt') }, sendMode ? 'Duyệt' : 'Copy: Duyệt', kbd(KEY_HINT_SHIFT, 'kbd-xs'));
-    const changeBtn = el('button', { type: 'button', class: btnCls('primary'), onclick: () => deliver('Sửa') }, sendMode ? 'Gửi góp ý' : 'Copy góp ý', kbd(KEY_HINT, 'kbd-xs'));
+    const approveBtn = el('button', { type: 'button', class: btnCls() + ' btn-success', onclick: () => deliver('Duyệt') }, sendMode ? 'Duyệt' : 'Copy: Duyệt', kbd(KEY_HINT_SHIFT, 'kbd-xs max-sm:hidden'));
+    const changeBtn = el('button', { type: 'button', class: btnCls('primary'), onclick: () => deliver('Sửa') }, sendMode ? 'Gửi góp ý' : 'Copy góp ý', kbd(KEY_HINT, 'kbd-xs max-sm:hidden'));
     const deliver = async (decision) => {
       if (approveBtn.disabled) return;
       if (decision === 'Sửa' && !filled().length) {
@@ -256,7 +258,7 @@ export const docPage = (doc) => {
     reviewKeys = { filled, rowNote, rowBefore, commentSelection: ps.commentSelection, general: () => general, deliver, sent: () => approveBtn.disabled };
   }
   // A note box belongs to the heading row before it, except the general note, which is no heading's.
-  shortcuts({ targets, level1: rows('h2[id]'), keys: (sc) => docKeys(sc, reviewKeys),
+  const { helpBtn } = shortcuts({ targets, level1: rows('h2[id]'), helpSlot: navRow, keys: (sc) => docKeys(sc, reviewKeys),
     owner: (n) => { const box = n.closest('[data-note]'); return targets().find((t) => t.contains(n)) || (box && !box.closest('article[data-note]') ? rowBefore(box) : null); } });
 
   loadScript('https://cdnjs.cloudflare.com/ajax/libs/marked/15.0.12/marked.min.js').then(() => render(window.marked)).catch(() => {

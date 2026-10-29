@@ -250,7 +250,7 @@ export const interviewPage = () => {
     el('div', { class: 'flex items-center gap-1.5 bg-base-100 border border-base-300 rounded-box py-1 pr-1 pl-3 shadow-lg' }, fabCount, acceptBtn,
       sendMode ? [el('button', { type: 'button', class: btnCls(), title: 'Copy để dán vào terminal', onclick: copyAll }, 'Copy'), sendBtn]
         : el('button', { type: 'button', class: btnCls('primary'), onclick: copyAll }, 'Copy câu trả lời', kbd(KEY_HINT, 'kbd-xs')))));
-  shortcuts({ targets: () => cards.map((c) => c.card), keys: (sc) => interviewKeys(sc, { cards, submit }) });
+  shortcuts({ targets: () => cards.map((c) => c.card), helpSlot: $('#qnav'), keys: (sc) => interviewKeys(sc, { cards, submit }) });
   updateFab();
 
   const draft = store.get();
