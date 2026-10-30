@@ -37,9 +37,16 @@ for hook in "$SRC"/hooks/*.mjs; do
   echo "  hook   $name"
 done
 
+for mod in "$SRC"/mods/*/; do
+  [ -e "$mod" ] || continue
+  name="$(basename "$mod")"
+  install_entry "${mod%/}" "$DEST/mods/$name"
+  echo "  mod    $name"
+done
+
 find "$DEST/skills" "$DEST/agents" -name '.DS_Store' -delete 2>/dev/null || true
 
-# Settings: settings/settings.json is merged into $DEST/settings.json. Top-level values are set;
+# Settings: settings/settings.json is merged into $DEST/settings.json. Top-level values are set (env per variable);
 # a hook group is added unless every command in it is already registered for that event.
 if [ -f "$SRC/settings/settings.json" ]; then
   if command -v node >/dev/null 2>&1; then
@@ -53,7 +60,8 @@ const fs = require('fs');
 const [fragment, target] = process.argv.slice(2);
 const add = JSON.parse(fs.readFileSync(fragment, 'utf8'));
 const cur = fs.existsSync(target) ? JSON.parse(fs.readFileSync(target, 'utf8')) : {};
-for (const [key, value] of Object.entries(add)) if (key !== 'hooks') cur[key] = value;
+for (const [key, value] of Object.entries(add)) if (key !== 'hooks' && key !== 'env') cur[key] = value;
+if (add.env) cur.env = { ...(cur.env || {}), ...add.env };
 for (const [event, groups] of Object.entries(add.hooks || {})) {
   cur.hooks ??= {};
   cur.hooks[event] ??= [];

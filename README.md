@@ -9,7 +9,7 @@ git clone git@github.com:dphong1995/skills.git ~/.claude/skills-repo
 bash ~/.claude/skills-repo/install.sh
 ```
 
-`install.sh` copy nội dung vào `~/.claude/skills/`, `~/.claude/agents/` và `~/.claude/hooks/`, ghi các
+`install.sh` copy nội dung vào `~/.claude/skills/`, `~/.claude/agents/`, `~/.claude/hooks/` và `~/.claude/mods/`, ghi các
 khối quy tắc `claude-md/` vào `~/.claude/CLAUDE.md` (xem mục "Quy tắc luôn bật") và trộn
 `settings/settings.json` vào `~/.claude/settings.json` (xem mục "Settings và hook"). Vị trí clone không quan
 trọng (script tự dò đường dẫn của chính nó) — `~/.claude/skills-repo` chỉ là mặc định gợi ý.
@@ -53,7 +53,7 @@ code về. Sửa quy tắc trong repo (`claude-md/`) chứ không sửa trong CL
 ## Settings và hook
 
 `settings/settings.json` được trộn vào `~/.claude/settings.json` (cần `node`): khoá ở cấp cao nhất
-được ghi đè, một nhóm hook được thêm nếu lệnh của nó chưa có cho event đó; phần còn lại của file giữ
+được ghi đè (riêng `env` được trộn từng biến, biến khác của máy giữ nguyên), một nhóm hook được thêm nếu lệnh của nó chưa có cho event đó; phần còn lại của file giữ
 nguyên, file cũ được sao lưu trước. Chạy lại `install.sh` không tạo hook trùng.
 
 - `"language": "vietnamese"`: setting có sẵn của Claude Code, đưa ngôn ngữ trả lời vào system prompt.
@@ -74,6 +74,16 @@ nguyên, file cũ được sao lưu trước. Chạy lại `install.sh` không t
   `google-workspace`, `pdf`, `pptx`, `skill-creator`, `xlsx`. Bật lại một skill bằng cách xoá dòng của nó
   trong `settings/settings.json` của repo rồi chạy `install.sh` (không sửa ở `~/.claude/settings.json`
   vì `install.sh` ghi đè khoá `skillOverrides`).
+- Mod `mods/main-context-compact` (nạp qua `env.CLAUDE_CODE_PLUGIN_DIRS`): tự compact context của main
+  thread. Hết lượt mà context ≥ 300k thì compact; đang giữa lượt mà chạm 400k thì dừng lượt, compact rồi
+  tự chạy tiếp; hết lượt ở ≥ 200k mà bạn không gửi gì trong 55 phút thì compact trước khi cache 1 giờ hết
+  hạn. Chỉ áp cho main thread, subagent vẫn dùng `subagent-context-guard`. Đổi các con số ở `/config` →
+  main-context-compact (lưu trong `pluginConfigs` của `~/.claude/settings.json`). Tắt: xoá
+  `CLAUDE_CODE_PLUGIN_DIRS` trong `~/.claude/settings.json` và trong `settings/settings.json` của repo,
+  nếu không lần `install.sh` sau sẽ đặt lại. `install.sh` đặt `CLAUDE_CODE_PLUGIN_DIRS` thành một giá trị
+  duy nhất, nên muốn nạp thêm thư mục plugin khác thì thêm vào chính giá trị đó. Sau mỗi lần cập nhật
+  Claude Code chạy `claude plugin validate ~/.claude/mods/main-context-compact` và
+  `claude plugin test ~/.claude/skills-repo/mods/main-context-compact`.
 
 ## Đẩy thay đổi ngược lên repo
 
@@ -106,6 +116,8 @@ agents/               19 subagent definition mà cook/ck-plan gọi tới; tất
 
 hooks/                reply-language.mjs (Stop), subagent-context-guard.mjs (PostToolUse) và `tests/` của hook
                       (xem mục Settings và hook bên trên)
+
+mods/                 main-context-compact: mod tự compact context của main thread (xem mục Settings và hook)
 
 claude-md/            Khối quy tắc luôn bật, install.sh giữ trong ~/.claude/CLAUDE.md (xem mục bên trên)
 

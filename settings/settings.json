@@ -40,6 +40,9 @@
     "anthropic-skills:weekly-status-update": "off",
     "anthropic-skills:white-paper": "off"
   },
+  "env": {
+    "CLAUDE_CODE_PLUGIN_DIRS": "~/.claude/mods/main-context-compact"
+  },
   "hooks": {
     "Stop": [
       {
