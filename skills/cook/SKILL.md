@@ -4,7 +4,7 @@ description: "ALWAYS activate this skill before implementing EVERY feature, plan
 argument-hint: "[task|plan-path]"
 metadata:
   author: claudekit
-  version: "5.6.3"
+  version: "5.7.0"
 ---
 
 # Cook - Smart Feature Implementation
@@ -82,7 +82,7 @@ The orchestrator NEVER edits source files itself during Step 3. Every phase MUST
 | "The phase is obviously done, no need to mark it" | Un-marked = not done. Update the task status before moving on. |
 | "A cleanup finding looks serious, so block Step 6 on it" | Only Section A ❌ and Section B Critical/High gate. If a cleanup lens found a real defect, re-file it under Section B — don't smuggle a gate in through the cleanup bucket. |
 | "Tests were green before the cleanup, so they're green after" | Cleanup edits change working code. Re-run tests AND the project verification gate, every fix batch. |
-| "Re-run both reviewers each cycle" | No. The cleanup lenses run once, on cycle 0. Only the gating reviewer re-dispatches, scoped to the fix. |
+| "Re-run the reviewers each cycle" | No. The cleanup lenses run once, on cycle 0. Only the gating reviewer re-dispatches, scoped to the fix. |
 | "Four lenses means four agents" / "Reuse is search-heavy, give it its own agent" | No — one cleanup agent holds all four lenses, Reuse pass first. A separate Reuse agent searched no more than the other cleanup agent and re-reported a third of its findings, leaving the orchestrator to dedup them from summaries. |
 | "This simplification is obviously better than the repo's convention" | The convention wins. Some invariants look redundant on purpose and say so in CLAUDE.md. Report the tension, don't 'fix' it. |
 
@@ -104,7 +104,7 @@ flowchart TD
     D --> F
     F --> H[Step 3: Dispatch sub-agent per phase — delegation starts HERE]
     H --> K[Step 4: Test sub-agent]
-    K --> Rev[Step 5: Review sized by the diff (1 reviewer ≤ 80 lines / 3 files, else 2) — compliance + bugs gating,<br/>reuse+simplification+efficiency+altitude non-gating]
+    K --> Rev[Step 5: Review sized by the diff — compliance + bugs gating,<br/>reuse+simplification+efficiency+altitude non-gating]
     Rev --> L[Step 6: Finalize sub-agents]
 ```
 
@@ -113,7 +113,7 @@ flowchart TD
 ## Workflow Overview
 
 ```
-[Setup] → [Design: scout → research → Q&A → approaches → design.md reviewed on a page] → [Plan: orchestrator writes it] → [Phase sub-agents] → [Test sub-agent] → [Review: sized by the diff (1 reviewer ≤ 80 lines / 3 files, else 2) — compliance+bugs / reuse+simplification+efficiency+altitude] → [Finalize sub-agents]
+[Setup] → [Design: scout → research → Q&A → approaches → design.md reviewed on a page] → [Plan: orchestrator writes it] → [Phase sub-agents] → [Test sub-agent] → [Review: sized by the diff (workflow-steps.md § Step 5) — compliance+bugs / reuse+simplification+efficiency+altitude] → [Finalize sub-agents]
 
 Steps 1–2 are orchestrator-run (design + plan). Steps 3–6 are sub-agent-run (execution).
 ```
@@ -132,7 +132,7 @@ Step 1 is interactive (Q&A rounds, the design review page). **From Step 2 onward
 
 **No approval stops from Step 2 onward.** Plan → implement → test → review → finalize runs end to end without pausing for the user. Report progress as you go (`✓ Step [N]: …`) so the user can interrupt if they want to redirect, but never block waiting for a go-ahead. In particular, once implementation and testing finish, go straight into the review in the same turn.
 
-The review (Step 5) is **sized by the diff** (1 reviewer ≤ 80 lines / 3 files, tests excluded; else a **single fan-out of two sub-agents in one message**): on a large diff agent 1 returns the dual-section gating report — (A) plan-compliance vs the acceptance criteria carried into `plan.md` from the approved design and per-phase "Done when" blocks, (B) severity-rated bugs — while agent 2 runs the four cleanup lenses borrowed from the `simplify` skill (Reuse first, then Simplification, Efficiency and Altitude) in one head, so it can collapse findings that are really one change at the mechanism level; on a small diff the single reviewer returns both, with the lenses as a non-gating Cleanup section. Re-reviews after a fix batch cover only the fix. Section A verdicts are non-overridable and Section B Critical/High gate; **cleanup findings never gate and never increment the cycle counter.** After any fix batch, re-run the tests AND the project's verification gate — cleanup edits touch working code.
+The review (Step 5) is **sized by the diff** (workflow-steps.md § Step 5: one reviewer for a small diff, else a **single fan-out of two sub-agents in one message**): on a large diff agent 1 returns the dual-section gating report — (A) plan-compliance vs the acceptance criteria carried into `plan.md` from the approved design and per-phase "Done when" blocks, (B) severity-rated bugs — while agent 2 runs the four cleanup lenses borrowed from the `simplify` skill (Reuse first, then Simplification, Efficiency and Altitude) in one head, so it can collapse findings that are really one change at the mechanism level; on a small diff the single reviewer returns both, with the lenses as a non-gating Cleanup section. Re-reviews after a fix batch cover only the fix. Section A verdicts are non-overridable and Section B Critical/High gate; **cleanup findings never gate and never increment the cycle counter.** After any fix batch, re-run the tests AND the project's verification gate — cleanup edits touch working code.
 
 **Always enforced:**
 - **Testing:** 100% pass required
@@ -152,7 +152,7 @@ The review (Step 5) is **sized by the diff** (1 reviewer ≤ 80 lines / 3 files,
 | Step 2 Plan | **none — orchestrator-run** | Orchestrator writes `plan.md` + `phase-XX-*.md` itself with Write, in **`ck-plan`'s format** (load `../ck-plan/references/plan-organization.md` + `output-standards.md` first). Skip only if plan path provided. Dispatching `planner` here is FORBIDDEN |
 | Implementation (per phase) | `executor` (or `designer` for frontend) | **MUST** spawn one per phase. Dispatch with `model: "sonnet"` |
 | Testing | `test-engineer`, `debugger` | **MUST** spawn. Dispatch with `model: "sonnet"` |
-| Review (compliance + bugs + cleanup) | `code-reviewer` (1 or 2, sized by the diff) | **MUST** spawn. Small diff (≤ 80 lines, ≤ 3 files): one reviewer, gating report + non-gating Cleanup. Large: both in ONE message — agent 1 = dual-section gating report; agent 2 = Reuse+Simplification+Efficiency+Altitude (non-gating). Dispatch with `model: "opus"` |
+| Review (compliance + bugs + cleanup) | `code-reviewer` (1 or 2, sized by the diff) | **MUST** spawn. Small diff: one reviewer, gating report + non-gating Cleanup (sized by the diff, workflow-steps.md § Step 5). Large: both in ONE message — agent 1 = dual-section gating report; agent 2 = Reuse+Simplification+Efficiency+Altitude (non-gating). Dispatch with `model: "opus"` |
 | Fix application | `code-simplifier` (cleanup-only batch) / `executor` / `debugger` | Dispatch with `model: "sonnet"` |
 | Finalize | sync-back (`executor`), docs (`writer`), commit (`git-master`) | **MUST** spawn all 3. Dispatch each with `model: "sonnet"` |
 

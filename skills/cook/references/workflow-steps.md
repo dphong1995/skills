@@ -126,6 +126,8 @@ Report the plan overview with its phases and continue straight to implementation
 3. If no tasks → **ALWAYS** `TaskCreate` for each unchecked `[ ]` item (read plan phases) with priority order and metadata (`phase`, `planDir`, `phaseFile`). Never proceed to dispatch without a task list.
 4. Tasks can be blocked by other tasks via `addBlockedBy`.
 
+Before dispatching phase 1, record `git rev-parse HEAD` and write the printed commit id down literally (shell variables do not survive between calls) — Step 5's size check needs it when the work is committed on the base branch itself.
+
 **Dispatch rules:**
 - **One sub-agent per phase.** Read the `phase-XX-*.md` file, extract scope/files/acceptance criteria, embed verbatim into the sub-agent prompt.
 - **MANDATORY `TaskUpdate` `in_progress` BEFORE every dispatch.** Mark the phase task `in_progress` immediately before spawning its sub-agent — never dispatch a phase whose task is still `pending`.
@@ -156,11 +158,11 @@ Report the test results and dispatch the Step 5 review in the same turn — do n
 
 ## Step 5: Combined Review — sized by the diff (MANDATORY)
 
-**Size check first.** Run `git diff --numstat <base>` (base = the plan's base branch or commit) and add the line count of each untracked file. Drop test files (`*.test.*`, `*.spec.*`, `__tests__/`, `tests/`). The diff is **small** when added + removed ≤ 80 lines AND ≤ 3 files; otherwise **large**. State the numbers in the Step 5 output line.
+**Size check first.** Base = `git merge-base <base-branch> HEAD` (when the work is committed on the base branch itself, the commit recorded before Step 3). Run `git diff --numstat <base> -- . ':(exclude,glob)**/tests/**' ':(exclude,glob)**/__tests__/**' ':(exclude,glob)**/*.test.*' ':(exclude,glob)**/*.spec.*'` and add the line count of each untracked file from `git ls-files -o --exclude-standard` with the same excludes. A binary row (`-  -`) counts as a file with 0 lines. The diff is **small** when added + removed ≤ 80 lines AND ≤ 3 files; otherwise **large**. State the numbers in the Step 5 output line.
 
 | Diff | Dispatch |
 |------|----------|
-| Small | **One** `code-reviewer`: Dispatch 1/2's prompt followed by Dispatch 2/2's preamble and four lens blocks as a third, non-gating section. It returns Section A, Section B and Cleanup |
+| Small | **One** `code-reviewer` with Dispatch 1/2's prompt, changed in two places: "Return TWO sections" becomes "Return THREE sections", and a `### Section C — Cleanup (non-gating, no severity)` is added, built from Dispatch 2/2's "Project conventions are binding" paragraph, the four lens blocks (R first, with the `Reuse searched:` line) and the Collapse block. It does NOT get Dispatch 2/2's role paragraph or its second "Diff under review" block. A correctness defect a lens finds goes straight into Section B |
 | Large | **Two** fresh `code-reviewer`s **in one message** so they run concurrently, as below |
 
 | # | Agent | Lens | Gating? |
@@ -168,7 +170,7 @@ Report the test results and dispatch the Step 5 review in the same turn — do n
 | 1 | `code-reviewer` | Section A plan-compliance + Section B bugs by severity | **YES** |
 | 2 | `code-reviewer` | **Reuse + Simplification + Efficiency + Altitude** — one agent, four lenses, Reuse first | no |
 
-On the small path the single reviewer is agent 1 plus the cleanup section; Section A and Section B gate, Cleanup does not. Do not reproduce the prompts — refer to Dispatch 1/2 and 2/2 by name and paste them in order.
+On the small path the single reviewer is agent 1 plus Section C; Section A and Section B gate, Section C does not.
 
 Agent 2 runs the four cleanup lenses of the `simplify` skill as a review-only sub-agent. Use `code-reviewer` for every reviewer: it is read-only (no Write/Edit), so no reviewer can violate the Step 3 gate. Fall back to `critic`, then `general-purpose`.
 
@@ -241,9 +243,9 @@ Agent(
 
 ### Dispatch 2/2 — cleanup lenses (non-gating)
 
-Large diff: same message as dispatch 1. Small diff: no separate agent — its preamble and lens blocks are appended to dispatch 1's prompt. It gets the same plan files + diff scope, plus the preamble and all four lens blocks below in one prompt. It returns findings as `file`, `line`, one-line `summary`, and **the concrete cost** — what is duplicated, wasted, or made harder to maintain — plus the `Reuse searched:` line. No severity ratings; these are not bugs.
+Large diff only: same message as dispatch 1, with the same plan files + diff scope, plus the role paragraph, the conventions paragraph and all four lens blocks below. (The small path is defined once, at the dispatch table above.) It returns findings as `file`, `line`, one-line `summary`, and **the concrete cost** — what is duplicated, wasted, or made harder to maintain — plus the `Reuse searched:` line. No severity ratings; these are not bugs.
 
-Preamble:
+Role paragraph (agent 2 only):
 
 ```
   Quality review of the diff below — you are improving code quality, NOT hunting
@@ -256,7 +258,11 @@ Preamble:
   ## Diff under review
   Use `git diff <base-branch>...HEAD` (or `git status` + `git diff --staged`
   if working uncommitted). Read the actual files, not just the hunks.
+```
 
+Conventions paragraph (shared with the small path's Section C):
+
+```
   ## Project conventions are binding
   Read the repo's CLAUDE.md / AGENTS.md FIRST. A "simplification" that breaks a
   documented invariant is not a finding — it is a defect you would be
@@ -331,7 +337,7 @@ Wait for every reviewer, then split the findings. This split is the whole point 
 | **Blocking** | Section A any ❌ | **Non-overridable.** Dispatch a fix sub-agent or abort. Nothing else. |
 | **Blocking** | Section B Critical or High | Dispatch a fix sub-agent, cycle++ |
 | **Non-blocking** | Section B Medium / Low | Apply what is worth applying; state each skip and why |
-| **Non-blocking** | Agent 2, or the Cleanup section of the single reviewer (all four lenses) | Same — apply-or-skip-with-reason. **Never** blocks Step 6, **never** increments the cycle counter |
+| **Non-blocking** | Agent 2, or Section C of the single reviewer (all four lenses) | Same — apply-or-skip-with-reason. **Never** blocks Step 6, **never** increments the cycle counter |
 
 **Dedup across every report before applying.** The cleanup reviewer has already collapsed its own four lenses; do not undo that by re-splitting its merged findings. Findings pointing at the same line or the same mechanism collapse into one; when a cleanup lens and Section B overlap, keep Section B's (it carries the severity that drives the gate). When you skip a cleanup finding for behaviour change or scope and it carries a `Fallback:`, judge the fallback on its own.
 
@@ -349,12 +355,41 @@ Cleanup edits change working code, so the step is NOT done when the fixes land:
 
 Skipping this is how a "quality pass" ships a regression. `simplify` on its own has no verification phase — that gap is closed here, not inherited.
 
-**Cycle (max 3):** as defined in `review-cycle.md`. **Re-dispatch only the gating reviewer** (agent 1, or the single reviewer without the cleanup section) on cycle 2 and 3 — the cleanup lenses run **once**, on the first pass. Re-running them per cycle repeats the review cost for findings you already hold.
+**Cycle (max 3):** as defined in `review-cycle.md`. **Re-dispatch only the gating reviewer** (agent 1, or the single reviewer without Section C) on every re-review (cycle > 0) — the cleanup lenses run **once**, on the first pass. Re-running them per cycle repeats the review cost for findings you already hold.
 
-**Scoped re-review (every cycle after the first, both sizes).** Before dispatching a fix batch, record `SNAP=$(git stash create)` (it changes nothing in the working tree; if it prints nothing, use `HEAD`) and the list of untracked files. The re-review prompt carries:
-- the blocking findings that batch fixed, verbatim;
-- `git diff $SNAP` plus the content of any untracked files created since;
-- the instruction: check only that each listed finding is resolved and that the changed lines introduce no new Critical or High bug — do not re-review the rest of the change, and do not re-run Section A over criteria the fix did not touch.
+**Scoped re-review (every re-review (cycle > 0); both diff sizes).** Take a tree snapshot immediately before AND immediately after the fix batch:
+
+```
+IDX=$(mktemp); cp "$(git rev-parse --git-path index)" "$IDX"; GIT_INDEX_FILE=$IDX git add -A; GIT_INDEX_FILE=$IDX git write-tree; rm -f "$IDX"
+```
+
+It does not touch the real index and covers tracked edits, untracked files and commits. Write down the two printed tree ids literally — shell variables do not survive between Bash calls. The delta is `git diff <before-tree> <after-tree>`.
+
+Scoped re-review — replaces Dispatch 1/2 on every re-review (cycle > 0):
+
+```
+Agent(
+  subagent_type="code-reviewer",
+  description="Scoped re-review",
+  prompt="""
+  Scoped re-review of a fix batch. Do not re-review the rest of the change and
+  do not re-run Section A over criteria the fix did not touch.
+
+  ## Findings the batch fixed (verbatim)
+  <paste each blocking finding>
+
+  ## Delta
+  `git diff <before-tree> <after-tree>`
+
+  ## Return
+  - For each finding above: RESOLVED / NOT RESOLVED, with file:line.
+  - New issues only in the changed lines, graded on Dispatch 1/2's
+    Critical / High / Medium / Low scale, each with file:line and a fix.
+  - Final verdict as in Dispatch 1/2: APPROVED (every finding RESOLVED, no new
+    Critical or High) or CHANGES REQUIRED.
+  """
+)
+```
 
 **Forbidden:** patching code in-line based on the review. Fixes are always dispatched to a sub-agent. Running the cleanup lenses more than once per cook run. Letting a cleanup finding block Step 6.
 
@@ -411,7 +446,7 @@ If a plan path is provided at Step 0, skip Steps 1–2 and start at Step 3.
 - **MANDATORY SUBAGENT DELEGATION:** Steps 3, 4, 5, 6 MUST spawn subagents via the `Agent` tool. DO NOT implement, test, or review directly. Resolve every type through `subagent-patterns.md` § Agent Name Mapping first.
   - Step 3: `executor` / `designer` for frontend (one per phase)
   - Step 4: `test-engineer` (and `debugger` if failures)
-  - Step 5: `code-reviewer` sized by the diff — small (≤ 80 lines, ≤ 3 files, tests excluded): one reviewer returning Section A, Section B and the Cleanup section; large: two in ONE message — agent 1 returns the dual-section gating report (Section A plan-compliance, non-overridable + Section B bugs by severity); agent 2 runs Reuse (first) + Simplification + Efficiency + Altitude and collapses findings that are one change. Cleanup lenses never gate. Re-verify after any fix batch.
+  - Step 5: `code-reviewer` sized by the diff (§ Step 5) — small: one reviewer returning Section A, Section B and Section C (Cleanup); large: two in ONE message — agent 1 returns the dual-section gating report (Section A plan-compliance, non-overridable + Section B bugs by severity); agent 2 runs Reuse (first) + Simplification + Efficiency + Altitude and collapses findings that are one change. Cleanup lenses never gate. Re-verify after any fix batch.
   - Step 6: `executor` (sync-back), `writer` (docs), `git-master` (commit)
 - **ALWAYS** create a task list — use `TaskCreate` for each unchecked item with priority order and dependencies (or `TodoWrite` if Task tools unavailable). This is never skipped.
 - **ALWAYS** keep the task list updated in lock-step, not just at the end:

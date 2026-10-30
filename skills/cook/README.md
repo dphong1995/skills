@@ -40,7 +40,7 @@ the writing.
 
 ```
 [Setup] → [Design: scout → research → Q&A → approaches → design.md reviewed on a page]
-        → [Plan] → [Phase sub-agents] → [Test sub-agent] → [Review: 2-agent fan-out] → [Finalize sub-agents]
+        → [Plan] → [Phase sub-agents] → [Test sub-agent] → [Review: sized by the diff] → [Finalize sub-agents]
 ```
 
 Step 1 (Design) is interactive — one round at a time on a local HTML question page (independent
@@ -55,7 +55,7 @@ From Step 2 onward it runs end to end without pausing; only the final commit is 
 | Planning | **none** — orchestrator writes the plan itself from the approved design block, in `ck-plan`'s format |
 | Implementation (one per phase) | `executor` / `designer` (frontend) |
 | Testing | `test-engineer`, `debugger` |
-| Review (one fan-out) | `code-reviewer` ×2 — compliance+bugs (gating) / reuse+simplification+efficiency+altitude |
+| Review (sized by the diff) | `code-reviewer` ×1 (small diff) or ×2 (large) — compliance+bugs (gating) / reuse+simplification+efficiency+altitude |
 | Fix application | `code-simplifier` (cleanup-only) / `executor` / `debugger` |
 | Finalize | `executor` (sync-back), `writer` (docs), `git-master` (commit) |
 
@@ -74,6 +74,7 @@ cook/
 
 ## Version
 
+5.7.0 - Step 5 sized by the diff (one reviewer for a small diff, two for a large one); re-reviews scoped to the fix
 5.6.3 - Step 5 has one severity scale, agent 1's: a cleanup finding gates only when agent 2 labels it OUT-OF-LENS and it grades Critical/High; the old Critical Issues list that made DRY, performance and architecture findings critical is gone
 5.6.2 - Implementation, testing, fix-application and finalize subagents are dispatched with `model: "sonnet"` (no exception for hard fixes), matching the always-on `subagent-models` rule
 5.6.1 - 1E no longer mentions a section-by-section design step; the design goes straight to `design.md` and its review page

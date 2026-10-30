@@ -43,7 +43,7 @@ Failing test: <the test that reproduces it>
 Edits so far: <files already changed and their state, or "none">
 ```
 
-Collapsed Step 1 (cook `references/design-phase.md` § Escalation): the investigation is the scout; ask Q&A only for a genuinely open question; the candidate fixes (recommended first) and the 5-line design block are one interview-page question, whose pick is the only approval (none in chat). From Step 2 on, cook runs exactly as written — executor sub-agents do every edit, the first phase writes the failing test, and the review fan-out still runs.
+Collapsed Step 1 (cook `references/design-phase.md` § Escalation): the investigation is the scout; ask Q&A only for a genuinely open question; the candidate fixes (recommended first) and the 5-line design block are one interview-page question, whose pick is the only approval (none in chat). From Step 2 on, cook runs exactly as written — executor sub-agents do every edit, the first phase writes the failing test, and the review still runs.
 
 ## Rationalizations
 
