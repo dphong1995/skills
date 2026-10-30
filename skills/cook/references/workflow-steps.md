@@ -158,7 +158,7 @@ Report the test results and dispatch the Step 5 review in the same turn — do n
 
 ## Step 5: Combined Review — sized by the diff (MANDATORY)
 
-**Size check first.** Base = `git merge-base <base-branch> HEAD` (when the work is committed on the base branch itself, the commit recorded before Step 3). Run `git diff --numstat <base> -- . ':(exclude,glob)**/tests/**' ':(exclude,glob)**/__tests__/**' ':(exclude,glob)**/*.test.*' ':(exclude,glob)**/*.spec.*'` and add the line count of each untracked file from `git ls-files -o --exclude-standard` with the same excludes. A binary row (`-  -`) counts as a file with 0 lines. The diff is **small** when added + removed ≤ 80 lines AND ≤ 3 files; otherwise **large**. State the numbers in the Step 5 output line.
+**Size check first.** Base = `git merge-base <base-branch> HEAD` (when the work is committed on the base branch itself, the commit recorded at the start of Step 3). Run `git diff --numstat <base> -- . ':(exclude,glob)**/tests/**' ':(exclude,glob)**/__tests__/**' ':(exclude,glob)**/*.test.*' ':(exclude,glob)**/*.spec.*'` and add the line count of each untracked file from `git ls-files -o --exclude-standard` with the same excludes. A binary row (`-  -`) counts as a file with 0 lines. The diff is **small** when added + removed ≤ 80 lines AND ≤ 3 files; otherwise **large**. State the numbers in the Step 5 output line.
 
 | Diff | Dispatch |
 |------|----------|
@@ -205,9 +205,10 @@ Agent(
   <paste each phase sub-agent's final report>
 
   ## Diff under review
-  Diff against the same base as the size check (the merge-base with
-  <base-branch>, or the commit recorded at the start of Step 3 when the work
-  is on the base branch itself), plus uncommitted and untracked changes
+  Base commit: <base-commit>  (the Base the size check used: the merge-base,
+  or the commit recorded at the start of Step 3 when working on the base
+  branch, written literally)
+  Run `git diff <base-commit>`, plus uncommitted and untracked changes
   (`git status`, `git ls-files -o --exclude-standard`). List the changed
   files and read them.
 
@@ -257,9 +258,10 @@ Role paragraph (agent 2 only):
   than reporting it as a cleanup finding.
 
   ## Diff under review
-  Diff against the same base as the size check (the merge-base with
-  <base-branch>, or the commit recorded at the start of Step 3 when the work
-  is on the base branch itself), plus uncommitted and untracked changes
+  Base commit: <base-commit>  (the Base the size check used: the merge-base,
+  or the commit recorded at the start of Step 3 when working on the base
+  branch, written literally)
+  Run `git diff <base-commit>`, plus uncommitted and untracked changes
   (`git status`, `git ls-files -o --exclude-standard`). Read the actual files,
   not just the hunks.
 ```

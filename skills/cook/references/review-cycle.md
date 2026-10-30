@@ -22,10 +22,10 @@ cycle = 0
 LOOP:
   1. cycle == 0 → small diff: 1 reviewer (gating + Cleanup section)
                   large diff: fan out both agents in one message
-     cycle >  0 → scoped re-review of the gating
-                  reviewer ONLY, using the template in `workflow-steps.md`
-                  § Scoped re-review: the fixed findings + the before/after
-                  tree delta, not the whole change
+     cycle >  0 → scoped re-review of the gating reviewer ONLY, using the
+                  template in `workflow-steps.md` § Scoped re-review: the
+                  fixed findings + the before/after tree delta, not the
+                  whole change
 
   2. Dedup across every agent that reported.
      Overlap between a cleanup lens and Section B → keep Section B's copy.

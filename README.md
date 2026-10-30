@@ -69,7 +69,8 @@ nguyên, file cũ được sao lưu trước. Chạy lại `install.sh` không t
   lại sẽ thêm nó trở lại. Test: `node --test 'hooks/tests/*.test.mjs'` (dạng thư mục lỗi trên Node 24).
 - `"skillOverrides"`: tắt 38 skill `anthropic-skills:*` của org không dùng cho code (marketing, sales,
   RFP, regulatory, ...), vì danh sách skill được nhét vào context của mọi agent; danh sách rút từ khoảng
-  30k xuống khoảng 21k ký tự, tức khoảng 2,3k token mỗi lượt gọi. Giữ lại 10 skill: `built-in-browser`, `chrome-browser`, `deep-research`, `docs`, `docx`,
+  30k xuống khoảng 21k ký tự, tức khoảng 2,3k token mỗi lượt gọi.
+  Giữ lại 10 skill: `built-in-browser`, `chrome-browser`, `deep-research`, `docs`, `docx`,
   `google-workspace`, `pdf`, `pptx`, `skill-creator`, `xlsx`. Bật lại một skill bằng cách xoá dòng của nó
   trong `settings/settings.json` của repo rồi chạy `install.sh` (không sửa ở `~/.claude/settings.json`
   vì `install.sh` ghi đè khoá `skillOverrides`).
