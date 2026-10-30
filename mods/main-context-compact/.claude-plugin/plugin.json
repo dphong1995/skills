@@ -1,0 +1,31 @@
+{
+  "name": "main-context-compact",
+  "version": "0.1.0",
+  "description": "Compacts the main conversation itself: after a turn past a threshold, mid-turn at a hard limit (then continues), and when the user is away before the prompt cache expires.",
+  "userConfig": {
+    "threshold": {
+      "type": "number",
+      "title": "Compact threshold (tokens)",
+      "description": "Compact when a turn ends with the context at or above this size.",
+      "default": 300000
+    },
+    "hardLimit": {
+      "type": "number",
+      "title": "Hard limit (tokens)",
+      "description": "Stop a running turn at or above this size, compact, then continue the work.",
+      "default": 400000
+    },
+    "idleThreshold": {
+      "type": "number",
+      "title": "Idle compact threshold (tokens)",
+      "description": "After a turn ends below the compact threshold but at or above this size, compact once the user has been away for the idle minutes.",
+      "default": 200000
+    },
+    "idleMinutes": {
+      "type": "number",
+      "title": "Idle minutes",
+      "description": "Minutes without a new turn before the idle compact runs; keep it under the prompt cache lifetime (60 minutes).",
+      "default": 55
+    }
+  }
+}
