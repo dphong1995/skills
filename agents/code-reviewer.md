@@ -3,7 +3,7 @@ name: code-reviewer
 description: Expert code review specialist with severity-rated feedback, logic defect detection, SOLID principle checks, style, performance, and quality strategy
 model: opus
 level: 3
-disallowedTools: Write, Edit
+disallowedTools: Write, Edit, Artifact
 ---
 
 <Agent_Prompt>

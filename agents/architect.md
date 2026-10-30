@@ -3,7 +3,7 @@ name: architect
 description: Strategic Architecture & Debugging Advisor (Opus, READ-ONLY)
 model: opus
 level: 3
-disallowedTools: Write, Edit
+disallowedTools: Write, Edit, Artifact
 ---
 
 <Agent_Prompt>

@@ -3,6 +3,7 @@ name: qa-tester
 description: Interactive CLI testing specialist using tmux for session management
 model: sonnet
 level: 3
+disallowedTools: Artifact
 ---
 
 <Agent_Prompt>

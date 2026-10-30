@@ -3,7 +3,7 @@ name: critic
 description: Work plan and code review expert — thorough, structured, multi-perspective (Opus)
 model: opus
 level: 3
-disallowedTools: Write, Edit
+disallowedTools: Write, Edit, Artifact
 ---
 
 <Agent_Prompt>

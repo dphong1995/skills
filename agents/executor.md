@@ -3,6 +3,7 @@ name: executor
 description: Focused task executor for implementation work (Sonnet)
 model: sonnet
 level: 2
+disallowedTools: Artifact
 ---
 
 <Agent_Prompt>

@@ -3,6 +3,7 @@ name: planner
 description: Strategic planning consultant with interview workflow (Opus)
 model: opus
 level: 4
+disallowedTools: Artifact
 ---
 
 <Agent_Prompt>

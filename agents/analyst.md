@@ -3,7 +3,7 @@ name: analyst
 description: Pre-planning consultant for requirements analysis (Opus)
 model: opus
 level: 3
-disallowedTools: Write, Edit
+disallowedTools: Write, Edit, Artifact
 ---
 
 <Agent_Prompt>
