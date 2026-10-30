@@ -60,6 +60,10 @@ nguyên, file cũ được sao lưu trước. Chạy lại `install.sh` không t
   văn xuôi tiếng Anh (bỏ qua code, blockquote, đường dẫn; câu dưới 8 chữ bỏ qua), nó chặn một lần
   để Claude viết lại bằng tiếng Việt. Tắt bằng `/hooks` hoặc xoá nhóm hook đó trong
   `~/.claude/settings.json`.
+- Hook `PostToolUse` chạy `hooks/subagent-context-guard.mjs`: khi context của một subagent vượt ngưỡng
+  (Sonnet 200k, Opus 300k) nó nhắc đúng một lần để subagent làm xong bước đang dở rồi trả báo cáo bắt
+  đầu bằng `PARTIAL`; orchestrator giao phần còn lại cho agent mới. Main thread không bị đụng tới. Tắt
+  bằng `/hooks` hoặc xoá nhóm hook đó trong `~/.claude/settings.json`.
 - `"skillOverrides"`: tắt 38 skill `anthropic-skills:*` của org không dùng cho code (marketing, sales,
   RFP, regulatory, ...), vì danh sách skill được nhét vào context của mọi agent, tốn khoảng 4,5k token
   mỗi lượt gọi. Giữ lại 10 skill: `built-in-browser`, `chrome-browser`, `deep-research`, `docs`, `docx`,

@@ -7,6 +7,7 @@ Standard patterns for spawning and using subagents in cook workflows.
 Agent(subagent_type="[type]", prompt="[task description]", description="[brief]")
 ```
 The tool is named `Agent` here and `Task` in some harnesses — use whichever this session exposes.
+A report starting with `PARTIAL` (from the context guard hook) is re-dispatched to a fresh agent, see the "Subagent models" rule in CLAUDE.md.
 
 ## Agent Name Mapping (CHECK FIRST)
 

@@ -51,6 +51,17 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ~/.claude/hooks/subagent-context-guard.mjs",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }

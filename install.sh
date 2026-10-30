@@ -33,6 +33,7 @@ done
 for hook in "$SRC"/hooks/*; do
   [ -e "$hook" ] || continue
   name="$(basename "$hook")"
+  [ "$name" = tests ] && continue
   install_entry "$hook" "$DEST/hooks/$name"
   echo "  hook   $name"
 done
