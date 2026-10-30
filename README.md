@@ -47,7 +47,8 @@ code về. Sửa quy tắc trong repo (`claude-md/`) chứ không sửa trong CL
 - `subagent-models.md`: subagent thực thi (executor, test-engineer, debugger, code-simplifier, writer,
   git-master, general-purpose làm việc) luôn chạy `model: "sonnet"`; subagent chỉ review (red-team,
   code-reviewer của cook, critic, architect, verifier, security-reviewer) chạy `model: "opus"`, kể cả
-  khi skill ghi model khác.
+  khi skill ghi model khác. Báo cáo bắt đầu bằng `PARTIAL` thì giao phần còn lại cho agent mới (không
+  `SendMessage` agent cũ); `PARTIAL` của `fork` giao cho agent không phải fork, kèm brief viết sẵn.
 
 ## Settings và hook
 
@@ -62,14 +63,15 @@ nguyên, file cũ được sao lưu trước. Chạy lại `install.sh` không t
   `~/.claude/settings.json`.
 - Hook `PostToolUse` chạy `hooks/subagent-context-guard.mjs`: khi context của một subagent vượt ngưỡng
   (Sonnet 200k, Opus 300k) nó nhắc đúng một lần để subagent làm xong bước đang dở rồi trả báo cáo bắt
-  đầu bằng `PARTIAL`; orchestrator giao phần còn lại cho agent mới. Main thread không bị đụng tới. Tắt
-  bằng `/hooks` hoặc xoá nhóm hook đó trong `~/.claude/settings.json`.
+  đầu bằng `PARTIAL`; orchestrator giao phần còn lại cho agent mới. Main thread không bị đụng tới. Chạy
+  lại `install.sh` sẽ thêm nhóm hook này lại, nên muốn tắt hẳn thì xoá nó khỏi `settings/settings.json`
+  của repo. Test: `node --test 'hooks/tests/*.test.mjs'` (dạng thư mục lỗi trên Node 24).
 - `"skillOverrides"`: tắt 38 skill `anthropic-skills:*` của org không dùng cho code (marketing, sales,
-  RFP, regulatory, ...), vì danh sách skill được nhét vào context của mọi agent, tốn khoảng 4,5k token
-  mỗi lượt gọi. Giữ lại 10 skill: `built-in-browser`, `chrome-browser`, `deep-research`, `docs`, `docx`,
+  RFP, regulatory, ...), vì danh sách skill được nhét vào context của mọi agent; danh sách rút từ khoảng 30k xuống khoảng 21k ký tự, tức khoảng 2,3k token mỗi
+  lượt gọi. Giữ lại 10 skill: `built-in-browser`, `chrome-browser`, `deep-research`, `docs`, `docx`,
   `google-workspace`, `pdf`, `pptx`, `skill-creator`, `xlsx`. Bật lại một skill bằng cách xoá dòng của nó
-  trong `~/.claude/settings.json` (hoặc đặt `"on"`); chạy lại `install.sh` sẽ ghi đè cả khoá
-  `skillOverrides` theo repo.
+  trong `settings/settings.json` của repo rồi chạy `install.sh` (không sửa ở `~/.claude/settings.json`
+  vì `install.sh` ghi đè khoá `skillOverrides`).
 
 ## Đẩy thay đổi ngược lên repo
 
@@ -92,7 +94,7 @@ skills/
 │                     `tests/`, `DEVELOPING.md`
 ├── ck-plan/          Lập kế hoạch: research → phân tích codebase → plan.md + phase-XX-*.md
 │                     → tự động gọi cook
-├── cook/             Triển khai: mỗi phase một subagent → test → review fan-out 2 agent → finalize
+├── cook/             Triển khai: mỗi phase một subagent → test → review theo kích thước diff (diff nhỏ 1 reviewer, diff lớn 2) → finalize
 └── routing-bug-fixes-to-cook/
                       Cổng sau khi debug xong root cause: fix ≥ 3 file production, > 50 dòng
                       production (đếm gộp các repo) hoặc có nhiều cách sửa → gọi cook (Step 1 rút

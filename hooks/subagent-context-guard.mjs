@@ -12,6 +12,7 @@ try {
   for await (const chunk of process.stdin) input += chunk;
   const { agent_id: agentId, session_id: sessionId, transcript_path: transcriptPath } = JSON.parse(input);
   if (!agentId || !sessionId || !transcriptPath) process.exit(0);
+  if (!/^[\w-]+$/.test(agentId)) process.exit(0);
 
   const markerDir = path.join(os.tmpdir(), 'claude-subagent-guard');
   const marker = path.join(markerDir, String(agentId));
@@ -36,7 +37,7 @@ try {
   for (let i = lines.length - 1; i >= 0 && !last; i--) {
     try {
       const rec = JSON.parse(lines[i]);
-      if (rec.type === 'assistant' && rec.message?.usage) last = rec.message;
+      if (rec.type === 'assistant' && rec.message?.usage && rec.message.model !== '<synthetic>') last = rec.message;
     } catch (e) { /* partial or garbage line */ }
   }
   if (!last) process.exit(0);
@@ -47,7 +48,7 @@ try {
   if (context <= limit) process.exit(0);
 
   fs.mkdirSync(markerDir, { recursive: true });
-  fs.writeFileSync(marker, '');
+  fs.writeFileSync(marker, '', { flag: 'wx' });
   console.log(JSON.stringify({
     hookSpecificOutput: {
       hookEventName: 'PostToolUse',

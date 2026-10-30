@@ -1,6 +1,6 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -36,7 +36,7 @@ function setup(lines) {
   return { agent_id: id, session_id: session, transcript_path: transcript };
 }
 
-const run = (event) => spawnSync('node', [hook], { input: typeof event === 'string' ? event : JSON.stringify(event), encoding: 'utf8' });
+const run = (event) => spawnSync(process.execPath, [hook], { input: typeof event === 'string' ? event : JSON.stringify(event), encoding: 'utf8' });
 
 function assertSilent(r) {
   assert.equal(r.status, 0);
@@ -83,3 +83,40 @@ test('missing transcript is silent', () => assertSilent(run(setup(null))));
 test('garbage transcript is silent', () => assertSilent(run(setup(['not json', '{"type":"assistant"}', '\u0000\u0001']))));
 
 test('non-JSON stdin is silent', () => assertSilent(run('not json')));
+
+const runAsync = (event) => new Promise((resolve) => {
+  const child = spawn(process.execPath, [hook]);
+  let stdout = '';
+  child.stdout.on('data', (d) => { stdout += d; });
+  child.on('close', (status) => resolve({ status, stdout }));
+  child.stdin.end(JSON.stringify(event));
+});
+
+test('concurrent calls for the same agent nudge exactly once', async () => {
+  const e = setup([record('claude-sonnet-5-5', 250000)]);
+  const results = await Promise.all(Array.from({ length: 6 }, () => runAsync(e)));
+  assert.ok(results.every((r) => r.status === 0));
+  assert.equal(results.filter((r) => r.stdout !== '').length, 1);
+});
+
+test('synthetic records are skipped', () => {
+  const synthetic = JSON.stringify({ type: 'assistant', message: { model: '<synthetic>', usage: { input_tokens: 0, output_tokens: 0 } } });
+  const r = run(setup([record('claude-sonnet-5-5', 250000), synthetic]));
+  assert.match(JSON.parse(r.stdout).hookSpecificOutput.additionalContext, /250k tokens/);
+});
+
+test('unsafe agent_id is silent', () => {
+  const e = setup([record('claude-sonnet-5-5', 250000)]);
+  e.agent_id = '../x';
+  assertSilent(run(e));
+});
+
+test('record after a 400 KB line is found in the tail window', () => {
+  const pad = JSON.stringify({ type: 'user', text: 'x'.repeat(400 * 1024) });
+  assert.notEqual(run(setup([pad, record('claude-sonnet-5-5', 250000)])).stdout, '');
+});
+
+test('record before a 300 KB line is outside the tail window', () => {
+  const pad = JSON.stringify({ type: 'user', text: 'x'.repeat(300 * 1024) });
+  assertSilent(run(setup([record('claude-sonnet-5-5', 250000), pad])));
+});

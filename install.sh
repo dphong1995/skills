@@ -30,10 +30,9 @@ for agent in "$SRC"/agents/*.md; do
   echo "  agent  $name"
 done
 
-for hook in "$SRC"/hooks/*; do
+for hook in "$SRC"/hooks/*.mjs; do
   [ -e "$hook" ] || continue
   name="$(basename "$hook")"
-  [ "$name" = tests ] && continue
   install_entry "$hook" "$DEST/hooks/$name"
   echo "  hook   $name"
 done
