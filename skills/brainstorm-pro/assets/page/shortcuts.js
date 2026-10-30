@@ -97,7 +97,7 @@ export const shortcuts = ({ targets, level1 = targets, owner, keys, helpSlot }) 
     { k: '?', group: 'Chung', label: 'Mở hoặc đóng bảng phím', run: toggleHelp },
     { k: 'Escape', show: 'Esc', group: 'Chung', label: 'Rời ô đang gõ, hoặc bỏ chọn chữ', typing: true,
       run: () => { if (isTyping(document.activeElement)) document.activeElement.blur(); else getSelection().removeAllRanges(); } }];
-  const byKey = new Map(list.flatMap((x) => [].concat(x.k).map((k) => [k, x])));
+  const byKey = new Map(list.filter((x) => x.k != null).flatMap((x) => [].concat(x.k).map((k) => [k, x])));
 
   // One outer grid, so the key column is as wide as the widest key in every group (each group's section and list are subgrids).
   const help = modal('max-w-xl grid gap-3',

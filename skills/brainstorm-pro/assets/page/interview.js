@@ -27,6 +27,7 @@ export const interviewPage = () => {
   const questionCard = (q) => {
     const multi = !!q.multi;
     const own = q.options || [];
+    const recId = q.recommendation ? q.recommendation.option : null;
     const options = [...own, OTHER, EXPLAIN];
     const state = el('span', { class: 'badge badge-sm ml-auto normal-case tracking-normal' });
     const inputs = [];
@@ -44,7 +45,7 @@ export const interviewPage = () => {
       el('div', { class: 'flex flex-wrap items-baseline gap-x-2 gap-y-0.5' },
         el('span', { class: 'font-mono font-semibold text-primary', text: keyOf(i) + '.' }),
         el('span', { class: 'font-semibold' }, inline(o.label)),
-        o.recommended ? el('span', { class: 'badge badge-xs badge-primary font-mono tracking-[.06em] uppercase', text: 'Đề xuất' }) : null,
+        o.id === recId ? el('span', { class: 'badge badge-xs badge-primary font-mono tracking-[.06em] uppercase', text: 'Đề xuất' }) : null,
         o.effort ? el('span', { class: 'ml-auto text-[12px] text-muted' }, 'Công sức: ', inline(o.effort)) : null),
       o.means ? el('p', {}, inline(o.means)) : null,
       o.mockup ? mockBlock(o.mockup) : null,
@@ -65,7 +66,7 @@ export const interviewPage = () => {
     // A click on the card picks the option like its button in the answer strip, unless it lands on a control or ends a text selection.
     const optCard = (o, i) => {
       const box = el('div', { class: 'card border px-3 py-2.5 grid grid-rows-subgrid min-w-0 cursor-pointer transition-[border-color,background-color] duration-150 motion-reduce:transition-none hover:border-[var(--color-primary)] data-[chosen=true]:bg-tint data-[chosen=true]:border-[var(--color-primary)] data-[chosen=true]:[box-shadow:inset_0_0_0_1px_var(--color-primary)] '
-        + (o.recommended ? 'border-primary' : 'border-base-300'), style: 'grid-row: span ' + used.length,
+        + (o.id === recId ? 'border-primary' : 'border-base-300'), style: 'grid-row: span ' + used.length,
         onclick: (e) => {
           if (e.target.closest('a, button, input, textarea, iframe') || String(getSelection())) return;
           choose(o.id);
@@ -79,8 +80,8 @@ export const interviewPage = () => {
     const choice = (o, i) => {
       const builtin = o === OTHER || o === EXPLAIN;
       const input = el('input', { type: multi ? 'checkbox' : 'radio', name: 'choice-' + q.id, id: q.id + '-opt-' + o.id, value: o.id,
-        'aria-label': (builtin ? '' : keyOf(i) + '. ') + plain(o.label) + (o.recommended ? ' ★' : ''),
-        title: builtin ? o.means : o.recommended ? 'Claude đề xuất' : null,
+        'aria-label': (builtin ? '' : keyOf(i) + '. ') + plain(o.label) + (o.id === recId ? ' ★' : ''),
+        title: builtin ? o.means : o.id === recId ? 'Claude đề xuất' : null,
         class: 'btn btn-sm font-medium checked:font-semibold' + (builtin ? ' btn-dash checked:bg-tint checked:text-[var(--color-primary)] checked:border-[var(--color-primary)]' : '') });
       inputs.push(input);
       input.addEventListener('change', () => {
@@ -94,7 +95,7 @@ export const interviewPage = () => {
       return input;
     };
 
-    const recI = own.findIndex((o) => o.recommended);
+    const recI = own.findIndex((o) => o.id === recId);
     const hasUndo = q.reversible != null;
     const undoText = q.reversible ? 'Dễ đổi về sau' : 'Khó đổi về sau';
     const card = el('article', { class: INTERVIEW_CARD, id: 'card-' + q.id },
@@ -113,8 +114,8 @@ export const interviewPage = () => {
       own.length ? el('div', { class: 'grid gap-x-2 gap-y-1.5 grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))]'
         + (own.length === 4 ? ' max-[1060px]:grid-cols-[repeat(auto-fit,minmax(min(100%,22rem),1fr))]' : '') }, own.map(optCard)) : null,
       q.recommendation ? el('p', { class: 'border-l-[3px] border-primary px-2.5 py-0.5' },
-        el('strong', { class: 'text-primary' }, 'Claude đề xuất', recI >= 0 ? [' ' + keyOf(recI) + '. ', inline(own[recI].label)] : null, ': '),
-        inline(q.recommendation)) : null,
+        el('strong', { class: 'text-primary' }, 'Claude đề xuất', ' ' + keyOf(recI) + '. ', inline(own[recI].label), ': '),
+        inline(q.recommendation.why)) : null,
       el('div', { class: 'border-t border-dashed border-base-300 pt-2.5 grid gap-2' },
         el('div', { class: 'flex items-baseline gap-2' },
           el('span', { class: 'font-mono text-[11px] font-medium tracking-[.06em] uppercase text-muted', text: 'Trả lời' }),
@@ -148,7 +149,7 @@ export const interviewPage = () => {
     return {
       q, card, note, otherBox, choose,
       ids: own.map((o) => o.id),
-      rec: recI >= 0 ? own[recI].id : null,
+      rec: recId,
       // null when complete, else what is missing.
       problem: () => {
         if (!inputs.some((i) => i.checked)) return 'chưa chọn phương án';

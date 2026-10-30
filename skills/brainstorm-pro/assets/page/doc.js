@@ -1,5 +1,5 @@
 import { $, after, btnCls, CALLOUT, el, KEY_HINT, KEY_HINT_SHIFT, kbd, LIST, NOTE_BTN, RING, TEXTAREA } from './dom.js';
-import { esc, plain, short } from './strings.js';
+import { esc, plain } from './strings.js';
 import { extLang } from './code.js';
 import { openFile } from './viewer.js';
 import { codeSpan } from './text.js';
@@ -7,6 +7,8 @@ import { codeBlock, loadScript, mermaidBlock } from './blocks.js';
 import { CARD, copyText, fabMsg, fit, main, out, postText, say, sendMode, storage } from './fab.js';
 import { imageInput, images, imageStrip, imgLines } from './images.js';
 import { passages } from './passages.js';
+import { formatNote, noteData, previousRound } from './rounds.js';
+import { sendChooser } from './chooser.js';
 import { shortcuts } from './shortcuts.js';
 import { docKeys } from './doc-keys.js';
 import { closeTab, guardLeave } from './leave.js';
@@ -38,7 +40,7 @@ export const docPage = (doc) => {
   navRow.append(nav);
 
   // Notes in document order, so comments on passages and section notes read top to bottom.
-  const filled = () => notes.filter((n) => n.ta.value.trim())
+  const filled = () => notes.filter((n) => !n.empty())
     .sort((a, b) => (after(a.box, b.box) ? -1 : 1));
   const count = el('span', { class: 'font-mono text-[12px] text-muted whitespace-nowrap' });
   const update = () => {
@@ -50,15 +52,15 @@ export const docPage = (doc) => {
       if (x.btn.textContent !== label) x.btn.textContent = label;
     }
     store.set(n.length ? { n: Object.fromEntries(n.filter((x) => !x.hl).map((x) => [x.key, x.ta.value])),
-      h: n.filter((x) => x.hl).map((x) => ({ s: x.hl.s, e: x.hl.e, q: x.hl.text, t: x.ta.value })), img: Object.fromEntries(images) } : null);
+      h: n.filter((x) => x.hl).map((x) => ({ s: x.hl.s, e: x.hl.e, q: x.hl.text, t: x.ta.value, k: x.hl.kind })), img: Object.fromEntries(images) } : null);
     say('');
   };
-  const noteBox = (key, placeholder) => {
+  const noteBox = (key, placeholder, noImages) => {
     const ta = el('textarea', { rows: '2', class: TEXTAREA, placeholder, 'aria-label': 'Góp ý: ' + key });
     ta.addEventListener('input', () => { fit(ta); update(); });
     const strip = imageStrip([ta]);
-    imageInput(ta, strip);
-    const n = { key, ta, strip, box: el('div', { class: 'grid gap-1.5', 'data-note': '' }, ta, strip), btn: null };
+    if (!noImages) imageInput(ta, strip);
+    const n = { key, ta, strip, box: el('div', { class: 'grid gap-1.5', 'data-note': '' }, ta, strip), btn: null, empty: () => !ta.value.trim() };
     notes.push(n);
     return n;
   };
@@ -107,6 +109,7 @@ export const docPage = (doc) => {
     }
   };
 
+  const prev = previousRound(ch);
   // A ## or ### heading, keyed as "Section" or "Section › Subsection" (the render script compares rounds with the same keys).
   let h2key = '';
   let secKey = 'Mở đầu';
@@ -123,9 +126,10 @@ export const docPage = (doc) => {
     decorate(h);
     if (t.depth > 3) return [h];
     const n = review ? noteFor(key) : null;
-    const row = el('div', { class: 'flex flex-wrap items-center gap-x-2 gap-y-1 ' + RING }, h, changeBadge(key), n && n.btn);
+    const under = review ? prev.under(key) : { toggle: null, boxes: [] };
+    const row = el('div', { class: 'flex flex-wrap items-center gap-x-2 gap-y-1 ' + RING }, h, changeBadge(key), under.toggle, n && n.btn);
     if (n) rowNote.set(row, n);
-    return [row, n && n.box].filter(Boolean);
+    return [row, n && n.box, ...under.boxes].filter(Boolean);
   };
 
   // Each block carries its section key (data-k) and its lines in the .md (data-l, "from-to"), found from marked's token text; bullets and table rows get their own lines.
@@ -190,7 +194,6 @@ export const docPage = (doc) => {
     }
   };
 
-
   const finish = () => {
     // Without sections the nav row is empty: the button joins the title row, so the header keeps one row.
     if (!nav.children.length) { navRow.hidden = true; $('header .navbar').append(helpBtn); }
@@ -201,7 +204,8 @@ export const docPage = (doc) => {
       const any = ['changed', 'added', 'removed'].some((k) => (ch[k] || []).length);
       main.prepend(el('div', { class: 'alert alert-soft alert-info block text-base-content text-[14px] leading-normal px-3 py-1.5 [&_strong]:text-[var(--color-info)]' },
         el('p', {}, el('strong', { text: 'Lần ' + ch.round + ': ' }), any ? 'các mục thay đổi so với bản bạn xem lần trước.' : 'không mục nào thay đổi so với lần trước.'),
-        list('Đã sửa', ch.changed), list('Mới', ch.added), list('Đã bỏ', ch.removed)));
+        list('Đã sửa', ch.changed), list('Mới', ch.added), list('Đã bỏ', ch.removed),
+        review ? prev.orphans() : null));
     }
     if (!review) return;
     general = noteBox('Chung', 'Góp ý chung cho cả tài liệu…');
@@ -214,7 +218,7 @@ export const docPage = (doc) => {
       const all = ps.allText();
       for (const h of draft.h || []) {
         const r = all.slice(h.s, h.e) === h.q ? ps.rangeAt(h.s, h.e) : null;
-        if (!r || !ps.addComment(r, h.t)) lost++;
+        if (!r || !ps.addComment(r, h.t, h.k)) lost++;
       }
     }
     update();
@@ -229,24 +233,20 @@ export const docPage = (doc) => {
 
   if (review) {
     guardLeave();
-    const noteLine = (n) => (n.hl ? '[§ ' + n.hl.key + (n.hl.lines ? ' · ' + n.hl.lines : '') + '] «' + short(n.hl.quote) + '» → ' : '[§ ' + n.key + '] ') + n.ta.value.trim();
-    const text = (decision) => ['Quyết định: ' + decision, ...filled().map(noteLine),
-      ...imgLines(filled().map((n) => n.ta.value).join('\n'))].join('\n');
-    const approveBtn = el('button', { type: 'button', class: btnCls() + ' btn-success', onclick: () => deliver('Duyệt') }, sendMode ? 'Duyệt' : 'Copy: Duyệt', kbd(KEY_HINT_SHIFT, 'kbd-xs max-sm:hidden'));
-    const changeBtn = el('button', { type: 'button', class: btnCls('primary'), onclick: () => deliver('Sửa') }, sendMode ? 'Gửi góp ý' : 'Copy góp ý', kbd(KEY_HINT, 'kbd-xs max-sm:hidden'));
-    const deliver = async (decision) => {
+    const approveBtn = el('button', { type: 'button', class: btnCls() + ' btn-success', onclick: () => submit('Duyệt') }, sendMode ? 'Duyệt' : 'Copy: Duyệt', kbd(KEY_HINT_SHIFT, 'kbd-xs max-sm:hidden'));
+    const changeBtn = el('button', { type: 'button', class: btnCls('primary'), onclick: () => submit('Sửa') }, sendMode ? 'Gửi góp ý' : 'Copy góp ý', kbd(KEY_HINT, 'kbd-xs max-sm:hidden'));
+    const send = async (decision) => {
       if (approveBtn.disabled) return;
-      if (decision === 'Sửa' && !filled().length) {
-        say('warn', 'Chưa có góp ý: tô đen một đoạn rồi bấm "Góp ý", bấm "Góp ý" ở mục cần sửa, hoặc ghi vào Góp ý chung cuối trang.');
-        return;
-      }
-      const t = text(decision);
+      const list = filled();
+      const data = list.map((n) => noteData(n, general));
+      const t = ['Quyết định: ' + decision, ...data.map((d) => formatNote(d, { head: true, brief: true })),
+        ...imgLines(list.map((n) => n.ta.value).join('\n'))].join('\n');
       if (sendMode) {
         approveBtn.disabled = changeBtn.disabled = true;
         try {
-          await postText(t);
+          await postText(t, data);
           store.set(null);
-          say('ok', (decision === 'Duyệt' ? 'Đã gửi: Duyệt.' : 'Đã gửi ' + filled().length + ' góp ý cho Claude.') + ' Có thể đóng tab này.');
+          say('ok', (decision === 'Duyệt' ? 'Đã gửi: Duyệt.' : 'Đã gửi ' + data.length + ' góp ý cho Claude.') + ' Có thể đóng tab này.');
           closeTab();
           return;
         } catch (e) { approveBtn.disabled = changeBtn.disabled = false; }
@@ -255,10 +255,11 @@ export const docPage = (doc) => {
       say(copied && !sendMode ? 'ok' : 'warn', (sendMode ? 'Không gửi được (Claude không còn chờ trang này). ' : '')
         + (copied ? 'Đã copy: dán vào terminal của Claude.' : 'Không copy tự động được: chọn đoạn bên dưới, copy rồi dán vào terminal của Claude.'));
     };
+    const submit = sendChooser({ count: () => filled().length, send, busy: () => approveBtn.disabled });
     document.body.append(el('aside', { class: 'toast toast-end z-10 items-end', 'aria-label': 'Duyệt tài liệu' }, fabMsg, out,
       el('div', { class: 'flex items-center gap-1.5 bg-base-100 border border-base-300 rounded-box py-1 pr-1 pl-3 shadow-lg' }, count, approveBtn, changeBtn)));
     ps = passages({ notes, noteBox, update });
-    reviewKeys = { filled, rowNote, rowBefore, commentSelection: ps.commentSelection, general: () => general, deliver, sent: () => approveBtn.disabled };
+    reviewKeys = { filled, rowNote, rowBefore, commentSelection: ps.commentSelection, general: () => general, submit };
   }
   // A note box belongs to the heading row before it, except the general note, which is no heading's.
   const { helpBtn } = shortcuts({ targets, level1: rows('h2[id]'), helpSlot: navRow, keys: (sc) => docKeys(sc, reviewKeys),

@@ -10,17 +10,20 @@ and check with `diff -rq -x out <repo skill> <live skill>` (`tests/out/` is outp
 | File | Holds |
 |---|---|
 | `assets/render-interview.mjs` | CLI: `<round.json \| doc.md> <out.html> [--serve \| --open]` |
-| `assets/lib/round.mjs`, `doc.mjs` | Validate a round; turn a Markdown file into page data and diff review rounds |
-| `assets/lib/embed.mjs` | Embed code files, `` `path` `` targets and images (data URIs) |
+| `assets/lib/round.mjs`, `doc.mjs` | Validate a round (`recommendation: { option, why }`, unknown fields refused with a hint); turn a Markdown file into page data and diff review rounds |
+| `assets/lib/diff.mjs` | `wordDiff`: the word diff behind "Xem chỗ đổi" (lines through `alignRows`, words through `lcs`, both from `page/code.js`) |
+| `assets/lib/embed.mjs` | Embed code files, `` `path` `` targets and images (data URIs); `InputError`, which the CLI prints as one stderr line (exit 1), and `readInput(path, src, enc, label?)`, a `readFileSync` whose failure is an `InputError` (`<src>: cannot read <label> (<code>)`) |
 | `assets/lib/build.mjs` | Bundle `assets/page/` and fill `assets/page/shell.html` into the one HTML |
-| `assets/lib/server.mjs` | `--serve`: token URL on 127.0.0.1, `ANSWERS` output, pasted images, 8 h timeout |
+| `assets/lib/server.mjs` | `--serve`: token URL on 127.0.0.1, `ANSWERS` output, pasted images, 8 h timeout. The review POST body is `{ text, notes? }`; `notes` are saved into `.review-state.json` before `ANSWERS` prints (a failed save is one stderr line, the answers still print) |
 | `assets/page/shell.html`, `theme.css`, `tailwind.css` | Page skeleton and styles |
 | `assets/page/package.json` | `{"type":"module"}`, so Node reads the page modules `lib/` and the tests import (`strings.js`, `keys.js`, `code.js`) as ESM; `build.mjs` only follows `.js` imports and ignores it |
 | `assets/page/main.js` | Picks the mode (interview, review, read-only doc) |
-| `assets/page/interview.js`, `doc.js` | Interview cards and send/copy; document sections, notes, Duyệt/Gửi |
+| `assets/page/interview.js`, `doc.js` | Interview cards and send/copy; document sections, notes and Duyệt/Gửi |
+| `assets/page/chooser.js` | `sendChooser({ count, send, busy })`: the review page's send chooser (Duyệt / Cần sửa, `D` / `S`), returns `submit(decision)` (split out of `doc.js` for the line cap) |
+| `assets/page/rounds.js` | Round 2: previous-notes boxes, "Xem chỗ đổi" toggle and diff box, `formatNote` (one note as a line: the answer text, the previous-notes boxes and the alert) and `noteData` (the `notes` payload) (split out of `doc.js`, which hit the build test's line cap) |
 | `assets/page/fab.js` | Floating bar, `CARD`, `INTERVIEW_CARD`, the status line (`say`, `sayFor`) |
 | `assets/page/leave.js` | `guardLeave()` (beforeunload guard until answered and after user activation; `#` links jump with `location.replace`), `markAnswered()`, `closeTab()` (`fab.js` `copyText` calls `markAnswered()` on a successful copy) |
-| `assets/page/dom.js`, `strings.js`, `text.js`, `code.js` | Class constants, `el()`, `kbd()`, `modal()`; escaping; inline Markdown; code view helpers |
+| `assets/page/dom.js`, `strings.js`, `text.js`, `code.js` | Class constants, `el()`, `kbd()`, `modal()`, `writeClipboard()` (code block Copy; does not end the leave guard); escaping; inline Markdown; code view helpers, and `lcs(A, B)`, the pure common-subsequence walk under `alignRows` and `wordDiff` |
 | `assets/page/blocks.js`, `viewer.js`, `images.js`, `passages.js` | Context blocks; file viewer (also the Tailwind class carrier); pasted images; selection comments |
 | `assets/page/keys.js`, `shortcuts.js`, `interview-keys.js`, `doc-keys.js` | Key rules; ring, `?` dialog and the key listener; per-mode key tables |
 | `tests/` | `unit/` (Node; the server test runs the script, no Chrome), `page/` (headless Chrome), `harness/`, `fixtures/`, `snapshots/`, `out/` |
@@ -48,8 +51,8 @@ Need Google Chrome (`CHROME=<path>` for another), network (CDNs: Tailwind, highl
 Run from the skill directory:
 
 ```
-node --test --test-concurrency=1 'tests/**/*.test.mjs'    # all (229 tests), ~145 s; a bare tests/ argument fails on Node 24
-node --test 'tests/unit/*.test.mjs'                       # unit only (99 tests), no Chrome, under 2 s
+node --test --test-concurrency=1 'tests/**/*.test.mjs'    # all (277 tests), a few minutes; a bare tests/ argument fails on Node 24
+node --test 'tests/unit/*.test.mjs'                       # unit only (126 tests), no Chrome, under 2 s
 node --test tests/page/shortcuts.test.mjs                 # one file
 UPDATE_SNAPSHOTS=1 node --test tests/page/snapshot.test.mjs
 ```
@@ -57,15 +60,17 @@ UPDATE_SNAPSHOTS=1 node --test tests/page/snapshot.test.mjs
 - After any edit run the tests of that part, then the whole suite. New behaviour gets a test.
 - Snapshots (`tests/snapshots/`) change only on a deliberate DOM change; read the diff before keeping it.
 - Test output goes to `tests/out/<name>/`. Delete with `fs.rmSync` and absolute paths.
-- Shared helpers live in `tests/harness/`: `READY` (what `goto` waits for), `hint()`, `STATUS`, `GUARDED` (synthetic beforeunload, true when guarded) and `COPY_OK` (clipboard stub) in `page-helpers.mjs`;
-  `serve()` returns `answers()`, `serveRound2(dir)` serves a second review round; `b.status()`, `b.twSettle()`, `b.leaveDialogs()` (count of accepted beforeunload dialogs; tests assert it).
+- Shared helpers live in `tests/harness/`: `READY` (what `goto` waits for), `hint()`, `STATUS`, `CHOOSER` (the send chooser is open), `ADDER(kind)` (selector of a shown adder button), `GUARDED` (synthetic beforeunload, true when guarded) and `COPY_OK` (clipboard stub that records the text in `window.__copied`) in `page-helpers.mjs`; `T.adder()` in `PASSAGE_HELPERS` is `'hidden'`, `'passage'` or `'passage,edit'`;
+  `b.handled(key, mods)` (press, then assert the page itself prevented the key) and `b.choose('d' | 's')` (wait for the chooser, press);
+  `serve()` returns `answers()`, `serveRound2(dir, round1?)` serves a second review round (`round1(server)` may drive round 1 first; it is killed in a `finally`);
+  `serve()`'s `done` (so `answers()`) rejects after `opts.timeout` ms (default 20 s), killing the child, with the last stderr lines; a test that races `s.done` against a short sleep is safe; `b.status()`, `b.twSettle()`, `b.leaveDialogs()` (count of accepted beforeunload dialogs; tests assert it).
   One Chrome per test file (a top-level `before`).
 - After a handled key assert `__keys.at(-1).pagePrevented` (see macOS beeps): the harness would hide a missing `preventDefault`.
 
 ## Keys
 
-Interview: `J K 1-9 N A-D R X E G Cmd+Enter ? Esc`. Document review: `J K 1-9 N C G Cmd+Enter Cmd+Shift+Enter ? Esc`
-(Cmd+Shift+Enter is Duyệt; with notes it needs a second press within 3 s). Read-only document: `J K 1-9 ? Esc`.
+Interview: `J K 1-9 N A-D R X E G Cmd+Enter ? Esc`. Document review: `J K 1-9 N C E G Cmd+Enter Cmd+Shift+Enter ? Esc`
+(Cmd+Shift+Enter is Duyệt; with notes every send opens the chooser, whose `D` Duyệt / `S` Cần sửa are dialog-local; bare `d`/`s` outside it are a display-only row in the key table, `D / S` with no `k`, so it binds no key). Read-only document: `J K 1-9 ? Esc`.
 `J`/`K` stop at the ends, `N` wraps. Handlers call `preventDefault`. `?` also opens from the header button; the page names its slot with `shortcuts({ helpSlot })` (it returns `{ helpBtn }`): the end of `#qnav` on the interview (it wraps with the chips, so the chips may wrap one row earlier), and after the nav in the document's own row (`doc.js` wraps `#qnav` in a `w-full` row, nav `flex-1`), so the doc header keeps its rows. A document with no `##` sections hides that row and `doc.js` moves the button to the title row. The engine sets `scroll-padding-top` on `<html>` to the header height + 12 px on every resize of the header (the static `scroll-pt-*` classes are only the first value), so links, `J` and digits never land a heading under the header. `tests/page/header.test.mjs` pins the relative rule: the header is as tall with the button as without it (not at the interview widths where the button makes a chip wrap). On phones (below `sm`) the review bar hides the key hints on Duyệt / Gửi góp ý. `X`/`E` check Khác /
 Cần giải thích (never toggle off on a multi card) and focus the box.
 
@@ -73,7 +78,7 @@ Cần giải thích (never toggle off on a multi card) and focus the box.
 
 - Adder timing (`passages.js`, as in Hypothesis): Chrome fires `selectionchange` after `mouseup`, so the
   Góp ý button waits 10 ms after `mouseup` and 100 ms after other selection changes.
-- `navigator.clipboard.writeText` can hang for a permission never asked, hence the 2 s race in `fab.js`.
+- `navigator.clipboard.writeText` can hang for a permission never asked, hence the 2 s race in `dom.js` `writeClipboard` (its textarea fallback restores the focus and the selection).
 - Smooth scroll vs the current target: while the page scrolls itself, ring tracking is locked and unlocks
   150 ms after the last scroll event (1 s fallback). `scrollend` was flaky with repeated presses. A `wheel` or
   `touchmove`, or a scrolling key outside a text box (PageUp/PageDown/Space/arrows/Home/End), unlocks at once (the user's scroll; a sideways or ctrl+wheel does not), and `sc.hold()` locks for a scroll the page causes by focusing a box.
@@ -92,3 +97,5 @@ Cần giải thích (never toggle off on a multi card) and focus the box.
 - The harness replaces `window.close` with the `window.__closed` counter, accepts beforeunload dialogs
   (`b.leaveDialogs()`; otherwise `Page.navigate` waits forever after a real click on a guarded page).
 - The whole-stylesheet rebuild is counted by `b.twWrites()`; a test asserting 0 catches a missing carrier class.
+- The send chooser (review page, with notes) puts autofocus on its box, so `Enter` does nothing (no default pick); the key
+  engine ignores keys while any dialog but help is open, and `D`/`S` are handled by the chooser itself.

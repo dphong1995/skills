@@ -14,7 +14,7 @@ export const round = () => ({
     {
       id: 'q01', n: 1, stage: 'Design', title: 'Which adder?', reversible: true, reversibleWhy: 'Only a local helper.',
       why: 'The module needs one before the next step.',
-      recommendation: 'B is the smallest change.',
+      recommendation: { option: 'b', why: 'B is the smallest change.' },
       context: [
         { t: 'p', text: 'See `fixtures/code.ts:2-4` for the current adder.' },
         { t: 'code', file: join(HERE, 'code.ts'), lines: [2, 4] },
@@ -27,7 +27,7 @@ export const round = () => ({
       ],
       options: [
         { id: 'a', label: 'Plain add', means: 'Add two numbers.', example: 'add(1, 2) is 3', pros: ['Simple'], cons: ['Slow'], effort: 'small' },
-        { id: 'b', label: 'Checked add', means: 'Add with a guard, see `fixtures/code.ts:1-2`.', recommended: true, example: 'add(1, NaN) throws', pros: ['Safe', 'Clear'], cons: ['More code'], effort: 'medium' },
+        { id: 'b', label: 'Checked add', means: 'Add with a guard, see `fixtures/code.ts:1-2`.', example: 'add(1, NaN) throws', pros: ['Safe', 'Clear'], cons: ['More code'], effort: 'medium' },
         { id: 'c', label: 'Lazy add', means: 'Add on demand.', example: 'add(1)(2)', pros: ['Flexible'], cons: ['Odd'], effort: 'large' },
       ],
     },

@@ -9,11 +9,15 @@ export const READY = {
 
 // The floating bar's message as a page expression (b.status() reads it).
 export const STATUS = `document.querySelector('aside p[role=status]').textContent`;
+// The review page's send chooser is open (the `?` dialog has a <dl>, the chooser has none).
+export const CHOOSER = `!!document.querySelector('dialog[open]:not(:has(dl))')`;
+// One of the Góp ý / Sửa thành buttons (kind 'passage' | 'edit') while it is shown.
+export const ADDER = (kind) => `body > [data-adders]:not([hidden]) > [data-adder="${kind}"]:not([hidden])`;
 
 // A synthetic beforeunload: true when the page asks before leaving (only after a real input event, the guard waits for user activation).
 export const GUARDED = `(() => { const e = new Event('beforeunload', { cancelable: true }); dispatchEvent(e); return e.defaultPrevented; })()`;
-// A clipboard that always accepts, so a copy does not wait for the 2 s permission race.
-export const COPY_OK = `navigator.clipboard.writeText = async () => {}`;
+// A clipboard that always accepts, so a copy does not wait for the 2 s permission race; the last text is in window.__copied (null before).
+export const COPY_OK = `window.__copied = null; navigator.clipboard.writeText = async (t) => { window.__copied = t; }`;
 
 // A key hint with the platform's spelling replaced: MOD for ⌘ Enter / Ctrl Enter, CHORD for ⌘⇧ Enter / Ctrl Shift Enter.
 export const hint = (t) => t.replace(/⌘⇧ Enter|Ctrl Shift Enter/, 'CHORD').replace(/⌘ Enter|Ctrl Enter/, 'MOD');
@@ -53,7 +57,11 @@ export const PASSAGE_HELPERS = `window.T = {
     const rs = r.getClientRects(); const a = rs[0], z = rs[rs.length - 1];
     return { from: { x: a.left + 1, y: a.top + a.height / 2 }, to: { x: z.right - 1, y: z.top + z.height / 2 } };
   },
-  adder() { return [...document.querySelectorAll('body > button.absolute')].find((b) => !b.hidden) ? 'shown' : 'hidden'; },
+  // 'hidden', or the shown buttons: 'passage' or 'passage,edit'.
+  adder() {
+    const w = document.querySelector('body > [data-adders]');
+    return !w || w.hidden ? 'hidden' : [...w.querySelectorAll('button')].filter((x) => !x.hidden).map((x) => x.dataset.adder).join(',');
+  },
   boxes() { return [...document.querySelectorAll('[data-hl]')].map((b) => b.dataset.hl); },
   ta(id) { return document.querySelector('[data-hl="' + id + '"] textarea'); },
   type(id, text) { const ta = T.ta(id); ta.value = text; ta.dispatchEvent(new Event('input', { bubbles: true })); },

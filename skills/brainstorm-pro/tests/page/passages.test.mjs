@@ -2,7 +2,7 @@ import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { launch, sleep } from '../harness/browser.mjs';
-import { IMAGE_HELPERS, PASSAGE_HELPERS, READY } from '../harness/page-helpers.mjs';
+import { ADDER, IMAGE_HELPERS, PASSAGE_HELPERS, READY } from '../harness/page-helpers.mjs';
 import { FIXTURES, outDir, parseAnswers, serve } from '../harness/serve.mjs';
 
 const dir = outDir('passages');
@@ -27,8 +27,8 @@ const clearSelection = async () => { await b.eval('getSelection().removeAllRange
 const comment = async (a, bb, text) => {
   const before = await b.eval('T.boxes()');
   await b.eval(`T.select(${JSON.stringify(a)}, ${JSON.stringify(bb || null)})`);
-  await b.until(`T.adder() === 'shown'`, { timeout: 3000, what: 'adder for ' + a });
-  await b.click('body > button.absolute:not([hidden])');
+  await b.until(`T.adder() !== 'hidden'`, { timeout: 3000, what: 'adder for ' + a });
+  await b.click(ADDER('passage'));
   const id = await b.until(`T.boxes().find((x) => ${JSON.stringify(before)}.indexOf(x) < 0)`);
   if (text != null) await b.eval(`T.type(${JSON.stringify(id)}, ${JSON.stringify(text)})`);
   return id;
@@ -84,12 +84,12 @@ describe('highlight comments on the review page', () => {
     let mid;
     await b.drag(p.from, p.to, { steps: 12, pauseMs: 250, onPause: async () => { mid = await adder(); } });
     assert.equal(mid, 'hidden', 'no adder mid-drag, even after a pause');
-    await b.until(`T.adder() === 'shown'`, { timeout: 1500 });
+    await b.until(`T.adder() !== 'hidden'`, { timeout: 1500 });
     assert.equal(await b.eval(`String(getSelection()).length > 5`), true);
   });
 
   it('the adder travels with the text when the page scrolls', async () => {
-    const gap = () => b.eval(`(() => { const a = [...document.querySelectorAll('body > button.absolute')].find((x) => !x.hidden); const r = getSelection().getRangeAt(0).getClientRects(); const l = r[r.length - 1]; return { gap: Math.round(a.getBoundingClientRect().top - l.bottom), y: scrollY }; })()`);
+    const gap = () => b.eval(`(() => { const a = document.querySelector('body > [data-adders]'); const r = getSelection().getRangeAt(0).getClientRects(); const l = r[r.length - 1]; return { gap: Math.round(a.getBoundingClientRect().top - l.bottom), y: scrollY }; })()`);
     const before = await gap();
     await b.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: 700, y: 450, deltaX: 0, deltaY: 120 });
     await b.until(`scrollY !== ${before.y}`);
@@ -97,7 +97,7 @@ describe('highlight comments on the review page', () => {
     const after = await gap();
     assert.notEqual(after.y, before.y);
     assert.ok(Math.abs(after.gap - before.gap) <= 1, `gap ${before.gap} -> ${after.gap}`);
-    assert.equal(await adder(), 'shown');
+    assert.notEqual(await adder(), 'hidden');
   });
 
   it('a mouse press elsewhere hides the adder; a right-click keeps it and a later selection change shows it', async () => {
@@ -109,11 +109,11 @@ describe('highlight comments on the review page', () => {
     await clearSelection();
     const p = await b.eval(`T.points('numbered one is out')`);
     await b.drag(p.from, p.to, { steps: 6 });
-    await b.until(`T.adder() === 'shown'`, { timeout: 1500 });
+    await b.until(`T.adder() !== 'hidden'`, { timeout: 1500 });
     await b.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: 5, y: 450, button: 'right', clickCount: 1 });
-    assert.equal(await adder(), 'shown', 'a right-click does not hide it');
+    assert.notEqual(await adder(), 'hidden', 'a right-click does not hide it');
     await b.eval(`T.select('numbered two is also')`);
-    await b.until(`T.adder() === 'shown'`, { timeout: 1500 });
+    await b.until(`T.adder() !== 'hidden'`, { timeout: 1500 });
     await b.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: 5, y: 450, button: 'right', clickCount: 1 });
     await clearSelection();
   });
@@ -122,13 +122,13 @@ describe('highlight comments on the review page', () => {
     await b.eval(`(() => { const [t, i] = T.node('numbered two is also'); t.parentElement.scrollIntoView({ block: 'center' });
       document.activeElement && document.activeElement.blur(); const r = document.createRange(); r.setStart(t, i + 3); r.setEnd(t, i + 4);
       getSelection().removeAllRanges(); getSelection().addRange(r); })()`);
-    const left = () => b.eval(`parseFloat([...document.querySelectorAll('body > button.absolute')].find((x) => !x.hidden).style.left)`);
-    await b.until(`T.adder() === 'shown'`, { timeout: 2000 });
+    const left = () => b.eval(`parseFloat(document.querySelector('body > [data-adders]').style.left)`);
+    await b.until(`T.adder() !== 'hidden'`, { timeout: 2000 });
     const before = await left();
     for (let i = 0; i < 5; i++) { await b.press('ArrowRight', { shift: true }); await sleep(30); }
     assert.equal(await b.eval(`String(getSelection()).length`), 6);
-    await b.until(`T.adder() === 'shown'`, { timeout: 2000 });
-    await b.until(`parseFloat([...document.querySelectorAll('body > button.absolute')].find((x) => !x.hidden).style.left) > ${before + 10}`, { timeout: 2000, what: 'adder moved right' });
+    await b.until(`T.adder() !== 'hidden'`, { timeout: 2000 });
+    await b.until(`parseFloat(document.querySelector('body > [data-adders]').style.left) > ${before + 10}`, { timeout: 2000, what: 'adder moved right' });
     await clearSelection();
   });
 
@@ -210,6 +210,7 @@ describe('highlight comments on the review page', () => {
 
   it('sends every comment with its section, lines and quote on Cmd+Enter', async () => {
     await b.press('Enter', { meta: true });
+    await b.choose('s');
     const r = await s.done;
     assert.equal(r.code, 0);
     const out = parseAnswers(r.stdout).lines;
@@ -248,7 +249,115 @@ describe('highlight comments on the review page', () => {
     await load('approve');
     await comment('first goal bullet', null, 'small one');
     await b.eval(`[...document.querySelectorAll('aside button')].find((x) => x.textContent.startsWith('Duyệt')).click()`);
+    await b.choose('d');
     const r = await s.done;
     assert.deepEqual(parseAnswers(r.stdout).lines, ['Quyết định: Duyệt', `[§ Overview › Goals · dòng ${lineOf('first goal bullet')}] «first goal bullet» → small one`]);
+  });
+
+  const LONG = 'long risk paragraph with inline code and bold words and then many more plain words so that a selection across it is cut when quoted back to Claude';
+  const editBtn = async () => (await adder()).includes('edit');
+  const gopBtn = async () => (await adder()).includes('passage');
+  const select = async (a, bb) => {
+    await b.eval(`T.select(${JSON.stringify(a)}, ${JSON.stringify(bb || null)})`);
+    await b.until(`T.adder() !== 'hidden'`, { timeout: 3000, what: 'adder for ' + a });
+  };
+  const edit = async (a, z) => {
+    const before = await boxes();
+    await select(a, z);
+    await b.click(ADDER('edit'));
+    return b.until(`T.boxes().find((x) => ${JSON.stringify(before)}.indexOf(x) < 0)`);
+  };
+
+  it('Sửa thành: setup', async () => { s.kill(); await load('edit'); });
+
+  it('a one-block selection shows both buttons; Sửa thành prefills the phrase, focuses it with the caret at the end, and rewrites no stylesheet', async () => {
+    await b.twSettle();
+    await select('second goal bullet');
+    assert.equal(await editBtn(), true);
+    assert.equal(await gopBtn(), true);
+    await b.click(ADDER('edit'));
+    const id = await b.until(`T.boxes()[0]`);
+    assert.equal(await b.eval(`T.ta(${JSON.stringify(id)}).value`), 'second goal bullet');
+    assert.equal(await b.eval(`document.activeElement === T.ta(${JSON.stringify(id)})`), true);
+    assert.equal(await b.eval(`T.ta(${JSON.stringify(id)}).selectionStart`), 'second goal bullet'.length);
+    assert.equal(await b.eval(`document.querySelector('[data-hl="${id}"]').textContent.includes('Sửa thành')`), true);
+    assert.equal(await b.twWrites(), 0, 'an edit box must not rebuild the stylesheet');
+    await b.press('Escape');
+    await b.until(`!T.boxes().includes(${JSON.stringify(id)})`);
+  });
+
+  it('an unchanged box blurred goes away with its mark', async () => {
+    const id = await edit('first goal bullet');
+    assert.equal(await marks(id), 1);
+    await b.eval(`document.querySelector('[aria-label="Góp ý: Chung"]').focus()`);
+    await b.until(`!T.boxes().includes(${JSON.stringify(id)})`);
+    assert.equal(await marks(id), 0);
+  });
+
+  it('a selection across two paragraphs hides Sửa thành and keeps Góp ý', async () => {
+    await clearSelection();
+    await select('first open question', 'second open question');
+    assert.equal(await gopBtn(), true);
+    assert.equal(await editBtn(), false);
+    await clearSelection();
+  });
+
+  it('a selection across two cells of one row hides Sửa thành and keeps Góp ý; inside one cell both show', async () => {
+    await clearSelection();
+    await select('alpha', 'first role');
+    assert.equal(await gopBtn(), true);
+    assert.equal(await editBtn(), false);
+    await clearSelection();
+    await select('first role');
+    assert.equal(await editBtn(), true);
+    await clearSelection();
+  });
+
+  it('a selection across two code lines keeps the line break in the Sửa thành box', async () => {
+    const id = await edit('first = ', 'second = ');
+    const v = await b.eval(`T.ta(${JSON.stringify(id)}).value`);
+    assert.ok(v.includes('1;\nconst second'), JSON.stringify(v));
+    await b.press('Escape');
+    await b.until(`!T.boxes().includes(${JSON.stringify(id)})`);
+  });
+
+  it('pasting an image into a Sửa thành box adds no chip', async () => {
+    const id = await edit('second goal bullet');
+    const r = await b.eval(`send('[data-hl="${id}"] textarea', 'paste', 'red')`);
+    assert.equal(r.value, 'second goal bullet');
+    assert.equal(await b.eval(`document.querySelectorAll('[data-hl="${id}"] figure img').length`), 0);
+    await b.press('Escape');
+    await b.until(`!T.boxes().includes(${JSON.stringify(id)})`);
+  });
+
+  it('a change is sent through the chooser with the full old text, even over 100 characters', async () => {
+    const id = await edit('long risk paragraph', 'back to Claude');
+    assert.ok(LONG.length > 100);
+    await b.eval(`T.type(${JSON.stringify(id)}, 'changed text')`);
+    await b.eval(`document.querySelector('[aria-label="Góp ý: Chung"]').focus()`);
+    const other = await edit('second goal bullet');
+    await b.eval(`T.type(${JSON.stringify(other)}, 'second goal bullet, reworded')`);
+    await b.eval(`document.querySelector('[aria-label="Góp ý: Chung"]').focus()`);
+    const code = await edit('first = ', 'second = ');
+    await b.eval(`T.type(${JSON.stringify(code)}, 'first = 5;\\nconst second = 6;')`);
+    assert.equal(await b.eval(`document.querySelector('aside span').textContent`), '3 góp ý');
+    await b.eval('window.__saved = localStorage.getItem("doc-draft:" + location.pathname)');
+    await b.goto(url, { ready, doc: true });
+    await b.eval(PASSAGE_HELPERS + IMAGE_HELPERS);
+    assert.equal(await b.eval(`T.boxes().every((x) => document.querySelector('[data-hl="' + x + '"]').textContent.includes('Sửa thành'))`), true, 'restored as edits');
+    assert.equal(await b.eval(`T.boxes().length`), 3);
+    assert.equal(await b.eval(`T.boxes().map((x) => T.ta(x).value).sort().join('|')`), 'changed text|first = 5;\nconst second = 6;|second goal bullet, reworded'.split('|').sort().join('|'));
+    await b.press('Enter', { meta: true });
+    await b.choose('s');
+    const r = await s.done;
+    const out = parseAnswers(r.stdout).lines;
+    assert.deepEqual(out, [
+      'Quyết định: Sửa',
+      `[§ Overview › Goals · dòng ${lineOf('second goal bullet')}] «second goal bullet» ⇒ «second goal bullet, reworded»`,
+      `[§ Design · dòng ${fenceOf('const first')}] «first = 1;`,
+      'const second = » ⇒ «first = 5;',
+      'const second = 6;»',
+      `[§ Risks · dòng ${lineOf('A long risk paragraph')}] «${LONG}» ⇒ «changed text»`,
+    ]);
   });
 });

@@ -1,14 +1,25 @@
-import { CALLOUT, CAPTION, CAP_TEXT, el, FIG, LIST } from './dom.js';
+import { btnCls, CALLOUT, CAPTION, CAP_TEXT, el, FIG, LIST, writeClipboard } from './dom.js';
 import { alignRows, extLang, hlLines, linesView } from './code.js';
 import { fileButton, showInViewer, zoomButton } from './viewer.js';
 import { inline } from './text.js';
+
+const copyButton = (text) => {
+  let timer;
+  const btn = el('button', { type: 'button', class: btnCls('file', true), onmousedown: (e) => e.preventDefault(), onclick: async () => {
+    const ok = await writeClipboard(text);
+    btn.textContent = ok ? 'Đã copy' : 'Không copy được';
+    clearTimeout(timer);
+    timer = setTimeout(() => { btn.textContent = 'Copy'; }, ok ? 1500 : 2000);
+  } }, 'Copy');
+  return btn;
+};
 
 export const codeBlock = (b) => {
   const lang = b.lang || extLang(b.file);
   const btn = fileButton(b, lang);
   const lines = hlLines(b.text || '', lang);
   return el('figure', { class: FIG + ' block bg-base-200' },
-    b.label || btn ? el('figcaption', { class: CAPTION }, el('span', { class: CAP_TEXT, text: b.label || '' }), btn) : null,
+    el('figcaption', { class: CAPTION }, el('span', { class: CAP_TEXT, text: b.label || '' }), el('span', { class: 'flex items-center gap-1' }, btn, copyButton(b.text || ''))),
     linesView(lines, b.lines ? lines.map((_, i) => b.lines[0] + i) : null, null));
 };
 

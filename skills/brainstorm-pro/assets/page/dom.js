@@ -39,6 +39,7 @@ export const MARK = 'bg-hl text-inherit rounded-[2px] cursor-pointer data-[activ
 export const HL_BOX = 'grid gap-1.5 border border-base-300 rounded-box bg-base-100 p-2 my-1.5';
 export const HL_QUOTE_ROW = 'flex items-start gap-2';
 export const HL_QUOTE = 'flex-1 min-w-0 text-[12.5px] text-muted wrap-anywhere';
+export const EDIT_TAG = 'flex-1 min-w-0 text-[12.5px] font-semibold text-muted';
 export const NOTE_BTN = btnCls('', true) + ' btn-ghost text-muted font-normal';
 export const THUMB = 'relative m-0 grid justify-items-center gap-px';
 export const THUMB_IMG = 'block h-16 w-auto max-w-40 object-contain rounded-md border border-base-300 cursor-zoom-in';
@@ -49,3 +50,23 @@ export const closeForm = (cls) => el('form', { method: 'dialog', class: cls }, e
 export const modal = (boxClass, ...kids) => el('dialog', { class: 'modal' },
   el('div', { class: 'modal-box ' + boxClass }, kids),
   el('form', { method: 'dialog', class: 'modal-backdrop' }, el('button', { text: 'Đóng' })));
+// writeText can wait forever for a permission the browser never asks for, so it gets two seconds; then a hidden textarea and execCommand, putting the focus back.
+export const writeClipboard = async (text) => {
+  try { await Promise.race([navigator.clipboard.writeText(text), new Promise((_, no) => setTimeout(() => no(new Error('timeout')), 2000))]); return true; }
+  catch (e) {
+    const prev = document.activeElement;
+    const sel = getSelection();
+    const saved = Array.from({ length: sel.rangeCount }, (_, i) => sel.getRangeAt(i));
+    const ta = el('textarea', { readonly: true, 'aria-hidden': 'true', style: 'position:fixed;left:-9999px;top:0;opacity:0' });
+    ta.value = text;
+    document.body.append(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e2) { ok = false; }
+    ta.remove();
+    if (prev && prev.focus) prev.focus();
+    sel.removeAllRanges();
+    for (const r of saved) sel.addRange(r);
+    return ok;
+  }
+};

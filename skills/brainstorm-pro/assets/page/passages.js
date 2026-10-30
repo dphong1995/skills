@@ -1,11 +1,11 @@
-import { btnCls, el, HL_BOX, HL_QUOTE, HL_QUOTE_ROW, MARK, NOTE_BTN } from './dom.js';
+import { btnCls, EDIT_TAG, el, HL_BOX, HL_QUOTE, HL_QUOTE_ROW, MARK, NOTE_BTN } from './dom.js';
 import { short } from './strings.js';
-import { fit, main } from './fab.js';
+import { fit, main, say } from './fab.js';
 
-// `notes`, `noteBox` and `update` are the review page's note list, box maker and refresh. Installs the Góp ý button that appears by a selection.
+// `notes`, `noteBox` and `update` are the review page's note list, box maker and refresh. Installs the Góp ý and Sửa thành buttons that appear by a selection.
 export const passages = ({ notes, noteBox, update }) => {
   // Comments on a selected passage: the passage gets a mark and a note opens under it. Offsets count the text a passage can be selected in, so a draft marks the same passage again after a reload.
-  const SKIP = 'textarea, input, button, svg, [data-note], [data-mmd]';
+  const SKIP = 'textarea, input, button, svg, [data-note], [data-mmd], [data-prev], [data-diff]';
   const selectable = (t) => !t.parentElement.closest(SKIP) && !!t.parentElement.closest('#main > article');
   const walk = () => document.createTreeWalker(main, NodeFilter.SHOW_TEXT,
     { acceptNode: (t) => (t.parentElement.closest(SKIP) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT) });
@@ -32,9 +32,24 @@ export const passages = ({ notes, noteBox, update }) => {
   };
   // The passage as read: a space where it crosses from one block, cell or code line to the next.
   const FLOW = 'p, li, td, th, h1, h2, h3, h4, h5, h6, blockquote, span.block, div';
-  const quoteOf = (parts) => parts.map((p, k) => (k && p.parentElement.closest(FLOW) !== parts[k - 1].parentElement.closest(FLOW) ? ' ' : '') + p.data).join('');
+  // Between two code lines of one figure the break stays a line break.
+  const sep = (p, q) => {
+    const [a, b] = [p, q].map((x) => x.parentElement.closest(FLOW));
+    if (a === b) return '';
+    return a && b && a.matches('span.block') && b.matches('span.block') && a.closest('figure') === b.closest('figure') ? '\n' : ' ';
+  };
+  const quoteOf = (parts) => parts.map((p, k) => (k ? sep(parts[k - 1], p) : '') + p.data).join('');
+  // One block: the first and the last selected text sit in the same [data-l] element (paragraph, list item, table row, code figure).
+  const oneBlock = (all) => {
+    if (!all.length) return false;
+    const a = all[0].t.parentElement.closest('[data-l]');
+    const z = all[all.length - 1].t.parentElement;
+    const cell = (x) => x.closest('td, th');
+    return !!a && a === z.closest('[data-l]') && cell(all[0].t.parentElement) === cell(z);
+  };
   let hls = 0;
-  const addComment = (r, text) => {
+  // kind 'edit': the box opens with the passage itself, and counts only once its text differs from it.
+  const addComment = (r, text, kind = 'passage') => {
     const id = String(++hls);
     const parts = selectedTexts(r).map(({ t, s, e }) => {
       if (e < t.length) t.splitText(e);
@@ -48,9 +63,10 @@ export const passages = ({ notes, noteBox, update }) => {
     const first = parts[0].parentElement, last = parts[parts.length - 1].parentElement;
     const s = offsetOf(parts[0], 0), e = offsetOf(parts[parts.length - 1], parts[parts.length - 1].length);
     const [a, b] = [first.closest('[data-l]'), last.closest('[data-l]')].map((x) => x && x.dataset.l.split('-'));
-    const n = noteBox('hl:' + id, 'Góp ý cho đoạn này…');
-    n.hl = { id, s, e, text: allText().slice(s, e), quote: quoteOf(parts), key:first.closest('[data-k]') ? first.closest('[data-k]').dataset.k : 'Mở đầu',
+    const n = noteBox('hl:' + id, kind === 'edit' ? 'Sửa thành…' : 'Góp ý cho đoạn này…', kind === 'edit');
+    n.hl = { id, kind, s, e, text: allText().slice(s, e), quote: quoteOf(parts), key:first.closest('[data-k]') ? first.closest('[data-k]').dataset.k : 'Mở đầu',
       lines: a && b ? 'dòng ' + (a[0] === b[1] ? a[0] : a[0] + '-' + b[1]) : '' };
+    if (kind === 'edit') n.empty = () => !n.ta.value.trim() || n.ta.value.trim() === n.hl.quote.trim();
     const marks = () => main.querySelectorAll('mark[data-c="' + id + '"]');
     const remove = () => {
       if (!notes.includes(n)) return;
@@ -61,7 +77,7 @@ export const passages = ({ notes, noteBox, update }) => {
     };
     n.hl.box = el('div', { class: HL_BOX, 'data-note': '', 'data-hl': id },
       el('div', { class: HL_QUOTE_ROW },
-        el('span', { class: HL_QUOTE, text: '«' + short(n.hl.quote) + '»' }),
+        kind === 'edit' ? el('span', { class: EDIT_TAG, text: 'Sửa thành' }) : el('span', { class: HL_QUOTE, text: '«' + short(n.hl.quote) + '»' }),
         el('button', { type: 'button', class: NOTE_BTN, onclick: remove }, 'Xóa')),
       n.box);
     // Under the bullet the passage ends in, else after its block (and after the comments already there).
@@ -76,46 +92,54 @@ export const passages = ({ notes, noteBox, update }) => {
     n.ta.addEventListener('focus', () => { for (const m of marks()) m.dataset.active = 'true'; });
     n.ta.addEventListener('blur', () => {
       for (const m of marks()) delete m.dataset.active;
-      setTimeout(() => { if (document.hasFocus() && document.activeElement !== n.ta && !n.ta.value.trim()) remove(); }, 0);
+      setTimeout(() => { if (document.hasFocus() && document.activeElement !== n.ta && n.empty()) remove(); }, 0);
     });
-    n.ta.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && !n.ta.value.trim()) { ev.preventDefault(); remove(); } });
-    if (text) { n.ta.value = text; n.strip.refresh(); fit(n.ta); }
+    n.ta.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && n.empty()) { ev.preventDefault(); remove(); } });
+    const start = text ?? (kind === 'edit' ? n.hl.quote : '');
+    if (start) { n.ta.value = start; n.ta.setSelectionRange(start.length, start.length); n.strip.refresh(); fit(n.ta); }
     return n;
   };
 
   // Comments on the current selection: the new note, or null when nothing in it can take one.
-  const commentSelection = () => {
+  const commentSelection = (kind = 'passage') => {
     const sel = getSelection();
-    const n = sel.rangeCount ? addComment(sel.getRangeAt(0)) : null;
-    adder.hidden = true;
-    if (n) sel.removeAllRanges();
+    const r = sel.rangeCount ? sel.getRangeAt(0) : null;
+    const n = r && (kind !== 'edit' || oneBlock(selectedTexts(r))) ? addComment(r, undefined, kind) : null;
+    if (n) {
+      adders.hidden = true;
+      sel.removeAllRanges();
+    } else if (kind === 'edit' && r && !sel.isCollapsed) say('warn', 'Sửa thành chỉ dùng được trong một khối.');
     return n;
   };
-  // The Góp ý button by a selection; mousedown keeps the selection.
-  const adder = el('button', { type: 'button', class: btnCls('primary', true) + ' absolute z-20 shadow-lg', hidden: true, onmousedown: (e) => e.preventDefault(), onclick: () => {
-    const n = commentSelection();
+  // The Góp ý and Sửa thành buttons by a selection, in one box that is placed; mousedown keeps the selection.
+  const adderBtn = (kind, label, primary) => el('button', { type: 'button', 'data-adder': kind, class: btnCls(primary, true) + ' shadow-lg', onmousedown: (e) => e.preventDefault(), onclick: () => {
+    const n = commentSelection(kind);
     if (n) n.ta.focus();
-  } }, 'Góp ý');
-  document.body.append(adder);
+  } }, label);
+  const editAdder = adderBtn('edit', 'Sửa thành', '');
+  const adders = el('div', { class: 'absolute z-20 flex gap-1 whitespace-nowrap', 'data-adders': '', hidden: true }, adderBtn('passage', 'Góp ý', 'primary'), editAdder);
+  document.body.append(adders);
   let placing = 0;
   const place = () => {
     const sel = getSelection();
     const r = sel.rangeCount && !sel.isCollapsed ? sel.getRangeAt(0) : null;
-    adder.hidden = !r || !selectedTexts(r).length;
-    if (adder.hidden) return;
+    const texts = r ? selectedTexts(r) : [];
+    adders.hidden = !texts.length;
+    editAdder.hidden = !oneBlock(texts);
+    if (adders.hidden) return;
     const rects = r.getClientRects();
     const b = rects.length ? rects[rects.length - 1] : r.getBoundingClientRect();
-    adder.style.left = scrollX + Math.max(8, Math.min(b.right + 4, document.documentElement.clientWidth - adder.offsetWidth - 8)) + 'px';
-    adder.style.top = scrollY + b.bottom + 4 + 'px';
+    adders.style.left = scrollX + Math.max(8, Math.min(b.right + 4, document.documentElement.clientWidth - adders.offsetWidth - 8)) + 'px';
+    adders.style.top = scrollY + b.bottom + 4 + 'px';
   };
   const later = (ms) => { clearTimeout(placing); placing = setTimeout(place, ms); };
   // Timing as in Hypothesis: nothing while the mouse is down, 10 ms after mouseup, 100 ms after other selection changes (a change right after mouseup keeps 10 ms).
   let down = false, upAt = -Infinity;
   document.addEventListener('mousedown', (e) => {
-    if (e.button !== 0 || adder.contains(e.target)) return;
+    if (e.button !== 0 || adders.contains(e.target)) return;
     down = true;
     clearTimeout(placing);
-    adder.hidden = true;
+    adders.hidden = true;
   });
   document.addEventListener('mouseup', () => { down = false; upAt = performance.now(); later(10); });
   document.addEventListener('dragend', () => { down = false; later(10); });

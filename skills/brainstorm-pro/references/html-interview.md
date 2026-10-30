@@ -34,8 +34,9 @@ announcing a question for later.
 2. In the same message, serve it with a foreground `Bash` call with `timeout: 600000`:
    `node ~/.claude/skills/brainstorm-pro/assets/render-interview.mjs <dir>/round-NN.json <dir>/round-NN.html --serve`
    It checks the round (it rejects malformed JSON, an empty `questions`, a question missing
-   `id`/`n`/`title`/`options`, a `recommendation` without exactly one `recommended` option, and a
-   bad image or code range; fix and rerun), writes
+   `id`/`n`/`title`/`options`, an unknown field at any level (with a "did you mean" hint), the old
+   per-option `recommended` flag, a `recommendation` whose `option` is not an option id, and a bad
+   image or code range; each error is one stderr line, exit 1; fix and rerun), writes
    `round-NN.html`, serves the page on `127.0.0.1` under a random token, opens it in the browser and
    waits. Before an answer is sent or copied, closing or reloading the tab asks first (the browser's own
    dialog, shown only after the user has clicked or typed on the page).
@@ -71,9 +72,9 @@ included, to a new `round-NN.html`; never reuse a path for different questions.
 | `why` | What changes depending on the answer: what gets built differently, what it rules in or out. 1-2 sentences. |
 | `reversible`, `reversibleWhy` | `true` when a wrong pick is cheap to change later (a message, a label, a config value, a test), `false` when it is costly (data shape or migration, public API, contract with BE, anything users start depending on). `reversibleWhy`: one short line saying what changing it later would take. Shown as a "Dễ đổi / Khó đổi về sau" badge so the user spends their time on the costly ones. |
 | `context` | Blocks (see below): how it works today, with scout evidence (`file:line`, existing component or table names); a concrete scenario of the situation the decision is about; every term the options use, explained in plain words. A `table` when options differ along the same axes. |
-| `options` | 2-4 entries. Each: `id`, `label` (2-6 words), `means` (what concretely happens / what the user would see), `example` (one concrete case played through this option), `pros`, `cons` (short lists), `effort` (e.g. `thấp`, `1 file FE`), `recommended: true` on exactly one. Optional `code`: a code block (same fields as below, without `t`) showing this option's shape, when options differ in code. Optional `mockup`: HTML for a wireframe of this option's screen (below), when the question is about a screen. Give every option the same optional parts so they line up. |
+| `options` | 2-4 entries. Each: `id`, `label` (2-6 words), `means` (what concretely happens / what the user would see), `example` (one concrete case played through this option), `pros`, `cons` (short lists), `effort` (e.g. `thấp`, `1 file FE`). Optional `code`: a code block (same fields as below, without `t`) showing this option's shape, when options differ in code. Optional `mockup`: HTML for a wireframe of this option's screen (below), when the question is about a screen. Give every option the same optional parts so they line up. |
 | `multi` | `true` only when several options can hold together. |
-| `recommendation` | Why the recommended option wins here, tied to the evidence in `context`. |
+| `recommendation` | `{ "option": "<option id>", "why": "…" }`: the pick and why it wins here, tied to the evidence in `context`. Omit the whole field when there is no pick. |
 
 Write content in the user's language; identifiers, file paths and code stay as they are. Inline
 text supports `` `code` `` and `**bold**` only. A file path in `` `code` `` that has a directory,
@@ -86,7 +87,7 @@ The page shows the options side by side, lined up part by part (`means`, `mockup
 `pros`/`cons`), so give every option the same fields and keep them short and parallel. The
 recommendation sits under the options, above the answer strip; a click on an option's card picks
 it like its button in the strip. Nothing is preselected, but a
-"Theo đề xuất" button on the floating bar picks the recommended option on every unanswered
+"Theo đề xuất" button on the floating bar picks the `recommendation.option` on every unanswered
 question, and the top bar links to each question with its answered state.
 
 The answer strip adds two choices after yours on every question: "Khác (tự nhập)" with its own text
@@ -98,7 +99,7 @@ Context blocks (`t` is the type):
 `{t:"mermaid", …}`, `{t:"img", …}`, `{t:"mockup", …}` (below) · `{t:"table", head:[…], rows:[[…]]}` ·
 `{t:"note", text}` (a caveat the user must not miss).
 
-Code blocks are syntax-highlighted (highlight.js from cdnjs; plain text when offline):
+Code blocks are syntax-highlighted (highlight.js from cdnjs; plain text when offline) and have a Copy button in the caption:
 - Existing code → `{t:"code", file, lines:[from, to]}` with `file` an absolute path. The script
   cuts the snippet from the file (no `text`), numbers its lines, labels it with the path and range,
   and embeds the whole file (up to 512 KB) behind a "Xem toàn file" button that opens it with the
@@ -133,6 +134,67 @@ Pictures of screens:
 **Card test before writing:** someone who has not read the code or this conversation can decide
 from the card alone. If deciding needs a fact you have not shown, add it to `context`. Every
 question gets the full card, easy-to-change ones included; do not shorten cards to save tokens.
+
+### Full example
+
+One complete round (every field of a question, `code` with `file`/`lines`, a `table`, three options):
+
+```json
+{
+  "topic": "Retry for failed uploads",
+  "decided": ["Câu 1: chỉ retry lỗi mạng, không retry lỗi 4xx"],
+  "questions": [
+    {
+      "id": "q02",
+      "n": 2,
+      "stage": "Cách làm",
+      "title": "Retry chạy ở đâu?",
+      "why": "Quyết định retry nằm ở một chỗ hay rải rác, và ai phải sửa khi đổi số lần thử.",
+      "reversible": false,
+      "reversibleWhy": "Đổi sau này phải sửa mọi nơi gọi upload.",
+      "context": [
+        { "t": "p", "text": "Hôm nay `uploadFile` gọi API một lần và báo lỗi ngay." },
+        { "t": "code", "file": "/Users/phong/.claude/skills-repo/skills/brainstorm-pro/assets/lib/embed.mjs", "lines": [1, 6] },
+        { "t": "table", "head": ["Cách", "Số nơi sửa"], "rows": [["Gateway", "1"], ["Hook", "3"]] }
+      ],
+      "options": [
+        {
+          "id": "A",
+          "label": "Retry trong gateway",
+          "means": "Gateway tự thử lại tối đa 3 lần.",
+          "example": "Mất mạng 2 giây: người dùng không thấy lỗi.",
+          "pros": ["Một chỗ", "Mọi nơi gọi đều được"],
+          "cons": ["Khó tắt cho một nơi riêng"],
+          "effort": "1 file FE",
+          "code": { "text": "await withRetry(() => post(url, body), 3);", "label": "gateway", "lang": "typescript" }
+        },
+        {
+          "id": "B",
+          "label": "Retry trong hook",
+          "means": "Hook `useUpload` bọc lời gọi bằng retry.",
+          "example": "Chỉ trang upload tự thử lại.",
+          "pros": ["Tắt được từng nơi"],
+          "cons": ["Lặp ở 3 hook"],
+          "effort": "3 file FE",
+          "code": { "text": "retry(() => upload(file), { times: 3 });", "label": "hook", "lang": "typescript" }
+        },
+        {
+          "id": "C",
+          "label": "Không retry",
+          "means": "Giữ nguyên, người dùng bấm lại.",
+          "example": "Mất mạng: hiện lỗi, bấm Thử lại.",
+          "pros": ["Không đổi code"],
+          "cons": ["Người dùng tự xử lý"],
+          "effort": "không",
+          "code": { "text": "await post(url, body);", "label": "hiện tại", "lang": "typescript" }
+        }
+      ],
+      "multi": false,
+      "recommendation": { "option": "A", "why": "Gateway là chỗ duy nhất mọi lời gọi đi qua (`embed.mjs:1-6` cho thấy chỉ có một đường vào)." }
+    }
+  ]
+}
+```
 
 ## Reading the answer
 

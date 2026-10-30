@@ -8,6 +8,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { buildPage, bundle } from './lib/build.mjs';
 import { loadDoc, reviewRound } from './lib/doc.mjs';
+import { InputError } from './lib/embed.mjs';
 import { loadRound } from './lib/round.mjs';
 import { openBrowser, serve } from './lib/server.mjs';
 
@@ -21,12 +22,19 @@ if (!src || !out || (serving && open)) {
 }
 const isDoc = /\.(md|markdown)$/i.test(src);
 
-const data = isDoc ? loadDoc(src, { review: serving }) : loadRound(src);
-let saveRound = null;
-if (isDoc && serving) {
-  const round = reviewRound(out, src, data.doc.md);
-  data.doc.changes = round.changes;
-  saveRound = round.save;
+let data, saveRound = null, saveNotes = null;
+try {
+  data = isDoc ? loadDoc(src, { review: serving }) : loadRound(src);
+  if (isDoc && serving) {
+    const round = reviewRound(out, src, data.doc.md);
+    data.doc.changes = round.changes;
+    saveRound = round.save;
+    saveNotes = round.saveNotes;
+  }
+} catch (e) {
+  if (!(e instanceof InputError)) throw e;
+  console.error(e.message);
+  process.exit(1);
 }
 
 const bundled = bundle();
@@ -36,4 +44,4 @@ if (saveRound) saveRound();
 console.log(out);
 
 if (open) openBrowser(resolve(out));
-if (serving) serve({ src, out, page: (extra) => buildPage({ ...data, ...extra }, { bundled }) });
+if (serving) serve({ src, out, onNotes: saveNotes, page: (extra) => buildPage({ ...data, ...extra }, { bundled }) });

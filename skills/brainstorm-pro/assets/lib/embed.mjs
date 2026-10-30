@@ -8,8 +8,16 @@ const MAX_FILE = 512 * 1024;
 const MAX_IMAGE = 3 * 1024 * 1024;
 const IMAGE_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml' };
 
+// A problem with what the round or document points at: printed as one line, no stack.
+export class InputError extends Error {}
+
+// readFileSync, with a failure reported as an InputError naming `label` (the path by default).
+export const readInput = (path, src, enc, label = path) => {
+  try { return readFileSync(path, enc); } catch (e) { throw new InputError(`${src}: cannot read ${label} (${e.code})`); }
+};
+
 export const createEmbed = ({ root, src }) => {
-  if (!isAbsolute(root)) throw new Error(`${src}: "root" must be an absolute path: ${root}`);
+  if (!isAbsolute(root)) throw new InputError(`${src}: "root" must be an absolute path: ${root}`);
   const resolvePath = (p) => (p.startsWith('~/') ? join(homedir(), p.slice(2)) : isAbsolute(p) ? p : resolve(root, p));
 
   const files = {};
@@ -18,15 +26,15 @@ export const createEmbed = ({ root, src }) => {
 
   const prep = (b) => {
     if (!b || !b.file) return;
-    if (!isAbsolute(b.file)) throw new Error(`${src}: code "file" must be an absolute path: ${b.file}`);
-    const content = readFileSync(b.file, 'utf8');
+    if (!isAbsolute(b.file)) throw new InputError(`${src}: code "file" must be an absolute path: ${b.file}`);
+    const content = readInput(b.file, src, 'utf8');
     if (b.lines) {
       const [from, to] = (b.lines = b.lines.map(Number));
       const all = content.replace(/\n$/, '').split('\n');
-      if (!(from >= 1 && to >= from && to <= all.length)) throw new Error(`${src}: lines ${from}-${to} are outside ${b.file} (${all.length} lines)`);
+      if (!(from >= 1 && to >= from && to <= all.length)) throw new InputError(`${src}: lines ${from}-${to} are outside ${b.file} (${all.length} lines)`);
       b.text = all.slice(from - 1, to).join('\n');
     } else if (b.text == null) {
-      throw new Error(`${src}: code block for ${b.file} needs "lines" or "text"`);
+      throw new InputError(`${src}: code block for ${b.file} needs "lines" or "text"`);
     }
     if (b.label == null) b.label = b.file.replace(homedir(), '~') + (b.lines ? `:${b.lines[0]}-${b.lines[1]}` : '');
     if (Buffer.byteLength(content) <= MAX_FILE) files[b.file] = content;
@@ -63,13 +71,13 @@ export const createEmbed = ({ root, src }) => {
   };
 
   const image = (b) => {
-    if (!b.file) throw new Error(`${src}: img block needs "file"`);
+    if (!b.file) throw new InputError(`${src}: img block needs "file"`);
     const abs = resolvePath(b.file);
     const type = IMAGE_TYPES[extname(abs).toLowerCase()];
-    if (!type) throw new Error(`${src}: ${b.file} is not an image the page shows (png, jpg, gif, webp, svg)`);
-    const buf = readFileSync(abs);
+    if (!type) throw new InputError(`${src}: ${b.file} is not an image the page shows (png, jpg, gif, webp, svg)`);
+    const buf = readInput(abs, src, undefined, b.file);
     if (buf.length > MAX_IMAGE) {
-      throw new Error(`${src}: ${b.file} is ${(buf.length / 1048576).toFixed(1)} MB, over ${MAX_IMAGE / 1048576} MB; resize a copy first: sips --resampleWidth 1600 <image> --out <copy>`);
+      throw new InputError(`${src}: ${b.file} is ${(buf.length / 1048576).toFixed(1)} MB, over ${MAX_IMAGE / 1048576} MB; resize a copy first: sips --resampleWidth 1600 <image> --out <copy>`);
     }
     b.src = `data:${type};base64,${buf.toString('base64')}`;
   };

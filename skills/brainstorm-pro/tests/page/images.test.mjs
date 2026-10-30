@@ -137,6 +137,7 @@ describe('images on the document page', () => {
   it('sends the notes in document order, then the Ảnh lines in the same order', async () => {
     await sleep(200);
     await sendBtn('/^Gửi/');
+    await b.choose('s');
     const r = await s.done;
     const ps = pathsOf(r.stdout);
     assert.deepEqual(ps.map((x) => x.n), [1, 3, 2]);

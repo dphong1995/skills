@@ -1,4 +1,4 @@
-import { $, el, RING, TEXTAREA } from './dom.js';
+import { $, el, RING, TEXTAREA, writeClipboard } from './dom.js';
 import { markAnswered } from './leave.js';
 
 export const CARD = 'card card-border border-base-300 bg-base-100 px-[18px] py-4 max-[520px]:px-3 max-[520px]:py-3.5 grid gap-3 min-w-0 transition-[border-color,box-shadow] duration-200 motion-reduce:transition-none [&.attention]:border-[var(--color-warning)] [&.attention]:[box-shadow:0_0_0_3px_color-mix(in_oklab,var(--color-warning)_22%,transparent)]';
@@ -28,16 +28,14 @@ export const sayFor = (kind, text, ms) => {
 };
 export const copyText = async (text) => {
   out.value = text;
-  let ok = false;
-  // writeText can wait forever for a permission the browser never asks for, so it gets two seconds.
-  try { await Promise.race([navigator.clipboard.writeText(text), new Promise((_, no) => setTimeout(() => no(new Error('timeout')), 2000))]); ok = true; }
-  catch (e) { out.hidden = false; out.focus(); out.select(); try { ok = document.execCommand('copy'); } catch (e2) { ok = false; } }
+  const ok = await writeClipboard(text);
   out.hidden = ok;
   if (ok) markAnswered();
+  else { out.focus(); out.select(); }
   return ok;
 };
-export const postText = async (text) => {
-  const r = await fetch(D.send, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+export const postText = async (text, notes) => {
+  const r = await fetch(D.send, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, notes }) });
   if (!r.ok) throw new Error('HTTP ' + r.status);
 };
 // Drafts are kept in this browser per page file, so a reload or a closed tab loses nothing.

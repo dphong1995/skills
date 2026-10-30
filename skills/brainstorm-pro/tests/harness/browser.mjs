@@ -6,8 +6,9 @@ import { spawn } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import assert from 'node:assert/strict';
 import { isTyping } from '../../assets/page/keys.js';
-import { STATUS } from './page-helpers.mjs';
+import { CHOOSER, STATUS } from './page-helpers.mjs';
 
 const CHROME = process.env.CHROME || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -168,6 +169,16 @@ export async function launch({ dark = false, width = 1400, height = 1000 } = {})
       const text = printable && !mods.ctrl && !mods.meta;
       await send('Input.dispatchKeyEvent', { type: text ? 'keyDown' : 'rawKeyDown', ...base, ...(text ? { text: key } : {}) });
       await send('Input.dispatchKeyEvent', { type: 'keyUp', ...base });
+    },
+    // A key the page handled: its own listener prevented the default (the last-in-line hook above would hide a missing preventDefault).
+    handled: async (key, mods) => {
+      await api.press(key, mods);
+      assert.equal(await evaluate('__keys.at(-1).pagePrevented'), true, key + ' must be prevented by the page itself');
+    },
+    // The send chooser's key (d or s), once the chooser is open.
+    choose: async (key) => {
+      await until(CHOOSER, { what: 'the send chooser' });
+      await api.handled(key);
     },
     type: (text) => send('Input.insertText', { text }),
     twWrites: () => evaluate('__tw.n'),

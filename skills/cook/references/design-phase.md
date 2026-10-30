@@ -163,7 +163,7 @@ decompose into sub-projects. Cook only runs the first one.
 ## 1D: Propose 2-3 Approaches
 
 Present them as the last question on the interview page: one option per approach (`means`,
-`example`, `pros`, `cons`, `effort`), the recommended one marked, the reason in `recommendation`.
+`example`, `pros`, `cons`, `effort`), the pick and its reason in `recommendation: { option, why }`.
 In content terms:
 
 ```

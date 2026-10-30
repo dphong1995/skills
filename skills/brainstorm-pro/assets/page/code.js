@@ -46,26 +46,42 @@ export const linesView = (lines, nums, cls) => {
 };
 export const extLang = (file) => (/\.([\w-]+)$/.exec(file || '') || [])[1];
 
+// Longest common subsequence of two string arrays as a walk over both: { t: 'same', i, j }, { t: 'del', i } (only in A) or { t: 'add', j } (only in B).
+// null when the arrays are too big for the table (the callers then treat everything as changed).
+export const lcs = (A, B) => {
+  const n = A.length, m = B.length;
+  if (n * m > 4e6) return null;
+  const dp = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) dp[i][j] = A[i] === B[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const walk = [];
+  let i = 0, j = 0;
+  while (i < n || j < m) {
+    if (i < n && j < m && A[i] === B[j]) { walk.push({ t: 'same', i, j }); i++; j++; }
+    else if (j >= m || (i < n && dp[i + 1][j] >= dp[i][j + 1])) walk.push({ t: 'del', i: i++ });
+    else walk.push({ t: 'add', j: j++ });
+  }
+  return walk;
+};
+
 // Before/after: rows line up on the longest common run of lines; removed and added lines are tinted, gaps hatched.
 export const alignRows = (a, b) => {
   const n = a.length, m = b.length;
   const A = a.map((s) => s.trimEnd()), B = b.map((s) => s.trimEnd());
   const rows = [];
-  if (n * m > 4e6) {
+  const walk = lcs(A, B);
+  if (!walk) {
     for (let k = 0; k < Math.max(n, m); k++) rows.push({ a: k < n ? k : null, b: k < m ? k : null, same: A[k] === B[k] });
     return rows;
   }
-  const dp = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
-  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) dp[i][j] = A[i] === B[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
-  let i = 0, j = 0, dels = [], adds = [];
+  let dels = [], adds = [];
   const flush = () => {
     for (let k = 0; k < Math.max(dels.length, adds.length); k++) rows.push({ a: dels[k] ?? null, b: adds[k] ?? null, same: false });
     dels = []; adds = [];
   };
-  while (i < n || j < m) {
-    if (i < n && j < m && A[i] === B[j]) { flush(); rows.push({ a: i++, b: j++, same: true }); }
-    else if (j >= m || (i < n && dp[i + 1][j] >= dp[i][j + 1])) dels.push(i++);
-    else adds.push(j++);
+  for (const step of walk) {
+    if (step.t === 'del') dels.push(step.i);
+    else if (step.t === 'add') adds.push(step.j);
+    else { flush(); rows.push({ a: step.i, b: step.j, same: true }); }
   }
   flush();
   return rows;

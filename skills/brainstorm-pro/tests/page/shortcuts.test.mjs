@@ -2,7 +2,7 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { launch, sleep } from '../harness/browser.mjs';
-import { hint, PASSAGE_HELPERS, READY, STATUS } from '../harness/page-helpers.mjs';
+import { CHOOSER, hint, PASSAGE_HELPERS, READY, STATUS } from '../harness/page-helpers.mjs';
 import { FIXTURES, outDir, render, serve } from '../harness/serve.mjs';
 import { writeRound } from '../fixtures/round.mjs';
 
@@ -19,11 +19,6 @@ const ring = () => b.eval(RING);
 const msg = () => b.status();
 const active = () => b.eval(`document.activeElement.id || document.activeElement.getAttribute('aria-label') || document.activeElement.tagName`);
 const helpOpen = () => b.eval(`!!document.querySelector('dialog[open]:has(dl)')`);
-// A key the page handled: its own listener prevented the default (the harness's last-in-line hook would hide a missing preventDefault, so a shortcut that moves focus could pass without it).
-const handled = async (k, mods) => {
-  await b.press(k, mods);
-  assert.equal(await b.eval('__keys.at(-1).pagePrevented'), true, k + ' must be prevented by the page itself');
-};
 // A key the page has no use for: it leaves the key alone.
 const ignored = async (k, mods) => {
   await b.press(k, mods);
@@ -55,7 +50,7 @@ const commonKeys = (page) => {
   it('the ? key and the header button open the dialog, which lists the page\'s keys', async () => {
     await b.eval('document.activeElement.blur()');
     await b.twSettle();
-    await handled('?', { shift: true });
+    await b.handled('?', { shift: true });
     await b.until(`!!document.querySelector('dialog[open]:has(dl)')`);
     await noTwWrites('the first ?');
     assert.deepEqual(await helpRows(), page.help);
@@ -108,7 +103,7 @@ const commonKeys = (page) => {
 
 describe('interview page keys', () => {
   const rounds = (d) => writeRound(d, (data) => {
-    data.questions[1].options[1].recommended = true;
+    data.questions[1].recommendation = { option: 'y', why: 'Y is enough.' };
     data.questions.push({ id: 'q03', n: 3, title: 'No recommendation here?', options: [{ id: 'm', label: 'Opt M' }, { id: 'n', label: 'Opt N' }] });
   });
   const checked = (q) => b.eval(`[...document.querySelectorAll('#card-${q} input:checked')].map((i) => i.value)`);
@@ -147,13 +142,13 @@ describe('interview page keys', () => {
   });
 
   it('J and K step between cards and stop at the ends; digits jump to the nth card', async () => {
-    await handled('k');
+    await b.handled('k');
     assert.equal(await ring(), 'card-q01');
     await b.press('k');
     assert.equal(await ring(), 'card-q01');
-    await handled('3');
+    await b.handled('3');
     assert.equal(await ring(), 'card-q03');
-    await handled('j');
+    await b.handled('j');
     assert.equal(await ring(), 'card-q03');
     await b.press('9');
     assert.equal(await ring(), 'card-q03');
@@ -178,7 +173,7 @@ describe('interview page keys', () => {
   it('A-D pick the option of the current card without scrolling; on a multi card they toggle; a missing option is ignored', async () => {
     await b.press('1');
     const y = await still();
-    await handled('b');
+    await b.handled('b');
     assert.deepEqual(await checked('q01'), ['b']);
     await b.press('a');
     assert.deepEqual(await checked('q01'), ['a']);
@@ -200,7 +195,7 @@ describe('interview page keys', () => {
     await b.press('2');
     const was = await checked('q02');
     await b.eval(`${STATUS} = ''`);
-    await handled('c');
+    await b.handled('c');
     await ignored('Enter', { meta: true, shift: true });
     assert.deepEqual(await checked('q02'), was);
     assert.equal(await msg(), '');
@@ -227,7 +222,7 @@ describe('interview page keys', () => {
 
   it('X and E check Khác / Cần giải thích and the cursor goes to the box; typed keys stay in the box; Esc leaves it', async () => {
     await b.press('1');
-    await handled('x');
+    await b.handled('x');
     assert.deepEqual(await checked('q01'), ['other']);
     assert.equal(await active(), 'q01-other');
     await b.press('j');
@@ -237,11 +232,11 @@ describe('interview page keys', () => {
     await b.press('Escape');
     assert.notEqual(await b.eval('document.activeElement.tagName'), 'TEXTAREA');
     assert.equal(await b.eval(`document.querySelector('#q01-other').value`), 'j2', 'Esc keeps the text');
-    await handled('e');
+    await b.handled('e');
     assert.deepEqual(await checked('q01'), ['explain']);
     assert.equal(await active(), 'q01-note');
     await b.press('Escape');
-    await handled('g');
+    await b.handled('g');
     assert.equal(await active(), 'q01-note');
     await b.press('Escape');
     await b.press('a');
@@ -253,11 +248,11 @@ describe('interview page keys', () => {
     assert.deepEqual(await checked('q02'), ['y']);
     for (const [k, box, want] of [['x', 'q02-other', ['y', 'other']], ['e', 'q02-note', ['explain']]]) {
       await b.eval(`document.activeElement.blur()`);
-      await handled(k);
+      await b.handled(k);
       assert.deepEqual(await checked('q02'), want);
       assert.equal(await active(), box);
       await b.press('Escape');
-      await handled(k);
+      await b.handled(k);
       assert.deepEqual(await checked('q02'), want, k + ' again keeps it checked');
       assert.equal(await active(), box, k + ' again focuses the box');
       await b.press('Escape');
@@ -377,7 +372,7 @@ describe('read-only document keys', () => {
     assert.equal(await ring(), null);
     assert.equal(await b.eval(`document.querySelectorAll('header button[title="Phím tắt"]').length`), 1);
     await b.twSettle();
-    await handled('j');
+    await b.handled('j');
     await b.until(`${RING} === 'Goals'`);
     await noTwWrites('the first J and the first ring');
   });
@@ -392,7 +387,7 @@ describe('read-only document keys', () => {
     const seen = [];
     for (let i = 0; i < 8; i++) { await b.press('j'); seen.push(await ring()); }
     assert.deepEqual(seen, ['Goals', 'Non-goals', 'Design', 'Components', 'Risks', 'Open', 'Open', 'Open']);
-    await handled('2');
+    await b.handled('2');
     assert.equal(await ring(), 'Design');
     await b.press('4');
     assert.equal(await ring(), 'Open');
@@ -450,7 +445,7 @@ describe('review document keys', () => {
 
   it('J, K and digits work as on the read-only page; the first J draws the ring without a stylesheet rebuild', async () => {
     await b.twSettle();
-    await handled('j');
+    await b.handled('j');
     await b.until(`${RING} === 'Goals'`);
     await noTwWrites('the first J and the first ring');
   });
@@ -459,13 +454,13 @@ describe('review document keys', () => {
     openViewer: VIEWER_LINK,
     help: [
       ['Điều hướng', [...NAV_DOC, 'N Góp ý đã viết kế tiếp']],
-      ['Thao tác', ['C Góp ý đoạn đang chọn, hoặc góp ý của mục đang chọn', 'G Góp ý chung', 'MOD Gửi góp ý', 'CHORD Duyệt (có góp ý thì bấm hai lần)']],
+      ['Thao tác', ['C Góp ý đoạn đang chọn, hoặc góp ý của mục đang chọn', 'E Sửa thành cho đoạn đang chọn', 'G Góp ý chung', 'MOD Gửi góp ý (có góp ý: chọn Duyệt / Cần sửa)', 'CHORD Duyệt (có góp ý: chọn Duyệt / Cần sửa)', 'D / S Trong khung gửi: Duyệt / Cần sửa']],
       COMMON,
     ],
   });
 
   it('digits and K work as on the read-only page', async () => {
-    await handled('3');
+    await b.handled('3');
     assert.equal(await ring(), 'Risks');
     await b.press('k');
     assert.equal(await ring(), 'Components');
@@ -476,10 +471,10 @@ describe('review document keys', () => {
     assert.equal(await msg(), 'Chưa có góp ý nào');
   });
 
-  it('A, B, D, R, X and E do nothing on the review page', async () => {
+  it('A, B, D, R, S and X do nothing on the review page', async () => {
     const was = { ring: await ring(), y: await still(), count: await b.eval(`document.querySelector('aside span').textContent`) };
     await b.eval(`${STATUS} = ''`);
-    for (const k of ['a', 'b', 'd', 'r', 'x', 'e']) await ignored(k);
+    for (const k of ['a', 'b', 'd', 'r', 's', 'x']) await ignored(k);
     assert.equal(await ring(), was.ring);
     assert.equal(await active(), 'BODY');
     assert.equal(await b.eval(`document.querySelector('aside span').textContent`), was.count);
@@ -489,7 +484,7 @@ describe('review document keys', () => {
   });
 
   it('G opens the general note; the box takes typed keys, Esc leaves it', async () => {
-    await handled('g');
+    await b.handled('g');
     assert.equal(await active(), 'Góp ý: Chung');
     await b.press('j');
     assert.equal(await b.eval(`document.activeElement.value`), 'j');
@@ -506,7 +501,7 @@ describe('review document keys', () => {
       await b.press('1');
       await unlocked();
       assert.equal(await ring(), 'Overview');
-      await handled('g');
+      await b.handled('g');
       await b.until(boxVisible('Góp ý: Chung'), { what: 'the general note is on screen' });
       await still();
       assert.equal(await ring(), 'Overview', 'the scroll caused by the focus is the page\'s own');
@@ -518,7 +513,7 @@ describe('review document keys', () => {
     await b.press('1');
     await b.press('2');
     await b.eval(`document.activeElement.blur()`);
-    await handled('c');
+    await b.handled('c');
     assert.equal(await active(), 'Góp ý: Design');
     assert.equal(await b.eval(`document.activeElement.closest('[data-note]').hidden`), false);
     await b.type('design note');
@@ -528,7 +523,7 @@ describe('review document keys', () => {
 
   it('C with a selection comments on it like the Góp ý button, and focuses the new note', async () => {
     await b.eval(`T.select('first goal bullet')`);
-    await b.until(`T.adder() === 'shown'`);
+    await b.until(`T.adder() !== 'hidden'`);
     await b.press('c');
     const id = await b.until(`T.boxes()[0]`);
     assert.equal(await b.eval(`document.activeElement === T.ta(${JSON.stringify(id)})`), true);
@@ -536,6 +531,29 @@ describe('review document keys', () => {
     assert.equal(await b.eval(`T.marks(${JSON.stringify(id)})`), 1);
     await b.type('goal note');
     await b.press('Escape');
+  });
+
+  it('E with a one-block selection opens a Sửa thành box with the phrase, focused; with two blocks or none it does nothing but is prevented', async () => {
+    await b.eval(`document.activeElement.blur()`);
+    await b.eval(`T.select('second goal bullet')`);
+    await b.until(`T.adder() !== 'hidden'`);
+    await b.handled('e');
+    const id = await b.until(`T.boxes().find((x) => T.ta(x).value === 'second goal bullet')`);
+    assert.equal(await b.eval(`document.activeElement === T.ta(${JSON.stringify(id)})`), true);
+    assert.equal(await b.eval(`T.ta(${JSON.stringify(id)}).selectionStart`), 'second goal bullet'.length);
+    await b.press('Escape');
+    await b.until(`!T.boxes().includes(${JSON.stringify(id)})`);
+    const was = await b.eval(`T.boxes().length`);
+    await b.eval(`T.select('first goal bullet', 'second goal bullet')`);
+    await b.until(`T.adder() !== 'hidden'`);
+    await b.eval(`${STATUS} = ''`);
+    await b.handled('e');
+    assert.equal(await msg(), 'Sửa thành chỉ dùng được trong một khối.');
+    assert.equal(await b.eval(`T.adder()`), 'passage', 'the buttons stay when no note was made');
+    await b.eval(`getSelection().removeAllRanges()`);
+    await b.handled('e');
+    await sleep(200);
+    assert.equal(await b.eval(`T.boxes().length`), was);
   });
 
   it('N walks the written notes in document order, wraps, and scrolls the box into view without focusing it', async () => {
@@ -560,9 +578,10 @@ describe('review document keys', () => {
     assert.equal(await ring(), 'Open', 'its own note first, then the next');
   });
 
-  it('⌘ Enter sends the notes, also while typing in a box', async () => {
+  it('⌘ Enter, also while typing in a box, opens the chooser; s sends the notes as Sửa', async () => {
     await b.eval(`document.querySelector('[aria-label="Góp ý: Chung"]').focus()`);
-    await b.press('Enter', { meta: true });
+    await b.handled('Enter', { meta: true });
+    await b.choose('s');
     const a = await s.answers();
     assert.equal(a.code, 0);
     assert.equal(a.lines[0], 'Quyết định: Sửa');
@@ -574,7 +593,7 @@ describe('review document keys', () => {
     s.kill();
     await open('intro');
     await b.eval(`T.select('few plain words')`);
-    await b.until(`T.adder() === 'shown'`);
+    await b.until(`T.adder() !== 'hidden'`);
     await b.press('c');
     const id = await b.until(`T.boxes()[0]`);
     await b.type('intro note');
@@ -618,19 +637,13 @@ describe('review document keys', () => {
     assert.deepEqual(a.lines, ['Quyết định: Duyệt']);
   });
 
-  it('⌘⇧ Enter with a note asks first, sends on the second press within 3 s, and starts over after 3 s', async () => {
+  it('⌘⇧ Enter with a note opens the chooser, and d sends Duyệt with the note', async () => {
     await open('chord-note');
     await fill('g', 'one note');
-    await b.press('Enter', { meta: true, shift: true });
-    await b.until(`/^Duyệt kèm 1 góp ý\\? Bấm .* lần nữa trong 3 giây$/.test(${STATUS})`);
-    assert.equal(await stillRunning(), true, 'the first press sends nothing');
-    // The page reads performance.now(), so moving it forward 5 s stands in for waiting.
-    await b.eval(`(() => { const now = performance.now.bind(performance); performance.now = () => now() + 5000; })()`);
-    await b.eval(`${STATUS} = ''`);
-    await b.press('Enter', { ctrl: true, shift: true });
-    await b.until(`/^Duyệt kèm 1 góp ý\\?/.test(${STATUS})`);
-    assert.equal(await stillRunning(), true, 'after 3 s the next press asks again');
-    await b.press('Enter', { meta: true, shift: true });
+    await b.handled('Enter', { meta: true, shift: true });
+    await b.until(CHOOSER);
+    assert.equal(await stillRunning(), true, 'the chord sends nothing by itself');
+    await b.handled('d');
     const a = await s.answers();
     assert.equal(a.code, 0);
     assert.deepEqual(a.lines, ['Quyết định: Duyệt', '[§ Chung] one note']);

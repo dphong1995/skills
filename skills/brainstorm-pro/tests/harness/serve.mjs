@@ -30,6 +30,7 @@ export const render = (src, out, args = [], opts) => {
 };
 
 // Starts --serve; `url` resolves to the served address, `done` to { code, stdout, stderr } when the script exits.
+// `opts.timeout` (default 20 s): after it the child is killed and `done` rejects with the last stderr lines.
 export const serve = (src, out, opts) => {
   const [cmd, a, o] = run(src, out, ['--serve', ...((opts && opts.args) || [])], opts);
   const p = spawn(cmd, a, o);
@@ -39,7 +40,11 @@ export const serve = (src, out, opts) => {
   url.catch(() => {});
   p.stdout.on('data', (d) => { stdout += d; const m = /Serving (\S+)/.exec(stdout); if (m) gotUrl.r(m[1]); });
   p.stderr.on('data', (d) => { stderr += d; });
-  const done = new Promise((r) => p.on('exit', (code) => { if (!/Serving/.test(stdout)) gotUrl.no(new Error('exited ' + code + ' ' + stderr)); r({ code, stdout, stderr }); }));
+  const done = new Promise((r, no) => {
+    const timer = setTimeout(() => { p.kill(); no(new Error(`serve timed out; stderr: ${stderr.trim().split('\n').slice(-5).join(' | ')}`)); }, (opts && opts.timeout) || 20000);
+    p.on('exit', (code) => { clearTimeout(timer); if (!/Serving/.test(stdout)) gotUrl.no(new Error('exited ' + code + ' ' + stderr)); r({ code, stdout, stderr }); });
+  });
+  done.catch(() => {});
   // The decision a finished run printed: { code, src, lines }.
   const answers = async () => { const r = await done; return { code: r.code, ...parseAnswers(r.stdout) }; };
   return { url, done, answers, kill: () => p.kill() };
@@ -53,13 +58,16 @@ export const parseAnswers = (stdout) => {
 };
 
 // A review served twice from `dir` (the round state lives beside the page): round 1 of doc.md, then round 2 of doc-v2.md. Returns round 2's server.
-export const serveRound2 = async (dir) => {
+// `round1(server)` may drive round 1 (type notes, send them) before it is stopped.
+export const serveRound2 = async (dir, round1) => {
   const md = dir + '/doc.md';
   copyFileSync(FIXTURES + '/doc.md', md);
   copyFileSync(FIXTURES + '/code.ts', dir + '/code.ts');
   const first = serve(md, dir + '/review-01.html');
-  await first.url;
-  first.kill();
+  try {
+    await first.url;
+    if (round1) await round1(first);
+  } finally { first.kill(); }
   await first.done;
   copyFileSync(FIXTURES + '/doc-v2.md', md);
   return serve(md, dir + '/review-02.html');

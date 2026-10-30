@@ -1,8 +1,8 @@
-import { btnCls, closeForm, el, HL_BOX, HL_QUOTE, HL_QUOTE_ROW, MARK, modal, NOTE_BTN, THUMB, THUMB_DEL, THUMB_IMG, THUMB_NUM } from './dom.js';
+import { btnCls, closeForm, EDIT_TAG, el, HL_BOX, HL_QUOTE, HL_QUOTE_ROW, MARK, modal, NOTE_BTN, THUMB, THUMB_DEL, THUMB_IMG, THUMB_NUM } from './dom.js';
 import { hlLines, LH, linesView, PAD } from './code.js';
 
 // Elements built when the user acts take their classes from here, so Tailwind compiles them at load (@source inline alone still rebuilds on first use).
-document.body.append(el('div', { hidden: true, class: [MARK, HL_BOX, HL_QUOTE_ROW, HL_QUOTE, NOTE_BTN, THUMB, THUMB_IMG, THUMB_NUM, THUMB_DEL].join(' ') }));
+document.body.append(el('div', { hidden: true, class: [MARK, EDIT_TAG, HL_BOX, HL_QUOTE_ROW, HL_QUOTE, NOTE_BTN, THUMB, THUMB_IMG, THUMB_NUM, THUMB_DEL].join(' ') }));
 
 // One modal shows a whole file, an image or a mockup at full size; Esc, the backdrop or Đóng closes it.
 const viewerTitle = el('span', { class: 'flex-1 min-w-0 font-mono text-[12px] wrap-anywhere' });

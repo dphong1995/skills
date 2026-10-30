@@ -1,6 +1,6 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { FIXTURES, outDir, parseAnswers, render, serve } from '../harness/serve.mjs';
 import { writeRound } from '../fixtures/round.mjs';
@@ -78,6 +78,8 @@ describe('the served interview page', () => {
 });
 
 describe('the served document page', () => {
+  const post = (url, body) => fetch(url.href + 'answers', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: url.origin }, body: JSON.stringify(body) });
+
   it('serves a review page and prints ANSWERS <document> the same way', async () => {
     const d = caseDir('doc');
     const s = serve(FIXTURES + '/doc.md', d + '/review-01.html');
@@ -85,11 +87,53 @@ describe('the served document page', () => {
     const page = await (await fetch(url.href)).text();
     assert.ok(page.includes('"review":true'));
     assert.ok(readFileSync(d + '/review-01.html', 'utf8').includes('"review":true'), 'the written file is the review page too');
-    const r = await fetch(url.href + 'answers', { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: url.origin }, body: JSON.stringify({ text: 'Quyết định: Duyệt' }) });
+    const r = await post(url, { text: 'Quyết định: Duyệt' });
     assert.equal(r.status, 200);
     const done = await s.done;
     assert.equal(done.code, 0);
     assert.deepEqual(parseAnswers(done.stdout), { src: FIXTURES + '/doc.md', lines: ['Quyết định: Duyệt'] });
+  });
+
+  const stateOf = (d) => JSON.parse(readFileSync(d + '/.review-state.json', 'utf8'));
+
+  it('saves the notes the review posts into the state file, dropping malformed items', async () => {
+    const d = caseDir('notes');
+    const s = serve(FIXTURES + '/doc.md', d + '/review-01.html');
+    const url = new URL(await s.url);
+    const good = [{ kind: 'section', key: 'Design', text: 'a' },
+      { kind: 'passage', key: 'Overview', lines: 'dòng 5', quote: 'q', text: 'b' },
+      { kind: 'edit', key: 'Overview', lines: 'dòng 5', quote: 'q', to: 'z', text: '' }];
+    const bad = [null, 'x', 5, [], { kind: 'section', key: 'k' }, { kind: 1, key: 'k', text: 't' }, { kind: 'section', key: 'k', text: 't', lines: 3 },
+      { kind: 'other', key: 'k', text: 't' }, { kind: 'edit', key: 'k', quote: 'q', text: '' }, { kind: 'edit', key: 'k', quote: 'q', to: 5, text: '' }];
+    assert.equal((await post(url, { text: 'Quyết định: Sửa', notes: [...bad, ...good] })).status, 200);
+    const done = await s.done;
+    assert.equal(done.code, 0);
+    assert.equal(done.stderr, '');
+    assert.deepEqual(parseAnswers(done.stdout), { src: FIXTURES + '/doc.md', lines: ['Quyết định: Sửa'] });
+    assert.deepEqual(Object.values(stateOf(d))[0].notes, good);
+  });
+
+  it('prints ANSWERS and exits 0 with one stderr line when the notes cannot be saved', async () => {
+    const d = caseDir('notes-fail');
+    const s = serve(FIXTURES + '/doc.md', d + '/review-01.html');
+    const url = new URL(await s.url);
+    rmSync(d + '/.review-state.json');
+    mkdirSync(d + '/.review-state.json');
+    assert.equal((await post(url, { text: 'Quyết định: Duyệt', notes: [{ kind: 'general', key: 'Chung', text: 'a' }] })).status, 200);
+    const done = await s.done;
+    assert.equal(done.code, 0);
+    assert.match(done.stderr, /^Could not save the review notes: .+\n$/);
+    assert.equal(done.stderr.trim().split('\n').length, 1);
+    assert.deepEqual(parseAnswers(done.stdout).lines, ['Quyết định: Duyệt']);
+  });
+
+  it('a review POST whose notes are not an array leaves the state as written', async () => {
+    const d = caseDir('notes-none');
+    const s = serve(FIXTURES + '/doc.md', d + '/review-01.html');
+    const url = new URL(await s.url);
+    assert.equal((await post(url, { text: 'Quyết định: Duyệt', notes: 'nope' })).status, 200);
+    await s.done;
+    assert.equal(Object.values(stateOf(d))[0].notes, undefined);
   });
 
   it('--open writes a read-only page and exits 0; a failing open exits 4', () => {
@@ -130,13 +174,25 @@ describe('render-interview.mjs on bad input', () => {
     assert.equal(html.includes('"send"'), false);
   });
 
+  it('rejects invalid JSON in one line', () => {
+    const d = caseDir('bad-json');
+    writeFileSync(d + '/round.json', '{ "questions": [');
+    const r = render(d + '/round.json', d + '/page.html');
+    assert.equal(r.code, 1);
+    assert.match(r.stderr, /round\.json: not valid JSON: /);
+    assert.equal(r.stderr.trim().split('\n').length, 1);
+    assert.ok(!/\n\s+at /.test(r.stderr));
+  });
+
   const big = join(dir, 'cases', 'big.png');
   const cases = {
     'empty questions': [(x) => { x.questions = []; }, '"questions" must be a non-empty array'],
     'missing title': [(x) => { delete x.questions[0].title; }, 'questions[0] is missing "title"'],
     'missing options': [(x) => { delete x.questions[1].options; }, 'questions[1] is missing "options"'],
-    'two recommended': [(x) => { x.questions[0].options[0].recommended = true; }, 'questions[0] marks 2 options "recommended"; mark one'],
-    'recommendation without a recommended option': [(x) => { delete x.questions[0].options[1].recommended; }, 'questions[0] has "recommendation" but no option with "recommended": true'],
+    'the old recommended flag': [(x) => { x.questions[0].options[0].recommended = true; }, 'has "recommended"; name the pick in the question\'s "recommendation"'],
+    'a recommendation naming no option': [(x) => { x.questions[0].recommendation.option = 'zzz'; }, 'option "zzz" is not an option id'],
+    'an unknown field': [(x) => { x.questions[0].titel = 'x'; }, 'unknown field "titel"; did you mean "title"?'],
+    'a missing code file': [(x) => { x.questions[0].context[1].file = '/nonexistent/code.ts'; }, 'cannot read /nonexistent/code.ts (ENOENT)'],
     'relative root': [(x) => { x.root = 'fixtures'; }, '"root" must be an absolute path: fixtures'],
     'relative code file': [(x) => { x.questions[0].context[1].file = 'fixtures/code.ts'; }, 'code "file" must be an absolute path: fixtures/code.ts'],
     'lines outside the file': [(x) => { x.questions[0].context[1].lines = [1, 99]; }, 'lines 1-99 are outside'],
@@ -153,6 +209,8 @@ describe('render-interview.mjs on bad input', () => {
       const r = render(writeRound(d, mutate), d + '/page.html');
       assert.equal(r.code, 1);
       assert.ok(r.stderr.includes(message), r.stderr);
+      assert.equal(r.stderr.trim().split('\n').length, 1, 'one line');
+      assert.ok(!/\n\s+at /.test(r.stderr), 'no stack frame');
       assert.equal(existsSync(d + '/page.html'), false, 'no page is written');
     });
   }

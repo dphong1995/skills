@@ -166,8 +166,8 @@ The scope-fixing question (Q0) and the Phase 3 approach pick are asked the same 
 ## Phase 3: Propose 2-3 Approaches
 
 After Q&A, present 2-3 viable approaches as the last question on the interview page: one option
-per approach (`means`, `example`, `pros`, `cons`, `effort`), the recommended one marked, the
-reason in `recommendation`. In content terms:
+per approach (`means`, `example`, `pros`, `cons`, `effort`), the pick and its
+reason in `recommendation: { option, why }`. In content terms:
 
 ```
 **Approach A — [name]** (RECOMMENDED)

@@ -34,12 +34,18 @@ compared with the one before (state in `review-<slug>/.review-state.json`), so t
 
 On a served page every `##` and `###` heading has a **Góp ý** button and a **Góp ý chung** box
 closes the page; selecting text shows a **Góp ý** button that marks the passage and opens a note
-under it; the bar has **Duyệt** and **Gửi góp ý** (Cmd/Ctrl+Enter). Note boxes take pasted or
+under it; next to it, for a selection inside one block, **Sửa thành** opens a box to type the replacement
+text (an unchanged box counts as empty); code blocks have a Copy button; the bar has **Duyệt** and **Gửi góp ý**
+(Cmd/Ctrl+Enter). With at least one note, every send (either button, `⌘Enter`, `⌘⇧Enter`) first asks in a dialog:
+**Duyệt** (`D`: apply the notes and go on) or **Cần sửa** (`S`: revise and show again), no default, `Enter` does
+nothing; with no notes Duyệt sends at once. Note boxes take pasted or
 dropped images (`[Ảnh #N]`). Notes autosave in the browser. A sent Duyệt or Gửi góp ý closes the tab. Before
 an answer is sent or copied, closing or reloading the tab asks first (the browser's own dialog, shown only after
 the user has clicked or typed on the page).
-Keys: `J`/`K` move between headings, `C` comments the selection (or the current section), `G` the general
-box, `⌘Enter` sends, `⌘⇧Enter` is Duyệt (pressed twice within 3 s when notes exist), `?` lists them all.
+Keys: `J`/`K` move between headings, `C` comments the selection (or the current section), `E` is Sửa thành, `G` the general
+box, `⌘Enter` sends, `⌘⇧Enter` is Duyệt (with notes the chooser opens first), `D`/`S` choose inside the chooser, `?` lists them all.
+From round 2 the page shows the notes of the previous round under their sections ("Góp ý lần trước"; general notes and
+those whose section is gone in the "Lần N" alert) and a **Xem chỗ đổi** toggle with a word diff of what changed.
 
 ## Reading the answer
 
@@ -49,12 +55,19 @@ The command prints `ANSWERS <md path>` and then:
 Quyết định: Duyệt | Sửa
 [§ <section>] <note>            (subsections: "<section> › <subsection>")
 [§ <section> · dòng N-M] «<quote>» → <note>      (a selected passage; long quotes cut "head … tail")
+[§ <section> · dòng N-M] «<old>» ⇒ «<new>»        (Sửa thành: the whole old text, never cut)
 [§ Chung] <note>
 Ảnh #1: <path>
 ```
 
 `dòng N-M` are lines of the `.md`: Read only those when the file is no longer in context. Read
 each `Ảnh #N` file before acting on the note that mentions it.
+
+`⇒` is a replacement: find `<old>` inside those `.md` lines (it is rendered text, so the source may add
+backticks, `**` or link syntax around it), replace it with `<new>` and keep the surrounding markup. If it cannot
+be found there, say so in chat instead of guessing elsewhere. A `«…» ⇒ «…»` line may span several lines: a
+code selection keeps its line breaks in `<old>` and a replacement may contain newlines, so read to the closing `»`.
+The quote of a `→` or `⇒` line is the rendered text, not the `.md` source.
 
 - `Duyệt`: apply any notes (they are small fixes), then go on in the same turn. This opens the
   gate the document was shown for (brainstorm-pro Phase 6, cook 1E).

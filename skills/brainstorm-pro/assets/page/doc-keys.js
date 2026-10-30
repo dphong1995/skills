@@ -1,25 +1,13 @@
 import { after, KEY_HINT, KEY_HINT_SHIFT } from './dom.js';
-import { sayFor, say } from './fab.js';
+import { say } from './fab.js';
 
 // The document page's key list: the ## and ### heading rows are the targets. `review` is null on the read-only page, which keeps navigation only.
 export const docKeys = (sc, review) => {
   const nav = sc.nav('Tiêu đề kế', 'Tiêu đề trước', 'Mục ## thứ n');
   if (!review) return nav;
-  const { filled, rowNote, rowBefore, commentSelection, general, deliver, sent } = review;
+  const { filled, rowNote, rowBefore, commentSelection, general, submit } = review;
   // N goes on from the note it last showed, else from the current heading.
   let last = null;
-  let armed = -Infinity;
-  const approve = () => {
-    if (sent()) return;
-    const n = filled().length;
-    if (n && performance.now() - armed > 3000) {
-      armed = performance.now();
-      sayFor('warn', 'Duyệt kèm ' + n + ' góp ý? Bấm ' + KEY_HINT_SHIFT + ' lần nữa trong 3 giây', 3000);
-      return;
-    }
-    armed = -Infinity;
-    deliver('Duyệt');
-  };
   // A box of a note, focused: hold the ring so the scroll to it does not move it.
   const focusBox = (n) => {
     n.box.hidden = false;
@@ -44,8 +32,10 @@ export const docKeys = (sc, review) => {
       const n = commentSelection() || rowNote.get(sc.current());
       if (n) focusBox(n);
     } },
+    { k: 'e', group: 'Thao tác', label: 'Sửa thành cho đoạn đang chọn', run: () => { const n = commentSelection('edit'); if (n) focusBox(n); } },
     { k: 'g', group: 'Thao tác', label: 'Góp ý chung', run: () => { const n = general(); if (n) focusBox(n); } },
-    { k: 'mod+Enter', show: KEY_HINT, group: 'Thao tác', label: 'Gửi góp ý', typing: true, run: () => deliver('Sửa') },
-    { k: 'mod+shift+Enter', show: KEY_HINT_SHIFT, group: 'Thao tác', label: 'Duyệt (có góp ý thì bấm hai lần)', typing: true, run: approve },
+    { k: 'mod+Enter', show: KEY_HINT, group: 'Thao tác', label: 'Gửi góp ý (có góp ý: chọn Duyệt / Cần sửa)', typing: true, run: () => submit('Sửa') },
+    { k: 'mod+shift+Enter', show: KEY_HINT_SHIFT, group: 'Thao tác', label: 'Duyệt (có góp ý: chọn Duyệt / Cần sửa)', typing: true, run: () => submit('Duyệt') },
+    { show: 'D / S', group: 'Thao tác', label: 'Trong khung gửi: Duyệt / Cần sửa' },
   ];
 };
