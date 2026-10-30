@@ -220,9 +220,21 @@ test('a stop whose compaction leaves the context at the limit continues once and
   expect(w.compacts.length).toBe(1)
   expect(w.submits).toEqual([CONTINUE])
   expect(text((await step($, 1)).chunks)).toBe('model')
+  expect(text((await step($, 2)).chunks)).toBe('model')
   await complete($, w)
   expect(w.compacts.length).toBe(2)
   expect(w.submits.length).toBe(1)
+})
+
+test('a compaction that leaves the context above the threshold but below the limit does not stop later in the continue turn', async ($, on) => {
+  const w = world(on, { tokens: 400 * K })
+  await step($, 1)
+  w.tokens = 301 * K
+  await complete($, w)
+  expect(w.submits).toEqual([CONTINUE])
+  expect(text((await step($, 1)).chunks)).toBe('model')
+  w.tokens = 400 * K
+  expect(text((await step($, 2)).chunks)).toBe('model')
 })
 
 test('after a continue the stop is still on when the context fell below the limit', async ($, on) => {
@@ -300,11 +312,12 @@ test('a stop is spent by the next turn end even when the token count is unknown'
   await step($, 1)
   w.tokens = undefined
   await complete($, w)
-  const compacts = w.compacts.length
+  expect(w.compacts.length).toBe(1)
+  expect(w.submits).toEqual([CONTINUE])
   w.tokens = 100 * K
   await complete($, w)
-  expect(w.compacts.length).toBe(compacts)
-  expect(w.submits.length).toBe(compacts)
+  expect(w.compacts.length).toBe(1)
+  expect(w.submits).toEqual([CONTINUE])
 })
 
 test('an aborted turn ending at 300k does not compact, an aborted stop still does', async ($, on) => {

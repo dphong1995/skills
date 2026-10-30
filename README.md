@@ -75,8 +75,9 @@ nguyên, file cũ được sao lưu trước. Chạy lại `install.sh` không t
   trong `settings/settings.json` của repo rồi chạy `install.sh` (không sửa ở `~/.claude/settings.json`
   vì `install.sh` ghi đè khoá `skillOverrides`).
 - Mod `mods/main-context-compact` (nạp qua `env.CLAUDE_CODE_PLUGIN_DIRS`): tự compact context của main
-  thread. Các ngưỡng so với con số HUD/status line (input + cache token của API), cao hơn `/context` khoảng 15–20k. Hết lượt mà context ≥ 300k thì compact; đang giữa lượt mà chạm 400k thì dừng lượt, compact rồi
-  tự chạy tiếp; hết lượt ở ≥ 200k mà bạn không gửi gì trong 55 phút thì compact trước khi cache 1 giờ hết
+  thread. Các ngưỡng so với con số HUD/status line (input + cache token của API), cao hơn `/context`
+  khoảng 15–20k. Hết lượt mà context ≥ 300k thì compact; đang giữa lượt mà chạm 400k thì dừng lượt,
+  compact rồi tự chạy tiếp; hết lượt ở ≥ 200k mà bạn không gửi gì trong 55 phút thì compact trước khi cache 1 giờ hết
   hạn. Chỉ áp cho main thread, subagent vẫn dùng `subagent-context-guard`. Đổi các con số ở `/config` →
   main-context-compact (lưu trong `pluginConfigs` của `~/.claude/settings.json`). Tắt: xoá
   `CLAUDE_CODE_PLUGIN_DIRS` trong `~/.claude/settings.json` và trong `settings/settings.json` của repo,

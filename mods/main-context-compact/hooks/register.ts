@@ -19,7 +19,7 @@ let idleTimer: Timer | undefined
 
 const compact = ($: EngineInterface) => {
   compacting = true
-  return $.session.compact({ instructions: INSTRUCTIONS }).then(
+  return Promise.resolve().then(() => $.session.compact({ instructions: INSTRUCTIONS })).then(
     (r) => r.skip === undefined,
     () => false,
   ).then((done) => {
@@ -48,7 +48,7 @@ export const register: Register = (on, options) => {
     const tokens = (await $.session.usage()).context.tokens ?? 0
     if (checkAfterStop) {
       checkAfterStop = false
-      if (tokens >= hardLimit) hardStopOff = true
+      if (tokens >= threshold) hardStopOff = true
     } else if (tokens >= hardLimit && (await $.session.surfaces()).length > 0) {
       stopPending = true
       const text = `Context ${Math.round(tokens / 1000)}k ≥ ${Math.round(hardLimit / 1000)}k: dừng turn để compact, xong sẽ tự làm tiếp.`
@@ -75,7 +75,14 @@ export const register: Register = (on, options) => {
         if (!done) hardStopOff = true
         else if (turns === mainTurns) {
           checkAfterStop = true
-          void $.prompt.submit({ text: CONTINUE })
+          $.prompt.submit({ text: CONTINUE }).then(
+            (r) => {
+              if (r.drop !== undefined) checkAfterStop = false
+            },
+            () => {
+              checkAfterStop = false
+            },
+          )
         }
       })
     } else {
