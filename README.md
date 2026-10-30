@@ -102,7 +102,10 @@ skills/
                       production (đếm gộp các repo) hoặc có nhiều cách sửa → gọi cook (Step 1 rút
                       gọn); nhỏ hơn → sửa thẳng
 
-agents/               19 subagent definition mà cook/ck-plan gọi tới
+agents/               19 subagent definition mà cook/ck-plan gọi tới; tất cả đều chặn tool `Artifact` (`disallowedTools`)
+
+hooks/                reply-language.mjs (Stop), subagent-context-guard.mjs (PostToolUse) và `tests/` của hook
+                      (xem mục Settings và hook bên trên)
 
 claude-md/            Khối quy tắc luôn bật, install.sh giữ trong ~/.claude/CLAUDE.md (xem mục bên trên)
 
