@@ -60,6 +60,12 @@ nguyên, file cũ được sao lưu trước. Chạy lại `install.sh` không t
   văn xuôi tiếng Anh (bỏ qua code, blockquote, đường dẫn; câu dưới 8 chữ bỏ qua), nó chặn một lần
   để Claude viết lại bằng tiếng Việt. Tắt bằng `/hooks` hoặc xoá nhóm hook đó trong
   `~/.claude/settings.json`.
+- `"skillOverrides"`: tắt 38 skill `anthropic-skills:*` của org không dùng cho code (marketing, sales,
+  RFP, regulatory, ...), vì danh sách skill được nhét vào context của mọi agent, tốn khoảng 4,5k token
+  mỗi lượt gọi. Giữ lại 10 skill: `built-in-browser`, `chrome-browser`, `deep-research`, `docs`, `docx`,
+  `google-workspace`, `pdf`, `pptx`, `skill-creator`, `xlsx`. Bật lại một skill bằng cách xoá dòng của nó
+  trong `~/.claude/settings.json` (hoặc đặt `"on"`); chạy lại `install.sh` sẽ ghi đè cả khoá
+  `skillOverrides` theo repo.
 
 ## Đẩy thay đổi ngược lên repo
 
