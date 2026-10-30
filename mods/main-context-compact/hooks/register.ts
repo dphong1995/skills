@@ -2,7 +2,7 @@
 // mid-turn at `hardLimit` (the turn is ended, compacted, then continued by a prompt), and
 // `idleMinutes` after a turn that ended at or above `idleThreshold` if no turn started since.
 // Subagent events and headless sessions pass through untouched.
-import type { On, PluginOptions, Register } from 'claude-code'
+import type { EngineInterface, Register, Timer } from 'claude-code'
 
 const INSTRUCTIONS =
   "Keep what is needed to continue without re-reading the transcript: the user's latest request and whether it is answered; the skill or workflow in progress (name, step, round) and the paths of its plan, spec and phase files; decisions made and why; files changed and their state; commands and tests still to run with their last results; background agents and commands still running and what each is for; questions waiting for the user."
@@ -12,62 +12,77 @@ const CONTINUE =
 
 let stopPending = false
 let hardStopOff = false
-let idleTimer: { cancel: () => void } | undefined
+let checkAfterStop = false
+let compacting = false
+let mainTurns = 0
+let idleTimer: Timer | undefined
 
-type Engine = Parameters<Parameters<On>[2]>[0]
+const compact = ($: EngineInterface) => {
+  compacting = true
+  return $.session.compact({ instructions: INSTRUCTIONS }).then(
+    (r) => r.skip === undefined,
+    () => false,
+  ).then((done) => {
+    compacting = false
+    if (done) hardStopOff = false
+    return done
+  })
+}
 
-const compact = ($: Engine) =>
-  $.session.compact({ instructions: INSTRUCTIONS }).then((r) => !('skip' in r))
-
-export const register: Register = (on, options: PluginOptions) => {
+export const register: Register = (on, options) => {
   const threshold = Number(options.threshold)
   const hardLimit = Number(options.hardLimit)
   const idleThreshold = Number(options.idleThreshold)
   const idleMs = Number(options.idleMinutes) * 60_000
 
   on('turn.start', async ($, e, next) => {
-    if (!e.agentId) idleTimer?.cancel()
+    if (!e.agentId) {
+      idleTimer?.cancel()
+      mainTurns++
+    }
     return next(e)
   })
 
   on('turn.step', async function* ($, e, next) {
-    if (!e.agentId && e.index > 0 && (await $.session.surfaces()).length > 0) {
-      const tokens = (await $.session.usage()).context.tokens
-      if (tokens !== undefined && tokens >= hardLimit && !hardStopOff && !stopPending) {
-        stopPending = true
-        const text = `Context ${Math.round(tokens / 1000)}k ≥ ${Math.round(hardLimit / 1000)}k: dừng turn để compact, xong sẽ tự làm tiếp.`
-        yield { kind: 'text', index: 0, text }
-        yield { kind: 'stop', stopReason: 'end_turn', usage: null }
-        return { turnId: e.turnId, index: e.index, answer: text, toolUses: [], stopReason: 'end_turn', usage: null }
-      }
+    if (e.agentId || e.index === 0 || hardStopOff || stopPending || compacting) return yield* next(e)
+    const tokens = (await $.session.usage()).context.tokens ?? 0
+    if (checkAfterStop) {
+      checkAfterStop = false
+      if (tokens >= hardLimit) hardStopOff = true
+    } else if (tokens >= hardLimit && (await $.session.surfaces()).length > 0) {
+      stopPending = true
+      const text = `Context ${Math.round(tokens / 1000)}k ≥ ${Math.round(hardLimit / 1000)}k: dừng turn để compact, xong sẽ tự làm tiếp.`
+      yield { kind: 'text', index: 0, text }
+      yield { kind: 'stop', stopReason: 'end_turn', usage: null }
+      return { turnId: e.turnId, index: e.index, answer: text, toolUses: [], stopReason: 'end_turn', usage: null }
     }
     return yield* next(e)
   })
 
   on('turn.complete', async ($, e, next) => {
     const r = await next(e)
-    if (e.agentId || (await $.session.surfaces()).length === 0) return r
-    const tokens = (await $.session.usage()).context.tokens
-    if (tokens === undefined) return r
-    if (stopPending || tokens >= threshold) {
-      const wasStop = stopPending
-      stopPending = false
-      compact($).then(
-        (done) => {
-          if (done) {
-            hardStopOff = false
-            if (wasStop) void $.prompt.submit({ text: CONTINUE })
-          } else if (wasStop) hardStopOff = true
-        },
-        () => {
-          if (wasStop) hardStopOff = true
-        },
-      )
-    } else if (tokens >= idleThreshold) {
+    if (e.agentId) return r
+    checkAfterStop = false
+    const wasStop = stopPending
+    stopPending = false
+    const tokens = (await $.session.usage()).context.tokens ?? 0
+    const now = wasStop || (tokens >= threshold && !e.isAborted)
+    if (compacting || (!now && tokens < idleThreshold) || (await $.session.surfaces()).length === 0) return r
+    if (now) {
+      const turns = mainTurns
+      void compact($).then((done) => {
+        if (!wasStop) return
+        if (!done) hardStopOff = true
+        else if (turns === mainTurns) {
+          checkAfterStop = true
+          void $.prompt.submit({ text: CONTINUE })
+        }
+      })
+    } else {
       idleTimer?.cancel()
       idleTimer = $.clock.after(idleMs, () => {
         idleTimer = undefined
-        compact($).catch(() => {})
+        if (!compacting) void compact($)
       })
     }
     return r

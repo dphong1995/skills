@@ -75,13 +75,14 @@ nguyên, file cũ được sao lưu trước. Chạy lại `install.sh` không t
   trong `settings/settings.json` của repo rồi chạy `install.sh` (không sửa ở `~/.claude/settings.json`
   vì `install.sh` ghi đè khoá `skillOverrides`).
 - Mod `mods/main-context-compact` (nạp qua `env.CLAUDE_CODE_PLUGIN_DIRS`): tự compact context của main
-  thread. Hết lượt mà context ≥ 300k thì compact; đang giữa lượt mà chạm 400k thì dừng lượt, compact rồi
+  thread. Các ngưỡng so với con số HUD/status line (input + cache token của API), cao hơn `/context` khoảng 15–20k. Hết lượt mà context ≥ 300k thì compact; đang giữa lượt mà chạm 400k thì dừng lượt, compact rồi
   tự chạy tiếp; hết lượt ở ≥ 200k mà bạn không gửi gì trong 55 phút thì compact trước khi cache 1 giờ hết
   hạn. Chỉ áp cho main thread, subagent vẫn dùng `subagent-context-guard`. Đổi các con số ở `/config` →
   main-context-compact (lưu trong `pluginConfigs` của `~/.claude/settings.json`). Tắt: xoá
   `CLAUDE_CODE_PLUGIN_DIRS` trong `~/.claude/settings.json` và trong `settings/settings.json` của repo,
-  nếu không lần `install.sh` sau sẽ đặt lại. `install.sh` đặt `CLAUDE_CODE_PLUGIN_DIRS` thành một giá trị
-  duy nhất, nên muốn nạp thêm thư mục plugin khác thì thêm vào chính giá trị đó. Sau mỗi lần cập nhật
+  nếu không lần `install.sh` sau sẽ đặt lại. Muốn nạp thêm thư mục plugin khác thì thêm
+  vào `env.CLAUDE_CODE_PLUGIN_DIRS` trong `settings/settings.json` của repo, ngăn cách bằng `:`, rồi chạy
+  `install.sh` (giá trị chỉ sửa ở `~/.claude/settings.json` sẽ bị thay ở lần cài sau). Sau mỗi lần cập nhật
   Claude Code chạy `claude plugin validate ~/.claude/mods/main-context-compact` và
   `claude plugin test ~/.claude/skills-repo/mods/main-context-compact`.
 
@@ -145,8 +146,10 @@ các gate tương tác trong phase design của brainstorm-pro/cook).
   - Bug fix: once the root cause is confirmed, invoke the `routing-bug-fixes-to-cook` skill before writing the fix.
   ```
   Skill này dùng chế độ Step 1 rút gọn của `cook`, nên phải cài cùng bản `cook` trong repo.
-- `install.sh` không đụng tới `settings.json`, `CLAUDE.md` hay plugin — những thứ đó cấu hình riêng
-  (riêng `hud/install.sh` ghi 2 key `statusLine`, `omcHud` của `settings.json`).
+- `install.sh` merge `settings/settings.json` vào `~/.claude/settings.json` (`env` theo từng biến, các
+  key khác bị ghi đè, nhóm hook được thêm vào), ghi các khối trong `claude-md/`, cài `mods/` và đặt
+  `CLAUDE_CODE_PLUGIN_DIRS`, nhưng không đụng tới plugin từ marketplace (`enabledPlugins`). Riêng
+  `hud/install.sh` ghi 2 key `statusLine`, `omcHud`.
 
 ## cmux
 
