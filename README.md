@@ -63,12 +63,13 @@ nguyên, file cũ được sao lưu trước. Chạy lại `install.sh` không t
   `~/.claude/settings.json`.
 - Hook `PostToolUse` chạy `hooks/subagent-context-guard.mjs`: khi context của một subagent vượt ngưỡng
   (Sonnet 200k, Opus 300k) nó nhắc đúng một lần để subagent làm xong bước đang dở rồi trả báo cáo bắt
-  đầu bằng `PARTIAL`; orchestrator giao phần còn lại cho agent mới. Main thread không bị đụng tới. Chạy
-  lại `install.sh` sẽ thêm nhóm hook này lại, nên muốn tắt hẳn thì xoá nó khỏi `settings/settings.json`
-  của repo. Test: `node --test 'hooks/tests/*.test.mjs'` (dạng thư mục lỗi trên Node 24).
+  đầu bằng `PARTIAL`; orchestrator giao phần còn lại cho agent mới. Main thread không bị đụng tới. Tắt
+  bằng `/hooks` hoặc xoá nhóm hook đó trong `~/.claude/settings.json`, và phải xoá luôn khỏi
+  `settings/settings.json` của repo, vì `install.sh` chỉ thêm nhóm hook chứ không bao giờ xoá, nên chạy
+  lại sẽ thêm nó trở lại. Test: `node --test 'hooks/tests/*.test.mjs'` (dạng thư mục lỗi trên Node 24).
 - `"skillOverrides"`: tắt 38 skill `anthropic-skills:*` của org không dùng cho code (marketing, sales,
-  RFP, regulatory, ...), vì danh sách skill được nhét vào context của mọi agent; danh sách rút từ khoảng 30k xuống khoảng 21k ký tự, tức khoảng 2,3k token mỗi
-  lượt gọi. Giữ lại 10 skill: `built-in-browser`, `chrome-browser`, `deep-research`, `docs`, `docx`,
+  RFP, regulatory, ...), vì danh sách skill được nhét vào context của mọi agent; danh sách rút từ khoảng
+  30k xuống khoảng 21k ký tự, tức khoảng 2,3k token mỗi lượt gọi. Giữ lại 10 skill: `built-in-browser`, `chrome-browser`, `deep-research`, `docs`, `docx`,
   `google-workspace`, `pdf`, `pptx`, `skill-creator`, `xlsx`. Bật lại một skill bằng cách xoá dòng của nó
   trong `settings/settings.json` của repo rồi chạy `install.sh` (không sửa ở `~/.claude/settings.json`
   vì `install.sh` ghi đè khoá `skillOverrides`).

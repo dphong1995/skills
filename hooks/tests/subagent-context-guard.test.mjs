@@ -107,7 +107,7 @@ test('synthetic records are skipped', () => {
 
 test('unsafe agent_id is silent', () => {
   const e = setup([record('claude-sonnet-5-5', 250000)]);
-  e.agent_id = '../x';
+  e.agent_id = `${e.agent_id}/../agent-${e.agent_id}`;
   assertSilent(run(e));
 });
 

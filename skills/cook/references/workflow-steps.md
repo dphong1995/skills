@@ -162,15 +162,13 @@ Report the test results and dispatch the Step 5 review in the same turn — do n
 
 | Diff | Dispatch |
 |------|----------|
-| Small | **One** `code-reviewer` with Dispatch 1/2's prompt, changed in two places: "Return TWO sections" becomes "Return THREE sections", and a `### Section C — Cleanup (non-gating, no severity)` is added, built from Dispatch 2/2's "Project conventions are binding" paragraph, the four lens blocks (R first, with the `Reuse searched:` line) and the Collapse block. It does NOT get Dispatch 2/2's role paragraph or its second "Diff under review" block. A correctness defect a lens finds goes straight into Section B |
+| Small | **One** `code-reviewer` with Dispatch 1/2's prompt, changed in three places: "Return TWO sections — both required, no exceptions" becomes "Return THREE sections — all three required, no exceptions"; a `### Cleanup (non-gating, no severity)` section is added, built from Dispatch 2/2's "Project conventions are binding" paragraph, the four lens blocks (R first, with the `Reuse searched:` line) and the Collapse block; and the prompt says a correctness defect a lens finds goes straight into Section B, never into Cleanup. It does NOT get Dispatch 2/2's role paragraph or its second "Diff under review" block |
 | Large | **Two** fresh `code-reviewer`s **in one message** so they run concurrently, as below |
 
 | # | Agent | Lens | Gating? |
 |---|-------|------|---------|
 | 1 | `code-reviewer` | Section A plan-compliance + Section B bugs by severity | **YES** |
 | 2 | `code-reviewer` | **Reuse + Simplification + Efficiency + Altitude** — one agent, four lenses, Reuse first | no |
-
-On the small path the single reviewer is agent 1 plus Section C; Section A and Section B gate, Section C does not.
 
 Agent 2 runs the four cleanup lenses of the `simplify` skill as a review-only sub-agent. Use `code-reviewer` for every reviewer: it is read-only (no Write/Edit), so no reviewer can violate the Step 3 gate. Fall back to `critic`, then `general-purpose`.
 
@@ -207,8 +205,11 @@ Agent(
   <paste each phase sub-agent's final report>
 
   ## Diff under review
-  Use `git diff <base-branch>...HEAD` (or `git status` + `git diff --staged`
-  if working uncommitted) to list changed files and read them.
+  Diff against the same base as the size check (the merge-base with
+  <base-branch>, or the commit recorded at the start of Step 3 when the work
+  is on the base branch itself), plus uncommitted and untracked changes
+  (`git status`, `git ls-files -o --exclude-standard`). List the changed
+  files and read them.
 
   ## CRITICAL: do not trust the implementer reports
   Read the actual code at HEAD. Phase sub-agents may have skipped,
@@ -256,11 +257,14 @@ Role paragraph (agent 2 only):
   than reporting it as a cleanup finding.
 
   ## Diff under review
-  Use `git diff <base-branch>...HEAD` (or `git status` + `git diff --staged`
-  if working uncommitted). Read the actual files, not just the hunks.
+  Diff against the same base as the size check (the merge-base with
+  <base-branch>, or the commit recorded at the start of Step 3 when the work
+  is on the base branch itself), plus uncommitted and untracked changes
+  (`git status`, `git ls-files -o --exclude-standard`). Read the actual files,
+  not just the hunks.
 ```
 
-Conventions paragraph (shared with the small path's Section C):
+Conventions paragraph (shared with the small path's Cleanup section):
 
 ```
   ## Project conventions are binding
@@ -337,7 +341,7 @@ Wait for every reviewer, then split the findings. This split is the whole point 
 | **Blocking** | Section A any ❌ | **Non-overridable.** Dispatch a fix sub-agent or abort. Nothing else. |
 | **Blocking** | Section B Critical or High | Dispatch a fix sub-agent, cycle++ |
 | **Non-blocking** | Section B Medium / Low | Apply what is worth applying; state each skip and why |
-| **Non-blocking** | Agent 2, or Section C of the single reviewer (all four lenses) | Same — apply-or-skip-with-reason. **Never** blocks Step 6, **never** increments the cycle counter |
+| **Non-blocking** | Agent 2, or the Cleanup section of the single reviewer (all four lenses) | Same — apply-or-skip-with-reason. **Never** blocks Step 6, **never** increments the cycle counter |
 
 **Dedup across every report before applying.** The cleanup reviewer has already collapsed its own four lenses; do not undo that by re-splitting its merged findings. Findings pointing at the same line or the same mechanism collapse into one; when a cleanup lens and Section B overlap, keep Section B's (it carries the severity that drives the gate). When you skip a cleanup finding for behaviour change or scope and it carries a `Fallback:`, judge the fallback on its own.
 
@@ -355,12 +359,12 @@ Cleanup edits change working code, so the step is NOT done when the fixes land:
 
 Skipping this is how a "quality pass" ships a regression. `simplify` on its own has no verification phase — that gap is closed here, not inherited.
 
-**Cycle (max 3):** as defined in `review-cycle.md`. **Re-dispatch only the gating reviewer** (agent 1, or the single reviewer without Section C) on every re-review (cycle > 0) — the cleanup lenses run **once**, on the first pass. Re-running them per cycle repeats the review cost for findings you already hold.
+**Cycle (max 3):** as defined in `review-cycle.md`. **Re-dispatch only the gating reviewer** (agent 1, or the single reviewer without its Cleanup section) on every re-review — the cleanup lenses run **once**, on the first pass. Re-running them per cycle repeats the review cost for findings you already hold.
 
-**Scoped re-review (every re-review (cycle > 0); both diff sizes).** Take a tree snapshot immediately before AND immediately after the fix batch:
+**Scoped re-review (every re-review, both diff sizes).** Take a tree snapshot before the fix batch, and a second one after re-verify and any revert (§ After applying, step 3):
 
 ```
-IDX=$(mktemp); cp "$(git rev-parse --git-path index)" "$IDX"; GIT_INDEX_FILE=$IDX git add -A; GIT_INDEX_FILE=$IDX git write-tree; rm -f "$IDX"
+IDX=$(mktemp -u); G=$(git rev-parse --git-path index); [ -f "$G" ] && cp "$G" "$IDX"; GIT_INDEX_FILE=$IDX git add -A; GIT_INDEX_FILE=$IDX git write-tree; rm -f "$IDX"
 ```
 
 It does not touch the real index and covers tracked edits, untracked files and commits. Write down the two printed tree ids literally — shell variables do not survive between Bash calls. The delta is `git diff <before-tree> <after-tree>`.
@@ -446,7 +450,7 @@ If a plan path is provided at Step 0, skip Steps 1–2 and start at Step 3.
 - **MANDATORY SUBAGENT DELEGATION:** Steps 3, 4, 5, 6 MUST spawn subagents via the `Agent` tool. DO NOT implement, test, or review directly. Resolve every type through `subagent-patterns.md` § Agent Name Mapping first.
   - Step 3: `executor` / `designer` for frontend (one per phase)
   - Step 4: `test-engineer` (and `debugger` if failures)
-  - Step 5: `code-reviewer` sized by the diff (§ Step 5) — small: one reviewer returning Section A, Section B and Section C (Cleanup); large: two in ONE message — agent 1 returns the dual-section gating report (Section A plan-compliance, non-overridable + Section B bugs by severity); agent 2 runs Reuse (first) + Simplification + Efficiency + Altitude and collapses findings that are one change. Cleanup lenses never gate. Re-verify after any fix batch.
+  - Step 5: `code-reviewer` sized by the diff (§ Step 5) — small: one reviewer returning Section A, Section B and a Cleanup section; large: two in ONE message — agent 1 returns the dual-section gating report (Section A plan-compliance, non-overridable + Section B bugs by severity); agent 2 runs Reuse (first) + Simplification + Efficiency + Altitude and collapses findings that are one change. Cleanup lenses never gate. Re-verify after any fix batch.
   - Step 6: `executor` (sync-back), `writer` (docs), `git-master` (commit)
 - **ALWAYS** create a task list — use `TaskCreate` for each unchecked item with priority order and dependencies (or `TodoWrite` if Task tools unavailable). This is never skipped.
 - **ALWAYS** keep the task list updated in lock-step, not just at the end:

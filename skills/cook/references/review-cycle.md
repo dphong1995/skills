@@ -10,7 +10,7 @@ Step 5 dispatches one review sub-agent (small diff) or two in one message (large
 - **Section A — Plan Compliance:** per-acceptance-criterion verdicts (✅ / ❌ MISSING / ❌ WRONG / ⚠ EXTRA). **Non-overridable** — any ❌ means dispatch a fix sub-agent, not "note it and move on".
 - **Section B — Code Quality (bugs):** severity-rated findings (Critical / High / Medium / Low). Critical + High gate; the score / critical_count / warnings / suggestions tally is built from this section.
 
-**Non-gating — from agent 2, or Section C (Cleanup) of the single reviewer (reuse + simplification + efficiency + altitude, already collapsed across its own lenses):**
+**Non-gating — from agent 2, or the Cleanup section of the single reviewer (reuse + simplification + efficiency + altitude, already collapsed across its own lenses):**
 - Findings carry `file`, `line`, `summary`, and the concrete cost — **no severity**, because they are not bugs. They are applied or skipped with a stated reason, and they **never** gate Step 6 or increment the cycle counter.
 
 Done means Section A = all ✅ **and** Section B = no Critical / no High. Remaining Medium/Low findings and all cleanup findings are applied or explicitly skipped with a stated reason in the final report — then re-verified (see `workflow-steps.md` § After applying).
@@ -22,7 +22,7 @@ cycle = 0
 LOOP:
   1. cycle == 0 → small diff: 1 reviewer (gating + Cleanup section)
                   large diff: fan out both agents in one message
-     cycle >  0 → every re-review (cycle > 0): scoped re-review of the gating
+     cycle >  0 → scoped re-review of the gating
                   reviewer ONLY, using the template in `workflow-steps.md`
                   § Scoped re-review: the fixed findings + the before/after
                   tree delta, not the whole change
