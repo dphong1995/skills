@@ -220,9 +220,12 @@ approach is settled, go on to 1E.
 - **User says "just code it" / "skip planning"** → respect it. Collapse Step 1 to: minimal scout
   (≤3 actions) + one confirmation question + a 5-line design block, then go to Step 2.
 - **Bug fix handed off by `routing-bug-fixes-to-cook`** (root cause confirmed) → same collapse, with
-  the investigation as the scout: Q&A only for a genuinely open question, the candidate fixes with a
-  recommendation (2+ candidates → one question on the interview page) + a 5-line design block, one
-  approval in chat (no `design.md`, no review page), then Step 2.
+  the investigation as the scout: Q&A only for a genuinely open question, then ONE interview-page
+  question that is the approval: the candidate fixes as options with a `recommendation` (a single
+  candidate → options Duyệt / Cần sửa) and the 5-line design block in `context`; files that differ
+  per candidate go in each option's `means`. A listed fix or Duyệt starts Step 2, with no chat
+  approval, no `design.md` and no review page. Cần sửa or Khác → apply the note to the design block
+  and ask again under a new id.
 - **Topic too large** → decompose into sub-projects; cook only the first.
 - **Scope keeps drifting** → freeze scope explicitly; document drifted items as Open Items.
 - **No clear recommendation possible** → present approaches with trade-offs, ask the user to

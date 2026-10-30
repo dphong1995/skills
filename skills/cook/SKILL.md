@@ -36,7 +36,7 @@ Do NOT write implementation code until a design has been approved (Step 1) and a
 This applies regardless of task simplicity. "Simple" tasks are where unexamined assumptions waste the most time.
 User override: If user explicitly says "just code it" or "skip planning", respect their instruction —
 collapse Step 1 to a minimal scout + one confirmation (see `references/design-phase.md` § Escalation).
-A bug fix handed off by `routing-bug-fixes-to-cook` collapses Step 1 the same way (same § Escalation).
+A bug fix handed off by `routing-bug-fixes-to-cook` collapses Step 1 the same way (same § Escalation), except that its one confirmation is the fix pick on the interview page.
 </HARD-GATE>
 
 <HARD-GATE>
@@ -142,7 +142,7 @@ The review (Step 5) is a **single fan-out of two sub-agents in one message**: ag
   1. `executor` subagent → run full plan sync-back (all completed tasks/steps across all `phase-XX-*.md`, not only current phase), then update `plan.md` status/progress
   2. `writer` subagent → update `./docs` if changes warrant
   3. `TaskUpdate` → mark all Claude Tasks complete after sync-back verification (or `TodoWrite` if Task tools unavailable)
-  4. Ask user if they want to commit via the `git-master` subagent
+  4. Ask on the interview page (`../brainstorm-pro/references/html-interview.md`), not in chat, whether to commit (and push) via the `git-master` subagent
 
 ## Required Subagents (MANDATORY)
 

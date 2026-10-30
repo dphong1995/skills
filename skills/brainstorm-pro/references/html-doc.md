@@ -7,7 +7,8 @@ page built from the `.md` by the same script and page as the interview
 write HTML or JSON for a document. Questions still go on the interview page.
 
 **Not opened:** the plan inside an auto-running ck-plan → cook chain (the chat summary is enough),
-and a document so short it fits in a chat message (a 5-line design block).
+and a document so short it fits in a chat message; a 5-line design block goes in the question it
+belongs to.
 
 ## Showing a document
 

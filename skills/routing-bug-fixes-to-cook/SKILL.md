@@ -25,7 +25,7 @@ Run it after the root cause is confirmed and BEFORE the first test or fix edit. 
 | SMALL | Continue systematic-debugging Phase 4. |
 | SMALL, then a 3rd production file appears or the fix passes 50 production lines | STOP editing. Invoke `cook` with the findings and the edits made so far. |
 
-While fixing in-line, after every fix edit run `git diff --stat` in each repository you edited and add up the fix's production lines; a new file counts all its lines (untracked files are not in `git diff`).
+While fixing in-line, after every fix edit run `git diff --stat` in each repository you edited and add up the fix's production lines; a new file counts all its lines (untracked files are not in `git diff`). When the in-line fix is done, ask on the interview page (`~/.claude/skills/brainstorm-pro/references/html-interview.md`), not in chat, whether to commit (and push).
 
 Only the user's explicit words skip the gate ("sửa luôn, không cần cook", "skip cook"). Urgency is not permission.
 
@@ -38,12 +38,12 @@ Bug fix from routing-bug-fixes-to-cook — root cause confirmed. Step 1 runs col
 Symptom: <what the user sees>
 Root cause: <file:line — what is wrong + the evidence>
 Files to change: <list, per repository>
-Candidate fixes: <2-3, recommended first>
+Candidate fixes: <1-3, recommended first>
 Failing test: <the test that reproduces it>
 Edits so far: <files already changed and their state, or "none">
 ```
 
-Collapsed Step 1 (cook `references/design-phase.md` § Escalation): the investigation is the scout; ask Q&A only for a genuinely open question; present the candidate fixes with a recommendation and the 5-line design block; get ONE approval. From Step 2 on, cook runs exactly as written — executor sub-agents do every edit, the first phase writes the failing test, and the review fan-out still runs.
+Collapsed Step 1 (cook `references/design-phase.md` § Escalation): the investigation is the scout; ask Q&A only for a genuinely open question; the candidate fixes (recommended first) and the 5-line design block are one interview-page question, whose pick is the only approval (none in chat). From Step 2 on, cook runs exactly as written — executor sub-agents do every edit, the first phase writes the failing test, and the review fan-out still runs.
 
 ## Rationalizations
 

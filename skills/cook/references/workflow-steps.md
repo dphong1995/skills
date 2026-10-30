@@ -372,7 +372,7 @@ box in its file is ticked. Re-read the phase file before writing its row.
    - Return unresolved mappings if any completed task cannot be matched to a phase file.
 3. Use `TaskUpdate` to mark Claude Tasks complete after sync-back confirmation.
 4. Onboarding check (API keys, env vars).
-5. Ask user whether to commit; if yes, **MUST** spawn: `Agent(subagent_type="git-master", prompt="Stage and commit changes", description="Commit")`.
+5. Ask whether to commit (and push) on the interview page (`../brainstorm-pro/references/html-interview.md`), not in chat; if yes, **MUST** spawn: `Agent(subagent_type="git-master", prompt="Stage and commit changes; push if the user chose it", description="Commit")`.
 
 **CRITICAL:** Step 6 is INCOMPLETE without spawning all required subagents. DO NOT skip subagent delegation.
 
