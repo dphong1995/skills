@@ -152,20 +152,29 @@ The task list MUST be kept in lock-step with reality after EVERY phase: `in_prog
 
 **Output:** `✓ Step 4: Tests [X/X passed] - testing subagent invoked`
 
-Report the test results and dispatch the Step 5 review fan-out in the same turn — do not stop for approval. Tests must be 100% green first; if they are not, fix them before proceeding.
+Report the test results and dispatch the Step 5 review in the same turn — do not stop for approval. Tests must be 100% green first; if they are not, fix them before proceeding.
 
-## Step 5: Combined Review — 2-agent fan-out (MANDATORY, single message)
+## Step 5: Combined Review — sized by the diff (MANDATORY)
 
-After phase implementation and testing, dispatch **two** fresh review sub-agents **in one message** so they run concurrently:
+**Size check first.** Run `git diff --numstat <base>` (base = the plan's base branch or commit) and add the line count of each untracked file. Drop test files (`*.test.*`, `*.spec.*`, `__tests__/`, `tests/`). The diff is **small** when added + removed ≤ 80 lines AND ≤ 3 files; otherwise **large**. State the numbers in the Step 5 output line.
+
+| Diff | Dispatch |
+|------|----------|
+| Small | **One** `code-reviewer`: Dispatch 1/2's prompt followed by Dispatch 2/2's preamble and four lens blocks as a third, non-gating section. It returns Section A, Section B and Cleanup |
+| Large | **Two** fresh `code-reviewer`s **in one message** so they run concurrently, as below |
 
 | # | Agent | Lens | Gating? |
 |---|-------|------|---------|
 | 1 | `code-reviewer` | Section A plan-compliance + Section B bugs by severity | **YES** |
 | 2 | `code-reviewer` | **Reuse + Simplification + Efficiency + Altitude** — one agent, four lenses, Reuse first | no |
 
-Agent 2 runs the four cleanup lenses of the `simplify` skill as a review-only sub-agent. Use `code-reviewer` for both: it is read-only (no Write/Edit), so no reviewer can violate the Step 3 gate. Fall back to `critic`, then `general-purpose`.
+On the small path the single reviewer is agent 1 plus the cleanup section; Section A and Section B gate, Cleanup does not. Do not reproduce the prompts — refer to Dispatch 1/2 and 2/2 by name and paste them in order.
 
-**Model:** dispatch both with `model: "opus"` — this is the post-implementation verification pass.
+Agent 2 runs the four cleanup lenses of the `simplify` skill as a review-only sub-agent. Use `code-reviewer` for every reviewer: it is read-only (no Write/Edit), so no reviewer can violate the Step 3 gate. Fall back to `critic`, then `general-purpose`.
+
+**Model:** dispatch every reviewer with `model: "opus"` — this is the post-implementation verification pass.
+
+**Why size the review:** on small bug fixes the two reviewers cost $6-17 against $1-4 for the executor, and every re-review repeated the whole change. A diff of a few lines gives the cleanup lenses little to find, so one reviewer holding all of it is enough; the second agent pays off only when there is enough code for the lenses to work on.
 
 **Why the four cleanup lenses share one agent:** they work off the same working set — the changed files, the mechanism beneath them, and the shared modules they could have used — and their fixes subsume each other. Copied code is both a Reuse finding ("call the existing helper") and a Simplification finding ("this duplicates X"). The Altitude fix routinely absorbs a Simplification and an Efficiency finding: repair the shared mechanism and the special cases, the duplication and the redundant work all vanish together. One agent holding all four can report "these are one change"; isolated agents cannot, and the orchestrator — which sees only their summaries, not the code — collapses them badly.
 
@@ -173,7 +182,7 @@ Agent 2 runs the four cleanup lenses of the `simplify` skill as a review-only su
 
 **Why not one agent per lens like `simplify` does:** `simplify` dedups **and applies** the fixes in the same head, so the cross-lens collapse just moves from review time to apply time. Cook forbids that (§ Forbidden: fixes always go to a sub-agent), so in cook the collapse would land in the orchestrator working from summaries — the weakest possible place. One cleanup reviewer keeps the synthesis where the code understanding is.
 
-**Why one fan-out instead of two steps:** same wall-clock as the old single reviewer, and one gate for the user instead of two. The cost is that gating and non-gating findings arrive together — § Verdict below is what keeps them from turning to mush. Read it before acting on any finding.
+**Why one dispatch instead of two steps:** same wall-clock as the old single reviewer, and one gate for the user instead of two. The cost is that gating and non-gating findings arrive together — § Verdict below is what keeps them from turning to mush. Read it before acting on any finding.
 
 **Why quality is a separate lens from bugs:** agent 2 is looking at reuse/complexity/efficiency/depth, NOT correctness. Agent 1 owns bugs. Do not let the cleanup agent argue a correctness defect — if it does, re-file it under Section B severity and treat it as gating.
 
@@ -232,7 +241,7 @@ Agent(
 
 ### Dispatch 2/2 — cleanup lenses (non-gating)
 
-Same message as dispatch 1. It gets the same plan files + diff scope, plus the preamble and all four lens blocks below in one prompt. It returns findings as `file`, `line`, one-line `summary`, and **the concrete cost** — what is duplicated, wasted, or made harder to maintain — plus the `Reuse searched:` line. No severity ratings; these are not bugs.
+Large diff: same message as dispatch 1. Small diff: no separate agent — its preamble and lens blocks are appended to dispatch 1's prompt. It gets the same plan files + diff scope, plus the preamble and all four lens blocks below in one prompt. It returns findings as `file`, `line`, one-line `summary`, and **the concrete cost** — what is duplicated, wasted, or made harder to maintain — plus the `Reuse searched:` line. No severity ratings; these are not bugs.
 
 Preamble:
 
@@ -315,16 +324,16 @@ Lens blocks (all four, in this order):
 
 ### Verdict — gating vs non-gating
 
-Wait for **both**, then split the findings. This split is the whole point of the step; do not blend them into one score.
+Wait for every reviewer, then split the findings. This split is the whole point of the step; do not blend them into one score.
 
 | Bucket | Source | Effect |
 |--------|--------|--------|
 | **Blocking** | Section A any ❌ | **Non-overridable.** Dispatch a fix sub-agent or abort. Nothing else. |
 | **Blocking** | Section B Critical or High | Dispatch a fix sub-agent, cycle++ |
 | **Non-blocking** | Section B Medium / Low | Apply what is worth applying; state each skip and why |
-| **Non-blocking** | Agent 2 (all four lenses) | Same — apply-or-skip-with-reason. **Never** blocks Step 6, **never** increments the cycle counter |
+| **Non-blocking** | Agent 2, or the Cleanup section of the single reviewer (all four lenses) | Same — apply-or-skip-with-reason. **Never** blocks Step 6, **never** increments the cycle counter |
 
-**Dedup across both before applying.** Agent 2 has already collapsed its own four lenses; do not undo that by re-splitting its merged findings. Findings pointing at the same line or the same mechanism collapse into one; when a cleanup lens and Section B overlap, keep Section B's (it carries the severity that drives the gate). When you skip a cleanup finding for behaviour change or scope and it carries a `Fallback:`, judge the fallback on its own.
+**Dedup across every report before applying.** The cleanup reviewer has already collapsed its own four lenses; do not undo that by re-splitting its merged findings. Findings pointing at the same line or the same mechanism collapse into one; when a cleanup lens and Section B overlap, keep Section B's (it carries the severity that drives the gate). When you skip a cleanup finding for behaviour change or scope and it carries a `Fallback:`, judge the fallback on its own.
 
 **Apply blocking and non-blocking fixes in the SAME dispatch**, blocking first. Tell the applier that blocking fixes take precedence and to **drop any cleanup finding that the blocking fix already resolved or made stale** — otherwise it patches code that no longer exists.
 
@@ -340,11 +349,16 @@ Cleanup edits change working code, so the step is NOT done when the fixes land:
 
 Skipping this is how a "quality pass" ships a regression. `simplify` on its own has no verification phase — that gap is closed here, not inherited.
 
-**Cycle (max 3):** as defined in `review-cycle.md`. **Re-dispatch only agent 1** on cycle 2 and 3 — agent 2 fans out **once**, on the first pass. Re-running it per cycle doubles the review cost for findings you already hold.
+**Cycle (max 3):** as defined in `review-cycle.md`. **Re-dispatch only the gating reviewer** (agent 1, or the single reviewer without the cleanup section) on cycle 2 and 3 — the cleanup lenses run **once**, on the first pass. Re-running them per cycle repeats the review cost for findings you already hold.
 
-**Forbidden:** patching code in-line based on the review. Fixes are always dispatched to a sub-agent. Running the fan-out more than once per cook run. Letting a cleanup finding block Step 6.
+**Scoped re-review (every cycle after the first, both sizes).** Before dispatching a fix batch, record `SNAP=$(git stash create)` (it changes nothing in the working tree; if it prints nothing, use `HEAD`) and the list of untracked files. The re-review prompt carries:
+- the blocking findings that batch fixed, verbatim;
+- `git diff $SNAP` plus the content of any untracked files created since;
+- the instruction: check only that each listed finding is resolved and that the changed lines introduce no new Critical or High bug — do not re-review the rest of the change, and do not re-run Section A over criteria the fix did not touch.
 
-**Output:** `✓ Step 5: Review — Section A [✅|❌ N gaps] / Section B [score]/10 / Cleanup [N applied, M skipped] — re-verify [✅|❌] — [Approved|Awaiting fix]`
+**Forbidden:** patching code in-line based on the review. Fixes are always dispatched to a sub-agent. Running the cleanup lenses more than once per cook run. Letting a cleanup finding block Step 6.
+
+**Output:** `✓ Step 5: Review ([N] lines / [M] files → [1|2] reviewer[s]) — Section A [✅|❌ N gaps] / Section B [score]/10 / Cleanup [N applied, M skipped] — re-verify [✅|❌] — [Approved|Awaiting fix]`
 
 ## Step 6: Finalize
 
@@ -384,7 +398,7 @@ Legend: `[R]` = human gate
 
 ```
 0 → 1A scout → 1B research → 1C Q&A [R per round] → 1D approaches → 1E design.md review page [R, notes per section]
-  → 2 (orchestrator writes plan + self-review) → 3 (sub-agent per phase) → 4 (test sub-agent) → 5 (review fan-out x2) → 6 (finalize sub-agents)
+  → 2 (orchestrator writes plan + self-review) → 3 (sub-agent per phase) → 4 (test sub-agent) → 5 (review sized by the diff: 1 or 2 reviewers) → 6 (finalize sub-agents)
 ```
 
 All human gates live in Step 1. Steps 2–6 run straight through; only the final commit is confirmed.
@@ -397,7 +411,7 @@ If a plan path is provided at Step 0, skip Steps 1–2 and start at Step 3.
 - **MANDATORY SUBAGENT DELEGATION:** Steps 3, 4, 5, 6 MUST spawn subagents via the `Agent` tool. DO NOT implement, test, or review directly. Resolve every type through `subagent-patterns.md` § Agent Name Mapping first.
   - Step 3: `executor` / `designer` for frontend (one per phase)
   - Step 4: `test-engineer` (and `debugger` if failures)
-  - Step 5: `code-reviewer` ×2 in ONE message — agent 1 returns the dual-section gating report (Section A plan-compliance, non-overridable + Section B bugs by severity); agent 2 runs Reuse (first) + Simplification + Efficiency + Altitude and collapses findings that are one change. Cleanup lenses never gate. Re-verify after any fix batch.
+  - Step 5: `code-reviewer` sized by the diff — small (≤ 80 lines, ≤ 3 files, tests excluded): one reviewer returning Section A, Section B and the Cleanup section; large: two in ONE message — agent 1 returns the dual-section gating report (Section A plan-compliance, non-overridable + Section B bugs by severity); agent 2 runs Reuse (first) + Simplification + Efficiency + Altitude and collapses findings that are one change. Cleanup lenses never gate. Re-verify after any fix batch.
   - Step 6: `executor` (sync-back), `writer` (docs), `git-master` (commit)
 - **ALWAYS** create a task list — use `TaskCreate` for each unchecked item with priority order and dependencies (or `TodoWrite` if Task tools unavailable). This is never skipped.
 - **ALWAYS** keep the task list updated in lock-step, not just at the end:
