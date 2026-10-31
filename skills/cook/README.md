@@ -55,7 +55,7 @@ From Step 2 onward it runs end to end without pausing; only the final commit is 
 | Planning | **none** — orchestrator writes the plan itself from the approved design block, in `ck-plan`'s format |
 | Implementation (one per phase) | `executor` / `designer` (frontend) |
 | Testing | `test-engineer`, `debugger` |
-| Review (sized by the diff) | `code-reviewer` ×1 (small diff) or ×2 (large) — compliance+bugs (gating) / reuse+simplification+efficiency+altitude |
+| Review (sized by the diff) | `code-reviewer` ×1 (small diff) or ×2 (large) — compliance (incl. `in scope` AC rows checked against the saved Jira text)+bugs (gating) / reuse+simplification+efficiency+altitude |
 | Fix application | `code-simplifier` (cleanup-only) / `executor` / `debugger` |
 | Finalize | `executor` (sync-back), `writer` (docs), `git-master` (commit) |
 
