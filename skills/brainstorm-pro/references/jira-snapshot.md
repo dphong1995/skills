@@ -19,13 +19,20 @@ message. The orchestrator reads only their reports, not the ticket text. Give ea
 path, its story keys and the absolute `<plan-root>`.
 
 ## Fetch (per story)
-- `getJiraIssue(key, fields=["summary","status","issuetype","description"], properties=["acceptanceCriteria"])`
-- `listJiraIssueComments(key)`, every page.
+- `cloudId`: `getAccessibleAtlassianResources` once, reused for every call.
+- `getJiraIssue(cloudId, key, view="full", properties=["acceptanceCriteria"], fields=["summary","status","issuetype","description"])`.
+  Without `view: "full"` the response has no `properties` and no `issuetype`.
+- `listJiraIssueComments(cloudId, key)`, every page.
 
-AC source, the first that exists:
-1. `properties.acceptanceCriteria.items`: one string; split it before each ` AC-<n> `.
-2. An "Acceptance criteria" heading in the description.
+AC source, the first that applies:
+1. The response has `properties.acceptanceCriteria` with items: `items` is one string; split it before
+   each ` AC-<n> `.
+2. The response has a `properties` object without `acceptanceCriteria`, or with empty items: the
+   "Acceptance criteria" heading in the description; drop the leading `- [ ] ` / `- [x] ` from each line.
 3. Neither: write `- none` under the heading.
+
+The response has no `properties` object at all: the call was wrong. Report
+`<KEY> error: no properties in the response`; never fall back to the description.
 
 ## File
 `<plan-root>` is the project's plan root (`plans/` in the main checkout, the same for every
@@ -42,6 +49,7 @@ Type: <issuetype> · Status: <status> · Fetched: <ISO time with offset>
 ## Comments
 - #<id> <author> <YYYY-MM-DD>: <verbatim>
 ```
+No comments: write `- none` under `## Comments`.
 
 ## Compare with the last save
 When `<plan-root>/jira/<KEY>.md` already exists:
