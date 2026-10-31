@@ -111,7 +111,7 @@ once —
    dependencies declared.
 4. **Ambiguity** — any phase step interpretable two ways? Pick one, make it explicit.
 5. **Format** — `plan.md` has complete frontmatter, a Phases table with human-readable links, and
-   `## Acceptance Criteria`; every phase file has Success Criteria + Related Code Files.
+   `## Acceptance Criteria`; every phase file has Success Criteria + Related Code Files; `## AC Traceability` when design.md has Truy vết AC, with each `in scope` row id listed in its phase's Success Criteria.
 
 Fix issues inline (plan files only — never production code). No re-review loop.
 
@@ -131,7 +131,7 @@ Before dispatching phase 1, record `git rev-parse HEAD` and write the printed co
 
 **Dispatch rules:**
 - **One sub-agent per phase.** Read the `phase-XX-*.md` file, extract scope/files/acceptance criteria, embed verbatim into the sub-agent prompt.
-- **Batch reads line.** Append the line from `subagent-patterns.md` § Every prompt to every sub-agent prompt cook writes (Steps 3-6).
+- **Batch reads line.** Append the line from `subagent-patterns.md` § Every prompt to every sub-agent prompt cook writes.
 - **MANDATORY `TaskUpdate` `in_progress` BEFORE every dispatch.** Mark the phase task `in_progress` immediately before spawning its sub-agent — never dispatch a phase whose task is still `pending`.
 - **Parallel when independent.** Phases with disjoint file ownership are dispatched in a single message with multiple `Agent` tool calls.
 - **Sequential when dependent.** Wait for prerequisite phase to return before dispatching the next.
@@ -250,7 +250,7 @@ Agent(
 )
 ```
 
-Fill `<plan-root>` with the absolute plan root (here and in § Scoped re-review).
+Fill `<plan-root>` with the absolute plan root that holds `jira/` (jira-snapshot.md § File: in a worktree, the main checkout's), here and in § Scoped re-review.
 
 ### Dispatch 2/2 — cleanup lenses (non-gating)
 

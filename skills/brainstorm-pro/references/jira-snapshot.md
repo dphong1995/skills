@@ -29,6 +29,8 @@ AC source, the first that applies:
    `- [x] `. Two or more such headings: report `<KEY> error: several AC headings in the description`.
 3. Neither: write `- none` under the heading.
 
+Keep an item's own `AC-<n>`; number unnumbered description lines in order.
+
 ## File
 `<plan-root>`: the plan root from ck-plan's SKILL.md § Plan Directory Resolution; in a worktree, the main checkout's, so every worktree shares one `jira/`. Copy Jira text verbatim; never summarize, translate or reword it.
 
@@ -48,17 +50,20 @@ No comments: write `- none` under `## Comments`.
 ## Compare with the last save
 When `<plan-root>/jira/<KEY>.md` already exists:
 1. Compare the `AC-<n>` lines under `## Acceptance criteria` (whitespace collapsed) and the set of
-   comment ids. Nothing else counts: summary, status and description edits do not, so the saved
-   `Status:` may be older than Jira.
+   comment ids.
 2. Different → move the old file to `<plan-root>/jira/history/<KEY>.<YYYY-MM-DDTHHMM>.md` (its
-   `Fetched:` time), then write the new file. Same → leave the file untouched; do not rewrite `Fetched:`.
+   `Fetched:` time), then write the new file.
+3. Same, but the summary, status or `## Description` differ (whitespace collapsed) → rewrite the file
+   in place, no history copy; report `<KEY> unchanged, details edited`.
+4. Nothing differs → leave the file untouched; do not rewrite `Fetched:`.
 
 ## Report
-One line per story:
+One line per issue:
 - `<KEY> new`
 - `<KEY> unchanged`
+- `<KEY> unchanged, details edited`
 - `<KEY> changed: AC-8, AC-9 (new), AC-3 (removed), comment #88650`
-- `<KEY> no AC` (on every run while it has none)
+- `<KEY> no AC` (on every run while it has none; append `, changed: comment #<id>` when comments changed)
 - `<KEY> skipped: <issuetype>`
 - `<KEY> error: <message>`
 
@@ -73,15 +78,18 @@ The spec (`### Truy vết AC` under `## Thiết kế`), cook's `design.md` and `
 
 | AC | Text (verbatim) | Where | Status |
 |---|---|---|---|
-| T6IR-13706 AC-2 | Given the dialog, when no reason is chosen, then Remove stays disabled. | phase-04 | in scope |
+| T6IR-13706 AC-2 | Given the dialog, when no reason is chosen, then Remove stays disabled. | phase-04-remove-verification.md | in scope |
 | T6IR-14409 AC-10 | … | — | jira-unclear: <question> |
 
-Status is one of: `in scope` (Where names the phase), `deferred: <reason>`,
+Status is one of: `in scope` (in plan.md, Where names the phase file), `deferred: <reason>`,
 `jira-unclear: <question>`, `out of scope: <reason>`. Where is `—` in the spec and design (no phases yet); plan.md fills in the owning phase file.
 
 Rows in the table:
 - First save of a set of stories: every AC of the round's stories.
-- A re-run: the `changed` and `new` ACs, plus every row of the previous round's table (the newest
-  `<plan-root>/*/plan.md` whose `## AC Traceability` names the story) whose Status is not `in scope`.
-  `in scope` rows of unchanged ACs are not re-listed: they passed that round's review (a Section A ❌
-  blocks cook's finalize).
+- A re-run in the same round (the spec or design is not approved yet): keep the current table;
+  update the rows of `changed` ACs, add the `new` ones, and mark removed ACs `out of scope: removed in Jira`.
+- A new round on stories saved before: the `changed` and `new` ACs, plus every row of the previous
+  round's table whose Status is not `in scope`. Find that table in the newest plan.md whose
+  `## AC Traceability` names the story, searching the main checkout's plan root and each worktree's
+  (`git worktree list`). `in scope` rows of unchanged ACs are not re-listed: they passed that round's
+  review (a Section A ❌ blocks cook's finalize).
