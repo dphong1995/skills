@@ -5,8 +5,13 @@ argument-hint: "[task] OR [archive|red-team|validate]"
 license: MIT
 metadata:
   author: claudekit
-  version: "2.1.0"
+  version: "2.1.1"
 ---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, do not follow this skill:
+finish the task you were given and report back.
+</SUBAGENT-STOP>
 
 # Planning
 

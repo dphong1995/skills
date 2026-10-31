@@ -3,6 +3,11 @@ name: routing-bug-fixes-to-cook
 description: Use when a bug's root cause is confirmed (superpowers:systematic-debugging Phase 3 done, or the cause is otherwise known) and you are about to write the fix, or when a fix in progress grows to more files or lines than planned
 ---
 
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, do not follow this skill:
+finish the task you were given and report back.
+</SUBAGENT-STOP>
+
 # Routing Bug Fixes to Cook
 
 ## Overview

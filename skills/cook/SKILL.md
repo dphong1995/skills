@@ -4,8 +4,13 @@ description: "ALWAYS activate this skill before implementing EVERY feature, plan
 argument-hint: "[task|plan-path]"
 metadata:
   author: claudekit
-  version: "5.8.0"
+  version: "5.9.0"
 ---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, do not follow this skill:
+finish the task you were given and report back.
+</SUBAGENT-STOP>
 
 # Cook - Smart Feature Implementation
 
@@ -55,7 +60,7 @@ file itself. Cook-specific mapping and carve-outs: `references/workflow-steps.md
 </HARD-GATE>
 
 <HARD-GATE>
-The orchestrator NEVER edits source files itself during Step 3. Every phase MUST be dispatched to a sub-agent via the `Agent` tool (named `Task` in some harnesses). If you find yourself about to call Edit/Write for production code, STOP and dispatch a sub-agent instead.
+The orchestrator NEVER edits source files itself during Step 3. Every phase MUST be dispatched to a sub-agent via the `Agent` tool (named `Task` in some harnesses). If you find yourself about to call Edit/Write for production code, STOP and dispatch a sub-agent instead. Committing a phase's files (`git add`/`git commit`) is bookkeeping, not editing; the orchestrator never runs a git command that changes file content. One exception, in Step 6 only: the fetch + merge (and `git merge --abort` on a conflict) the user's push rules require before a push (`references/workflow-steps.md` § Step 6).
 </HARD-GATE>
 
 ## Anti-Rationalization
@@ -118,7 +123,7 @@ flowchart TD
 Steps 1–2 are orchestrator-run (design + plan; except the 1E builder check agent). Steps 3–6 are sub-agent-run (execution).
 ```
 
-Step 1 is interactive (Q&A rounds, the design review page). **From Step 2 onward the workflow runs straight through without stopping for approval.** **Claude Tasks (ALWAYS create AND update):** A task list MUST always be created — use `TaskCreate` to seed tasks up front — AND MUST be kept in lock-step throughout: `TaskUpdate` → `in_progress` before each phase dispatch, `TaskUpdate` → `complete` immediately after that phase returns (one phase at a time, same turn — never batched to the end). **Fallback:** `TaskCreate`/`TaskUpdate`/`TaskGet`/`TaskList` are CLI-only — unavailable in the VSCode extension. If they error, still create AND update the list via `TodoWrite`. Never skip creating or updating the task list.
+Step 1 is interactive (Q&A rounds, the design review page). **From Step 2 onward the workflow runs straight through without stopping for approval** (exceptions: SKILL.md § Gates). **Claude Tasks (ALWAYS create AND update):** A task list MUST always be created — use `TaskCreate` to seed tasks up front — AND MUST be kept in lock-step throughout: `TaskUpdate` → `in_progress` before each phase dispatch, `TaskUpdate` → `complete` once its report passes the check and its commit lands, or nothing is left to commit (`references/workflow-steps.md` § Report check, status and commit; one phase at a time, same turn — never batched to the end). **Fallback:** `TaskCreate`/`TaskUpdate`/`TaskGet`/`TaskList` are CLI-only — unavailable in the VSCode extension. If they error, still create AND update the list via `TodoWrite`. Never skip creating or updating the task list.
 
 ## Step Output Format
 
@@ -130,19 +135,20 @@ Step 1 is interactive (Q&A rounds, the design review page). **From Step 2 onward
 
 **Step 1 has real gates** (it is a design conversation): one round at a time on the HTML question page during 1C (independent questions may share a page; the 1D approach pick too), the playback card round (end of 1C), the builder check's round (1E, only when it has questions for the user), and the user's approval of `design.md` on its review page in 1E (notes per section). Do not shortcut them.
 
-**No approval stops from Step 2 onward.** Plan → implement → test → review → finalize runs end to end without pausing for the user. Report progress as you go (`✓ Step [N]: …`) so the user can interrupt if they want to redirect, but never block waiting for a go-ahead. In particular, once implementation and testing finish, go straight into the review in the same turn.
+**No approval stops from Step 2 onward**, with two exceptions: a hard-to-change NEEDS_CONTEXT question in Step 3 (`workflow-steps.md` § Report check, status and commit), asked while independent phases keep running, and the Step 6 push question (one per repo), with its follow-up when the pre-push merge refuses to start or conflicts. Plan → implement → test → review → finalize runs end to end without pausing for the user. Report progress as you go (`✓ Step [N]: …`) so the user can interrupt if they want to redirect, but never block waiting for a go-ahead. In particular, once implementation and testing finish, go straight into the review in the same turn.
 
 The review (Step 5) is **sized by the diff** (workflow-steps.md § Step 5: one reviewer for a small diff, else a **single fan-out of two sub-agents in one message**): on a large diff agent 1 returns the dual-section gating report — (A) plan-compliance vs the acceptance criteria carried into `plan.md` from the approved design and per-phase "Done when" blocks, (B) severity-rated bugs — while agent 2 runs the four cleanup lenses borrowed from the `simplify` skill (Reuse first, then Simplification, Efficiency and Altitude) in one head, so it can collapse findings that are really one change at the mechanism level; on a small diff the single reviewer returns both, with the lenses as a non-gating Cleanup section. Re-reviews after a fix batch cover only the fix. Section A verdicts are non-overridable and Section B Critical/High gate; **cleanup findings never gate and never increment the cycle counter.** After any fix batch, re-run the tests AND the project's verification gate — cleanup edits touch working code.
 
 **Always enforced:**
-- **Testing:** 100% pass required
-- **Code Review:** after the reviewers report, dedup, apply the findings worth applying and state which you skipped and why — do not stop to ask permission first
+- **Testing:** 100% pass required (a failure confirmed on the Step 3 start commit excepted, `references/workflow-steps.md` § Step 4)
+- **Code Review:** after the reviewers report, dedup, apply the findings worth applying and record which you skipped and why in the final report's `## Claude tự quyết` — do not stop to ask permission first
+- **Commits:** one commit per phase and per fix batch, made by the orchestrator, never squashed (`references/workflow-steps.md` § Report check, status and commit)
 - **Re-verify after cleanup:** any applied cleanup fix is followed by the test command AND the project's own verification gate, i.e. whatever command its CLAUDE.md declares must stay green (`pnpm verify` in talos-v2). A quality pass that ships a regression is worse than no quality pass
 - **Finalize (MANDATORY - never skip):**
   1. `executor` subagent → run full plan sync-back (all completed tasks/steps across all `phase-XX-*.md`, not only current phase), then update `plan.md` status/progress
-  2. `writer` subagent → update `./docs` if changes warrant
+  2. `writer` subagent → update `./docs` if changes warrant; the prompt carries the Report contract, then the `references/subagent-patterns.md` § Every prompt lines, and its files are committed
   3. `TaskUpdate` → mark all Claude Tasks complete after sync-back verification (or `TodoWrite` if Task tools unavailable)
-  4. Ask on the interview page (`../brainstorm-pro/references/html-interview.md`), not in chat, whether to commit (and push) via the `git-master` subagent
+  4. Ask on the interview page (`../brainstorm-pro/references/html-interview.md`), not in chat, whether to push; the orchestrator pushes, never squashes. Then the final report with `## Claude tự quyết` (`references/workflow-steps.md` § Final report)
 
 ## Required Subagents (MANDATORY)
 
@@ -150,11 +156,11 @@ The review (Step 5) is **sized by the diff** (workflow-steps.md § Step 5: one r
 |-------|----------|-------------|
 | Step 1 Design (1A–1E) | **orchestrator-run** (builder check agent in 1E) | Skip only if plan path provided. `document-specialist` / `Explore` optional helpers inside 1A/1B; the builder check agent per `../brainstorm-pro/references/builder-check.md` in 1E |
 | Step 2 Plan | **none — orchestrator-run** | Orchestrator writes `plan.md` + `phase-XX-*.md` itself with Write, in **`ck-plan`'s format** (load `../ck-plan/references/plan-organization.md` + `output-standards.md` first). Skip only if plan path provided. Dispatching `planner` here is FORBIDDEN |
-| Implementation (per phase) | `executor` (or `designer` for frontend) | **MUST** spawn one per phase. Dispatch with `model: "sonnet"` |
+| Implementation (per phase) | `executor` (or `designer` for frontend) | **MUST** spawn one per phase. Dispatch with `model: "sonnet"`. Prompt carries the Report contract, then the `references/subagent-patterns.md` § Every prompt lines |
 | Testing | `test-engineer`, `debugger` | **MUST** spawn. Dispatch with `model: "sonnet"` |
 | Review (compliance + bugs + cleanup) | `code-reviewer` (1 or 2, sized by the diff) | **MUST** spawn. Small diff: one reviewer, gating report + non-gating Cleanup (sized by the diff, workflow-steps.md § Step 5). Large: both in ONE message — agent 1 = dual-section gating report; agent 2 = Reuse+Simplification+Efficiency+Altitude (non-gating). Dispatch with `model: "opus"` |
-| Fix application | `code-simplifier` (cleanup-only batch) / `executor` / `debugger` | Dispatch with `model: "sonnet"` |
-| Finalize | sync-back (`executor`), docs (`writer`), commit (`git-master`) | **MUST** spawn all 3. Dispatch each with `model: "sonnet"` |
+| Fix application | `code-simplifier` (cleanup-only batch) / `executor` / `debugger` | Dispatch with `model: "sonnet"`. Prompt carries the Report contract, then the `references/subagent-patterns.md` § Every prompt lines |
+| Finalize | sync-back (`executor`), docs (`writer`) | **MUST** spawn both. Dispatch each with `model: "sonnet"`. The orchestrator commits and pushes |
 
 **Agent names are per-session.** Verify each type against the session's agent registry before
 dispatching and fall back rightward; never abandon a step because a name is missing. Full mapping
@@ -163,7 +169,7 @@ table: `references/subagent-patterns.md`.
 **CRITICAL ENFORCEMENT:**
 - Steps 1 and 2 **MUST NOT** be delegated — the design conversation AND the plan that encodes it belong to the orchestrator (exceptions: research helpers in 1A/1B and the builder check agent in 1E)
 - Steps 3, 4, 5, 6 **MUST** use the `Agent` tool to spawn subagents
-- DO NOT implement, test, review, or finalize yourself — DELEGATE (Steps 1–2 are the orchestrator-run steps; execution is delegated)
+- DO NOT implement, test, or review yourself, and do not run Finalize's sync-back or docs yourself (the orchestrator commits and pushes) — DELEGATE (Steps 1–2 are the orchestrator-run steps; execution is delegated)
 - If workflow ends with 0 `Agent` tool calls for Step 3, Step 4, OR Step 5, it is INCOMPLETE
 - Pattern: `Agent(subagent_type="[type]", prompt="[task]", description="[brief]")`
 

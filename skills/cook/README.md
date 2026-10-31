@@ -45,7 +45,7 @@ the writing.
 
 Step 1 (Design) is interactive — one round at a time on a local HTML question page (independent
 questions may share a page; the page sends the answers back, copy-and-paste as the fallback), then the design on a review page with a note box per section and a Duyệt button.
-From Step 2 onward it runs end to end without pausing; only the final commit is confirmed.
+From Step 2 onward it runs end to end without pausing (exceptions: SKILL.md § Gates).
 
 ## Sub-agent Roles
 
@@ -57,7 +57,7 @@ From Step 2 onward it runs end to end without pausing; only the final commit is 
 | Testing | `test-engineer`, `debugger` |
 | Review (sized by the diff) | `code-reviewer` ×1 (small diff) or ×2 (large) — compliance (incl. `in scope` AC rows checked against the saved Jira text)+bugs (gating) / reuse+simplification+efficiency+altitude |
 | Fix application | `code-simplifier` (cleanup-only) / `executor` / `debugger` |
-| Finalize | `executor` (sync-back), `writer` (docs), `git-master` (commit) |
+| Finalize | `executor` (sync-back), `writer` (docs); the orchestrator commits each phase and pushes |
 
 ## Files
 
@@ -74,6 +74,7 @@ cook/
 
 ## Version
 
+5.9.0 - Steps 3-6 borrow from superpowers subagent-driven-development: implementer report contract with status, orchestrator commits per phase and per fix batch, a review package reviewers read once (no test re-runs), a subagent boundary line plus SUBAGENT-STOP, `## Claude tự quyết` in the final report; Step 6 asks only about push
 5.8.0 - Step 1 reads the shared `brainstorm-pro/references/design-flow.md`; adds the playback card, the builder check and the Nguồn column
 5.7.0 - Step 5 sized by the diff (one reviewer for a small diff, two for a large one); re-reviews scoped to the fix
 5.6.3 - Step 5 has one severity scale, agent 1's: a cleanup finding gates only when agent 2 labels it OUT-OF-LENS and it grades Critical/High; the old Critical Issues list that made DRY, performance and architecture findings critical is gone

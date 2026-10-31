@@ -10,9 +10,11 @@ The tool is named `Agent` here and `Task` in some harnesses — use whichever th
 A report starting with `PARTIAL` (from the context guard hook) is re-dispatched to a fresh agent, see the "Subagent models" rule in CLAUDE.md.
 
 ## Every prompt
-Every prompt cook writes for a sub-agent (any type, including `general-purpose` and `designer`, whose definitions do not carry it) ends with this line:
+Every prompt cook writes for a sub-agent (any type, including `general-purpose` and `designer`, whose definitions do not carry it) ends with these two lines:
 
 > Batch independent reads: when you need several files, line ranges, diffs or searches that do not depend on each other, request them in one turn: parallel tool calls, or one Bash command that prints several ranges (`sed -n '1,80p' a.ts; sed -n '40,120p' b.ts`). Read a long file or diff with parallel offset reads in one turn, not one page per turn. Read files you will edit with parallel `Read` calls (Edit needs a prior Read); the Bash form is for files you only read. Go one call at a time only when the next read depends on what the previous one showed. Every turn re-reads your whole context, so fewer turns cost less.
+
+> You are a sub-agent of a cook run. Do not invoke any skill (the Skill tool), even one whose description says to always use it. Do not spawn fork, executor, designer, reviewer or any other agent that edits or reviews; you may spawn up to 3 read-only `Explore` agents to locate code. If the task is too large for one agent, stop and report BLOCKED with a proposed split.
 
 ## Agent Name Mapping (CHECK FIRST)
 
@@ -32,10 +34,9 @@ do the work inline.
 | Code review | `code-reviewer` → `critic` → `general-purpose` |
 | Plan sync-back (mechanical file edits) | `executor` → `general-purpose` |
 | Docs update | `writer` → `general-purpose` |
-| Git / commit | `git-master` → `general-purpose` |
 
 Older names that no longer exist anywhere — `fullstack-developer`, `ui-ux-designer`, `tester`,
-`project-manager`, `docs-manager`, `git-manager`, `researcher`, `scout` — map through the table
+`project-manager`, `docs-manager`, `researcher`, `scout` — map through the table
 above. Do not dispatch them directly.
 
 ## Step 1A/1B Helpers (OPTIONAL — Step 1 itself is orchestrator-run)
@@ -45,7 +46,7 @@ Agent(subagent_type="Explore", prompt="Find files related to [feature] in codeba
 ```
 - Only for parallel reading during deep scout (1A) / best-practice research (1B)
 - Keep reports ≤150 lines with citations; the orchestrator owns synthesis, Q&A and design
-- NEVER delegate the design conversation (1C/1D/1E) — it stays with the orchestrator. One exception: the 1E builder check runs per `../brainstorm-pro/references/builder-check.md` and reads the written design.md; the orchestrator triages its questions and still owns Q&A, the design and the review page. When cook dispatches it, append the § Every prompt line like any other prompt cook writes
+- NEVER delegate the design conversation (1C/1D/1E) — it stays with the orchestrator. One exception: the 1E builder check runs per `../brainstorm-pro/references/builder-check.md` and reads the written design.md; the orchestrator triages its questions and still owns Q&A, the design and the review page. When cook dispatches it, append the § Every prompt lines like any other prompt cook writes
 
 ## Planning Phase — NO SUB-AGENT
 
@@ -58,49 +59,6 @@ Each plan file carries: the Acceptance Criteria verbatim, per-phase scope, expli
 ownership, and "Done when" criteria — those blocks are what get pasted into the Step 3
 sub-agent prompts.
 
-## UI Implementation
-```
-Agent(subagent_type="designer", prompt="Implement [feature] UI following the project's design-system conventions (see CLAUDE.md and the UI package)", description="UI [feature]")
-```
-- For frontend work
-- Follow the project's own design/UI conventions — discover them, don't assume a filename
+## Prompts for Steps 3-6
 
-## Testing
-```
-Agent(subagent_type="test-engineer", prompt="Run test suite for plan phase [phase-name]", description="Test [phase]")
-```
-- Must achieve 100% pass rate
-
-## Debugging
-```
-Agent(subagent_type="debugger", prompt="Analyze failures: [details]", description="Debug [issue]")
-```
-- Use when tests fail
-- Provides root cause analysis
-
-## Code Review
-```
-Agent(subagent_type="code-reviewer", prompt="Review changes for [phase]. Check security, performance, YAGNI/KISS/DRY. Return score (X/10), critical, warnings, suggestions.", description="Review [phase]")
-```
-
-## Plan Sync-Back
-```
-Agent(subagent_type="executor", prompt="Run full sync-back in [plan-path]: reconcile completed tasks with all phase files, backfill stale completed checkboxes across all phases, update plan.md status/progress, and report unresolved mappings.", description="Update plan")
-```
-
-## Documentation
-```
-Agent(subagent_type="writer", prompt="Update docs for [phase]. Changed files: [list]", description="Update docs")
-```
-
-## Git Operations
-```
-Agent(subagent_type="git-master", prompt="Stage and commit changes with conventional commit message", description="Commit changes")
-```
-
-## Parallel Execution
-```
-Agent(subagent_type="executor", prompt="Implement [phase-file] with file ownership: [files]", description="Implement phase [N]")
-```
-- Launch multiple for parallel phases — all in a single message so they run concurrently
-- Include file ownership boundaries
+The prompts for Steps 3-6 are defined in `workflow-steps.md` (§ Step 3, § Step 4, § Step 5, § Step 6). This file holds the agent mapping and the § Every prompt lines.

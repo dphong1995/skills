@@ -4,9 +4,14 @@ description: Hybrid brainstorm — deep scout (ck-style) + one-question-at-a-tim
 license: MIT
 metadata:
   author: phong
-  version: "1.11.0"
+  version: "1.11.1"
   combines: [ck:brainstorm, superpowers:brainstorming]
 ---
+
+<SUBAGENT-STOP>
+If you were dispatched as a subagent to execute a specific task, do not follow this skill:
+finish the task you were given and report back.
+</SUBAGENT-STOP>
 
 # Brainstorm Pro — Hybrid Skill
 

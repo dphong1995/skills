@@ -112,7 +112,7 @@ skills/
 │                     `tests/`, `DEVELOPING.md`
 ├── ck-plan/          Lập kế hoạch: research → phân tích codebase → plan.md + phase-XX-*.md
 │                     → tự động gọi cook
-├── cook/             Triển khai: mỗi phase một subagent → test → review theo kích thước diff (diff nhỏ 1 reviewer, diff lớn 2) → finalize
+├── cook/             Triển khai: mỗi phase một subagent, orchestrator commit sau mỗi phase → test → review theo kích thước diff (diff nhỏ 1 reviewer, diff lớn 2) → finalize, hỏi push
 └── routing-bug-fixes-to-cook/
                       Cổng sau khi debug xong root cause: fix ≥ 3 file production, > 50 dòng
                       production (đếm gộp các repo) hoặc có nhiều cách sửa → gọi cook (Step 1 rút
@@ -133,7 +133,7 @@ hud/                  Statusline OMC HUD (không thuộc install.sh ở trên, x
 ```
 
 Chuỗi thiết kế: `brainstorm-pro` → `ck-plan` → `cook` chạy liền mạch, không dừng hỏi ở giữa (trừ
-các gate tương tác trong phase design của brainstorm-pro/cook).
+các gate tương tác trong phase design của brainstorm-pro/cook; từ cook Step 2 trở đi chỉ dừng cho hai câu hỏi trên trang interview: câu NEEDS_CONTEXT khó đổi lại ở Step 3 và câu hỏi push ở Step 6).
 
 ## Ràng buộc cần biết
 
@@ -141,7 +141,7 @@ các gate tương tác trong phase design của brainstorm-pro/cook).
   `../ck-plan/references/plan-organization.md` và `../ck-plan/references/output-standards.md` bằng
   đường dẫn tương đối để lấy format plan. Tách ra là hỏng.
 - **`agents/` là dependency thật, không phải tuỳ chọn.** `cook` dispatch theo tên:
-  `executor`, `code-reviewer`, `test-engineer`, `code-simplifier`, `writer`, `git-master`,
+  `executor`, `code-reviewer`, `test-engineer`, `code-simplifier`, `writer`,
   `designer`, `debugger`, `explore`, `document-specialist`, `planner`. Thiếu thì cook vẫn chạy
   nhưng phải fallback sang agent mặc định và chất lượng giảm.
 - **Không có CLI `ck`.** Tên `ck-plan` chỉ là di sản đặt tên; mọi thứ chạy trong skill.

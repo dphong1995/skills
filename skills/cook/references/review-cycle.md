@@ -2,7 +2,7 @@
 
 Review-fix cycle used at Step 5. It runs autonomously — no approval stop.
 
-## Report contract
+## Reviewer outputs
 
 Step 5 dispatches one review sub-agent (small diff) or two in one message (large diff), sized by the diff per `workflow-steps.md` § Step 5. Their output lands in two buckets:
 
@@ -13,7 +13,7 @@ Step 5 dispatches one review sub-agent (small diff) or two in one message (large
 **Non-gating — from agent 2, or the Cleanup section of the single reviewer (reuse + simplification + efficiency + altitude, already collapsed across its own lenses):**
 - Findings carry `file`, `line`, `summary`, and the concrete cost — **no severity**, because they are not bugs. They are applied or skipped with a stated reason, and they **never** gate Step 6 or increment the cycle counter.
 
-Done means Section A = all ✅ **and** Section B = no Critical / no High. Remaining Medium/Low findings and all cleanup findings are applied or explicitly skipped with a stated reason in the final report — then re-verified (see `workflow-steps.md` § After applying).
+Done means Section A = all ✅ **and** Section B = no Critical / no High. Remaining Medium/Low findings and all cleanup findings are applied or explicitly skipped, each skip with its reason recorded in the final report's `## Claude tự quyết` (`workflow-steps.md` § Final report) — then re-verified (see `workflow-steps.md` § After applying).
 
 ## Cycle (max 3 cycles)
 
@@ -23,11 +23,12 @@ LOOP:
   1. cycle == 0 → small diff: 1 reviewer (gating + Cleanup section)
                   large diff: fan out both agents in one message
      cycle >  0 → scoped re-review of the gating reviewer ONLY, using the
-                  template in `workflow-steps.md` § Scoped re-review: the
-                  fixed findings + the before/after tree delta, not the
-                  whole change
+                  template in `workflow-steps.md` § Scoped re-review, reading
+                  the `FIX_BASE..HEAD` package (`workflow-steps.md` § Review
+                  package), not the whole change
 
-  2. Dedup across every agent that reported.
+  2. Settle every `⚠️ CANNOT VERIFY` line first (`workflow-steps.md` § Review package).
+     Dedup across every agent that reported.
      Overlap between a cleanup lens and Section B → keep Section B's copy.
 
   3. DISPLAY FINDINGS:
@@ -55,15 +56,17 @@ LOOP:
 
   4. Decide and act — do NOT ask the user for approval:
      IF Section A has any ❌ OR critical_count > 0 OR high_count > 0:
-       → dispatch fix sub-agent with the blocking fixes FIRST and the
-         worthwhile non-blocking ones in the same batch, re-run tests +
-         the project verification gate, cycle++, LOOP
+       → dispatch a fresh fix sub-agent with the blocking fixes FIRST and
+         the worthwhile non-blocking ones in the same batch; the
+         orchestrator commits the batch (`workflow-steps.md` § Report check,
+         status and commit), re-runs tests + the project verification
+         gate, cycle++, LOOP
      ELSE:
        → apply the warnings/suggestions/cleanup findings that are genuinely
          worth applying, re-run tests + the project verification gate,
-         PROCEED, and state in the report which findings you skipped and why
-         (behaviour change, out of diff scope, breaks a documented invariant,
-         false positive)
+         PROCEED, and record each skipped finding and its reason in
+         `## Claude tự quyết` (behaviour change, out of diff scope, breaks a
+         documented invariant, false positive)
 
   5. IF cycle >= 3 AND blocking issues remain:
      → stop looping, PROCEED, and report the remaining issues plainly
