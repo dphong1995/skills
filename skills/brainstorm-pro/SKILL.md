@@ -227,6 +227,7 @@ The chosen approach and why, then a "Phương án đã loại" table (each alter
 ### Kiến trúc              (a Mermaid diagram when there are 3+ parts)
 ### Thành phần / File      (create/modify, what changes, what it reuses)
 ### Luồng dữ liệu / Kiểu   (shapes, not full code; cite file:line)
+### Truy vết AC         (only for Story/Epic work: the table of `references/jira-snapshot.md` § Traceability table; AC text English, verbatim)
 
 ## Rủi ro & xử lý lỗi
 

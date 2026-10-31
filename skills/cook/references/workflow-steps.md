@@ -223,6 +223,10 @@ Agent(
   For every § Acceptance Criteria checkbox in plan.md (or spec.md's § Tiêu chí hoàn thành /
   Acceptance Criteria if present)
   AND every phase "Done when" item:
+  AND, when plan.md has a § AC Traceability table, every row whose Status is `in scope`:
+  take the AC text from <plan-root>/jira/<KEY>.md (not the plan's wording) and check that
+  the code does exactly that, including the UI text, labels and audit wording the AC quotes.
+  List rows with Status `deferred`, `jira-unclear` or `out of scope` with their status, no verdict.
     1. List the criterion verbatim.
     2. Mark ✅ / ❌ MISSING / ❌ WRONG / ⚠ EXTRA.
     3. Cite file:line proving the verdict.
@@ -243,6 +247,8 @@ Agent(
   """
 )
 ```
+
+Fill `<plan-root>` with the absolute plan root.
 
 ### Dispatch 2/2 — cleanup lenses (non-gating)
 
@@ -384,6 +390,7 @@ Agent(
 
   ## Findings the batch fixed (verbatim)
   <paste each blocking finding>
+  and the AC Traceability rows that were ❌ and are now claimed fixed (AC text from <plan-root>/jira/<KEY>.md)
 
   ## Delta
   `git diff <before-tree> <after-tree>`

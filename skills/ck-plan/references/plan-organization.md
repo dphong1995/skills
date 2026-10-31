@@ -115,6 +115,11 @@ Brief description of what this plan accomplishes.
 ## Dependencies
 
 - List key dependencies here
+
+## AC Traceability
+<!-- Only when the spec or design has "Truy vết AC". Copy its table verbatim; format: ../brainstorm-pro/references/jira-snapshot.md § Traceability table. -->
+| AC | Text (verbatim) | Where | Status |
+|---|---|---|---|
 ```
 
 **Guidelines:**
@@ -122,6 +127,7 @@ Brief description of what this plan accomplishes.
 - List each phase with status/progress
 - Link to detailed phase files
 - Key dependencies
+- The AC Traceability table is copied whole and does not count toward the 80 lines.
 
 ### Phase Files (phase-XX-name.md)
 Fully respect the project's own conventions file (`CLAUDE.md` / `AGENTS.md`, plus anything under `docs/`).
@@ -163,6 +169,7 @@ Each phase file should contain:
 **Success Criteria**
 - Definition of done
 - Validation methods
+- The ids of the AC Traceability rows this phase owns (e.g. "13706 AC-2"), when plan.md has the table
 
 **Risk Assessment**
 - Potential issues
