@@ -130,6 +130,7 @@ Before dispatching phase 1, record `git rev-parse HEAD` and write the printed co
 
 **Dispatch rules:**
 - **One sub-agent per phase.** Read the `phase-XX-*.md` file, extract scope/files/acceptance criteria, embed verbatim into the sub-agent prompt.
+- **Batch reads line.** Append the line from `subagent-patterns.md` § Every prompt to every phase prompt.
 - **MANDATORY `TaskUpdate` `in_progress` BEFORE every dispatch.** Mark the phase task `in_progress` immediately before spawning its sub-agent — never dispatch a phase whose task is still `pending`.
 - **Parallel when independent.** Phases with disjoint file ownership are dispatched in a single message with multiple `Agent` tool calls.
 - **Sequential when dependent.** Wait for prerequisite phase to return before dispatching the next.

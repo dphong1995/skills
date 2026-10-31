@@ -9,6 +9,11 @@ Agent(subagent_type="[type]", prompt="[task description]", description="[brief]"
 The tool is named `Agent` here and `Task` in some harnesses — use whichever this session exposes.
 A report starting with `PARTIAL` (from the context guard hook) is re-dispatched to a fresh agent, see the "Subagent models" rule in CLAUDE.md.
 
+## Every prompt
+Every prompt cook writes for a sub-agent (any type, including `general-purpose` and `designer`, whose definitions do not carry it) ends with this line:
+
+> Batch independent reads: when you need several files, line ranges, diffs or searches that do not depend on each other, request them in one turn (parallel tool calls, or one Bash command that prints several ranges). Go one call at a time only when the next read depends on the previous one.
+
 ## Agent Name Mapping (CHECK FIRST)
 
 Agent types are per-session. **Verify every `subagent_type` against the session's agent registry
