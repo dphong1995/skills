@@ -88,13 +88,14 @@ The single highest-leverage step. Skipping or shortening this is the #1 mistake.
 
 **Required actions:**
 1. **Read `CLAUDE.md`** + any `.claude/rules/*.md` to internalize project conventions
-2. **Identify related areas** in the codebase:
+2. **Save the Jira stories** when the topic names Story/Epic issues: run `references/jira-snapshot.md` (Sonnet agents in the background; read their one-line reports, not the tickets).
+3. **Identify related areas** in the codebase:
    - `ls` and `grep` related directories (`src/pages/`, `src/components/`, etc.)
    - Find existing similar features (search for keywords from the topic)
    - Read any relevant existing components / hooks / services
-3. **Cross-repo scan** if the project has additional working directories (e.g. backend repo) — check there too
-4. **Read related docs** in `docs/` if any
-5. **List user memory** if available — past feedback informs design
+4. **Cross-repo scan** if the project has additional working directories (e.g. backend repo) — check there too
+5. **Read related docs** in `docs/` if any
+6. **List user memory** if available — past feedback informs design
 
 **Scout output (keep in working memory):**
 - "Existing infrastructure" summary: what already exists and could be reused
