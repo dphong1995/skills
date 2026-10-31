@@ -88,7 +88,7 @@ The single highest-leverage step. Skipping or shortening this is the #1 mistake.
 
 **Required actions:**
 1. **Read `CLAUDE.md`** + any `.claude/rules/*.md` to internalize project conventions
-2. **Save the Jira stories** when the topic names Story/Epic issues: run `references/jira-snapshot.md` (Sonnet agents in the background; read their one-line reports, not the tickets).
+2. **Save the Jira stories** when the topic names Jira issues: run `references/jira-snapshot.md` (Sonnet agents in the background; it keeps Story/Epic only). Read their one-line reports, then the saved files of the stories you design.
 3. **Identify related areas** in the codebase:
    - `ls` and `grep` related directories (`src/pages/`, `src/components/`, etc.)
    - Find existing similar features (search for keywords from the topic)

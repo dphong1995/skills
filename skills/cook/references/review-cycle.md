@@ -7,7 +7,7 @@ Review-fix cycle used at Step 5. It runs autonomously — no approval stop.
 Step 5 dispatches one review sub-agent (small diff) or two in one message (large diff), sized by the diff per `workflow-steps.md` § Step 5. Their output lands in two buckets:
 
 **Gating — from agent 1 (`code-reviewer`; the single reviewer on a small diff):**
-- **Section A — Plan Compliance:** per-acceptance-criterion verdicts (plan ACs, plus the `in scope` rows of plan.md's AC Traceability table when it has one) (✅ / ❌ MISSING / ❌ WRONG / ⚠ EXTRA). **Non-overridable** — any ❌ means dispatch a fix sub-agent, not "note it and move on".
+- **Section A — Plan Compliance:** per-acceptance-criterion verdicts (✅ / ❌ MISSING / ❌ WRONG / ⚠ EXTRA) for the plan ACs, plus the `in scope` rows of plan.md's AC Traceability table when it has one. **Non-overridable** — any ❌ means dispatch a fix sub-agent, not "note it and move on".
 - **Section B — Code Quality (bugs):** severity-rated findings (Critical / High / Medium / Low). Critical + High gate; the score / critical_count / warnings / suggestions tally is built from this section.
 
 **Non-gating — from agent 2, or the Cleanup section of the single reviewer (reuse + simplification + efficiency + altitude, already collapsed across its own lenses):**

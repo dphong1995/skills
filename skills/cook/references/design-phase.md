@@ -66,7 +66,7 @@ The single highest-leverage step. Skipping or shortening this is the #1 mistake.
 
 **Required actions:**
 1. **Read `CLAUDE.md`** + any `.claude/rules/*.md` to internalize project conventions.
-2. **Save the Jira stories** when the topic names Story/Epic issues (not in the collapsed bug-fix Step 1): run `../brainstorm-pro/references/jira-snapshot.md` (Sonnet agents in the background; read their one-line reports, not the tickets).
+2. **Save the Jira stories** when the topic names Jira issues (not in the collapsed bug-fix Step 1): run `../brainstorm-pro/references/jira-snapshot.md` (Sonnet agents in the background; it keeps Story/Epic only). Read their one-line reports, then the saved files of the stories you design.
 3. **Identify related areas** in the codebase: `ls`/`grep` related directories, find existing
    similar features (search keywords from the topic), read relevant existing
    components / hooks / services.
@@ -198,7 +198,7 @@ approach is settled, go on to 1E.
 2. Write the design to `<plan-dir>/design.md` in Vietnamese, in brainstorm-pro's spec structure
    (`../brainstorm-pro/SKILL.md` § Phase 4: Tóm tắt, Cần bạn xem kỹ, Bối cảnh, Mục tiêu / Không
    làm, Quyết định, Cách làm with its "Phương án đã loại" table, Thiết kế (Kiến trúc, Thành phần /
-   File, Luồng dữ liệu / Kiểu), Rủi ro & xử lý lỗi, Kiểm thử & triển khai, Tiêu chí hoàn thành,
+   File, Luồng dữ liệu / Kiểu, Truy vết AC when 1A saved stories), Rủi ro & xử lý lỗi, Kiểm thử & triển khai, Tiêu chí hoàn thành,
    Còn mở, Phụ lục: File thay đổi). Scale each section to its complexity.
 3. Re-read it with brainstorm-pro's 4 self-review checks (placeholders, consistency, scope,
    ambiguity) and fix inline.

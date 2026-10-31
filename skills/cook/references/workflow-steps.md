@@ -82,6 +82,7 @@ Concretely that means:
 | Acceptance criteria (`design.md` § Tiêu chí hoàn thành, verbatim) | `plan.md` `## Acceptance Criteria` — Step 5 Section A verifies against it, so it is the authoritative contract |
 | Per-phase "Done when" | that phase file's **Success Criteria** section |
 | Per-phase file ownership | that phase file's **Related Code Files** section — must be disjoint across phases marked parallel |
+| AC traceability (design.md § Truy vết AC, when 1A saved stories) | plan.md `## AC Traceability`: AC, Text and Status copied verbatim, Where = the owning phase file; that phase's **Success Criteria** lists its row ids |
 | Open Items | `plan.md` `## Open Items` |
 
 Scope/file-ownership/Success-Criteria blocks are passed **verbatim** into each Step 3 sub-agent
@@ -105,7 +106,7 @@ prompt, so write them to be read by an agent with no other context.
 **Plan self-review (5 checks, orchestrator, no user gate):** after writing the plan, re-read it
 once —
 1. **Placeholder scan** — any `TBD`/`TODO`/vague step? Fix inline or move to Open Items.
-2. **Coverage** — every acceptance criterion from the design maps to at least one phase.
+2. **Coverage** — every acceptance criterion from the design maps to at least one phase, and every `in scope` row of `## AC Traceability` names a phase.
 3. **Internal consistency** — phase file ownership disjoint where phases are marked parallel;
    dependencies declared.
 4. **Ambiguity** — any phase step interpretable two ways? Pick one, make it explicit.
@@ -130,7 +131,7 @@ Before dispatching phase 1, record `git rev-parse HEAD` and write the printed co
 
 **Dispatch rules:**
 - **One sub-agent per phase.** Read the `phase-XX-*.md` file, extract scope/files/acceptance criteria, embed verbatim into the sub-agent prompt.
-- **Batch reads line.** Append the line from `subagent-patterns.md` § Every prompt to every phase prompt.
+- **Batch reads line.** Append the line from `subagent-patterns.md` § Every prompt to every sub-agent prompt cook writes (Steps 3-6).
 - **MANDATORY `TaskUpdate` `in_progress` BEFORE every dispatch.** Mark the phase task `in_progress` immediately before spawning its sub-agent — never dispatch a phase whose task is still `pending`.
 - **Parallel when independent.** Phases with disjoint file ownership are dispatched in a single message with multiple `Agent` tool calls.
 - **Sequential when dependent.** Wait for prerequisite phase to return before dispatching the next.
@@ -226,10 +227,11 @@ Agent(
   AND, when plan.md has a § AC Traceability table, every row whose Status is `in scope`:
   take the AC text from <plan-root>/jira/<KEY>.md (not the plan's wording) and check that
   the code does exactly that, including the UI text, labels and audit wording the AC quotes.
-  List rows with Status `deferred`, `jira-unclear` or `out of scope` with their status, no verdict.
     1. List the criterion verbatim.
     2. Mark ✅ / ❌ MISSING / ❌ WRONG / ⚠ EXTRA.
     3. Cite file:line proving the verdict.
+  List table rows with Status `deferred`, `jira-unclear` or `out of scope` with their status and
+  no verdict; they do not count against "all ✅".
   This section MUST be exhaustive — every AC, no skips. Also flag work
   that lives outside the file ownership declared in the plan.
 
@@ -248,7 +250,7 @@ Agent(
 )
 ```
 
-Fill `<plan-root>` with the absolute plan root.
+Fill `<plan-root>` with the absolute plan root (here and in § Scoped re-review).
 
 ### Dispatch 2/2 — cleanup lenses (non-gating)
 
@@ -389,8 +391,8 @@ Agent(
   do not re-run Section A over criteria the fix did not touch.
 
   ## Findings the batch fixed (verbatim)
-  <paste each blocking finding>
-  and the AC Traceability rows that were ❌ and are now claimed fixed (AC text from <plan-root>/jira/<KEY>.md)
+  <paste each blocking finding; when plan.md has an AC Traceability table, its Section A ❌ rows
+  included, with their AC text from <plan-root>/jira/<KEY>.md>
 
   ## Delta
   `git diff <before-tree> <after-tree>`

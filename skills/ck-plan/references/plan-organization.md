@@ -117,7 +117,7 @@ Brief description of what this plan accomplishes.
 - List key dependencies here
 
 ## AC Traceability
-<!-- Only when the spec or design has "Truy vết AC". Copy its table verbatim; format: ../brainstorm-pro/references/jira-snapshot.md § Traceability table. -->
+<!-- Only when the spec or design has "Truy vết AC". Copy AC, Text and Status verbatim and fill Where with the owning phase file; format: ../brainstorm-pro/references/jira-snapshot.md § Traceability table. -->
 | AC | Text (verbatim) | Where | Status |
 |---|---|---|---|
 ```
@@ -169,7 +169,7 @@ Each phase file should contain:
 **Success Criteria**
 - Definition of done
 - Validation methods
-- The ids of the AC Traceability rows this phase owns (e.g. "13706 AC-2"), when plan.md has the table
+- The ids of the AC Traceability rows this phase owns (e.g. "T6IR-13706 AC-2"), when plan.md has the table
 
 **Risk Assessment**
 - Potential issues

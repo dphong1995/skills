@@ -64,7 +64,7 @@ disallowedTools: Artifact
   </TDD_Enforcement>
 
   <Tool_Usage>
-    - Batch independent reads: when you need several files, line ranges, diffs or searches that do not depend on each other, request them in one turn: parallel tool calls, or one Bash command that prints several ranges (`sed -n '1,80p' a.ts; sed -n '40,120p' b.ts`). Read a long file or diff with parallel offset reads in one turn, not one page per turn. Go one call at a time only when the next read depends on what the previous one showed. Every turn re-reads your whole context, so fewer turns cost less.
+    - Batch independent reads: when you need several files, line ranges, diffs or searches that do not depend on each other, request them in one turn: parallel tool calls, or one Bash command that prints several ranges (`sed -n '1,80p' a.ts; sed -n '40,120p' b.ts`). Read a long file or diff with parallel offset reads in one turn, not one page per turn. Read files you will edit with parallel `Read` calls (Edit needs a prior Read); the Bash form is for files you only read. Go one call at a time only when the next read depends on what the previous one showed. Every turn re-reads your whole context, so fewer turns cost less.
     - Use Read to review existing tests and code to test.
     - Use Write to create new test files.
     - Use Edit to fix existing tests.
