@@ -17,16 +17,16 @@ Single workflow. Step 1 (Design) is run by the orchestrator; every implementatio
 
 ## Step 1: Design (skip if plan path provided)
 
-Full detail in **`design-phase.md`** — this is the `brainstorm-pro` flow run in-line, through its
+Full detail in **`design-phase.md`** (it runs `~/.claude/skills/brainstorm-pro/references/design-flow.md`) — this is the `brainstorm-pro` flow run in-line, through its
 design stage only. Summary:
 
 | Sub-step | What happens | Delegation |
 |---|---|---|
 | 1A Deep Scout | CLAUDE.md + rules, related dirs/features, cross-repo, docs, user memory. Produce reuse opportunities / conflict risks / open questions. | Orchestrator; `document-specialist`/`Explore` sub-agents optional for parallel reading (≤150-line reports) |
 | 1B Best-Practice Research | Conditional — only if no in-repo precedent AND well-trodden externally AND a real design fork. Orienting pass by default. | Orchestrator; `document-specialist` / context7 / WebSearch optional |
-| 1C Q&A Loop | ONE round at a time (one question, or up to 4 independent ones) on a local HTML question page (`../brainstorm-pro/references/html-interview.md`): full card, multi-choice + recommendation, answers sent back from the page (or pasted), mini re-explore between rounds, ≥1 brutal-honesty pushback. **Cap 8 rounds.** | Orchestrator only |
+| 1C Q&A Loop | ONE round at a time (one question, or up to 4 independent ones) on a local HTML question page (`../brainstorm-pro/references/html-interview.md`): full card, multi-choice + recommendation, answers sent back from the page (or pasted), mini re-explore between rounds, ≥1 brutal-honesty pushback, a playback card ("Thẻ phát lại", no recommendation) before the approaches. **Cap 8 rounds.** | Orchestrator only |
 | 1D Approaches | 2-3 approaches with pros/cons/effort, recommendation first — the last question on the interview page. | Orchestrator only |
-| 1E Design review | The design written to `<plan-dir>/design.md` (brainstorm-pro's spec structure), self-reviewed, shown on a review page (`--serve`) — **notes per section, then Duyệt**. | Orchestrator only |
+| 1E Design review | The design written to `<plan-dir>/design.md` (brainstorm-pro's spec structure), self-reviewed + builder check, shown on a review page (`--serve`) — **notes per section, then Duyệt**. | Orchestrator; builder check agent (`../brainstorm-pro/references/builder-check.md`) |
 
 **This step is interactive.** The "no approval stops" rule does NOT apply here — it starts at Step 2.
 
@@ -448,7 +448,7 @@ box in its file is ticked. Re-read the phase file before writing its row.
 Legend: `[R]` = human gate
 
 ```
-0 → 1A scout → 1B research → 1C Q&A [R per round] → 1D approaches → 1E design.md review page [R, notes per section]
+0 → 1A scout → 1B research → 1C Q&A [R per round] → playback card [R] → 1D approaches → 1E design.md → builder check → review page [R, notes per section]
   → 2 (orchestrator writes plan + self-review) → 3 (sub-agent per phase) → 4 (test sub-agent) → 5 (review sized by the diff: 1 or 2 reviewers) → 6 (finalize sub-agents)
 ```
 
@@ -458,7 +458,7 @@ If a plan path is provided at Step 0, skip Steps 1–2 and start at Step 3.
 ## Critical Rules
 
 - Never skip steps without explicit user instruction.
-- **STEP 1 IS NOT DELEGATED.** The design conversation (1C Q&A, 1D approaches, 1E design review) is run by the orchestrator. Sub-agents assist with reading in 1A/1B only. Never write `spec.md`, never invoke `ck-plan` — Step 2 continues in this run.
+- **STEP 1 IS NOT DELEGATED.** The design conversation (1C Q&A, 1D approaches, 1E design review) is run by the orchestrator. Sub-agents assist with reading in 1A/1B only, plus the builder check agent in 1E. Never write `spec.md`, never invoke `ck-plan` — Step 2 continues in this run.
 - **MANDATORY SUBAGENT DELEGATION:** Steps 3, 4, 5, 6 MUST spawn subagents via the `Agent` tool. DO NOT implement, test, or review directly. Resolve every type through `subagent-patterns.md` § Agent Name Mapping first.
   - Step 3: `executor` / `designer` for frontend (one per phase)
   - Step 4: `test-engineer` (and `debugger` if failures)

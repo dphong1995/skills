@@ -6,8 +6,8 @@ presses "Gửi câu trả lời", the script prints every answer of the round an
 come back as the command's output in the same turn, at the cost of asking in the terminal.
 Copy-and-paste into the chat stays as the fallback. Nothing is published and nothing is polled.
 
-**Covers:** the scope-fixing question (Q0), every Q&A round, the approach pick (brainstorm-pro
-Phase 3 / cook 1D, including a collapsed bug-fix's candidate fixes, whose pick is the approval) and
+**Covers:** the scope-fixing question (Q0), every Q&A round, the playback card, the approach pick (brainstorm-pro
+Phase 3 / cook 1D, including a collapsed bug-fix's candidate fixes, whose pick is the approval), the builder check's round of questions for the user and
 the end-of-run commit/push question. **Does not cover:** reviews of something already written (the
 spec, cook's design): those go on a document page, `html-doc.md`. The "just code it" confirmation
 stays in chat.
@@ -22,7 +22,7 @@ shortcuts; `?` on the page lists them.
 
 One question, or up to 4 **independent** questions: no answer among them can change another's
 options, relevance or recommendation. A question that depends on an answer waits for the next
-round. A page counts as one round toward the round cap.
+round. A page counts as one round toward the round cap (except what `design-flow.md` § Phase 2 lists as not counted: re-asks, the playback card, the builder check's round).
 
 ## Asking a round
 
@@ -68,7 +68,7 @@ included, to a new `round-NN.html`; never reuse a path for different questions.
 | Field | Content |
 |---|---|
 | `id`, `n` | `q03` and `3`. Ids run on across rounds in the order asked. |
-| `stage` | Short tag for the kind of gap: Mục tiêu / Phạm vi / Ràng buộc / Tiêu chí xong / Cách làm / Phản biện. |
+| `stage` | Short tag for the kind of gap: Mục tiêu / Phạm vi / Ràng buộc / Tiêu chí xong / Cách làm / Phản biện / Phát lại. |
 | `title` | The decision in one plain sentence. No jargon the user would have to look up. |
 | `why` | What changes depending on the answer: what gets built differently, what it rules in or out. 1-2 sentences. |
 | `reversible`, `reversibleWhy` | `true` when a wrong pick is cheap to change later (a message, a label, a config value, a test), `false` when it is costly (data shape or migration, public API, contract with BE, anything users start depending on). `reversibleWhy`: one short line saying what changing it later would take. Shown as a "Dễ đổi / Khó đổi về sau" badge so the user spends their time on the costly ones. |

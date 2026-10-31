@@ -45,7 +45,7 @@ Agent(subagent_type="Explore", prompt="Find files related to [feature] in codeba
 ```
 - Only for parallel reading during deep scout (1A) / best-practice research (1B)
 - Keep reports ≤150 lines with citations; the orchestrator owns synthesis, Q&A and design
-- NEVER delegate 1C/1D/1E — the design conversation stays with the orchestrator
+- NEVER delegate the design conversation (1C/1D/1E) — it stays with the orchestrator. One exception: the 1E builder check runs per `../brainstorm-pro/references/builder-check.md` and reads the written design.md; the orchestrator triages its questions and still owns Q&A, the design and the review page. When cook dispatches it, append the § Every prompt line like any other prompt cook writes
 
 ## Planning Phase — NO SUB-AGENT
 

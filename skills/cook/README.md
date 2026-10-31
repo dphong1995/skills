@@ -51,7 +51,7 @@ From Step 2 onward it runs end to end without pausing; only the final commit is 
 
 | Step | Sub-agent |
 |------|-----------|
-| Design (1A/1B reading only) | `document-specialist`, `Explore` — optional; 1C/1D/1E are orchestrator-run |
+| Design (1A/1B reading only, plus the 1E builder check) | `document-specialist`, `Explore` — optional; builder check agent per `../brainstorm-pro/references/builder-check.md`; 1C/1D/1E are otherwise orchestrator-run |
 | Planning | **none** — orchestrator writes the plan itself from the approved design block, in `ck-plan`'s format |
 | Implementation (one per phase) | `executor` / `designer` (frontend) |
 | Testing | `test-engineer`, `debugger` |
@@ -66,7 +66,7 @@ cook/
 ├── SKILL.md                           # Main skill definition
 ├── README.md                          # This file
 └── references/
-    ├── design-phase.md                # Step 1 — brainstorm-pro design flow, in-line
+    ├── design-phase.md                # Step 1 — runs the shared brainstorm-pro design-flow.md, in-line
     ├── workflow-steps.md              # Step definitions
     ├── review-cycle.md                # Review process
     └── subagent-patterns.md           # Subagent usage
@@ -74,6 +74,7 @@ cook/
 
 ## Version
 
+5.8.0 - Step 1 reads the shared `brainstorm-pro/references/design-flow.md`; adds the playback card, the builder check and the Nguồn column
 5.7.0 - Step 5 sized by the diff (one reviewer for a small diff, two for a large one); re-reviews scoped to the fix
 5.6.3 - Step 5 has one severity scale, agent 1's: a cleanup finding gates only when agent 2 labels it OUT-OF-LENS and it grades Critical/High; the old Critical Issues list that made DRY, performance and architecture findings critical is gone
 5.6.2 - Implementation, testing, fix-application and finalize subagents are dispatched with `model: "sonnet"` (no exception for hard fixes), matching the always-on `subagent-models` rule

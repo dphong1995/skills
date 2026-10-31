@@ -4,7 +4,7 @@ description: "ALWAYS activate this skill before implementing EVERY feature, plan
 argument-hint: "[task|plan-path]"
 metadata:
   author: claudekit
-  version: "5.7.0"
+  version: "5.8.0"
 ---
 
 # Cook - Smart Feature Implementation
@@ -20,7 +20,7 @@ End-to-end implementation. Every implementation phase is executed by a dedicated
 ```
 
 - **Plan path given** (`plan.md` / `phase-*.md`) → load it, skip Steps 1–2, start at Step 3.
-- **No plan** → Step 1 runs the full `brainstorm-pro` design flow in-line (deep scout →
+- **No plan** → Step 1 runs `references/design-phase.md`, which runs the shared `~/.claude/skills/brainstorm-pro/references/design-flow.md` in-line (deep scout →
   best-practice research → one-round-at-a-time Q&A on a local HTML question page → 2-3
   approaches → the design written to `design.md` and approved section by section on a local review page). Where brainstorm-pro would write `spec.md` and hand off to `ck-plan`,
   cook instead goes straight to Step 2 (write the plan) and executes it in the same run.
@@ -43,7 +43,7 @@ A bug fix handed off by `routing-bug-fixes-to-cook` collapses Step 1 the same wa
 Steps 1 and 2 are NOT delegated. Scout, Q&A and the design review are conversational, and the plan is
 written by the orchestrator itself — it holds the full design conversation in context, so handing it
 to a sub-agent only loses fidelity. Research / codebase-exploration sub-agents may assist with
-parallel reading inside 1A/1B only. Never write `spec.md`, never invoke the `ck-plan` skill, and
+parallel reading inside 1A/1B only; the 1E builder check agent (`../brainstorm-pro/references/builder-check.md`) is the one other exception. Never write `spec.md`, never invoke the `ck-plan` skill, and
 never dispatch a `planner` sub-agent — the approved design goes straight into plan files the
 orchestrator writes with Write. Sub-agent delegation starts at Step 3 (execution).
 
@@ -71,7 +71,7 @@ The orchestrator NEVER edits source files itself during Step 3. Every phase MUST
 | "Cook never stops for the user, so skip the Q&A" | The no-stop rule starts at Step 2. Step 1 is interactive by design. |
 | "The task is clear, skip scout and go straight to planning" | Scout is what makes the plan reuse existing infra instead of duplicating it. |
 | "Batch the design questions to save turns" | Batching dependent questions breaks adaptive follow-up. Only independent ones share a page (up to 4). |
-| "This design question is quick, ask it in chat" | Every 1C question and the 1D approach pick go on the interview page (`references/design-phase.md` § 1C). |
+| "This design question is quick, ask it in chat" | Every 1C question and the 1D approach pick go on the interview page (`../brainstorm-pro/references/design-flow.md` § Phase 2). |
 | "Write spec.md first, then plan from it" | No spec and no ck-plan in cook. The design lives in `<plan-dir>/design.md`, which `plan.md` links. |
 | "Let a `planner` sub-agent write the plan" | No. The orchestrator writes the plan itself — it holds the design conversation. Sub-agents start at Step 3. |
 | "Cook forbids invoking ck-plan, so its format doesn't apply either" | Delegation is forbidden; the format is shared. Load ck-plan's `plan-organization.md` + `output-standards.md` and match them. |
@@ -96,9 +96,9 @@ flowchart TD
     subgraph S1[Step 1: Design — brainstorm-pro flow, interactive, orchestrator-run]
       direction TB
       C1[1A: Deep Scout] --> C2[1B: Best-Practice Research<br/>conditional]
-      C2 --> C3[1C: Q&A Loop — one round at a time<br/>on an HTML question page, answers sent back]
+      C2 --> C3[1C: Q&A Loop — one round at a time<br/>on an HTML question page, answers sent back, thẻ phát lại]
       C3 --> C4[1D: Propose 2-3 Approaches]
-      C4 --> C5[1E: design.md on a review page<br/>notes per section, Duyệt]
+      C4 --> C5[1E: design.md on a review page<br/>builder check, notes per section, Duyệt]
     end
     C5 --> D[Step 2: Plan — orchestrator writes plan files itself<br/>from the approved design block, NOT a spec, NO sub-agent]
     D --> F
@@ -115,7 +115,7 @@ flowchart TD
 ```
 [Setup] → [Design: scout → research → Q&A → approaches → design.md reviewed on a page] → [Plan: orchestrator writes it] → [Phase sub-agents] → [Test sub-agent] → [Review: sized by the diff (workflow-steps.md § Step 5) — compliance+bugs / reuse+simplification+efficiency+altitude] → [Finalize sub-agents]
 
-Steps 1–2 are orchestrator-run (design + plan). Steps 3–6 are sub-agent-run (execution).
+Steps 1–2 are orchestrator-run (design + plan; except the 1E builder check agent). Steps 3–6 are sub-agent-run (execution).
 ```
 
 Step 1 is interactive (Q&A rounds, the design review page). **From Step 2 onward the workflow runs straight through without stopping for approval.** **Claude Tasks (ALWAYS create AND update):** A task list MUST always be created — use `TaskCreate` to seed tasks up front — AND MUST be kept in lock-step throughout: `TaskUpdate` → `in_progress` before each phase dispatch, `TaskUpdate` → `complete` immediately after that phase returns (one phase at a time, same turn — never batched to the end). **Fallback:** `TaskCreate`/`TaskUpdate`/`TaskGet`/`TaskList` are CLI-only — unavailable in the VSCode extension. If they error, still create AND update the list via `TodoWrite`. Never skip creating or updating the task list.
@@ -128,7 +128,7 @@ Step 1 is interactive (Q&A rounds, the design review page). **From Step 2 onward
 
 ## Gates
 
-**Step 1 has real gates** (it is a design conversation): one round at a time on the HTML question page during 1C (independent questions may share a page; the 1D approach pick too), and the user's approval of `design.md` on its review page in 1E (notes per section). Do not shortcut them.
+**Step 1 has real gates** (it is a design conversation): one round at a time on the HTML question page during 1C (independent questions may share a page; the 1D approach pick too), the playback card round (end of 1C), the builder check's round (1E, only when it has questions for the user), and the user's approval of `design.md` on its review page in 1E (notes per section). Do not shortcut them.
 
 **No approval stops from Step 2 onward.** Plan → implement → test → review → finalize runs end to end without pausing for the user. Report progress as you go (`✓ Step [N]: …`) so the user can interrupt if they want to redirect, but never block waiting for a go-ahead. In particular, once implementation and testing finish, go straight into the review in the same turn.
 
@@ -148,7 +148,7 @@ The review (Step 5) is **sized by the diff** (workflow-steps.md § Step 5: one r
 
 | Phase | Subagent | Requirement |
 |-------|----------|-------------|
-| Step 1 Design (1A–1E) | **none — orchestrator-run** | Skip only if plan path provided. `document-specialist` / `Explore` optional helpers inside 1A/1B |
+| Step 1 Design (1A–1E) | **orchestrator-run** (builder check agent in 1E) | Skip only if plan path provided. `document-specialist` / `Explore` optional helpers inside 1A/1B; the builder check agent per `../brainstorm-pro/references/builder-check.md` in 1E |
 | Step 2 Plan | **none — orchestrator-run** | Orchestrator writes `plan.md` + `phase-XX-*.md` itself with Write, in **`ck-plan`'s format** (load `../ck-plan/references/plan-organization.md` + `output-standards.md` first). Skip only if plan path provided. Dispatching `planner` here is FORBIDDEN |
 | Implementation (per phase) | `executor` (or `designer` for frontend) | **MUST** spawn one per phase. Dispatch with `model: "sonnet"` |
 | Testing | `test-engineer`, `debugger` | **MUST** spawn. Dispatch with `model: "sonnet"` |
@@ -161,7 +161,7 @@ dispatching and fall back rightward; never abandon a step because a name is miss
 table: `references/subagent-patterns.md`.
 
 **CRITICAL ENFORCEMENT:**
-- Steps 1 and 2 **MUST NOT** be delegated — the design conversation AND the plan that encodes it belong to the orchestrator
+- Steps 1 and 2 **MUST NOT** be delegated — the design conversation AND the plan that encodes it belong to the orchestrator (exceptions: research helpers in 1A/1B and the builder check agent in 1E)
 - Steps 3, 4, 5, 6 **MUST** use the `Agent` tool to spawn subagents
 - DO NOT implement, test, review, or finalize yourself — DELEGATE (Steps 1–2 are the orchestrator-run steps; execution is delegated)
 - If workflow ends with 0 `Agent` tool calls for Step 3, Step 4, OR Step 5, it is INCOMPLETE
@@ -178,6 +178,7 @@ table: `references/subagent-patterns.md`.
 ## References
 
 - `references/design-phase.md` - Step 1 design flow (brainstorm-pro, in-line)
+- `../brainstorm-pro/references/design-flow.md` - the shared design flow Step 1 runs
 - `references/workflow-steps.md` - Detailed step definitions
 - `references/review-cycle.md` - Interactive review process
 - `references/subagent-patterns.md` - Subagent invocation patterns
