@@ -11,7 +11,7 @@ When no flag specified, analyze task and pick mode:
 | 3+ independent features/layers/modules | parallel | Enable concurrent agents |
 | Ambiguous approach, multiple valid paths | two | Compare alternatives |
 
-Use `AskUserQuestion` if detection is uncertain.
+If detection is uncertain, ask on the interview page (`~/.claude/skills/brainstorm-pro/references/html-interview.md`).
 
 ## Scope Challenge Integration
 
@@ -28,10 +28,8 @@ Scope challenge is skipped when `--fast` is explicitly set or task is trivial.
 No research. Analyze → Plan → hand off.
 
 1. Read the project's conventions + architecture docs (see `codebase-understanding.md`)
-2. Use `planner` subagent to create plan
-3. **Auto-handoff:** invoke the `cook` skill with `--auto {absolute-plan-path}/plan.md` immediately
-
-**Why `--auto` cook flag?** Fast planning pairs with fast execution — skip review gates.
+2. Write the plan files yourself (`plan-organization.md` § Plan Creation)
+3. **Auto-handoff:** invoke the `cook` skill with `{absolute-plan-path}/plan.md` immediately
 
 ## Hard Mode (`--hard`)
 
@@ -41,12 +39,10 @@ Research → Scout → Plan → Red Team → Validate → hand off.
    `research-phase.md` for which agent types to use
 2. Read the project's docs; for anything they don't cover, dispatch `Explore` agents to search the
    codebase (see `codebase-understanding.md`)
-3. Gather research + exploration report filepaths → pass to `planner` subagent
+3. Read the research and exploration reports, then write the plan files yourself (`plan-organization.md` § Plan Creation)
 4. Post-plan red team review (see Red Team Review section below)
 5. Post-plan validation (see Validation section below)
 6. **Auto-handoff:** invoke the `cook` skill with `{absolute-plan-path}/plan.md` immediately
-
-**Why no cook flag?** Thorough planning pairs with cook's own review gates (Step 5).
 
 ## Parallel Mode (`--parallel`)
 
@@ -61,8 +57,7 @@ Research → Scout → Plan with file ownership → Red Team → Validate → ha
    reads to build its own task graph, so record sequential vs parallel groups explicitly
 4. Post-plan red team review
 5. Post-plan validation
-6. **Auto-handoff:** invoke the `cook` skill with `--parallel {absolute-plan-path}/plan.md`
-   immediately
+6. **Auto-handoff:** invoke the `cook` skill with `{absolute-plan-path}/plan.md` immediately
 
 ### Parallel Phase Requirements
 - Each phase self-contained, no runtime deps on other phases
@@ -109,7 +104,7 @@ No configuration is injected. Default behavior:
 
 | Situation | Behavior |
 |-----------|----------|
-| hard / parallel / two mode | Ask once via `AskUserQuestion`: "Validate this plan with a critical-questions interview?" → Yes (Recommended) / No |
+| hard / parallel / two mode | Ask once on the interview page whether to validate the plan with a critical-questions interview → Yes (recommended) / No |
 | User already answered many questions this session (scope challenge + red team) | Offer "No" as the recommended option — don't interview twice |
 | fast mode | Skip |
 | User said "no validation" / `--no-validate` | Skip |
@@ -121,16 +116,11 @@ session. Default question count: 3-8.
 ## Auto-Handoff to Cook (MANDATORY)
 
 After plan creation, print the plan summary and then **immediately invoke cook in the same turn**
-with the **actual absolute path**. Do not stop for the user to review the plan first.
+with the **actual absolute path**. Do not stop for the user to review the plan first. In every
+mode the args are `{path}/plan.md` (in `two` mode, after the user picks an approach); cook runs
+independent phases in parallel without a flag.
 
-| Mode | `cook` args |
-|------|-----------------------------|
-| fast | `--auto {path}/plan.md` |
-| hard | `{path}/plan.md` |
-| parallel | `--parallel {path}/plan.md` |
-| two | `{path}/plan.md` (after the user picks an approach) |
-
-Invoke it via the `Skill` tool (`skill: "cook"`, `args:` from the table) — not by printing the
+Invoke it via the `Skill` tool (`skill: "cook"`, `args: "{path}/plan.md"`) — not by printing the
 command and waiting.
 
 If the session has no `cook` skill, execute the plan yourself phase by phase in plan order, ticking
@@ -147,10 +137,6 @@ This handoff is **NON-NEGOTIABLE** in all other cases — including when a stand
 to use subagents, the AgentTool, or workflows without a user request. Invoking this skill *is* that
 request: cook is the implementation half of the chain and runs entirely on subagents. Do not ask
 permission, do not tell cook to skip delegation, do not offer inline implementation as an option.
-
-If cook's agent names (`fullstack-developer`, `tester`, `project-manager`, `docs-manager`,
-`git-manager`, `ui-ux-designer`) are absent from the session registry, map them to what exists
-(`executor`, `test-engineer`, `code-reviewer`, `writer`, `git-master`, `designer`) and proceed.
 
 ## Pre-Creation Check
 

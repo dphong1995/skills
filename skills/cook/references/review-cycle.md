@@ -8,7 +8,7 @@ Step 5 dispatches one review sub-agent (small diff) or two in one message (large
 
 **Gating — from agent 1 (`code-reviewer`; the single reviewer on a small diff):**
 - **Section A — Plan Compliance:** per-acceptance-criterion verdicts (✅ / ❌ MISSING / ❌ WRONG / ⚠ EXTRA) for the plan ACs, plus the `in scope` rows of plan.md's AC Traceability table when it has one. **Non-overridable** — any ❌ means dispatch a fix sub-agent, not "note it and move on".
-- **Section B — Code Quality (bugs):** severity-rated findings (Critical / High / Medium / Low). Critical + High gate; the score / critical_count / warnings / suggestions tally is built from this section.
+- **Section B — Code Quality (bugs):** severity-rated findings (Critical / High / Medium / Low). Critical + High gate; the counts per severity come from this section.
 
 **Non-gating — from agent 2, or the Cleanup section of the single reviewer (reuse + simplification + efficiency + altitude, already collapsed across its own lenses):**
 - Findings carry `file`, `line`, `summary`, and the concrete cost — **no severity**, because they are not bugs. They are applied or skipped with a stated reason, and they **never** gate Step 6 or increment the cycle counter.
@@ -33,16 +33,16 @@ LOOP:
 
   3. DISPLAY FINDINGS:
      ┌─────────────────────────────────────────┐
-     │ Review Results: [score]/10              │
+     │ Review Results                          │
      ├─────────────────────────────────────────┤
      │ Summary: [what implemented], tests      │
      │ [X/X passed]                            │
      ├─────────────────────────────────────────┤
      │ Section A — Plan Compliance             │
      │  [✅ all N criteria | ❌ N gaps]         │
-     │ Critical Issues ([N]): MUST FIX         │
+     │ Blocking — Critical/High ([N])          │
      │  - [issue] at [file:line]               │
-     │ Warnings ([N]): SHOULD FIX              │
+     │ Medium/Low ([N]): apply or skip         │
      │  - [issue] at [file:line]               │
      ├─────────────────────────────────────────┤
      │ Cleanup (non-gating)                    │

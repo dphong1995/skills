@@ -29,7 +29,7 @@ step* = Step 2.
 - 1A: **Save the Jira stories** when the topic names Jira issues (not in the collapsed bug-fix Step 1): run `../brainstorm-pro/references/jira-snapshot.md` (Sonnet agents in the background; it keeps Story/Epic only). Read their one-line reports, then the saved files of the stories you design.
 
 **1A budget:** 5-15 actions typical. `document-specialist` / `Explore` sub-agents may be dispatched in
-parallel for distinct areas (reports ≤150 lines); the orchestrator still owns synthesis.
+parallel for distinct areas (reports carry conclusions and citations, not file dumps); the orchestrator still owns synthesis.
 
 Anti-Rationalization rows (in addition to `design-flow.md`'s):
 

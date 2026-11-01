@@ -33,7 +33,7 @@ Before planning, answer these concisely:
 
 ## Scope Modes
 
-After answering the 3 questions, present via `AskUserQuestion`:
+After answering the 3 questions, ask on the interview page (`~/.claude/skills/brainstorm-pro/references/html-interview.md`):
 
 **Header:** "Scope Challenge"
 **Question:** "Based on analysis, how should we scope this plan?"

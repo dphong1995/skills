@@ -70,15 +70,6 @@ List affected files with:
 - Dependencies on other changes
 - Fully respect the project's own conventions file (`CLAUDE.md` / `AGENTS.md`, plus anything under `docs/`).
 
-## Workflow Process
-
-1. **Initial Analysis** → Read docs, understand context
-2. **Research Phase** → Spawn researchers in parallel, investigate approaches
-3. **Synthesis** → Analyze reports, identify optimal solution
-4. **Design Phase** → Create architecture, implementation design
-5. **Plan Documentation** → Write comprehensive plan in Markdown
-6. **Review & Refine** → Ensure completeness, clarity, actionability
-
 ## Output Requirements
 
 ### What Planners Do
@@ -90,15 +81,13 @@ List affected files with:
 - Fully respect the project's own conventions file (`CLAUDE.md` / `AGENTS.md`, plus anything under `docs/`).
 
 ### Writing Style
-**IMPORTANT:** Sacrifice grammar for concision
-- Focus clarity over eloquence
-- Use bullets and lists
-- Short sentences
-- Remove unnecessary words
+Plan text is pasted verbatim into prompts for agents with no other context, so each block must read on its own:
+- Short, complete sentences; bullets for steps and file lists
+- Cut words that don't change what the reader would do; keep the ones that make a step unambiguous
 - Prioritize actionable info
 
 ### Unresolved Questions
-**IMPORTANT:** Use `AskUserQuestion` to ask users for unresolved questions at the end
+At the end, ask unresolved questions on the interview page (`~/.claude/skills/brainstorm-pro/references/html-interview.md`):
 - Questions needing clarification
 - Technical decisions requiring input
 - Unknowns impacting implementation
@@ -107,35 +96,8 @@ Revise the plan and phases based on the answers.
 
 ## Quality Standards
 
-### Thoroughness
-- Thorough and specific in research/planning
-- Consider edge cases, failure modes
-- Think through entire user journey
-- Document all assumptions
-
-### Maintainability
-- Consider long-term maintainability
-- Design for future modifications
-- Document decision rationale
-- Avoid over-engineering
+- Detailed enough for a developer (or agent) with no other context to implement each phase; validated against existing patterns and codebase standards
+- Cover the edge cases, failure modes, security and performance concerns this change actually raises; plan no scalability, configurability or abstraction the task did not ask for
+- When uncertain, research; give trade-offs where the options are real
+- Document assumptions and the rationale for each decision
 - Fully respect the project's own conventions file (`CLAUDE.md` / `AGENTS.md`, plus anything under `docs/`).
-
-### Research Depth
-- When uncertain, research more
-- Multiple options with clear trade-offs
-- Validate against best practices
-- Consider industry standards
-
-### Security & Performance
-- Address all security concerns
-- Identify performance implications
-- Plan for scalability
-- Consider resource constraints
-
-### Implementability
-- Detailed enough for junior developers
-- Validate against existing patterns
-- Ensure codebase standards consistency
-- Provide clear examples
-
-**Remember:** Plan quality determines implementation success. Be comprehensive, consider all solution aspects.

@@ -9,7 +9,7 @@ Adversarially review an implementation plan by spawning parallel reviewer subage
 1. If a path was provided in the arguments → use it
 2. Else list the project's plan root (`plans/`, else `ai_docs/`, else `docs/plans/`) and pick the
    most recent directory whose `plan.md` frontmatter is `status: pending | in-progress`; if more
-   than one qualifies, ask via `AskUserQuestion`
+   than one qualifies, ask on the interview page (`~/.claude/skills/brainstorm-pro/references/html-interview.md`)
 3. If no plan found → ask the user for the path, or tell them to create a plan first
 
 ## Workflow
@@ -46,18 +46,16 @@ Load: `references/red-team-personas.md` for reviewer prompt template.
 For each finding, evaluate and propose: **Accept** or **Reject**.
 
 ### Step 7: User Review
-Present via `AskUserQuestion`:
+Ask on the interview page:
 - "Looks good, apply accepted findings"
 - "Let me review each one"
 - "Reject all, plan is fine"
 
 **If "Let me review each one":**
-For each finding marked Accept, ask via `AskUserQuestion`:
-- Options: "Yes, apply" | "No, reject" | "Modify suggestion"
+Ask about each finding marked Accept on the interview page (up to 4 independent ones per page):
+- Options: "Yes, apply" | "No, reject"; a modification comes back as the page's "Khác (tự nhập)" text
 
-**If "Modify suggestion":**
-Ask via `AskUserQuestion`: "Describe your modification to this finding's suggested fix:"
-(user provides free text via "Other" option)
+**If the user wrote a modification:**
 Record the modified suggestion. Set disposition to "Accept (modified)" in the Red Team Review table.
 
 ### Step 8: Apply to Plan

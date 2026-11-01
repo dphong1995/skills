@@ -98,9 +98,8 @@ Use `addBlocks` when creating parent first ("X blocks these children").
 
 ### Same-Session (planning → cook immediately)
 
-1. Planning hydrates tasks → tasks exist in session
-2. Cook Step 3: `TaskList` → finds existing tasks → picks them up
-3. Cook skips re-creation, begins implementation directly
+1. Planning creates no tasks; cook Step 3 hydrates them from the plan's unchecked `[ ]` items
+2. If cook already ran on this plan in the session, `TaskList` finds its phase tasks and cook picks them up
 
 ### Cross-Session (new session, resume plan)
 
@@ -111,14 +110,14 @@ Use `addBlocks` when creating parent first ("X blocks these children").
 
 ### Sync-Back (cook Step 6)
 
-1. `TaskUpdate` marks all session tasks complete.
-2. `project-manager` subagent runs full-plan sync-back:
+1. An `executor` subagent runs full-plan sync-back:
    - Sweep all `phase-XX-*.md` files.
    - Reconcile completed tasks by metadata (`phase`, `phaseFile`).
    - Backfill stale completed checkboxes `[ ]` → `[x]` across all phases (not only current phase).
    - Update `plan.md` status/progress from actual checkbox state.
-3. If any completed task cannot be mapped to a phase file, report unresolved mappings before claiming completion.
-4. Git commit captures the state transition for next session.
+2. If any completed task cannot be mapped to a phase file, report unresolved mappings before claiming completion.
+3. `TaskUpdate` marks all session tasks complete once the sync-back is confirmed.
+4. The plan files on disk carry the state to the next session; they are local artifacts, not committed.
 
 ## Quality Checks
 

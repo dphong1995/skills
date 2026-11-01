@@ -13,8 +13,8 @@
 ## Question Format Rules
 
 - Each question must have 2-4 concrete options
-- Mark recommended option with "(Recommended)" suffix
-- "Other" option is automatic
+- Give each question a recommendation
+- The page adds "Khác (tự nhập)" for the user's own answer
 - Questions should surface implicit decisions
 
 ## Example Questions

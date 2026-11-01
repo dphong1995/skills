@@ -1,6 +1,6 @@
 ---
 name: cook
-description: "ALWAYS activate this skill before implementing EVERY feature, plan, or fix."
+description: "ALWAYS activate this skill before implementing EVERY feature or plan, and for every bug fix that routing-bug-fixes-to-cook hands here."
 argument-hint: "[task|plan-path]"
 metadata:
   author: claudekit
@@ -27,7 +27,7 @@ End-to-end implementation. Every implementation phase is executed by a dedicated
 - **Plan path given** (`plan.md` / `phase-*.md`) → load it, skip Steps 1–2, start at Step 3.
 - **No plan** → Step 1 runs `references/design-phase.md`, which runs the shared `~/.claude/skills/brainstorm-pro/references/design-flow.md` in-line (deep scout →
   best-practice research → one-round-at-a-time Q&A on a local HTML question page → 2-3
-  approaches → the design written to `design.md` and approved section by section on a local review page). Where brainstorm-pro would write `spec.md` and hand off to `ck-plan`,
+  approaches → the design written to `design.md` and approved on a local review page, with notes per section). Where brainstorm-pro would write `spec.md` and hand off to `ck-plan`,
   cook instead goes straight to Step 2 (write the plan) and executes it in the same run.
 
 **Example:**
@@ -166,13 +166,6 @@ The review (Step 5) is **sized by the diff** (workflow-steps.md § Step 5: one r
 dispatching and fall back rightward; never abandon a step because a name is missing. Full mapping
 table: `references/subagent-patterns.md`.
 
-**CRITICAL ENFORCEMENT:**
-- Steps 1 and 2 **MUST NOT** be delegated — the design conversation AND the plan that encodes it belong to the orchestrator (exceptions: research helpers in 1A/1B and the builder check agent in 1E)
-- Steps 3, 4, 5, 6 **MUST** use the `Agent` tool to spawn subagents
-- DO NOT implement, test, or review yourself, and do not run Finalize's sync-back or docs yourself (the orchestrator commits and pushes) — DELEGATE (Steps 1–2 are the orchestrator-run steps; execution is delegated)
-- If workflow ends with 0 `Agent` tool calls for Step 3, Step 4, OR Step 5, it is INCOMPLETE
-- Pattern: `Agent(subagent_type="[type]", prompt="[task]", description="[brief]")`
-
 ## Phase Dispatch Rules
 
 - **One sub-agent per phase.** Each `phase-XX-*.md` file maps to exactly one `Agent` invocation.
@@ -186,7 +179,7 @@ table: `references/subagent-patterns.md`.
 - `references/design-phase.md` - Step 1 design flow (brainstorm-pro, in-line)
 - `../brainstorm-pro/references/design-flow.md` - the shared design flow Step 1 runs
 - `references/workflow-steps.md` - Detailed step definitions
-- `references/review-cycle.md` - Interactive review process
+- `references/review-cycle.md` - Review-fix cycle (runs without approval stops)
 - `references/subagent-patterns.md` - Subagent invocation patterns
 
 **Borrowed from `ck-plan` (Step 2 plan format — read before writing plan files):**

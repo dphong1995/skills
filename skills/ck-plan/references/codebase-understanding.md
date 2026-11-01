@@ -5,13 +5,14 @@
 ## Core Activities
 
 ### Parallel Codebase Exploration
-- Dispatch `Explore` agents (fallback: `explore`, then `general-purpose`) via the `Agent` tool, one
-  per aspect of the task, in a single message so they run concurrently
+- For a wide, multi-area search, dispatch `Explore` agents (fallback: `explore`, then
+  `general-purpose`) via the `Agent` tool, one per area, in a single message so they run
+  concurrently; make a few targeted reads yourself
 - Give each a narrow question and a breadth hint ("medium" / "very thorough") — they return
   conclusions and file paths, not file dumps
 - Wait for all of them to report before analysis
-- Write each report to `{plan-dir}/reports/explore-{NN}-{aspect}.md` so the planner subagent can
-  read them by path instead of receiving them inline
+- Explore agents cannot write files: save each returned report to
+  `{plan-dir}/reports/explore-{NN}-{aspect}.md` yourself, so later steps and reviewers can read it by path
 
 ### Essential Documentation Review
 
@@ -31,29 +32,3 @@ signal available and they override this skill's defaults.
 
 If a doc named here does not exist, note it and move on — absence is not a blocker. Never cite a
 doc you did not actually read.
-
-### Environment Analysis
-- Review development environment setup
-- Analyze dotenv files and configuration
-- Identify required dependencies
-- Understand build and deployment processes
-
-### Pattern Recognition
-- Study existing patterns in codebase
-- Identify conventions and architectural decisions
-- Note consistency in implementation approaches
-- Understand error handling patterns
-
-### Integration Planning
-- Identify how new features integrate with existing architecture
-- Map dependencies between components
-- Understand data flow and state management
-- Consider backward compatibility
-
-## Best Practices
-
-- Start with documentation before diving into code
-- Use Explore agents for targeted file discovery
-- Document patterns found for consistency
-- Note any inconsistencies or technical debt
-- Consider impact on existing features

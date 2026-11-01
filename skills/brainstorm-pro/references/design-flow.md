@@ -73,7 +73,7 @@ If prose conflicts with this diagram, follow the diagram.
 
 ## Phase 1: Deep Scout (BEFORE asking anything)
 
-The single highest-leverage step. Skipping or shortening this is the #1 mistake.
+Every later question and the design build on what the scout finds in the code.
 
 **Required actions:**
 1. **Read `CLAUDE.md`** + any `.claude/rules/*.md` to internalize project conventions
@@ -281,8 +281,8 @@ node ~/.claude/skills/brainstorm-pro/assets/render-interview.mjs <document path>
   (`review-NN+1.html`). The builder check re-runs only if the round changed the chosen approach (the pick line in `## Cách làm`); wording edits or added rows in the rejected-alternatives table do not.
 - Moved to the background after 10 minutes → end the turn with one line; the answer arrives as the
   task's notification. A reply in chat counts the same (stop the serve command).
-- No browser (exit 4) → ask in chat: "Document written to `<document path>`. Please review
-  and let me know if you want any changes before we move to the implementation plan." and wait.
+- No browser (exit 4) → as `html-doc.md` says: give the document path and a short summary in chat,
+  ask the user to approve it or say what to change, and wait for the reply.
 
 ### What does NOT satisfy this gate
 
@@ -306,8 +306,6 @@ the words they used when you proceed, so the assumption is visible and correctab
 
 ## Tool Usage
 
-- `Read` / `Glob` / `Grep` for scout (Phase 1)
-- `Bash` for `ls`, `find`, `git log` etc. during scout
 - `context7` (library docs), `WebSearch`, or a `document-specialist` sub-agent for Phase 1.5 best-practice research
 - `Write` (question JSON) + `Bash` (`render-interview.mjs --serve` in the foreground, 10-minute timeout, same message) for every interview question (Q0, Phase 2, Phase 3) — `~/.claude/skills/brainstorm-pro/references/html-interview.md`; chat only as its fallback
 - Sub-agents OK for parallel research IF Phase 1 reveals multiple unknown areas — but keep it focused
@@ -315,26 +313,6 @@ the words they used when you proceed, so the assumption is visible and correctab
 - `Agent` for the builder check — settings and prompt in `~/.claude/skills/brainstorm-pro/references/builder-check.md` (its round goes on the interview page like any other)
 
 ## Examples
-
-### Good — scout citation
-```
-[Phase 1 found existing PatientAudit entity + AuditLogService gateway]
-
-Round 2: "I found PatientAudit BE entity and AuditLogService FE gateway in
-src/gateways/AuditLogService.ts. The new feature can extend the existing
-search criteria. Should we reuse the existing gateway or create a new
-admin-scoped one?"
-```
-
-### Good — brutal honesty pushback
-```
-User: "I want a separate audit log table for this feature."
-Response: "Pushback — there's already a PatientAudit table with the schema
-you'd need. Adding a parallel table violates DRY and creates two sources
-of truth for the same concept. Strong recommendation: extend PatientAudit
-with the missing fields. Are there specific reasons the existing table
-won't work?"
-```
 
 ### Bad — batching
 ```
@@ -356,9 +334,9 @@ Why bad: scout would reveal `TypeORM` instantly. Wastes a round.
 
 ## Final Checklist
 
-- [ ] Phase 1 scout actions logged (≥5 actions; cited in later questions)
+- [ ] Phase 1 scout findings cited in later questions
 - [ ] Phase 1.5 best-practice research done right after scout when warranted (all 3 conditions), or consciously skipped (reuse/bespoke/no real fork); deep-dive reserved for a real open fork
-- [ ] Q&A respected one-per-round rule, max 8 rounds
+- [ ] Q&A ran one round at a time (one question, or up to 4 independent ones), max 8 rounds
 - [ ] Every interview question (Q0, Q&A, approach pick) went on the interview page as a full card (why, context with evidence, options with example/pros/cons, recommendation; the playback card excepted: its own field set); each answer taken from the page's reply (or the user's pasted one) before the next question
 - [ ] Mid-stream re-explore happened at least once if answer reshaped scope
 - [ ] At least one brutal honesty pushback on premise/assumption

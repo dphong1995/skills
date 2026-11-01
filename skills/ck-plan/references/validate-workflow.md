@@ -7,7 +7,7 @@ Interview the user with critical questions to validate assumptions, confirm deci
 1. If a path was provided in the arguments → use it
 2. Else list the project's plan root (`plans/`, else `ai_docs/`, else `docs/plans/`) and pick the
    most recent directory whose `plan.md` frontmatter is `status: pending | in-progress`; if more
-   than one qualifies, ask via `AskUserQuestion`
+   than one qualifies, ask on the interview page (`~/.claude/skills/brainstorm-pro/references/html-interview.md`)
 3. If no plan found → ask the user for the path, or tell them to create a plan first
 
 ## Configuration
@@ -30,13 +30,12 @@ this conversation:
 Load: `references/validate-question-framework.md`
 
 ### Step 3: Generate Questions
-For each detected topic, formulate a concrete question with 2-4 options.
-Mark recommended option with "(Recommended)" suffix.
+For each detected topic, formulate a concrete question with 2-4 options and a recommendation.
 
 ### Step 4: Interview User
-Use `AskUserQuestion` tool.
+Ask on the interview page.
 - Target 3-8 questions total (see Configuration)
-- Group related questions (max 4 per tool call)
+- Up to 4 independent questions per page
 - Focus on: assumptions, risks, tradeoffs, architecture
 
 ### Step 5: Document Answers
@@ -56,15 +55,14 @@ Add marker: `<!-- Updated: Validation Session N - {change} -->`
 ## Next Steps (MANDATORY)
 
 **In a full planning run:** validation is the last phase before the handoff. Continue straight into
-it — invoke the `cook` skill with `--auto {ABSOLUTE_PATH_TO_PLAN_DIR}/plan.md`. `--auto` because the
-plan was already validated, so cook's own review gates are redundant. Do not stop to ask.
+it — invoke the `cook` skill with `{ABSOLUTE_PATH_TO_PLAN_DIR}/plan.md`. Do not stop to ask.
 
 **When invoked standalone as the `validate` subcommand:** stop and print the next step with the
 absolute path:
 > **Best Practice:** Run `/clear` before implementing to start with fresh context.
 > Then run:
 > ```
-> /cook --auto {ABSOLUTE_PATH_TO_PLAN_DIR}/plan.md
+> /cook {ABSOLUTE_PATH_TO_PLAN_DIR}/plan.md
 > ```
 > **Why absolute path?** After `/clear`, the new session loses previous context.
 

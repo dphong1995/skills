@@ -142,7 +142,7 @@ các gate tương tác trong phase design của brainstorm-pro/cook; từ cook S
   đường dẫn tương đối để lấy format plan. Tách ra là hỏng.
 - **`agents/` là dependency thật, không phải tuỳ chọn.** `cook` dispatch theo tên:
   `executor`, `code-reviewer`, `test-engineer`, `code-simplifier`, `writer`,
-  `designer`, `debugger`, `explore`, `document-specialist`, `planner`. Thiếu thì cook vẫn chạy
+  `designer`, `debugger`, `explore`, `document-specialist`. Thiếu thì cook vẫn chạy
   nhưng phải fallback sang agent mặc định và chất lượng giảm.
 - **Không có CLI `ck`.** Tên `ck-plan` chỉ là di sản đặt tên; mọi thứ chạy trong skill.
 - **`routing-bug-fixes-to-cook` cần 1 dòng trong `~/.claude/CLAUDE.md`** để được gọi đúng lúc (thêm

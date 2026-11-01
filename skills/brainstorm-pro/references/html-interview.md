@@ -35,8 +35,8 @@ announcing a question for later.
 2. In the same message, serve it with a foreground `Bash` call with `timeout: 600000`:
    `node ~/.claude/skills/brainstorm-pro/assets/render-interview.mjs <dir>/round-NN.json <dir>/round-NN.html --serve`
    It checks the round (it rejects malformed JSON, an empty `questions`, a question missing
-   `id`/`n`/`title`/`options`, an unknown field at any level (with a "did you mean" hint), the old
-   per-option `recommended` flag, a `recommendation` whose `option` is not an option id, and a bad
+   `id`/`n`/`title`/`options`, an unknown field at any level (with a "did you mean" hint), a
+   `recommendation` whose `option` is not an option id, and a bad
    image or code range; each error is one stderr line, exit 1; fix and rerun), writes
    `round-NN.html`, serves the page on `127.0.0.1` under a random token, opens it in the browser and
    waits. Before an answer is sent or copied, closing or reloading the tab asks first (the browser's own

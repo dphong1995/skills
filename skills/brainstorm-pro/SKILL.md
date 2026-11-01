@@ -15,11 +15,11 @@ finish the task you were given and report back.
 
 # Brainstorm Pro — Hybrid Skill
 
-Combine the best parts of `ck:brainstorm` and `superpowers:brainstorming`:
+What the flow does:
 
-- **From ck:** deep scout BEFORE any question, brutal honesty, brutal pushback on premise, terminal at `ck-plan`.
-- **From superpowers:** one question per round, multi-choice with recommendation, spec self-review (4 checks), a builder check by a fresh agent, a playback card before the approaches, a Nguồn column in `## Quyết định`, user review gate before plan.
-- **New:** conditional best-practice research right after scout; mid-stream re-explore when an answer reveals a new direction; interview questions shown one at a time as a local HTML page that sends the answers back to Claude (copy-and-paste as the fallback).
+- Deep scout before any question; best-practice research right after it when warranted; brutal honesty and pushback on the premise; terminal at `ck-plan`.
+- Interview rounds on a local HTML page that sends the answers back to Claude (copy-and-paste as the fallback): one question, or up to 4 independent ones, per round; multi-choice with a recommendation; mid-stream re-explore when an answer reveals a new direction.
+- A playback card before the approaches, a spec self-review (4 checks), a builder check by a fresh agent, a Nguồn column in `## Quyết định`, and the user's review gate before the plan.
 
 ## Start here
 
@@ -64,12 +64,12 @@ Once user approves the spec, invoke the `ck-plan` skill immediately (`Skill` too
 approval was needed:
 
 ```
-ck-plan reads plans/{date}-{slug}/spec.md as requirements,
+ck-plan reads {absolute plan-root}/{date}-{slug}/spec.md as requirements,
 SKIP scout/discovery (already done in this brainstorm),
 create phase files in the same plan directory.
 ```
 
-Do NOT invoke `writing-plans`, `frontend-design`, `mcp-builder`, or any other implementation skill. The ONLY skill invoked after this brainstorm is `ck-plan`.
+Do NOT invoke `writing-plans` (where `superpowers:brainstorming` hands off) or any other implementation skill. The ONLY skill invoked after this brainstorm is `ck-plan`.
 
 ### The chain does not stop at the plan
 

@@ -28,7 +28,7 @@ Rules:
 - Rate severity: Critical (blocks success) | High (significant risk) | Medium (notable concern)
 - Skip trivial observations (style, naming, formatting)
 - No praise. No "overall looks good". Only findings.
-- 5-10 findings per reviewer. Quality over quantity.
+- Report every flaw that survives your own check of the plan, each with its severity; the orchestrator dedups and ranks them.
 
 Output format per finding:
 ## Finding {N}: {title}

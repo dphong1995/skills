@@ -25,7 +25,7 @@ whoever made it. The document is in Vietnamese; answer in English.
 
 Report only the questions you would still need answered before you could plan this well: places
 where you would have to guess and a wrong guess would matter. For each give the question, the
-section it comes from, and why the answer changes the plan. Rank them by importance, at most 10.
+section it comes from, and why the answer changes the plan. Rank them by importance.
 
 Skip what "## Còn mở" leaves open on purpose, anything you could reasonably decide yourself, and
 wording nitpicks. If nothing important is left, say "nothing important left".

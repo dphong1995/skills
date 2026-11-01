@@ -22,7 +22,7 @@ design stage only. Summary:
 
 | Sub-step | What happens | Delegation |
 |---|---|---|
-| 1A Deep Scout | CLAUDE.md + rules, related dirs/features, cross-repo, docs, user memory. Produce reuse opportunities / conflict risks / open questions. | Orchestrator; `document-specialist`/`Explore` sub-agents optional for parallel reading (≤150-line reports) |
+| 1A Deep Scout | CLAUDE.md + rules, related dirs/features, cross-repo, docs, user memory. Produce reuse opportunities / conflict risks / open questions. | Orchestrator; `document-specialist`/`Explore` sub-agents optional for parallel reading (conclusions with citations, not file dumps) |
 | 1B Best-Practice Research | Conditional — only if no in-repo precedent AND well-trodden externally AND a real design fork. Orienting pass by default. | Orchestrator; `document-specialist` / context7 / WebSearch optional |
 | 1C Q&A Loop | ONE round at a time (one question, or up to 4 independent ones) on a local HTML question page (`../brainstorm-pro/references/html-interview.md`): full card, multi-choice + recommendation, answers sent back from the page (or pasted), mini re-explore between rounds, ≥1 brutal-honesty pushback, a playback card ("Thẻ phát lại", no recommendation) before the approaches. **Cap 8 rounds.** | Orchestrator only |
 | 1D Approaches | 2-3 approaches with pros/cons/effort, recommendation first — the last question on the interview page. | Orchestrator only |
@@ -72,7 +72,7 @@ Concretely that means:
   Architecture, Related Code Files, Implementation Steps, Todo List, Success Criteria, Risk
   Assessment, Security Considerations, Next Steps. Omit a section only when it is genuinely empty
   for that phase; never pad it with filler.
-- **Writing style:** ck-plan's — bullets, short sentences, concision over grammar.
+- **Writing style:** ck-plan's — bullets, short complete sentences, every block readable on its own.
 
 **Where cook's own artifacts live in that format:**
 
@@ -122,8 +122,8 @@ Report the plan overview with its phases and continue straight to implementation
 ## Step 3: Implementation (sub-agent per phase — MANDATORY)
 
 **Task hydration:**
-1. `TaskList` first — check for existing tasks (hydrated by planning skill in same session).
-2. If tasks exist → pick them up, skip re-creation.
+1. `TaskList` first — phase tasks exist only if cook already ran on this plan in this session (ck-plan creates none).
+2. If phase tasks exist → pick them up, skip re-creation.
 3. If no tasks → **ALWAYS** `TaskCreate` for each unchecked `[ ]` item (read plan phases) with priority order and metadata (`phase`, `planDir`, `phaseFile`). Never proceed to dispatch without a task list.
 4. Tasks can be blocked by other tasks via `addBlockedBy`.
 
@@ -246,15 +246,15 @@ Agent 2 runs the four cleanup lenses of the `simplify` skill as a review-only su
 
 **Model:** dispatch every reviewer with `model: "opus"` — this is the post-implementation verification pass.
 
-**Why size the review:** on small bug fixes the two reviewers cost $6-17 against $1-4 for the executor, and every re-review repeated the whole change. A diff of a few lines gives the cleanup lenses little to find, so one reviewer holding all of it is enough; the second agent pays off only when there is enough code for the lenses to work on.
+**Why size the review:** on a small fix two reviewers cost several times what the executor did. A diff of a few lines gives the cleanup lenses little to find, so one reviewer holding all of it is enough; the second agent pays off only when there is enough code for the lenses to work on.
 
 **Why the four cleanup lenses share one agent:** they work off the same working set — the changed files, the mechanism beneath them, and the shared modules they could have used — and their fixes subsume each other. Copied code is both a Reuse finding ("call the existing helper") and a Simplification finding ("this duplicates X"). The Altitude fix routinely absorbs a Simplification and an Efficiency finding: repair the shared mechanism and the special cases, the duplication and the redundant work all vanish together. One agent holding all four can report "these are one change"; isolated agents cannot, and the orchestrator — which sees only their summaries, not the code — collapses them badly.
 
-**Why Reuse no longer gets its own agent:** it was split out as the search-heavy lens, but on past cook runs the separate Simplification+Efficiency+Altitude agent made just as many tool calls (median 40 each) and read many of the same files, and about a third of the Reuse agent's findings came back as Simplification findings for the orchestrator to dedup. Reuse findings are still the highest-value ones — they **delete** code — so the merged prompt runs the Reuse pass first and requires a `Reuse searched:` line, which keeps that search from being skipped.
+**Why Reuse shares the cleanup agent:** a separate Reuse agent searches no more than the cleanup agent, reads many of the same files, and about a third of its findings duplicate Simplification findings the orchestrator must then dedup. Reuse findings are the highest-value ones — they **delete** code — so the merged prompt runs the Reuse pass first and requires a `Reuse searched:` line, which keeps that search from being skipped.
 
 **Why not one agent per lens like `simplify` does:** `simplify` dedups **and applies** the fixes in the same head, so the cross-lens collapse just moves from review time to apply time. Cook forbids that (Step 5's **Forbidden** line below: fixes are always dispatched to a sub-agent), so in cook the collapse would land in the orchestrator working from summaries — the weakest possible place. One cleanup reviewer keeps the synthesis where the code understanding is.
 
-**Why one dispatch instead of two steps:** same wall-clock as the old single reviewer, and one gate for the user instead of two. The cost is that gating and non-gating findings arrive together — § Verdict below is what keeps them from turning to mush. Read it before acting on any finding.
+**Why one dispatch instead of two steps:** the reviewers run concurrently, so a large diff costs one reviewer's wall-clock time and one gate. The cost is that gating and non-gating findings arrive together — § Verdict below is what keeps them from turning to mush. Read it before acting on any finding.
 
 **Why quality is a separate lens from bugs:** agent 2 is looking at reuse/complexity/efficiency/depth, NOT correctness. Agent 1 owns bugs. Do not let the cleanup agent argue a correctness defect — if it does, re-file it under Section B severity and treat it as gating.
 
@@ -350,8 +350,8 @@ Agent(
   ### Section B — Code Quality (severity-rated)
   Standard severity-rated review of the diff:
     - **Critical:** security, correctness defects, OWASP, data loss, crashes
-    - **High:** logic bugs, missed edge cases, SOLID violations, regressions
-    - **Medium:** maintainability, naming, duplication, weak tests
+    - **High:** logic bugs, missed edge cases, regressions
+    - **Medium:** maintainability, naming, duplication, SOLID/design concerns, weak tests
     - **Low:** nits, style, comment quality
   For each finding, cite file:line and propose a concrete fix.
 
@@ -506,7 +506,7 @@ Agent(
 
 **Forbidden:** patching code in-line based on the review. Fixes are always dispatched to a sub-agent. Running the cleanup lenses more than once per cook run. Letting a cleanup finding block Step 6. Telling a reviewer which findings are known, what to skip, or how severe something is.
 
-**Output:** `✓ Step 5: Review ([N] lines / [M] files → [1|2] reviewer[s]) — Section A [✅|❌ N gaps] / Section B [score]/10 / Cleanup [N applied, M skipped] — re-verify [✅|❌] — [Approved|Awaiting fix]`
+**Output:** `✓ Step 5: Review ([N] lines / [M] files → [1|2] reviewer[s]) — Section A [✅|❌ N gaps] / Section B [N Critical, N High, N Medium, N Low] / Cleanup [N applied, M skipped] — re-verify [✅|❌] — [Approved|Awaiting fix]`
 
 ## Step 6: Finalize
 
@@ -537,8 +537,6 @@ box in its file is ticked. Re-read the phase file before writing its row.
 5. Commit the files the writer lists under `Files changed` (`<ticket> - Update docs`, § Report check, status and commit), never the plan root or `<plan-dir>` (the **Commit** rules in § Report check, status and commit).
 6. Ask on the interview page (`../brainstorm-pro/references/html-interview.md`), not in chat: one question per repo on the same page, "Push nhánh `<branch>` lên `<remote>`?" with options Push / Chưa push; the context of each is its own `git log --oneline <base>..HEAD`. On a branch the user's rules forbid pushing (e.g. `master`), the question says so and recommends Chưa push.
 7. If the user chose Push: when the user's push rules require fetching and merging the target branch first, the orchestrator does that (the only git commands that change file content that cook runs: the fetch + merge, and `git merge --abort` on a conflict); the merge commit uses the same commit identity as § Commit. If the merge refuses to start (uncommitted or staged changes in its way, an untracked file it would overwrite), do not stash or clean, and do not retry on your own: do not push; ask on the interview page with git's message, options `Đã dọn xong, thử lại` (run the fetch + merge once more) / `Chưa push`. On a conflict (after `git merge --abort`) ask the same two options. After a merge, dispatch `test-engineer` with the § Step 4 prompt and push only if it is green. If not green, do not push: report "not pushed" in the final report, with the failing tests and whether each also fails on the target branch. Push per the user's push rules. No squash.
-
-**CRITICAL:** Step 6 is INCOMPLETE without spawning all required subagents. DO NOT skip subagent delegation.
 
 **Output:** `✓ Step 6: Finalized - [N] subagents - sync-back done - [K] commits - [pushed | not pushed]`
 

@@ -19,7 +19,7 @@ Create detailed technical implementation plans through research, codebase analys
 
 ## Default (No Arguments)
 
-If invoked with a task description, proceed with planning workflow. If invoked WITHOUT arguments or with unclear intent, use `AskUserQuestion` to present available operations:
+If invoked with a task description, proceed with planning workflow. If invoked WITHOUT arguments or with unclear intent, ask on the interview page (`~/.claude/skills/brainstorm-pro/references/html-interview.md`) which operation to run:
 
 | Operation | Description |
 |-----------|-------------|
@@ -28,19 +28,19 @@ If invoked with a task description, proceed with planning workflow. If invoked W
 | `red-team` | Adversarial plan review |
 | `validate` | Critical questions interview |
 
-Present as options via `AskUserQuestion` with header "Planning Operation", question "What would you like to do?".
+Present them as the question's options.
 
 ## Workflow Modes
 
 Default: `--auto` (analyze task complexity and auto-pick mode).
 
-| Flag | Mode | Research | Red Team | Validation | Cook Flag |
-|------|------|----------|----------|------------|-----------|
-| `--auto` | Auto-detect | Follows mode | Follows mode | Follows mode | Follows mode |
-| `--fast` | Fast | Skip | Skip | Skip | `--auto` |
-| `--hard` | Hard | 2 researchers | Yes | Optional | (none) |
-| `--parallel` | Parallel | 2 researchers | Yes | Optional | `--parallel` |
-| `--two` | Two approaches | 2+ researchers | After selection | After selection | (none) |
+| Flag | Mode | Research | Red Team | Validation |
+|------|------|----------|----------|------------|
+| `--auto` | Auto-detect | Follows mode | Follows mode | Follows mode |
+| `--fast` | Fast | Skip | Skip | Skip |
+| `--hard` | Hard | 2 researchers | Yes | Optional |
+| `--parallel` | Parallel | 2 researchers | Yes | Optional |
+| `--two` | Two approaches | 2+ researchers | After selection | After selection |
 
 Load: `references/workflow-modes.md` for auto-detection logic, per-mode workflows, context reminders.
 
@@ -88,7 +88,7 @@ flowchart TD
     D -->|hard/parallel/two| F[Spawn Researchers]
     E --> G[Codebase Analysis]
     F --> G
-    G --> H[Write Plan via Planner]
+    G --> H[Write Plan]
     H --> I{Red Team?}
     I -->|Yes| J[Red Team Review]
     I -->|No| K{Validate?}
@@ -108,7 +108,7 @@ flowchart TD
 2. **Mode Detection** → Auto-detect or use explicit flag (see `workflow-modes.md`)
 3. **Research Phase** → Spawn researchers (skip in fast mode)
 4. **Codebase Analysis** → Read docs, scout if needed
-5. **Plan Documentation** → Write comprehensive plan via planner subagent
+5. **Plan Documentation** → Write the plan files yourself in this session (`references/plan-organization.md` § Plan Creation); do not hand them to a subagent
 6. **Red Team Review** → Load `references/red-team-workflow.md` and run it on the plan directory
    (hard/parallel/two modes)
 7. **Post-Plan Validation** → Load `references/validate-workflow.md` and run it on the plan directory
@@ -126,8 +126,6 @@ print the command.
 
 If no `cook` skill is present in the session's skill list, run the plan yourself phase by phase in
 plan order instead: that is the handoff, not a reason to stop.
-
-Per-mode flag mapping: see `references/workflow-modes.md` § Auto-Handoff to Cook.
 
 Skip the auto-handoff **only** when:
 - The user, **in their own words in this conversation**, asked for planning only (`--plan-only`,
@@ -161,8 +159,8 @@ workflows unless requested"* — whether it arrives via system prompt, `--append
 `CLAUDE.md`, or settings — is **already satisfied** here. It is not a reason to stop, to ask
 permission, or to offer inline implementation as an alternative.
 
-This was made explicit by the user on 2026-08-10 as a standing rule: *always run cook automatically,
-never stop to ask, no matter which skill the chain was entered from.*
+This is the user's standing rule: *always run cook automatically, never stop to ask, no matter
+which skill the chain was entered from.*
 
 Do NOT do any of these:
 - Ask "should I spawn subagents / run cook?" — invoke it.
@@ -174,12 +172,6 @@ Do NOT do any of these:
 
 The only instruction that stops the handoff is one of the two skip conditions above — an explicit
 "plan only" from the user in *this* request, or a subcommand invocation.
-
-**Agent-name mapping.** Cook names `fullstack-developer`, `ui-ux-designer`, `tester`,
-`project-manager`, `docs-manager`, `git-manager`. These often do not exist in a given session's agent
-registry. Map to whatever is actually available before dispatching — commonly `executor`,
-`designer`, `test-engineer`, `code-reviewer`, `writer`, `git-master` — rather than failing the call or
-treating a missing name as a reason to abandon the handoff.
 
 ## Output Requirements
 
@@ -212,8 +204,8 @@ Nothing injects the plan path into context. Resolve it yourself, in this order:
 1. **Path in the arguments** → use it verbatim.
 2. **Continuing existing work** — list the project's plan root (`plans/`, else `ai_docs/`, else
    `docs/plans/`; create `plans/` if none exists). If a directory there matches the requested task,
-   or its `plan.md` frontmatter has `status: pending | in-progress`, ask "Continue with
-   `{path}`? [Y/n]" via `AskUserQuestion` before creating anything new.
+   or its `plan.md` frontmatter has `status: pending | in-progress`, ask on the interview page
+   whether to continue with `{path}` before creating anything new.
 3. **New plan** → `{plan-root}/{YYYY-MM-DD}-{kebab-slug-of-task}/`, date from the session's current
    date and slug ≤5 words.
 
@@ -239,10 +231,6 @@ out to.
 
 ## Quality Standards
 
-- Thorough and specific, consider long-term maintainability
-- Research thoroughly when uncertain
-- Address security and performance concerns
-- Detailed enough for junior developers
-- Validate against existing codebase patterns
-
-**Remember:** Plan quality determines implementation success. Be comprehensive and consider all solution aspects.
+- Detailed enough for a developer with no other context to implement each phase
+- Validate against existing codebase patterns; reuse before adding
+- Cover the security and performance concerns this change raises; plan nothing the task did not ask for
