@@ -5,7 +5,7 @@ argument-hint: "[task] OR [archive|red-team|validate]"
 license: MIT
 metadata:
   author: claudekit
-  version: "2.1.1"
+  version: "2.2.0"
 ---
 
 <SUBAGENT-STOP>
@@ -75,8 +75,8 @@ Load: `references/solution-design.md`
 ### 4. Plan Creation & Organization
 Load: `references/plan-organization.md`
 
-### 5. Task Breakdown & Output Standards
-Load: `references/output-standards.md`
+### 5. Plan Content & Self-Review
+Load: `references/plan-writing.md` and `references/output-standards.md`
 
 ## Process Flow (Authoritative)
 
@@ -89,7 +89,8 @@ flowchart TD
     E --> G[Codebase Analysis]
     F --> G
     G --> H[Write Plan]
-    H --> I{Red Team?}
+    H --> S[Self-Review]
+    S --> I{Red Team?}
     I -->|Yes| J[Red Team Review]
     I -->|No| K{Validate?}
     J --> K
@@ -108,7 +109,8 @@ flowchart TD
 2. **Mode Detection** → Auto-detect or use explicit flag (see `workflow-modes.md`)
 3. **Research Phase** → Spawn researchers (skip in fast mode)
 4. **Codebase Analysis** → Read docs, scout if needed
-5. **Plan Documentation** → Write the plan files yourself in this session (`references/plan-organization.md` § Plan Creation); do not hand them to a subagent
+5. **Plan Documentation** → Write the plan files yourself in this session (`references/plan-organization.md` § Plan Creation; content per `references/plan-writing.md`); do not hand them to a subagent
+5b. **Self-Review** → `references/plan-writing.md` § Self-Review, in every mode including fast; fix the plan inline
 6. **Red Team Review** → Load `references/red-team-workflow.md` and run it on the plan directory
    (hard/parallel/two modes)
 7. **Post-Plan Validation** → Load `references/validate-workflow.md` and run it on the plan directory
@@ -181,7 +183,7 @@ The only instruction that stops the handoff is one of the two skip conditions ab
   inside the cook run started by the auto-handoff
 - Respond with plan file path and summary before handing off
 - Ensure self-contained plans with necessary context
-- Include code snippets/pseudocode when clarifying
+- Code only as `references/plan-writing.md` § Steps allows
 - Fully respect the project's own conventions file (`CLAUDE.md` / `AGENTS.md`, plus anything under
   `docs/`). Those override this skill's defaults.
 

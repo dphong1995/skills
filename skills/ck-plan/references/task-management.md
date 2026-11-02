@@ -29,7 +29,7 @@ The **hydration pattern** bridges sessions:
 └──────────────────┘            └───────────────────┘
 ```
 
-- **Hydrate:** Read plan files → TaskCreate per unchecked `[ ]` item
+- **Hydrate:** Read plan files → TaskCreate per phase file that still has an unchecked `[ ]` box
 - **Work:** TaskUpdate tracks in_progress/completed in real-time
 - **Sync-back:** Update `[ ]` → `[x]` in phase files, update plan.md frontmatter status
 
@@ -98,14 +98,14 @@ Use `addBlocks` when creating parent first ("X blocks these children").
 
 ### Same-Session (planning → cook immediately)
 
-1. Planning creates no tasks; cook Step 3 hydrates them from the plan's unchecked `[ ]` items
+1. Planning creates no tasks; cook Step 3 hydrates one task per phase file with an unchecked box
 2. If cook already ran on this plan in the session, `TaskList` finds its phase tasks and cook picks them up
 
 ### Cross-Session (new session, resume plan)
 
 1. User runs `/cook path/to/plan.md` in a new session (or this skill hands off to it)
 2. Cook Step 3: `TaskList` → empty (tasks died with old session)
-3. Cook reads plan files → re-hydrates from unchecked `[ ]` items
+3. Cook reads plan files → re-hydrates one task per phase file with an unchecked box
 4. Already-checked `[x]` items = done, skip those
 
 ### Sync-Back (cook Step 6)
@@ -125,5 +125,5 @@ After task hydration, verify:
 - Dependency chain has no cycles
 - All phases have corresponding tasks
 - Required metadata fields present (phase, priority, effort, planDir, phaseFile)
-- Task count matches unchecked `[ ]` items in plan files
+- One task per phase file with an unchecked box, plus any critical-step tasks
 - Output: `✓ Hydrated [N] phase tasks + [M] critical step tasks with dependency chain`

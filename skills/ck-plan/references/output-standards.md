@@ -52,23 +52,7 @@ Use these predefined tags for consistency:
 
 See `task-management.md` for full TaskCreate patterns and metadata.
 
-## Task Breakdown
-
-- Transform complex requirements into manageable, actionable tasks
-- Each task independently executable with clear dependencies
-- Prioritize by dependencies, risk, business value
-- Eliminate ambiguity in instructions
-- Include specific file paths for all modifications
-- Provide clear acceptance criteria per task
-
-### File Management
-
-List affected files with:
-- Full paths (not relative)
-- Action type (modify/create/delete)
-- Brief change description
-- Dependencies on other changes
-- Fully respect the project's own conventions file (`CLAUDE.md` / `AGENTS.md`, plus anything under `docs/`).
+How to size phases and write steps and file lists: `plan-writing.md` § Sizing phases, § Phase file and § Steps.
 
 ## Output Requirements
 
@@ -76,7 +60,7 @@ List affected files with:
 - Create plans ONLY (no implementation)
 - Provide plan file path and summary
 - Self-contained plans with necessary context
-- Code snippets/pseudocode when clarifying
+- Code only as `plan-writing.md` § Steps allows
 - Multiple options with trade-offs when appropriate
 - Fully respect the project's own conventions file (`CLAUDE.md` / `AGENTS.md`, plus anything under `docs/`).
 

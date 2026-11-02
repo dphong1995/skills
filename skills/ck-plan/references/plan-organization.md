@@ -25,13 +25,10 @@ IN CURRENT WORKING PROJECT DIRECTORY:
 │   ├── researcher-report.md
 │   └── ...
 ├── plan.md                                    # Overview access point
-├── phase-01-setup-environment.md              # Setup environment
-├── phase-02-implement-database.md             # Database models
-├── phase-03-implement-api-endpoints.md        # API endpoints
-├── phase-04-implement-ui-components.md        # UI components
-├── phase-05-implement-authentication.md       # Auth & authorization
-├── phase-06-implement-profile.md              # Profile page
-└── phase-07-write-tests.md                    # Tests
+├── phase-01-oauth-provider-config.md          # one phase per deliverable
+├── phase-02-token-exchange-api.md
+├── phase-03-login-ui.md
+└── phase-04-live-login-check.md               # live check of the whole flow; no single phase owns it
 ```
 
 ### Task Hydration — not done here
@@ -55,130 +52,35 @@ the filesystem — see SKILL.md "Plan Directory Resolution". Consequences:
 After determining phases from research/design, write the files directly with `Write` — no CLI, no
 scaffolding tool:
 
-1. **Create the plan directory** and write `plan.md` with full YAML frontmatter (schema in
-   `output-standards.md`) plus `## Overview`, the `## Phases` table, and `## Dependencies`.
+1. **Create the plan directory** and write `plan.md`: frontmatter (`output-standards.md`) and the
+   sections in `plan-writing.md` § plan.md.
 
-2. **Write one `phase-XX-{slug}.md` per phase**, numbered zero-padded and in execution order, each
-   with: architecture, related code files, implementation steps, todo checkboxes, success criteria,
-   risk assessment, security considerations.
+2. **Write one `phase-XX-{deliverable}.md` per phase**, numbered zero-padded and in execution
+   order, with the sections in `plan-writing.md` § Phase file.
 
 3. **Keep the Phases table in lock-step with the phase files.** You own it end to end: one row per
    `phase-XX-*.md`, in the same order, link text = the human-readable phase name (not the filename),
-   `Status` starting at `Pending`.
-
-4. **Status updates are plain edits.** To mark a phase done, edit its row's `Status` cell to
-   `Complete` and tick the phase file's todo boxes (`[ ]` → `[x]`). To add a phase, write the new
-   `phase-XX-*.md` and insert its row — renumber following phases only if you also rename their
-   files.
-
-**Verify before handing off:** `ls {plan-dir}` and confirm every `phase-XX-*.md` on disk has exactly
-one row in the table and every row resolves to a file that exists.
-
-## File Structure
-
-### Overview Plan (plan.md)
-
-**IMPORTANT:** All plan.md files MUST include YAML frontmatter. See `output-standards.md` for schema.
-
-**Example plan.md structure:**
-```markdown
----
-title: "Feature Implementation Plan"
-description: "Add user authentication with OAuth2 support"
-status: pending
-priority: P1
-effort: 8h
-issue: 123
-branch: kai/feat/oauth-auth
-tags: [auth, backend, security]
-created: 2025-12-16
----
-
-# Feature Implementation Plan
-
-## Overview
-
-Brief description of what this plan accomplishes.
-
-## Phases
+   `Status` starting at `Pending`. Example:
 
 | Phase | Name | Status |
 |-------|------|--------|
-| 1 | [Setup Environment](./phase-01-setup.md) | Pending |
-| 2 | [Core Implementation](./phase-02-impl.md) | Pending |
-| 3 | [Testing & Validation](./phase-03-test.md) | Pending |
+| 1 | [OAuth Provider Config](./phase-01-oauth-provider-config.md) | Pending |
+| 2 | [Token Exchange API](./phase-02-token-exchange-api.md) | Pending |
+| 3 | [Login UI](./phase-03-login-ui.md) | Pending |
+| 4 | [Live Login Check](./phase-04-live-login-check.md) | Pending |
 
 <!-- IMPORTANT: Link text MUST be human-readable names (not filenames).
-     Bad:  [phase-01-setup.md](./phase-01-setup.md)
-     Good: [Setup Environment](./phase-01-setup.md) -->
+     Bad:  [phase-01-oauth-provider-config.md](./phase-01-oauth-provider-config.md)
+     Good: [OAuth Provider Config](./phase-01-oauth-provider-config.md) -->
 
-## Dependencies
+4. **Status updates are plain edits.** To mark a phase done, edit its row's `Status` cell to
+   `Complete` and tick its step checkboxes (`[ ]` → `[x]`). To add a phase, write the new
+   `phase-XX-*.md` and insert its row — renumber following phases only if you also rename their
+   files.
 
-- List key dependencies here
+**Then run `plan-writing.md` § Self-Review** (its Format check includes the `ls {plan-dir}` check).
 
-## AC Traceability
-<!-- Only when the spec or design has "Truy vết AC". Copy AC, Text and Status verbatim and fill Where with the owning phase file; format: ../brainstorm-pro/references/jira-snapshot.md § Traceability table. -->
-| AC | Text (verbatim) | Where | Status |
-|---|---|---|---|
-```
 
-**Guidelines:**
-- Keep generic and under 80 lines
-- List each phase with status/progress
-- Link to detailed phase files
-- Key dependencies
-- The AC Traceability table is copied whole and does not count toward the 80 lines.
+## File Structure
 
-### Phase Files (phase-XX-name.md)
-Fully respect the project's own conventions file (`CLAUDE.md` / `AGENTS.md`, plus anything under `docs/`).
-Each phase file should contain:
-
-**Context Links**
-- Links to related reports, files, documentation
-
-**Overview**
-- Priority
-- Current status
-- Brief description
-
-**Key Insights**
-- Important findings from research
-- Critical considerations
-
-**Requirements**
-- Functional requirements
-- Non-functional requirements
-
-**Architecture**
-- System design
-- Component interactions
-- Data flow
-
-**Related Code Files**
-- List of files to modify
-- List of files to create
-- List of files to delete
-
-**Implementation Steps**
-- Detailed, numbered steps
-- Specific instructions
-
-**Todo List**
-- Checkbox list for tracking
-
-**Success Criteria**
-- Definition of done
-- Validation methods
-- The ids of the AC Traceability rows this phase owns (e.g. "T6IR-13706 AC-2"), when plan.md has the table
-
-**Risk Assessment**
-- Potential issues
-- Mitigation strategies
-
-**Security Considerations**
-- Auth/authorization
-- Data protection
-
-**Next Steps**
-- Dependencies
-- Follow-up tasks
+The `plan.md` and phase-file templates live in `plan-writing.md`.

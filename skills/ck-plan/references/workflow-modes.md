@@ -28,7 +28,7 @@ Scope challenge is skipped when `--fast` is explicitly set or task is trivial.
 No research. Analyze → Plan → hand off.
 
 1. Read the project's conventions + architecture docs (see `codebase-understanding.md`)
-2. Write the plan files yourself (`plan-organization.md` § Plan Creation)
+2. Write the plan files yourself (`plan-organization.md` § Plan Creation, content per `plan-writing.md`), then run `plan-writing.md` § Self-Review
 3. **Auto-handoff:** invoke the `cook` skill with `{absolute-plan-path}/plan.md` immediately
 
 ## Hard Mode (`--hard`)
@@ -39,7 +39,7 @@ Research → Scout → Plan → Red Team → Validate → hand off.
    `research-phase.md` for which agent types to use
 2. Read the project's docs; for anything they don't cover, dispatch `Explore` agents to search the
    codebase (see `codebase-understanding.md`)
-3. Read the research and exploration reports, then write the plan files yourself (`plan-organization.md` § Plan Creation)
+3. Read the research and exploration reports, then write the plan files yourself (`plan-organization.md` § Plan Creation, content per `plan-writing.md`), then run `plan-writing.md` § Self-Review
 4. Post-plan red team review (see Red Team Review section below)
 5. Post-plan validation (see Validation section below)
 6. **Auto-handoff:** invoke the `cook` skill with `{absolute-plan-path}/plan.md` immediately
@@ -124,7 +124,7 @@ Invoke it via the `Skill` tool (`skill: "cook"`, `args: "{path}/plan.md"`) — n
 command and waiting.
 
 If the session has no `cook` skill, execute the plan yourself phase by phase in plan order, ticking
-each phase file's todo boxes as you go. The handoff still happens; only its executor changes.
+each phase file's step checkboxes as you go. The handoff still happens; only its executor changes.
 
 **Why absolute path?** Cook resolves the plan directory from it, and it stays valid if the session
 is later cleared and resumed.
