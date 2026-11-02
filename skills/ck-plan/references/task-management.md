@@ -29,7 +29,7 @@ The **hydration pattern** bridges sessions:
 └──────────────────┘            └───────────────────┘
 ```
 
-- **Hydrate:** Read plan files → TaskCreate per phase file that still has an unchecked `[ ]` box
+- **Hydrate:** cook reads the plan files and creates one task per phase file (`../cook/references/workflow-steps.md` § Step 3, Task hydration)
 - **Work:** TaskUpdate tracks in_progress/completed in real-time
 - **Sync-back:** Update `[ ]` → `[x]` in phase files, update plan.md frontmatter status
 
@@ -45,11 +45,11 @@ gets a task list just like a ten-phase one.
 
 ```
 TaskCreate(
-  subject: "Setup environment and dependencies",
-  activeForm: "Setting up environment",
-  description: "Install packages, configure env, setup database. See phase-01-setup.md",
+  subject: "Configure OAuth provider",
+  activeForm: "Configuring OAuth provider",
+  description: "Register the OAuth client and set provider credentials. See phase-01-oauth-provider-config.md",
   metadata: { phase: 1, priority: "P1", effort: "2h",
-              planDir: "plans/260205-auth/", phaseFile: "phase-01-setup.md" }
+              planDir: "plans/260205-auth/", phaseFile: "phase-01-oauth-provider-config.md" }
 )
 ```
 
@@ -98,15 +98,15 @@ Use `addBlocks` when creating parent first ("X blocks these children").
 
 ### Same-Session (planning → cook immediately)
 
-1. Planning creates no tasks; cook Step 3 hydrates one task per phase file with an unchecked box
+1. Planning creates no tasks; cook Step 3 hydrates them (see **Hydrate** above)
 2. If cook already ran on this plan in the session, `TaskList` finds its phase tasks and cook picks them up
 
 ### Cross-Session (new session, resume plan)
 
 1. User runs `/cook path/to/plan.md` in a new session (or this skill hands off to it)
 2. Cook Step 3: `TaskList` → empty (tasks died with old session)
-3. Cook reads plan files → re-hydrates one task per phase file with an unchecked box
-4. Already-checked `[x]` items = done, skip those
+3. Cook reads plan files → re-hydrates (see **Hydrate** above)
+4. A phase file whose boxes are all `[x]` is done; it gets no task
 
 ### Sync-Back (cook Step 6)
 
@@ -125,5 +125,5 @@ After task hydration, verify:
 - Dependency chain has no cycles
 - All phases have corresponding tasks
 - Required metadata fields present (phase, priority, effort, planDir, phaseFile)
-- One task per phase file with an unchecked box, plus any critical-step tasks
+- One task per open phase file (see **Hydrate** above), plus any critical-step tasks
 - Output: `✓ Hydrated [N] phase tasks + [M] critical step tasks with dependency chain`

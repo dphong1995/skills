@@ -184,5 +184,5 @@ table: `references/subagent-patterns.md`.
 
 **Borrowed from `ck-plan` (Step 2 plan format — read before writing plan files):**
 - `../ck-plan/references/plan-writing.md` - plan.md and phase-file templates, phase sizing, step rules, the shared self-review
-- `../ck-plan/references/plan-organization.md` - plan dir naming + layout, `plan.md` skeleton, phase-file sections, status-update rules
+- `../ck-plan/references/plan-organization.md` - plan dir naming + layout, file creation order and the Phases table, status-update rules
 - `../ck-plan/references/output-standards.md` - frontmatter schema + auto-population, tag vocabulary, writing style

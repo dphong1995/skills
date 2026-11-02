@@ -52,9 +52,9 @@ Use these predefined tags for consistency:
 
 See `task-management.md` for full TaskCreate patterns and metadata.
 
-How to size phases and write steps and file lists: `plan-writing.md` § Sizing phases, § Phase file and § Steps.
-
 ## Output Requirements
+
+How to size phases and write steps and file lists: `plan-writing.md` § Sizing phases, § Phase file and § Steps.
 
 ### What Planners Do
 - Create plans ONLY (no implementation)

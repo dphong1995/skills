@@ -56,9 +56,9 @@ itself with the Write tool, next to the design the user approved in Step 1E (`<p
 requirements the user already settled in the design conversation.
 
 Each plan file carries: the Acceptance Criteria verbatim, per-phase scope, explicit file
-ownership, "Done when" criteria, and plan.md's Global Constraints (pasted at the top of
-every executor and fix prompt) — those blocks are what get pasted into the Step 3
-sub-agent prompts.
+ownership and "Done when" criteria; plan.md's Global Constraints are pasted per
+`workflow-steps.md` § Report contract (**Global Constraints** paragraph) — those blocks are
+what get pasted into the Step 3 sub-agent prompts.
 
 ## Prompts for Steps 3-6
 

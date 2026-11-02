@@ -62,16 +62,16 @@ scaffolding tool:
    `phase-XX-*.md`, in the same order, link text = the human-readable phase name (not the filename),
    `Status` starting at `Pending`. Example:
 
-| Phase | Name | Status |
-|-------|------|--------|
-| 1 | [OAuth Provider Config](./phase-01-oauth-provider-config.md) | Pending |
-| 2 | [Token Exchange API](./phase-02-token-exchange-api.md) | Pending |
-| 3 | [Login UI](./phase-03-login-ui.md) | Pending |
-| 4 | [Live Login Check](./phase-04-live-login-check.md) | Pending |
+   | Phase | Name | Status |
+   |-------|------|--------|
+   | 1 | [OAuth Provider Config](./phase-01-oauth-provider-config.md) | Pending |
+   | 2 | [Token Exchange API](./phase-02-token-exchange-api.md) | Pending |
+   | 3 | [Login UI](./phase-03-login-ui.md) | Pending |
+   | 4 | [Live Login Check](./phase-04-live-login-check.md) | Pending |
 
-<!-- IMPORTANT: Link text MUST be human-readable names (not filenames).
-     Bad:  [phase-01-oauth-provider-config.md](./phase-01-oauth-provider-config.md)
-     Good: [OAuth Provider Config](./phase-01-oauth-provider-config.md) -->
+   <!-- IMPORTANT: Link text MUST be human-readable names (not filenames).
+        Bad:  [phase-01-oauth-provider-config.md](./phase-01-oauth-provider-config.md)
+        Good: [OAuth Provider Config](./phase-01-oauth-provider-config.md) -->
 
 4. **Status updates are plain edits.** To mark a phase done, edit its row's `Status` cell to
    `Complete` and tick its step checkboxes (`[ ]` → `[x]`). To add a phase, write the new
@@ -79,8 +79,5 @@ scaffolding tool:
    files.
 
 **Then run `plan-writing.md` § Self-Review** (its Format check includes the `ls {plan-dir}` check).
-
-
-## File Structure
 
 The `plan.md` and phase-file templates live in `plan-writing.md`.

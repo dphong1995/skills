@@ -30,7 +30,7 @@ Frontmatter (`output-standards.md`), then in this order:
 - `## AC Traceability`: only when the spec or design has "Truy vết AC". Copy AC, Text and Status
   verbatim and fill Where with the owning phase file; format:
   `../brainstorm-pro/references/jira-snapshot.md` § Traceability table.
-- Cook adds `## Acceptance Criteria` and `## Open Items` (`cook/references/workflow-steps.md` § Step 2).
+- Cook adds `## Acceptance Criteria` and `## Open Items` (`../cook/references/workflow-steps.md` § Step 2).
 
 Keep plan.md under 80 lines, not counting Global Constraints, Review Focus and AC Traceability.
 

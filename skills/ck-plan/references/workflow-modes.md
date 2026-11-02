@@ -63,7 +63,7 @@ Research → Scout → Plan with file ownership → Red Team → Validate → ha
 - Each phase self-contained, no runtime deps on other phases
 - Clear file boundaries — each file modified in ONE phase only
 - Group by: architectural layer, feature domain, or technology stack
-- Example: Phases 1-3 parallel (DB/API/UI), Phase 4 sequential (integration tests)
+- Example: Phases 1-3 parallel (DB/API/UI), Phase 4 sequential (live check of the integrated flow)
 
 ## Two-Approach Mode (`--two`)
 
