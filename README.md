@@ -110,7 +110,7 @@ skills/
 │                     section → user duyệt trên trang web (góp ý từng mục; phím tắt trên các trang, `?` liệt kê)
 │                     → gọi ck-plan. Phase 1 lưu snapshot Jira (Story/Epic) và lập bảng truy vết AC; Phase 2 có thẻ phát lại, Phase 5 có builder check. Luồng thiết kế nằm ở `references/design-flow.md`, dùng chung với cook. Gồm `assets/render-interview.mjs` + `assets/lib/` + `assets/page/`,
 │                     `tests/`, `DEVELOPING.md`
-├── ck-plan/          Lập kế hoạch: research → phân tích codebase → plan.md + phase-XX-*.md
+├── ck-plan/          Lập kế hoạch: research → phân tích codebase → plan.md + phase-XX-*.md (mẫu và luật viết trong `references/plan-writing.md`; Global Constraints, Review Focus, Interfaces; tự kiểm 6 điểm)
 │                     → tự động gọi cook
 ├── cook/             Triển khai: mỗi phase một subagent, orchestrator commit sau mỗi phase → test → review theo kích thước diff (diff nhỏ 1 reviewer, diff lớn 2) → finalize, hỏi push
 └── routing-bug-fixes-to-cook/
@@ -138,7 +138,7 @@ các gate tương tác trong phase design của brainstorm-pro/cook; từ cook S
 ## Ràng buộc cần biết
 
 - **3 skill phải nằm cạnh nhau trong cùng một thư mục.** `cook/SKILL.md` đọc
-  `../ck-plan/references/plan-organization.md` và `../ck-plan/references/output-standards.md` bằng
+  `../ck-plan/references/plan-writing.md`, `../ck-plan/references/plan-organization.md` và `../ck-plan/references/output-standards.md` bằng
   đường dẫn tương đối để lấy format plan. Tách ra là hỏng.
 - **`agents/` là dependency thật, không phải tuỳ chọn.** `cook` dispatch theo tên:
   `executor`, `code-reviewer`, `test-engineer`, `code-simplifier`, `writer`,

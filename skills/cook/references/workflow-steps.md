@@ -48,8 +48,10 @@ at Step 3.
 ### Format: reuse `ck-plan`'s (do NOT invent one)
 
 Cook does not delegate planning, but it does not define its own plan format either. **Load these
-two files BEFORE writing anything** and follow them:
+three files BEFORE writing anything** and follow them:
 
+- `../ck-plan/references/plan-writing.md` — plan.md and phase-file templates, phase sizing, step
+  rules, self-review
 - `../ck-plan/references/plan-organization.md` — plan dir naming + layout, `plan.md` skeleton,
   phase-file section set, status-update rules
 - `../ck-plan/references/output-standards.md` — frontmatter schema + auto-population rules, tag
@@ -64,14 +66,7 @@ Concretely that means:
 - **Write the files yourself** with `Write`. There is no scaffolding CLI. The orchestrator owns the
   `## Phases` table end to end: one row per `phase-XX-*.md`, same order, human-readable link text,
   `Status` starting at `Pending`. Adding a phase = write the file, insert the row.
-- **`plan.md`:** required YAML frontmatter (`title`, `description`, `status: pending`, `priority`,
-  `effort`, `issue`, `branch` = `git branch --show-current`, `tags`, `created`), then `## Overview`,
-  `## Phases` table with **human-readable link text** (`[Setup Environment](./phase-01-setup.md)`,
-  not the filename), `## Dependencies`. Keep the generic part under 80 lines.
-- **`phase-XX-*.md`:** ck-plan's section set — Context Links, Overview, Key Insights, Requirements,
-  Architecture, Related Code Files, Implementation Steps, Todo List, Success Criteria, Risk
-  Assessment, Security Considerations, Next Steps. Omit a section only when it is genuinely empty
-  for that phase; never pad it with filler.
+- **`plan.md` and phase files:** `plan-writing.md` § plan.md and § Phase file; frontmatter per `output-standards.md` (`branch` = `git branch --show-current`).
 - **Writing style:** ck-plan's — bullets, short complete sentences, every block readable on its own.
 
 **Where cook's own artifacts live in that format:**
@@ -103,17 +98,7 @@ prompt, so write them to be read by an agent with no other context.
   inflate phases to look thorough.
 - Plans are local working artifacts — write them, never commit them.
 
-**Plan self-review (5 checks, orchestrator, no user gate):** after writing the plan, re-read it
-once —
-1. **Placeholder scan** — any `TBD`/`TODO`/vague step? Fix inline or move to Open Items.
-2. **Coverage** — every acceptance criterion from the design maps to at least one phase, and every `in scope` row of `## AC Traceability` names a phase.
-3. **Internal consistency** — phase file ownership disjoint where phases are marked parallel;
-   dependencies declared.
-4. **Ambiguity** — any phase step interpretable two ways? Pick one, make it explicit.
-5. **Format** — `plan.md` has complete frontmatter, a Phases table with human-readable links, and
-   `## Acceptance Criteria`; every phase file has Success Criteria + Related Code Files; `## AC Traceability` when design.md has Truy vết AC, with each `in scope` row id listed in its phase's Success Criteria.
-
-Fix issues inline (plan files only — never production code). No re-review loop.
+**Plan self-review (orchestrator, no user gate):** run `../ck-plan/references/plan-writing.md` § Self-Review, plus one cook-only check: `plan.md` has `## Acceptance Criteria` matching design.md § Tiêu chí hoàn thành. Fix issues inline (plan files only — never production code).
 
 **Output:** `✓ Step 2: Plan created - [N] phases - ck-plan format - self-review [clean | K fixes]`
 
@@ -124,7 +109,7 @@ Report the plan overview with its phases and continue straight to implementation
 **Task hydration:**
 1. `TaskList` first — phase tasks exist only if cook already ran on this plan in this session (ck-plan creates none).
 2. If phase tasks exist → pick them up, skip re-creation.
-3. If no tasks → **ALWAYS** `TaskCreate` for each unchecked `[ ]` item (read plan phases) with priority order and metadata (`phase`, `planDir`, `phaseFile`). Never proceed to dispatch without a task list.
+3. If no tasks → **ALWAYS** `TaskCreate` one task per phase file that still has an unchecked `[ ]` box (not one per box), with priority order and metadata (`phase`, `planDir`, `phaseFile`). Never proceed to dispatch without a task list.
 4. Tasks can be blocked by other tasks via `addBlockedBy`.
 
 Before dispatching phase 1, for every repo the plan touches, record and write down literally (shell variables do not survive between calls): `git rev-parse HEAD` (the Step 3 start commit — Step 5's size check needs it when the work is committed on the base branch itself), `git status --porcelain --untracked-files=all` (the files with changes from before this run), and `git hash-object <file>` for each of those files that exists as a regular file (record a deleted one as `deleted`).
@@ -132,7 +117,7 @@ Before dispatching phase 1, for every repo the plan touches, record and write do
 Cook commits on the current branch. If the user's rules forbid committing on it (e.g. `master`), first create the branch their rules name with `git switch -c <branch>` (it changes no file) and record that in `## Claude tự quyết`. Rules with no name pattern → `<ticket>-<slug>` (`<slug>` = the plan dir name without its date and ticket; no ticket → `<slug>` alone). A name that exists locally or on the remote → add `-2` (then `-3`, …). Cook never switches to an existing branch.
 
 **Dispatch rules:**
-- **One sub-agent per phase.** Read the `phase-XX-*.md` file, extract scope/files/acceptance criteria, embed verbatim into the sub-agent prompt.
+- **One sub-agent per phase.** Read the `phase-XX-*.md` file, extract scope/files/acceptance criteria, embed verbatim into the sub-agent prompt; paste plan.md's Global Constraints first (§ Global Constraints below).
 - **Every-prompt lines.** Append the two lines from `subagent-patterns.md` § Every prompt (Batch independent reads, Subagent boundary) to every sub-agent prompt cook writes. End every Step 3 prompt with the § Report contract block, verbatim, then those two lines.
 - **MANDATORY `TaskUpdate` `in_progress` BEFORE every dispatch.** Mark the phase task `in_progress` immediately before spawning its sub-agent — never dispatch a phase whose task is still `pending`.
 - **Parallel when independent.** Phases with disjoint file ownership are dispatched in a single message with multiple `Agent` tool calls.
@@ -150,6 +135,11 @@ The task list MUST be kept in lock-step with reality after EVERY phase: `in_prog
 ### Report contract
 
 Paste this block verbatim at the end of every Step 3 prompt, every fix prompt in Steps 4 and 5 (including the revert agent), and the Step 6 `writer` prompt. Templates below refer to it as `<Report contract block, verbatim>`.
+
+**Global Constraints.** Paste plan.md's `## Global Constraints` section verbatim at the top of every
+Step 3 prompt, every fix prompt in Steps 4 and 5, and the revert agent's prompt, under the heading
+`## Global Constraints (apply to every change you make)`, then the phase file content (or the fix
+brief). A plan without the section (older plans) gets nothing pasted.
 
 For a fix batch, revert or docs agent, its prompt stands in for the phase file: the findings (Step 5) or the failing tests (Step 4), the change to undo, or "docs updated, or none needed: <why>" are its Done-when items. It owns every file it lists in `Files changed`, minus pre-run files, the plan root and `<plan-dir>` (the **Commit** rules in § Report check, status and commit) and forbidden paths; an unlisted changed file is not committed and is recorded in `## Claude tự quyết`. Order for every prompt cook writes: the Report contract (where used), then the two § Every prompt lines.
 
@@ -339,6 +329,9 @@ Agent(
   AND, when plan.md has a § AC Traceability table, every row whose Status is `in scope`:
   take the AC text from <plan-root>/jira/<KEY>.md (not the plan's wording) and check that
   the code does exactly that, including the UI text, labels and audit wording the AC quotes.
+  AND, when plan.md has a § Review Focus with lines (not "None found"), every line: check that the
+  code behaves as the line says for that input or condition, and that the test it names exists and
+  passed in the Step 4 evidence.
     1. List the criterion verbatim.
     2. Mark ✅ / ❌ MISSING / ❌ WRONG / ⚠ EXTRA.
     3. Cite file:line proving the verdict.
@@ -522,12 +515,12 @@ There is no status CLI — every update is a plain `Edit`. Two places must agree
 
 | Where | What changes |
 |-------|--------------|
-| `phase-XX-*.md` todo list | `[ ]` → `[x]` for each completed item |
+| `phase-XX-*.md` checkboxes | `[ ]` → `[x]` for each completed step (Todo List items in older plans) |
 | `plan.md` `## Phases` table | that phase's **Status cell only** — `Pending` → `In Progress` → `Complete`. Preserve table structure; never rewrite the whole table |
 | `plan.md` frontmatter | `status:` = `in-progress` while any phase is open, `completed` when all are `Complete` |
 
-**Derive status from the checkboxes, not from memory.** A phase is `Complete` only when every todo
-box in its file is ticked. Re-read the phase file before writing its row.
+**Derive status from the checkboxes, not from memory.** A phase is `Complete` only when every checkbox
+in its file is ticked. Re-read the phase file before writing its row.
    - Sweep all `phase-XX-*.md` files in the plan directory.
    - Mark every completed item `[ ] → [x]` based on completed tasks (including earlier phases finished before current phase).
    - Update `plan.md` status/progress (`pending`/`in-progress`/`completed`) from actual checkbox state.
@@ -587,7 +580,7 @@ If a plan path is provided at Step 0, skip Steps 1–2 and start at Step 3.
   - Step 4: `test-engineer` (and `debugger` if failures)
   - Step 5: `code-reviewer` sized by the diff (§ Step 5) — small: one reviewer returning Section A, Section B and a Cleanup section; large: two in ONE message — agent 1 returns the dual-section gating report (Section A plan-compliance, non-overridable + Section B bugs by severity); agent 2 runs Reuse (first) + Simplification + Efficiency + Altitude and collapses findings that are one change. Cleanup lenses never gate. Re-verify after any fix batch.
   - Step 6: `executor` (sync-back), `writer` (docs); the orchestrator commits and pushes
-- **ALWAYS** create a task list — use `TaskCreate` for each unchecked item with priority order and dependencies (or `TodoWrite` if Task tools unavailable). This is never skipped.
+- **ALWAYS** create a task list — use `TaskCreate` one task per phase file that still has an unchecked box, with priority order and dependencies (or `TodoWrite` if Task tools unavailable). This is never skipped.
 - **ALWAYS** keep the task list updated in lock-step, not just at the end:
   - `TaskUpdate` → `in_progress` immediately BEFORE dispatching each phase's sub-agent.
   - `TaskUpdate` → `complete` once its report passes the check and its commit lands, or nothing is left to commit (§ Report check, status and commit) — in the same turn, one phase at a time. Never batch status updates to the end of the run.

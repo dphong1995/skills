@@ -4,7 +4,7 @@ description: "ALWAYS activate this skill before implementing EVERY feature or pl
 argument-hint: "[task|plan-path]"
 metadata:
   author: claudekit
-  version: "5.9.0"
+  version: "5.10.0"
 ---
 
 <SUBAGENT-STOP>
@@ -53,7 +53,7 @@ never dispatch a `planner` sub-agent — the approved design goes straight into 
 orchestrator writes with Write. Sub-agent delegation starts at Step 3 (execution).
 
 **The plan FORMAT is `ck-plan`'s, though.** Before writing Step 2's files, load
-`../ck-plan/references/plan-organization.md` and `../ck-plan/references/output-standards.md`, then
+`../ck-plan/references/plan-writing.md`, `../ck-plan/references/plan-organization.md` and `../ck-plan/references/output-standards.md`, then
 match them: same plan-directory naming, same frontmatter schema, same `plan.md` skeleton, same
 phase-file section set. Borrowing the format is not delegation — the orchestrator still types every
 file itself. Cook-specific mapping and carve-outs: `references/workflow-steps.md` § Step 2.
@@ -79,7 +79,7 @@ The orchestrator NEVER edits source files itself during Step 3. Every phase MUST
 | "This design question is quick, ask it in chat" | Every 1C question and the 1D approach pick go on the interview page (`../brainstorm-pro/references/design-flow.md` § Phase 2). |
 | "Write spec.md first, then plan from it" | No spec and no ck-plan in cook. The design lives in `<plan-dir>/design.md`, which `plan.md` links. |
 | "Let a `planner` sub-agent write the plan" | No. The orchestrator writes the plan itself — it holds the design conversation. Sub-agents start at Step 3. |
-| "Cook forbids invoking ck-plan, so its format doesn't apply either" | Delegation is forbidden; the format is shared. Load ck-plan's `plan-organization.md` + `output-standards.md` and match them. |
+| "Cook forbids invoking ck-plan, so its format doesn't apply either" | Delegation is forbidden; the format is shared. Load ck-plan's `plan-writing.md` + `plan-organization.md` + `output-standards.md` and match them. |
 | "I'll write the plan free-form — cook is the only reader" | Wrong. Step 5 Section A and every ck-plan subcommand (`red-team`, `validate`, `archive`) read these files. Frontmatter + Phases table + per-phase sections are mandatory. |
 | "`ck plan check` will tick the phases for me" | There is no `ck` CLI. Status updates are plain Edit calls on the Status cell and the phase-file checkboxes. |
 | "Writing the plan counts as 'the orchestrator never edits files'" | That gate covers PRODUCTION code in Step 3. Plan files under `plans/` are the orchestrator's own output. |
@@ -155,7 +155,7 @@ The review (Step 5) is **sized by the diff** (workflow-steps.md § Step 5: one r
 | Phase | Subagent | Requirement |
 |-------|----------|-------------|
 | Step 1 Design (1A–1E) | **orchestrator-run** (builder check agent in 1E) | Skip only if plan path provided. `document-specialist` / `Explore` optional helpers inside 1A/1B; the builder check agent per `../brainstorm-pro/references/builder-check.md` in 1E |
-| Step 2 Plan | **none — orchestrator-run** | Orchestrator writes `plan.md` + `phase-XX-*.md` itself with Write, in **`ck-plan`'s format** (load `../ck-plan/references/plan-organization.md` + `output-standards.md` first). Skip only if plan path provided. Dispatching `planner` here is FORBIDDEN |
+| Step 2 Plan | **none — orchestrator-run** | Orchestrator writes `plan.md` + `phase-XX-*.md` itself with Write, in **`ck-plan`'s format** (load `../ck-plan/references/plan-writing.md` + `plan-organization.md` + `output-standards.md` first). Skip only if plan path provided. Dispatching `planner` here is FORBIDDEN |
 | Implementation (per phase) | `executor` (or `designer` for frontend) | **MUST** spawn one per phase. Dispatch with `model: "sonnet"`. Prompt carries the Report contract, then the `references/subagent-patterns.md` § Every prompt lines |
 | Testing | `test-engineer`, `debugger` | **MUST** spawn. Dispatch with `model: "sonnet"` |
 | Review (compliance + bugs + cleanup) | `code-reviewer` (1 or 2, sized by the diff) | **MUST** spawn. Small diff: one reviewer, gating report + non-gating Cleanup (sized by the diff, workflow-steps.md § Step 5). Large: both in ONE message — agent 1 = dual-section gating report; agent 2 = Reuse+Simplification+Efficiency+Altitude (non-gating). Dispatch with `model: "opus"` |
@@ -172,7 +172,7 @@ table: `references/subagent-patterns.md`.
 - **Independent phases run in parallel.** When phases share no file ownership, dispatch them in a single message with multiple `Agent` tool calls.
 - **Dependent phases run sequentially.** Wait for the prerequisite phase to return before dispatching the next.
 - **File ownership boundaries.** The orchestrator computes file ownership from the plan and passes it explicitly to each sub-agent so concurrent agents do not collide.
-- **Plan parsing.** Read each phase file once, extract scope/files/acceptance criteria, embed into the sub-agent prompt. Do not paraphrase — pass through verbatim where possible.
+- **Plan parsing.** Read each phase file once, extract scope/files/acceptance criteria, embed into the sub-agent prompt. Do not paraphrase — pass through verbatim where possible, plus `plan.md`'s `## Global Constraints` (`references/workflow-steps.md` § Step 3).
 
 ## References
 
@@ -183,5 +183,6 @@ table: `references/subagent-patterns.md`.
 - `references/subagent-patterns.md` - Subagent invocation patterns
 
 **Borrowed from `ck-plan` (Step 2 plan format — read before writing plan files):**
+- `../ck-plan/references/plan-writing.md` - plan.md and phase-file templates, phase sizing, step rules, the shared self-review
 - `../ck-plan/references/plan-organization.md` - plan dir naming + layout, `plan.md` skeleton, phase-file sections, status-update rules
 - `../ck-plan/references/output-standards.md` - frontmatter schema + auto-population, tag vocabulary, writing style

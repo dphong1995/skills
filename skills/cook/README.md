@@ -74,6 +74,7 @@ cook/
 
 ## Version
 
+5.10.0 - Step 2 reads ck-plan's plan-writing.md (templates, step rules, shared self-review); Step 3 and the fix prompts get plan.md's Global Constraints; Step 5 Section A checks the Review Focus lines; tasks and sync-back follow the step checkboxes
 5.9.0 - Steps 3-6 borrow from superpowers subagent-driven-development: implementer report contract with status, orchestrator commits per phase and per fix batch, a review package reviewers read once (no test re-runs), a subagent boundary line plus SUBAGENT-STOP, `## Claude tự quyết` in the final report; Step 6 asks only about push
 5.8.0 - Step 1 reads the shared `brainstorm-pro/references/design-flow.md`; adds the playback card, the builder check and the Nguồn column
 5.7.0 - Step 5 sized by the diff (one reviewer for a small diff, two for a large one); re-reviews scoped to the fix
