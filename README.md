@@ -254,6 +254,8 @@ widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouT
 - Lần đầu macOS hỏi quyền "ClaudeSessions điều khiển cmux" (có thể hỏi lại sau mỗi lần build). Lỡ từ chối
   thì bật lại ở System Settings → Privacy & Security → Automation.
 - Kéo được từ mọi chỗ trên widget; dời dưới 4 pt vẫn tính là bấm.
+- Session xong/chờ hiện thêm câu trả lời cuối của Claude (tối đa 2 dòng), đọc từ transcript
+  `~/.claude/projects/…/<sessionId>.jsonl`.
 
 Cài (cần Command Line Tools: `xcode-select --install`), build ra `~/Applications/ClaudeSessions.app`:
 

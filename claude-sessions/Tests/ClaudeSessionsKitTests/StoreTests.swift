@@ -87,3 +87,45 @@ private let me = getpid()
     store.refresh(at: t0.addingTimeInterval(32))
     #expect(store.attention == ["a"] && store.expanded)
 }
+
+private func writeTranscript(_ projects: URL, cwd: String, id: String, lines: [String]) -> URL {
+    let d = projects.appendingPathComponent(Transcript.projectDirName(cwd))
+    try! FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+    let f = d.appendingPathComponent("\(id).jsonl")
+    try! Data(lines.joined(separator: "\n").utf8).write(to: f)
+    return f
+}
+
+@Test func lastReplyOnIdle() {
+    let dir = makeSessionsDir(), projects = makeSessionsDir()
+    let store = Store(dir: dir, projects: projects)
+    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [assistantLine("all done")])
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 5, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(store.sessions.first?.lastReply == nil)
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(store.sessions.first?.lastReply == "all done")
+}
+
+@Test func noRereadWhenUnchanged() {
+    let dir = makeSessionsDir(), projects = makeSessionsDir()
+    let store = Store(dir: dir, projects: projects)
+    let f = writeTranscript(projects, cwd: frontend, id: "a", lines: [assistantLine("aaaa")])
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    try! Data(assistantLine("bbbb").utf8).write(to: f)
+    store.refresh(at: Date())
+    #expect(store.sessions.first?.lastReply == "aaaa")
+}
+
+@Test func rereadsWhenTranscriptGrows() {
+    let dir = makeSessionsDir(), projects = makeSessionsDir()
+    let store = Store(dir: dir, projects: projects)
+    let f = writeTranscript(projects, cwd: frontend, id: "a", lines: [assistantLine("first")])
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    try! Data([assistantLine("first"), assistantLine("a longer final text")].joined(separator: "\n").utf8).write(to: f)
+    store.refresh(at: Date())
+    #expect(store.sessions.first?.lastReply == "a longer final text")
+}

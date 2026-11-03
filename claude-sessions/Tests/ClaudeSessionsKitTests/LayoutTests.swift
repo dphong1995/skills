@@ -20,8 +20,23 @@ func canvasPillRoundTrip(a: Anchor) {
 @Test func draggedPastCornerIsClampedAndExpandedStaysOnScreen() {
     let a = Anchor(h: .trailing, up: false)
     let corner = Layout.canvasFrame(pillOrigin: Layout.clamp(pillOrigin: CGPoint(x: 1500, y: 975), to: scr), anchor: a)
-    let open = Layout.pill(in: corner, size: Layout.expanded(rows: 6), anchor: a)
+    let open = Layout.pill(in: corner, size: Layout.expanded((0..<6).map { reply("s\($0)", "idle", "hi") }), anchor: a)
     #expect(scr.contains(open))
+}
+
+private func reply(_ id: String, _ status: String, _ text: String?) -> Session {
+    Session(id: id, name: id, cwd: "/x", status: status, waitingFor: nil, since: nil, lastReply: text)
+}
+
+@Test func rowHeights() {
+    #expect(Layout.height(of: reply("a", "busy", "hi")) == 36)
+    #expect(Layout.height(of: reply("a", "idle", "hi")) == 64)
+    #expect(Layout.height(of: reply("a", "idle", nil)) == 36)
+}
+
+@Test func expandedSumsHeights() {
+    #expect(Layout.expanded([reply("a", "busy", nil), reply("b", "idle", "hi")]).height == CGFloat(146))
+    #expect(Layout.expanded([]).height == CGFloat(82))
 }
 
 @Test func isDragThreshold() {

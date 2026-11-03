@@ -80,4 +80,22 @@ struct SnapshotTests {
         store.hovering = false
         render(store, "09-bottom-left-collapsed")
     }
+
+    @Test func renderLastReply() {
+        let dir = makeSessionsDir(), projects = makeSessionsDir()
+        let store = Store(dir: dir, projects: projects)
+        func transcript(_ id: String, _ cwd: String, _ text: String) {
+            let d = projects.appendingPathComponent(Transcript.projectDirName(cwd))
+            try! FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+            try! Data(assistantLine(text).utf8).write(to: d.appendingPathComponent("\(id).jsonl"))
+        }
+        transcript("a", frontend, "Đã sửa xong lỗi đăng nhập và chạy lại toàn bộ test, tất cả đều qua. Bạn xem lại diff giúp mình rồi mình sẽ mở PR nhé, còn một chỗ nhỏ cần bạn quyết định.")
+        transcript("c", "/Users/phong/ocr-service", "Mình cần bạn chọn giữa hai hướng: giữ API cũ hay đổi sang bản mới?")
+        writeSession(dir, "a", pid: me, status: "idle", ageSec: 30, name: "talo6-dct-frontend-d7", cwd: frontend)
+        writeSession(dir, "c", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 75, name: "ocr-service-a1", cwd: "/Users/phong/ocr-service")
+        writeSession(dir, "d", pid: me, status: "busy", ageSec: 3700, name: "talo-v2-9c", cwd: "/Users/phong/talos-v2")
+        store.refresh(at: Date())
+        store.hovering = true
+        render(store, "10-last-reply-hover")
+    }
 }

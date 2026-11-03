@@ -26,8 +26,9 @@ public struct Anchor: Equatable {
 }
 public enum Layout {
     public static let margin: CGFloat = 14
-    public static let canvas = CGSize(width: 420 + margin * 2, height: 440)
+    public static let canvas = CGSize(width: 420 + margin * 2, height: 640)
     public static let rowHeight: CGFloat = 36
+    public static let replyRowHeight: CGFloat = 64
     public static let headerHeight: CGFloat = 32
     public static let collapsed = CGSize(width: 190, height: headerHeight)
     public static let dragThreshold: CGFloat = 4
@@ -36,12 +37,17 @@ public enum Layout {
         hypot(b.x - a.x, b.y - a.y) > dragThreshold
     }
 
-    public static func expanded(rows: Int) -> CGSize {
-        CGSize(width: 420, height: headerHeight + 4 + CGFloat(max(rows, 1)) * rowHeight + 10)
+    public static func height(of s: Session) -> CGFloat {
+        (s.status == "idle" || s.status == "waiting") && s.lastReply != nil ? replyRowHeight : rowHeight
+    }
+
+    public static func expanded(_ sessions: [Session]) -> CGSize {
+        let rows = sessions.isEmpty ? rowHeight : sessions.reduce(0) { $0 + height(of: $1) }
+        return CGSize(width: 420, height: headerHeight + 4 + rows + 10)
     }
 
     public static func size(_ store: Store) -> CGSize {
-        store.expanded ? expanded(rows: store.sessions.count) : collapsed
+        store.expanded ? expanded(store.sessions) : collapsed
     }
 
     public static func pill(in f: NSRect, size: CGSize, anchor: Anchor) -> NSRect {

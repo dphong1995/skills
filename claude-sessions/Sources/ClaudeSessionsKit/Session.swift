@@ -8,6 +8,7 @@ public struct Session: Identifiable, Equatable {
     public let status: String
     public let waitingFor: String?
     public let since: Date?
+    public var lastReply: String? = nil
 }
 
 public final class Store: ObservableObject {
@@ -23,9 +24,27 @@ public final class Store: ObservableObject {
     private var lastStatus: [String: String] = [:]
     private var attentionAt: [String: Date] = [:]
     private let dir: URL
+    private let projects: URL
+    private var replyCache: [String: (since: Date?, size: Int, reply: String?)] = [:]
+    private var urlCache: [String: (since: Date?, url: URL?)] = [:]
 
-    public init(dir: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/sessions")) {
+    public init(dir: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/sessions"),
+                projects: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/projects")) {
         self.dir = dir
+        self.projects = projects
+    }
+
+    private func reply(for s: Session) -> String? {
+        guard s.status == "idle" || s.status == "waiting" else { return nil }
+        if urlCache[s.id] == nil || (urlCache[s.id]!.url == nil && urlCache[s.id]!.since != s.since) {
+            urlCache[s.id] = (s.since, Transcript.find(sessionId: s.id, cwd: s.cwd, projects: projects))
+        }
+        guard let url = urlCache[s.id]?.url else { return nil }
+        let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+        if let c = replyCache[s.id], c.since == s.since, c.size == size { return c.reply }
+        let reply = Transcript.lastReply(in: Transcript.tail(url))
+        replyCache[s.id] = (s.since, size, reply)
+        return reply
     }
 
     public func refresh(at date: Date = Date()) {
@@ -50,6 +69,8 @@ public final class Store: ObservableObject {
             ))
         }
 
+        list = list.map { var s = $0; s.lastReply = reply(for: s); return s }
+
         for s in list {
             if lastStatus[s.id] == "busy" && (s.status == "idle" || s.status == "waiting") {
                 attentionAt[s.id] = now
@@ -59,6 +80,8 @@ public final class Store: ObservableObject {
             lastStatus[s.id] = s.status
         }
         let live = Set(list.map(\.id))
+        replyCache = replyCache.filter { live.contains($0.key) }
+        urlCache = urlCache.filter { live.contains($0.key) }
         attentionAt = attentionAt.filter { live.contains($0.key) && now.timeIntervalSince($0.value) < 20 }
         let newAttention = Set(attentionAt.keys)
         if newAttention != attention { attention = newAttention }

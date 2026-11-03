@@ -128,6 +128,10 @@ public struct WidgetView: View {
                 Text(s.name).font(.system(size: 12.5, weight: hot ? .bold : .medium)).foregroundStyle(.white).lineLimit(1)
                 Text((s.cwd as NSString).lastPathComponent).font(.system(size: 10.5))
                     .foregroundStyle(.white.opacity(0.45)).lineLimit(1)
+                if Layout.height(of: s) == Layout.replyRowHeight, let reply = s.lastReply {
+                    Text(reply).font(.system(size: 11)).foregroundStyle(.white.opacity(0.75))
+                        .lineLimit(2).truncationMode(.tail)
+                }
             }
             Spacer(minLength: 12)
             Text(label(s)).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(color(s.status))
@@ -135,7 +139,7 @@ public struct WidgetView: View {
                 .foregroundStyle(.white.opacity(0.55)).frame(minWidth: 36, alignment: .trailing)
         }
         .padding(.horizontal, 8)
-        .frame(height: Layout.rowHeight)
+        .frame(height: Layout.height(of: s))
         .background(RoundedRectangle(cornerRadius: 9).fill(hot ? color(s.status).opacity(0.18) : .clear))
         .contentShape(Rectangle())
         .onTapGesture { onSelect(s.id) }
