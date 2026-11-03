@@ -60,7 +60,7 @@ public enum CmuxJump {
         case .deny(_, _, let reason):
             let r = reason.trimmingCharacters(in: .whitespacesAndNewlines)
             return r.isEmpty ? [.raw("\\x1b")] : [.raw("\\x1b"), .pause(0.3), .paste(r), .raw("\\r")]
-        case .reply(_, let text): return [.paste(text), .raw("\\r")]
+        case .reply(_, let text, _): return [.paste(text), .raw("\\r")]
         }
     }
 

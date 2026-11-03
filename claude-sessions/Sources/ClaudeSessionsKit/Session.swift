@@ -40,6 +40,8 @@ public final class Store: ObservableObject {
     /// Session ids whose cmux lookup found nothing. Same pruning as `surfaces`.
     public var surfaceMisses: Set<String> = []
     private var pids: [String: Int32] = [:]
+    /// The pid of the live session with this id as of the last refresh.
+    public func pid(of id: String) -> Int32? { pids[id] }
     public struct Editing: Equatable {
         public enum Kind { case reply, deny }
         public let id: String

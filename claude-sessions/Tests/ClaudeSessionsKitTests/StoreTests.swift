@@ -266,9 +266,22 @@ private func approvableStore() -> (Store, URL, URL, URL) {
     store.surfaceMisses.insert("a")
     store.refresh(at: Date())
     #expect(store.surfaces["a"] == "S" && store.surfaceMisses.contains("a"))
-    writeSession(dir, "a", pid: 1, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    #expect(store.sessions.map(\.id) == ["a"])
+    let other = getppid()
+    writeSession(dir, "a", pid: other, status: "idle", ageSec: 0, name: "a", cwd: frontend)
     store.refresh(at: Date())
+    #expect(store.sessions.map(\.id) == ["a"])
     #expect(store.surfaces["a"] == nil && store.surfaceMisses.isEmpty)
+}
+
+@Test func statusFlipWithUnchangedFileSizeIsSeen() {
+    let (store, dir, _, _) = approvableStore()
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(store.sessions.first?.pending == nil)
+    writeSession(dir, "a", pid: me, status: "waiting", waitingFor: "permission prompt", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(store.sessions.first?.pending == .one(Pending(toolId: "t1", tool: "Bash", text: "npm test")))
 }
 
 @Test func editingDenyClosedWhenToolChanges() {

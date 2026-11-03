@@ -44,11 +44,12 @@ public enum WidgetAction: Equatable {
     case jump(String)
     case approve(String, toolId: String)
     case deny(String, toolId: String, reason: String)
-    case reply(String, text: String)
+    /// `fromEditor`: sent by the reply editor's Enter (a quick reply leaves the editor and its draft alone).
+    case reply(String, text: String, fromEditor: Bool = false)
 
     public var sessionId: String {
         switch self {
-        case .jump(let id), .approve(let id, _), .deny(let id, _, _), .reply(let id, _): id
+        case .jump(let id), .approve(let id, _), .deny(let id, _, _), .reply(let id, _, _): id
         }
     }
 }
@@ -209,7 +210,7 @@ public struct WidgetView: View {
                 let text = draft.wrappedValue
                 switch kind {
                 case .reply:
-                    if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { onAction(.reply(s.id, text: text)) }
+                    if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { onAction(.reply(s.id, text: text, fromEditor: true)) }
                 case .deny:
                     onAction(.deny(s.id, toolId: s.approvable?.toolId ?? "", reason: text))
                 }

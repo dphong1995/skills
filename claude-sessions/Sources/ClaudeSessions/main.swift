@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var timer: Timer?
     var monitors: [Any] = []
     var lookingUp: Set<String> = []
+    var sending: Set<String> = []
     var tick = 0
     var cancellables: Set<AnyCancellable> = []
 
@@ -81,19 +82,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Calls `then` on main with the session's cmux surface: the cached one, else the result of a `cmux sessions` lookup.
     /// Hits are cached in the store; misses are recorded there too, but only the background check consults them.
+    /// Calls `then` on main with the session's cmux surface: the cached one, else the result of a `cmux sessions` lookup.
+    /// Hits are cached in the store; misses are recorded there too, but only the background check consults them.
     func resolveSurface(_ id: String, then: @escaping (String?) -> Void) {
         if let surface = store.surfaces[id] { return then(surface) }
         lookingUp.insert(id)
+        let pid = store.pid(of: id)
         DispatchQueue.global().async {
             let surface = CmuxJump.surface(sessionId: id)
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 lookingUp.remove(id)
-                if let surface {
-                    store.surfaces[id] = surface
-                    store.surfaceMisses.remove(id)
-                } else {
-                    store.surfaceMisses.insert(id)
+                // The session's process changed while the lookup ran: the result may belong to the old one.
+                if store.pid(of: id) == pid {
+                    if let surface {
+                        store.surfaces[id] = surface
+                        store.surfaceMisses.remove(id)
+                    } else {
+                        store.surfaceMisses.insert(id)
+                    }
                 }
                 then(surface)
             }
@@ -102,24 +109,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func handle(_ a: WidgetAction) {
         let id = a.sessionId
+        if case .jump = a {
+            store.markSeen(id)
+            resolveSurface(id) { surface in
+                guard let surface, CmuxJump.jump(surface: surface) else { return NSSound.beep() }
+            }
+            return
+        }
+        guard !sending.contains(id) else { return NSSound.beep() }
+        sending.insert(id)
+        var fromEditor = false
+        switch a {
+        case .reply(_, _, let e): fromEditor = e
+        case .deny: fromEditor = true
+        default: break
+        }
+        // Close the editor now so a second Enter cannot queue a second send; the draft stays until the send succeeds.
+        if fromEditor { store.editing = nil }
         resolveSurface(id) { [weak self] surface in
             guard let self else { return }
-            guard let surface else { return NSSound.beep() }
-            if case .jump = a {
-                if CmuxJump.jump(surface: surface) { store.markSeen(id) } else { NSSound.beep() }
-                return
-            }
+            guard let surface else { sending.remove(id); return NSSound.beep() }
             // Validate right before the first keystroke: the lookup above may have taken a while.
             store.refresh()
-            let fromEditor = store.editing?.id == id
-            guard store.stillValid(a) else {
-                NSSound.beep()
-                if fromEditor { store.editing = nil }
-                return
+            guard store.surfaces[id] == surface, store.stillValid(a) else {
+                sending.remove(id)
+                return NSSound.beep()
             }
-            if fromEditor { store.editing = nil }
             CmuxJump.send(surface: surface, keys: CmuxJump.keys(for: a)) { [weak self] ok in
                 guard let self else { return }
+                sending.remove(id)
                 guard ok else { return NSSound.beep() }
                 if fromEditor { store.drafts[id] = nil }
                 store.markSeen(id)
