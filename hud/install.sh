@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Install the OMC HUD statusline in this folder.
+# Also installs the vendored OMC runtime hud/omc to ~/.claude/hud/omc (an existing one is moved to omc.<timestamp>.bak).
 # Existing files are kept next to the original as <file>.<timestamp>.bak.
 # settings.json: only the statusLine and omcHud keys are replaced; other keys are kept.
 set -euo pipefail
@@ -18,6 +19,12 @@ install_file() {  # $1 = source path, $2 = destination path
 
 install_file "$SRC/omc-hud.mjs" "$HOME/.claude/hud/omc-hud.mjs"
 install_file "$SRC/PATCH-NOTES.md" "$HOME/.claude/hud/PATCH-NOTES.md"
+
+if [ -e "$HOME/.claude/hud/omc" ]; then
+  mv "$HOME/.claude/hud/omc" "$HOME/.claude/hud/omc.$STAMP.bak"
+fi
+cp -R "$SRC/omc" "$HOME/.claude/hud/omc"
+echo "  $HOME/.claude/hud/omc"
 
 SETTINGS="$HOME/.claude/settings.json"
 if [ -e "$SETTINGS" ]; then

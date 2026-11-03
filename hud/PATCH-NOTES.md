@@ -1,6 +1,14 @@
 # OMC HUD — Patch ghi chú (giữ qua các lần upgrade)
 
+## HUD chạy bản vendored (từ OMC 5.7.31)
+HUD giờ chạy bản sao trong `~/.claude/hud/omc/` (OMC 5.7.31, tạo bằng `hud/vendor.sh`, cài bằng `hud/install.sh`); wrapper `omc-hud.mjs` import nó trước plugin cache. Vì vậy các patch bên dưới chỉ còn liên quan khi HUD rơi về plugin cache:
+- Patch 1: với 5.7.31 không còn cần. Upstream chỉ thay rate limit bằng enterprise cost khi `isEnterprise`; lưu ý `omcHud.elements.enterpriseMode: true` ép `isEnterprise`, nên nếu API trả `enterpriseSpentUsd` thì đoạn `5h:` bị thay.
+- Patch 2: nằm trong wrapper (`HIDE_SEGMENT`), áp cho cả bản vendored.
+- Patch 3: không còn cần, 5.7.31 không import `zod`.
+
 ## Mục đích
+> Trạng thái: không còn cần với bản vendored 5.7.31, xem mục "HUD chạy bản vendored" ở đầu file.
+
 Hiển thị `5h:X%(YhZm)` (rate limit window) thay vì `spent:$X/$Y` (enterprise cost) cho tài khoản enterprise.
 
 ## Vấn đề
@@ -78,6 +86,8 @@ Verify: `grep -n "fable" ~/.claude/hud/omc-hud.mjs`
 ---
 
 # Patch 3 — Thiếu `zod` trong plugin cache (từ 5.7.5)
+
+> Trạng thái: không còn cần với bản vendored 5.7.31, xem mục "HUD chạy bản vendored" ở đầu file.
 
 5.7.5 thêm `import { z } from "zod"` vào `dist/lib/security-config.js` (#4388/#4389), HUD import file này, nhưng plugin cache không có `node_modules` (phần còn lại của OMC chạy bundle `bridge/*.cjs`). Import fail → wrapper nuốt lỗi và in message sai `Plugin dist/ exists but HUD not found. Run: ... npm run build` (build lại KHÔNG fix được).
 

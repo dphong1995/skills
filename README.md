@@ -194,22 +194,37 @@ Settings tự ghi và app vẫn đọc được, chỉ schema của doctor là k
 
 ## OMC HUD
 
-Statusline của plugin oh-my-claudecode (OMC). Repo giữ:
+Statusline của plugin oh-my-claudecode (OMC). Repo mang theo runtime HUD đã tách khỏi plugin, nên máy mới
+không cần cài plugin OMC (Claude Code phải đã đăng nhập để lấy rate limit). Repo giữ:
 
 | File trong repo | Vị trí trên máy |
 |---|---|
-| `hud/omc-hud.mjs` | `~/.claude/hud/omc-hud.mjs` — wrapper gọi HUD của plugin, ẩn các bucket `sn:`/`fable:`/`extra:` |
-| `hud/PATCH-NOTES.md` | `~/.claude/hud/PATCH-NOTES.md` — các patch phải áp lại vào plugin cache sau mỗi lần upgrade OMC |
+| `hud/omc-hud.mjs` | `~/.claude/hud/omc-hud.mjs` — wrapper gọi HUD (bản vendored trước, plugin cache sau), ẩn các bucket `sn:`/`fable:`/`extra:` |
+| `hud/omc/` | `~/.claude/hud/omc/` — runtime HUD của OMC 5.7.31, tạo bằng `hud/vendor.sh`, không sửa tay |
+| `hud/vendor.sh` | tạo lại `hud/omc/` từ plugin cache (bản mới nhất đã build, hoặc bản truyền vào) |
+| `hud/PATCH-NOTES.md` | `~/.claude/hud/PATCH-NOTES.md` — các patch chỉ còn cần khi HUD rơi về plugin cache |
 | `hud/settings.json` | key `statusLine` và `omcHud` của `~/.claude/settings.json` (layout, element bật/tắt) |
 
-Cài trên máy mới, sau khi đã cài plugin OMC (file đang có được giữ lại dạng `<file>.<timestamp>.bak`;
-`settings.json` chỉ bị thay 2 key trên, các key khác giữ nguyên):
+Cài trên máy mới (file đang có được giữ lại dạng `<file>.<timestamp>.bak`, thư mục `omc` cũ thành
+`omc.<timestamp>.bak`; `settings.json` chỉ bị thay 2 key trên, các key khác giữ nguyên):
 
 ```bash
 bash ~/.claude/skills-repo/hud/install.sh
 ```
 
-Sau đó áp các patch trong `PATCH-NOTES.md` mà bản OMC đang cài còn cần.
+Lên bản OMC mới: cập nhật plugin trên một máy có nó, rồi
+
+```bash
+cd ~/.claude/skills-repo
+bash hud/vendor.sh        # tạo lại hud/omc từ bản plugin mới nhất
+# kiểm tra output giống hệt plugin cache (diff phải rỗng):
+IN='{"cwd":"'$PWD'","model":{"id":"claude-opus-5-5","display_name":"Opus 5.5"},"transcript_path":"/nonexistent"}'
+V=$(ls ~/.claude/plugins/cache/omc/oh-my-claudecode | sort -V | tail -1)
+diff <(echo "$IN" | node -e "import('$HOME/.claude/plugins/cache/omc/oh-my-claudecode/$V/dist/hud/index.js')" 2>&1) \
+     <(echo "$IN" | node -e "import('$PWD/hud/omc/dist/hud/index.js')" 2>&1)
+bash hud/install.sh
+git add hud/omc && git commit -m "Vendor OMC HUD <version>"
+```
 
 Đẩy thay đổi ngược lên repo:
 

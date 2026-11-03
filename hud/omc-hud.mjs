@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
  * OMC HUD - Statusline Script
- * Wrapper that imports from dev paths, plugin cache, or npm package
+ * Wrapper that imports from dev paths, the vendored runtime next to this file, plugin cache, or npm package
  */
 
 import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 // Strip "sn:" (Sonnet weekly), "fable:" (Fable weekly) and "extra:" (custom budget) segments from
 // rate-limits output. Each match consumes a leading space + optional ANSI +
@@ -52,7 +52,16 @@ async function main() {
     }
   }
 
-  // 2. Plugin cache (for production installs)
+  // 2. Vendored runtime next to this wrapper (hud/omc, made by vendor.sh)
+  const vendoredPath = join(dirname(fileURLToPath(import.meta.url)), "omc", "dist/hud/index.js");
+  if (existsSync(vendoredPath)) {
+    try {
+      await import(pathToFileURL(vendoredPath).href);
+      return;
+    } catch { /* continue */ }
+  }
+
+  // 3. Plugin cache (for production installs)
   // Respect CLAUDE_CONFIG_DIR so installs under a custom config dir are found
   const configDir = process.env.CLAUDE_CONFIG_DIR || join(home, ".claude");
   const pluginCacheBase = join(configDir, "plugins", "cache", "omc", "oh-my-claudecode");
@@ -79,13 +88,13 @@ async function main() {
     } catch { /* continue */ }
   }
 
-  // 3. npm package (global or local install)
+  // 4. npm package (global or local install)
   try {
     await import("oh-my-claudecode/dist/hud/index.js");
     return;
   } catch { /* continue */ }
 
-  // 4. Fallback: provide detailed error message with fix instructions
+  // 5. Fallback: provide detailed error message with fix instructions
   if (pluginCacheDir && existsSync(pluginCacheDir)) {
     // Plugin exists but dist/ folder is missing - needs build
     const distDir = join(pluginCacheDir, "dist");
