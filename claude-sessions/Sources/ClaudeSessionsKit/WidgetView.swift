@@ -128,7 +128,7 @@ public struct WidgetView: View {
                 Text(s.name).font(.system(size: 12.5, weight: hot ? .bold : .medium)).foregroundStyle(.white).lineLimit(1)
                 Text((s.cwd as NSString).lastPathComponent).font(.system(size: 10.5))
                     .foregroundStyle(.white.opacity(0.45)).lineLimit(1)
-                if Layout.height(of: s) == Layout.replyRowHeight, let reply = s.lastReply {
+                if s.isFinished, let reply = s.lastReply {
                     Text(reply).font(.system(size: 11)).foregroundStyle(.white.opacity(0.75))
                         .lineLimit(2).truncationMode(.tail)
                 }
@@ -151,16 +151,13 @@ public final class DragHostingView<V: View>: NSHostingView<V> {
     private var replaying = false
     public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     public override func mouseDown(with down: NSEvent) {
-        if replaying {
-            replaying = false
-            return super.mouseDown(with: down)
-        }
-        guard let window else { return super.mouseDown(with: down) }
+        guard !replaying, let window else { return super.mouseDown(with: down) }
         while let e = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
             if e.type == .leftMouseUp {
                 // A click: replay the press and release so SwiftUI sees them through the normal event path.
                 replaying = true
                 window.sendEvent(down)
+                replaying = false
                 window.sendEvent(e)
                 return
             }

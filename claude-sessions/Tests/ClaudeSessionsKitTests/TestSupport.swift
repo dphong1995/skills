@@ -1,8 +1,11 @@
 import Foundation
 @testable import ClaudeSessionsKit
 
+// Own pid keeps fake sessions alive (kill(pid, 0)); 999_999 is a dead one.
+let me = getpid()
+
 /// Fresh directory per call: Swift Testing runs tests in parallel.
-func makeSessionsDir() -> URL {
+func makeTempDir() -> URL {
     let dir = FileManager.default.temporaryDirectory
         .appendingPathComponent("claude-sessions-tests-\(UUID().uuidString)", isDirectory: true)
     try! FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -18,3 +21,23 @@ func writeSession(_ dir: URL, _ file: String, pid: Int32, status: String, waitin
 
 let frontend = "/Users/phong/talo6-dct-frontend"
 let backend = "/Users/phong/talo6-dct-backend"
+
+/// Store whose transcript lookups never touch the real ~/.claude/projects.
+func makeStore(dir: URL, projects: URL = makeTempDir()) -> Store {
+    Store(dir: dir, projects: projects)
+}
+
+func assistantLine(_ text: String?, sidechain: Bool = false) -> String {
+    var content: [[String: Any]] = [["type": "tool_use", "name": "Bash"]]
+    if let text { content.insert(["type": "text", "text": text], at: 0) }
+    let o: [String: Any] = ["type": "assistant", "isSidechain": sidechain, "message": ["content": content]]
+    return String(data: try! JSONSerialization.data(withJSONObject: o), encoding: .utf8)!
+}
+
+func writeTranscript(_ projects: URL, cwd: String, id: String, lines: [String]) -> URL {
+    let d = projects.appendingPathComponent(Transcript.projectDirName(cwd))
+    try! FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+    let f = d.appendingPathComponent("\(id).jsonl")
+    try! Data(lines.joined(separator: "\n").utf8).write(to: f)
+    return f
+}

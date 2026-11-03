@@ -79,7 +79,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 let delegate = AppDelegate()

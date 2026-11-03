@@ -5,9 +5,9 @@ import Testing
 
 @MainActor
 private func clickRow(dragTo dx: CGFloat?) -> [String] {
-    let dir = makeSessionsDir()
+    let dir = makeTempDir()
     writeSession(dir, "s1", pid: getpid(), status: "idle", ageSec: 5, name: "x", cwd: "/tmp/x")
-    let store = Store(dir: dir)
+    let store = makeStore(dir: dir)
     store.refresh(at: Date())
     store.hovering = true
     var recorded: [String] = []
@@ -33,12 +33,12 @@ private func clickRow(dragTo dx: CGFloat?) -> [String] {
     return recorded
 }
 
-@Suite(.serialized) @MainActor struct ClickTests {
-    @Test(.disabled("the body runs and records [\"s1\"], but the test process exits right after it, before Swift Testing reports (nested NSApp event loop under swift test); covered by the manual checkpoint")) func tapRecordsSessionId() {
+@Suite(.serialized, .disabled("the body runs and records [\"s1\"], but the test process exits right after it, before Swift Testing reports (nested NSApp event loop under swift test); covered by the manual checkpoint")) @MainActor struct ClickTests {
+    @Test func tapRecordsSessionId() {
         #expect(clickRow(dragTo: nil) == ["s1"])
     }
 
-    @Test(.disabled("the body runs and records [\"s1\"], but the test process exits right after it, before Swift Testing reports (nested NSApp event loop under swift test); covered by the manual checkpoint")) func smallMoveStillClicks() {
+    @Test func smallMoveStillClicks() {
         #expect(clickRow(dragTo: 3) == ["s1"])
     }
 }

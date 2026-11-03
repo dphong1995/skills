@@ -2,18 +2,15 @@ import Foundation
 import Testing
 @testable import ClaudeSessionsKit
 
-// Own pid keeps fake sessions alive (kill(pid, 0)); 999_999 is a dead one.
-private let me = getpid()
-
 @Test func emptyDirHasNoSessions() {
-    let store = Store(dir: makeSessionsDir())
+    let store = makeStore(dir: makeTempDir())
     store.refresh(at: Date())
     #expect(store.sessions.isEmpty)
 }
 
 @Test func deadPidIsFilteredAndFirstSightIsQuiet() {
-    let dir = makeSessionsDir()
-    let store = Store(dir: dir)
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
     writeSession(dir, "a", pid: me, status: "busy", ageSec: 42, name: "talo6-dct-frontend-d7", cwd: frontend)
     writeSession(dir, "b", pid: me, status: "busy", ageSec: 300, name: "talo6-dct-backend-3f", cwd: backend)
     writeSession(dir, "dead", pid: 999_999, status: "idle", ageSec: 10, name: "dead", cwd: "/tmp")
@@ -23,8 +20,8 @@ private let me = getpid()
 }
 
 @Test func busyToIdleFlagsAttentionPeeksAndExpires() {
-    let dir = makeSessionsDir()
-    let store = Store(dir: dir)
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
     let t0 = Date()
     writeSession(dir, "a", pid: me, status: "busy", ageSec: 42, name: "talo6-dct-frontend-d7", cwd: frontend)
     writeSession(dir, "b", pid: me, status: "busy", ageSec: 300, name: "talo6-dct-backend-3f", cwd: backend)
@@ -45,8 +42,8 @@ private let me = getpid()
 }
 
 @Test func waitingOrderingAndLabels() {
-    let dir = makeSessionsDir()
-    let store = Store(dir: dir)
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
     let t0 = Date()
     writeSession(dir, "a", pid: me, status: "busy", ageSec: 42, name: "talo6-dct-frontend-d7", cwd: frontend)
     writeSession(dir, "b", pid: me, status: "busy", ageSec: 300, name: "talo6-dct-backend-3f", cwd: backend)
@@ -65,14 +62,14 @@ private let me = getpid()
 }
 
 @Test func hoverExpands() {
-    let store = Store(dir: makeSessionsDir())
+    let store = makeStore(dir: makeTempDir())
     store.hovering = true
     #expect(store.expanded)
 }
 
 @Test func secondTurnFinishingPeeksAgain() {
-    let dir = makeSessionsDir()
-    let store = Store(dir: dir)
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
     let t0 = Date()
     writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "talo6-dct-frontend-d7", cwd: frontend)
     store.refresh(at: t0)
@@ -88,17 +85,9 @@ private let me = getpid()
     #expect(store.attention == ["a"] && store.expanded)
 }
 
-private func writeTranscript(_ projects: URL, cwd: String, id: String, lines: [String]) -> URL {
-    let d = projects.appendingPathComponent(Transcript.projectDirName(cwd))
-    try! FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
-    let f = d.appendingPathComponent("\(id).jsonl")
-    try! Data(lines.joined(separator: "\n").utf8).write(to: f)
-    return f
-}
-
 @Test func lastReplyOnIdle() {
-    let dir = makeSessionsDir(), projects = makeSessionsDir()
-    let store = Store(dir: dir, projects: projects)
+    let dir = makeTempDir(), projects = makeTempDir()
+    let store = makeStore(dir: dir, projects: projects)
     _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [assistantLine("all done")])
     writeSession(dir, "a", pid: me, status: "busy", ageSec: 5, name: "a", cwd: frontend)
     store.refresh(at: Date())
@@ -109,8 +98,8 @@ private func writeTranscript(_ projects: URL, cwd: String, id: String, lines: [S
 }
 
 @Test func noRereadWhenUnchanged() {
-    let dir = makeSessionsDir(), projects = makeSessionsDir()
-    let store = Store(dir: dir, projects: projects)
+    let dir = makeTempDir(), projects = makeTempDir()
+    let store = makeStore(dir: dir, projects: projects)
     let f = writeTranscript(projects, cwd: frontend, id: "a", lines: [assistantLine("aaaa")])
     writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
     store.refresh(at: Date())
@@ -120,8 +109,8 @@ private func writeTranscript(_ projects: URL, cwd: String, id: String, lines: [S
 }
 
 @Test func rereadsWhenTranscriptGrows() {
-    let dir = makeSessionsDir(), projects = makeSessionsDir()
-    let store = Store(dir: dir, projects: projects)
+    let dir = makeTempDir(), projects = makeTempDir()
+    let store = makeStore(dir: dir, projects: projects)
     let f = writeTranscript(projects, cwd: frontend, id: "a", lines: [assistantLine("first")])
     writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
     store.refresh(at: Date())

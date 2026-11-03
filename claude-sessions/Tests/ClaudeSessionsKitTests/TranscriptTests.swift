@@ -2,13 +2,6 @@ import Foundation
 import Testing
 @testable import ClaudeSessionsKit
 
-func assistantLine(_ text: String?, sidechain: Bool = false) -> String {
-    var content: [[String: Any]] = [["type": "tool_use", "name": "Bash"]]
-    if let text { content.insert(["type": "text", "text": text], at: 0) }
-    let o: [String: Any] = ["type": "assistant", "isSidechain": sidechain, "message": ["content": content]]
-    return String(data: try! JSONSerialization.data(withJSONObject: o), encoding: .utf8)!
-}
-
 private let userLine = #"{"type":"user","message":{"content":"hi"}}"#
 private func data(_ lines: [String]) -> Data { Data(lines.joined(separator: "\n").utf8) }
 
@@ -45,7 +38,7 @@ private func data(_ lines: [String]) -> Data { Data(lines.joined(separator: "\n"
 }
 
 @Test func findFallsBackToScan() throws {
-    let projects = makeSessionsDir()
+    let projects = makeTempDir()
     let other = projects.appendingPathComponent("some-other-dir")
     try FileManager.default.createDirectory(at: other, withIntermediateDirectories: true)
     let file = other.appendingPathComponent("sid.jsonl")

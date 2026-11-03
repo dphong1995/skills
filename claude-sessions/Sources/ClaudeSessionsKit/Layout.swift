@@ -7,7 +7,7 @@ public struct Anchor: Equatable {
     public var h: HAnchor = .trailing
     public var up = false
 
-    public var alignment: Alignment {
+    var alignment: Alignment {
         switch (h, up) {
         case (.leading, false): .topLeading
         case (.center, false): .top
@@ -25,23 +25,23 @@ public struct Anchor: Equatable {
     }
 }
 public enum Layout {
-    public static let margin: CGFloat = 14
-    public static let canvas = CGSize(width: 420 + margin * 2, height: 640)
-    public static let rowHeight: CGFloat = 36
-    public static let replyRowHeight: CGFloat = 64
-    public static let headerHeight: CGFloat = 32
+    static let margin: CGFloat = 14
+    static let canvas = CGSize(width: 420 + margin * 2, height: 640)
+    static let rowHeight: CGFloat = 36
+    static let replyRowHeight: CGFloat = 64
+    static let headerHeight: CGFloat = 32
     public static let collapsed = CGSize(width: 190, height: headerHeight)
-    public static let dragThreshold: CGFloat = 4
+    static let dragThreshold: CGFloat = 4
 
-    public static func isDrag(from a: CGPoint, to b: CGPoint) -> Bool {
+    static func isDrag(from a: CGPoint, to b: CGPoint) -> Bool {
         hypot(b.x - a.x, b.y - a.y) > dragThreshold
     }
 
-    public static func height(of s: Session) -> CGFloat {
-        (s.status == "idle" || s.status == "waiting") && s.lastReply != nil ? replyRowHeight : rowHeight
+    static func height(of s: Session) -> CGFloat {
+        s.isFinished && s.lastReply != nil ? replyRowHeight : rowHeight
     }
 
-    public static func expanded(_ sessions: [Session]) -> CGSize {
+    static func expanded(_ sessions: [Session]) -> CGSize {
         let rows = sessions.isEmpty ? rowHeight : sessions.reduce(0) { $0 + height(of: $1) }
         return CGSize(width: 420, height: headerHeight + 4 + rows + 10)
     }

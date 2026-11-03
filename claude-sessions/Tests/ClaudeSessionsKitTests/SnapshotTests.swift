@@ -3,8 +3,6 @@ import SwiftUI
 import Testing
 @testable import ClaudeSessionsKit
 
-private let me = getpid()
-
 private let outDir: URL = {
     // Tests/ClaudeSessionsKitTests/X.swift -> package root is 3 levels up
     let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -34,8 +32,8 @@ private func render(_ store: Store, _ name: String) {
 @MainActor
 struct SnapshotTests {
     @Test func renderAllStates() {
-        let dir = makeSessionsDir()
-        let store = Store(dir: dir)
+        let dir = makeTempDir()
+        let store = makeStore(dir: dir)
         let t0 = Date()
 
         store.refresh(at: t0)
@@ -82,12 +80,10 @@ struct SnapshotTests {
     }
 
     @Test func renderLastReply() {
-        let dir = makeSessionsDir(), projects = makeSessionsDir()
-        let store = Store(dir: dir, projects: projects)
+        let dir = makeTempDir(), projects = makeTempDir()
+        let store = makeStore(dir: dir, projects: projects)
         func transcript(_ id: String, _ cwd: String, _ text: String) {
-            let d = projects.appendingPathComponent(Transcript.projectDirName(cwd))
-            try! FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
-            try! Data(assistantLine(text).utf8).write(to: d.appendingPathComponent("\(id).jsonl"))
+            _ = writeTranscript(projects, cwd: cwd, id: id, lines: [assistantLine(text)])
         }
         transcript("a", frontend, "Đã sửa xong lỗi đăng nhập và chạy lại toàn bộ test, tất cả đều qua. Bạn xem lại diff giúp mình rồi mình sẽ mở PR nhé, còn một chỗ nhỏ cần bạn quyết định.")
         transcript("c", "/Users/phong/ocr-service", "Mình cần bạn chọn giữa hai hướng: giữ API cũ hay đổi sang bản mới?")

@@ -1,32 +1,42 @@
 import Foundation
 import Combine
 
-public struct Session: Identifiable, Equatable {
-    public let id: String
-    public let name: String
-    public let cwd: String
-    public let status: String
-    public let waitingFor: String?
-    public let since: Date?
-    public var lastReply: String? = nil
+struct Session: Identifiable, Equatable {
+    let id: String
+    let name: String
+    let cwd: String
+    let status: String
+    let waitingFor: String?
+    let since: Date?
+    var lastReply: String? = nil
+}
+
+extension Session {
+    var isFinished: Bool { status == "idle" || status == "waiting" }
 }
 
 public final class Store: ObservableObject {
-    @Published public var sessions: [Session] = []
-    @Published public var attention: Set<String> = []
+    @Published var sessions: [Session] = []
+    @Published var attention: Set<String> = []
     @Published public var hovering = false
-    @Published public var now = Date()
+    @Published var now = Date()
     @Published public var peekUntil: Date?
     @Published public var anchor = Anchor()
 
-    public var expanded: Bool { hovering || (peekUntil.map { now < $0 } ?? false) }
+    var expanded: Bool { hovering || (peekUntil.map { now < $0 } ?? false) }
 
     private var lastStatus: [String: String] = [:]
     private var attentionAt: [String: Date] = [:]
     private let dir: URL
     private let projects: URL
-    private var replyCache: [String: (since: Date?, size: Int, reply: String?)] = [:]
-    private var urlCache: [String: (since: Date?, url: URL?)] = [:]
+    private var cache: [String: Cached] = [:]
+
+    private struct Cached {
+        var since: Date?
+        var url: URL?
+        var size: Int
+        var reply: String?
+    }
 
     public init(dir: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/sessions"),
                 projects: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/projects")) {
@@ -35,16 +45,24 @@ public final class Store: ObservableObject {
     }
 
     private func reply(for s: Session) -> String? {
-        guard s.status == "idle" || s.status == "waiting" else { return nil }
-        if urlCache[s.id] == nil || (urlCache[s.id]!.url == nil && urlCache[s.id]!.since != s.since) {
-            urlCache[s.id] = (s.since, Transcript.find(sessionId: s.id, cwd: s.cwd, projects: projects))
+        guard s.isFinished else { return nil }
+        var c: Cached
+        if let cached = cache[s.id], cached.url != nil || cached.since == s.since {
+            c = cached
+        } else {
+            c = Cached(since: s.since, url: Transcript.find(sessionId: s.id, cwd: s.cwd, projects: projects), size: -1, reply: nil)
         }
-        guard let url = urlCache[s.id]?.url else { return nil }
+        guard let url = c.url else {
+            cache[s.id] = c
+            return nil
+        }
         let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
-        if let c = replyCache[s.id], c.since == s.since, c.size == size { return c.reply }
-        let reply = Transcript.lastReply(in: Transcript.tail(url))
-        replyCache[s.id] = (s.since, size, reply)
-        return reply
+        if c.size == size && c.since == s.since { return c.reply }
+        c.since = s.since
+        c.size = size
+        c.reply = Transcript.lastReply(in: Transcript.tail(url))
+        cache[s.id] = c
+        return c.reply
     }
 
     public func refresh(at date: Date = Date()) {
@@ -59,20 +77,20 @@ public final class Store: ObservableObject {
                   (o["spare"] as? Bool) != true
             else { continue }
             let ms = (o["statusUpdatedAt"] as? NSNumber)?.doubleValue
-            list.append(Session(
+            var s = Session(
                 id: o["sessionId"] as? String ?? String(pid),
                 name: o["name"] as? String ?? "pid \(pid)",
                 cwd: o["cwd"] as? String ?? "",
                 status: o["status"] as? String ?? "",
                 waitingFor: o["waitingFor"] as? String,
                 since: ms.map { Date(timeIntervalSince1970: $0 / 1000) }
-            ))
+            )
+            s.lastReply = reply(for: s)
+            list.append(s)
         }
 
-        list = list.map { var s = $0; s.lastReply = reply(for: s); return s }
-
         for s in list {
-            if lastStatus[s.id] == "busy" && (s.status == "idle" || s.status == "waiting") {
+            if lastStatus[s.id] == "busy" && s.isFinished {
                 attentionAt[s.id] = now
                 peekUntil = now.addingTimeInterval(5)
             }
@@ -80,8 +98,7 @@ public final class Store: ObservableObject {
             lastStatus[s.id] = s.status
         }
         let live = Set(list.map(\.id))
-        replyCache = replyCache.filter { live.contains($0.key) }
-        urlCache = urlCache.filter { live.contains($0.key) }
+        cache = cache.filter { live.contains($0.key) }
         attentionAt = attentionAt.filter { live.contains($0.key) && now.timeIntervalSince($0.value) < 20 }
         let newAttention = Set(attentionAt.keys)
         if newAttention != attention { attention = newAttention }

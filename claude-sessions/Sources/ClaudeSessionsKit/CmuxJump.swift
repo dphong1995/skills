@@ -22,6 +22,7 @@ public enum CmuxJump {
             p.standardError = FileHandle.nullDevice
             var surface: String?
             if (try? p.run()) != nil {
+                DispatchQueue.global().asyncAfter(deadline: .now() + 2) { if p.isRunning { p.terminate() } }
                 let data = pipe.fileHandleForReading.readDataToEndOfFile()
                 p.waitUntilExit()
                 surface = CmuxJump.surface(fromSessionsOutput: String(decoding: data, as: UTF8.self))
@@ -29,10 +30,12 @@ public enum CmuxJump {
             DispatchQueue.main.async {
                 guard let surface else { return NSSound.beep() }
                 let src = """
-                tell application id "\(bundleID)"
-                    activate
-                    focus (first terminal whose id is "\(surface)")
-                end tell
+                with timeout of 5 seconds
+                    tell application id "\(bundleID)"
+                        activate
+                        focus (first terminal whose id is "\(surface)")
+                    end tell
+                end timeout
                 """
                 var err: NSDictionary?
                 NSAppleScript(source: src)?.executeAndReturnError(&err)

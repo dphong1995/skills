@@ -253,7 +253,7 @@ widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouT
 - Bấm một dòng → cmux lên trước, đúng pane của session đó. Session không chạy trong cmux thì chỉ kêu beep.
 - Lần đầu macOS hỏi quyền "ClaudeSessions điều khiển cmux" (có thể hỏi lại sau mỗi lần build). Lỡ từ chối
   thì bật lại ở System Settings → Privacy & Security → Automation.
-- Kéo được từ mọi chỗ trên widget; dời dưới 4 pt vẫn tính là bấm.
+- Kéo được từ mọi chỗ trên widget; dời từ 4 pt trở xuống vẫn tính là bấm.
 - Session xong/chờ hiện thêm câu trả lời cuối của Claude (tối đa 2 dòng), đọc từ transcript
   `~/.claude/projects/…/<sessionId>.jsonl`.
 
