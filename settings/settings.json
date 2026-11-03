@@ -41,6 +41,7 @@
     "anthropic-skills:white-paper": "off"
   },
   "env": {
+    "CLAUDE_CODE_ENABLE_TODO_TOOLS": "1",
     "CLAUDE_CODE_PLUGIN_DIRS": "~/.claude/mods/main-context-compact"
   },
   "hooks": {

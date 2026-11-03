@@ -57,6 +57,8 @@ code về. Sửa quy tắc trong repo (`claude-md/`) chứ không sửa trong CL
 nguyên, file cũ được sao lưu trước. Chạy lại `install.sh` không tạo hook trùng.
 
 - `"language": "vietnamese"`: setting có sẵn của Claude Code, đưa ngôn ngữ trả lời vào system prompt.
+- `env.CLAUDE_CODE_ENABLE_TODO_TOOLS: "1"`: bật các tool todo/task của Claude Code (`TaskCreate`, `TaskUpdate`,
+  ...), mà các skill dùng để theo dõi từng mục checklist trong phiên.
 - Hook `Stop` chạy `hooks/reply-language.mjs` (copy vào `~/.claude/hooks/`): khi câu trả lời cuối là
   văn xuôi tiếng Anh (bỏ qua code, blockquote, đường dẫn; câu dưới 8 chữ bỏ qua), nó chặn một lần
   để Claude viết lại bằng tiếng Việt. Tắt bằng `/hooks` hoặc xoá nhóm hook đó trong
