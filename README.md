@@ -200,7 +200,7 @@ không cần cài plugin OMC (Claude Code phải đã đăng nhập để lấy 
 | File trong repo | Vị trí trên máy |
 |---|---|
 | `hud/omc-hud.mjs` | `~/.claude/hud/omc-hud.mjs` — wrapper gọi HUD (bản vendored trước, plugin cache sau), ẩn các bucket `sn:`/`fable:`/`extra:` |
-| `hud/omc/` | `~/.claude/hud/omc/` — runtime HUD của OMC 5.7.31, tạo bằng `hud/vendor.sh`, không sửa tay |
+| `hud/omc/` | `~/.claude/hud/omc/` — runtime HUD của OMC, phiên bản ghi trong `hud/omc/package.json`, tạo bằng `hud/vendor.sh`, không sửa tay |
 | `hud/vendor.sh` | tạo lại `hud/omc/` từ plugin cache (bản mới nhất đã build, hoặc bản truyền vào) |
 | `hud/PATCH-NOTES.md` | `~/.claude/hud/PATCH-NOTES.md` — các patch chỉ còn cần khi HUD rơi về plugin cache |
 | `hud/settings.json` | key `statusLine` và `omcHud` của `~/.claude/settings.json` (layout, element bật/tắt) |
@@ -219,12 +219,14 @@ cd ~/.claude/skills-repo
 bash hud/vendor.sh        # tạo lại hud/omc từ bản plugin mới nhất
 # kiểm tra output giống hệt plugin cache (diff phải rỗng):
 IN='{"cwd":"'$PWD'","model":{"id":"claude-opus-5-5","display_name":"Opus 5.5"},"transcript_path":"/nonexistent"}'
-V=$(ls ~/.claude/plugins/cache/omc/oh-my-claudecode | sort -V | tail -1)
+V=$(node -p "require('./hud/omc/package.json').version")
 diff <(echo "$IN" | node -e "import('$HOME/.claude/plugins/cache/omc/oh-my-claudecode/$V/dist/hud/index.js')" 2>&1) \
      <(echo "$IN" | node -e "import('$PWD/hud/omc/dist/hud/index.js')" 2>&1)
 bash hud/install.sh
 git add hud/omc && git commit -m "Vendor OMC HUD <version>"
 ```
+
+Nếu hai output chỉ khác nhau ở số phút đếm ngược, chạy lại phần kiểm tra.
 
 Đẩy thay đổi ngược lên repo:
 

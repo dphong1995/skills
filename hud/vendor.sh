@@ -7,33 +7,25 @@ set -euo pipefail
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/cache/omc/oh-my-claudecode"
 
-if [ $# -ge 1 ]; then
-  VERSION="$1"
-else
-  VERSION="$(BASE="$BASE" node -e '
-const fs = require("fs"), path = require("path");
-const base = process.env.BASE;
-const vs = fs.existsSync(base) ? fs.readdirSync(base).filter(v => fs.existsSync(path.join(base, v, "dist/hud/index.js"))) : [];
-vs.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-if (vs.length) console.log(vs[vs.length - 1]);
-')"
-  if [ -z "$VERSION" ]; then
-    echo "error: no built OMC version with dist/hud/index.js under $BASE" >&2
-    exit 1
-  fi
-fi
-
-ROOT="$BASE/$VERSION"
-if [ ! -f "$ROOT/dist/hud/index.js" ]; then
-  echo "error: $ROOT/dist/hud/index.js not found" >&2
-  exit 1
-fi
-
-node - "$ROOT" "$SRC/omc" "$VERSION" <<'NODE'
+node - "$BASE" "$SRC/omc" "${1:-}" <<'NODE'
 const fs = require("fs");
 const path = require("path");
 const { isBuiltin } = require("node:module");
-const [root, dest, version] = process.argv.slice(2);
+const [base, dest, arg] = process.argv.slice(2);
+
+let version = arg;
+if (!version) {
+  const vs = fs.existsSync(base)
+    ? fs.readdirSync(base).filter((v) => fs.existsSync(path.join(base, v, "dist/hud/index.js")))
+    : [];
+  vs.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  if (!vs.length) {
+    console.error(`error: no built OMC version with dist/hud/index.js under ${base}`);
+    process.exit(1);
+  }
+  version = vs[vs.length - 1];
+}
+const root = path.join(base, version);
 
 // The second entry is loaded by dist/installer/index.js through a non-literal dynamic import.
 const entries = ["dist/hud/index.js", "scripts/lib/state-lock.mjs"];
@@ -43,6 +35,7 @@ const patterns = [
   /\bimport\s*(?:[^;"'()]*?\bfrom\s*)?["']([^"']+)["']/g,
   /\bexport\s*[^;"'()]*?\bfrom\s*["']([^"']+)["']/g,
   /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g,
+  /\brequire\s*\(\s*["']([^"']+)["']\s*\)/g,
 ];
 
 function resolveRel(dir, spec) {
@@ -65,7 +58,14 @@ while (queue.length) {
   const rel = path.relative(root, file);
   if (/\bimport\s*\(\s*[^"'\s)]/.test(src)) console.log(`note: ${rel} has a non-literal dynamic import()`);
   const specs = new Set();
-  for (const re of patterns) for (const m of src.matchAll(re)) specs.add(m[1]);
+  const importSpecs = new Set();
+  const requireSpecs = new Set();
+  patterns.forEach((re, i) => {
+    for (const m of src.matchAll(re)) {
+      specs.add(m[1]);
+      (i === 3 ? requireSpecs : importSpecs).add(m[1]);
+    }
+  });
   for (const spec of specs) {
     if (spec.startsWith(".")) {
       const r = resolveRel(path.dirname(file), spec);
@@ -75,8 +75,12 @@ while (queue.length) {
       }
       queue.push(r);
     } else if (!isBuiltin(spec)) {
-      console.error(`error: ${rel}: non-builtin package import "${spec}"`);
-      process.exit(1);
+      if (requireSpecs.has(spec) && !importSpecs.has(spec)) {
+        console.log(`note: ${rel} requires "${spec}" (not vendored)`);
+      } else {
+        console.error(`error: ${rel}: non-builtin package import "${spec}"`);
+        process.exit(1);
+      }
     }
   }
 }

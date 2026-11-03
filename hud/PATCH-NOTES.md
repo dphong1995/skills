@@ -2,9 +2,10 @@
 
 ## HUD chạy bản vendored (từ OMC 5.7.31)
 HUD giờ chạy bản sao trong `~/.claude/hud/omc/` (OMC 5.7.31, tạo bằng `hud/vendor.sh`, cài bằng `hud/install.sh`); wrapper `omc-hud.mjs` import nó trước plugin cache. Vì vậy các patch bên dưới chỉ còn liên quan khi HUD rơi về plugin cache:
-- Patch 1: với 5.7.31 không còn cần. Upstream chỉ thay rate limit bằng enterprise cost khi `isEnterprise`; lưu ý `omcHud.elements.enterpriseMode: true` ép `isEnterprise`, nên nếu API trả `enterpriseSpentUsd` thì đoạn `5h:` bị thay.
+- Patch 1: với 5.7.31 không còn cần. Upstream chỉ thay rate limit bằng enterprise cost khi `isEnterprise`; lưu ý `omcHud.elements.enterpriseMode: true` ép `isEnterprise`, nên nếu API trả `enterpriseSpentUsd` thì đoạn `5h:` bị thay. `hud/settings.json` của repo đặt `omcHud.elements.enterpriseMode: true`; nếu `5h:` bị thay bằng enterprise cost (`spent:`), đặt `enterpriseMode` thành `false` (hoặc xóa) trong `hud/settings.json` rồi chạy lại `hud/install.sh`, không patch `hud/omc`.
 - Patch 2: nằm trong wrapper (`HIDE_SEGMENT`), áp cho cả bản vendored.
 - Patch 3: không còn cần, 5.7.31 không import `zod`.
+- Khi vendor bản OMC mới, cập nhật số phiên bản được nhắc trong file này.
 
 ## Mục đích
 > Trạng thái: không còn cần với bản vendored 5.7.31, xem mục "HUD chạy bản vendored" ở đầu file.

@@ -54,11 +54,12 @@ async function main() {
 
   // 2. Vendored runtime next to this wrapper (hud/omc, made by vendor.sh)
   const vendoredPath = join(dirname(fileURLToPath(import.meta.url)), "omc", "dist/hud/index.js");
+  let vendoredError;
   if (existsSync(vendoredPath)) {
     try {
       await import(pathToFileURL(vendoredPath).href);
       return;
-    } catch { /* continue */ }
+    } catch (err) { vendoredError = err; }
   }
 
   // 3. Plugin cache (for production installs)
@@ -95,7 +96,9 @@ async function main() {
   } catch { /* continue */ }
 
   // 5. Fallback: provide detailed error message with fix instructions
-  if (pluginCacheDir && existsSync(pluginCacheDir)) {
+  if (vendoredError) {
+    console.log(`[OMC HUD] Vendored runtime ${vendoredPath} failed to load: ${vendoredError.message}`);
+  } else if (pluginCacheDir && existsSync(pluginCacheDir)) {
     // Plugin exists but dist/ folder is missing - needs build
     const distDir = join(pluginCacheDir, "dist");
     if (!existsSync(distDir)) {

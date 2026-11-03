@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Install the OMC HUD statusline in this folder.
-# Also installs the vendored OMC runtime hud/omc to ~/.claude/hud/omc (an existing one is moved to omc.<timestamp>.bak).
+# Also installs the vendored OMC runtime hud/omc to ~/.claude/hud/omc (copied to omc.<timestamp>.tmp first; an existing different one is moved to omc.<timestamp>.bak, an identical one is removed).
 # Existing files are kept next to the original as <file>.<timestamp>.bak.
 # settings.json: only the statusLine and omcHud keys are replaced; other keys are kept.
 set -euo pipefail
@@ -20,10 +20,15 @@ install_file() {  # $1 = source path, $2 = destination path
 install_file "$SRC/omc-hud.mjs" "$HOME/.claude/hud/omc-hud.mjs"
 install_file "$SRC/PATCH-NOTES.md" "$HOME/.claude/hud/PATCH-NOTES.md"
 
+cp -R "$SRC/omc" "$HOME/.claude/hud/omc.$STAMP.tmp"
 if [ -e "$HOME/.claude/hud/omc" ]; then
-  mv "$HOME/.claude/hud/omc" "$HOME/.claude/hud/omc.$STAMP.bak"
+  if diff -rq "$SRC/omc" "$HOME/.claude/hud/omc" >/dev/null 2>&1; then
+    rm -rf "$HOME/.claude/hud/omc"
+  else
+    mv "$HOME/.claude/hud/omc" "$HOME/.claude/hud/omc.$STAMP.bak"
+  fi
 fi
-cp -R "$SRC/omc" "$HOME/.claude/hud/omc"
+mv "$HOME/.claude/hud/omc.$STAMP.tmp" "$HOME/.claude/hud/omc"
 echo "  $HOME/.claude/hud/omc"
 
 SETTINGS="$HOME/.claude/settings.json"
