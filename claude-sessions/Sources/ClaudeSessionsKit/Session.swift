@@ -141,6 +141,10 @@ public final class Store: ObservableObject {
             if s.isPermissionPrompt { s.pending = t.pending }
             list.append(s)
         }
+        // One conversation open in two processes (resumed in another pane): keep only the newest, so rows and caches keyed by id stay unique.
+        var newest: [String: Session] = [:]
+        for s in list where (newest[s.id]?.since ?? .distantPast) <= (s.since ?? .distantPast) { newest[s.id] = s }
+        list = list.filter { newest[$0.id]?.pid == $0.pid }
 
         if list.isEmpty {
             if emptySince == nil { emptySince = now }

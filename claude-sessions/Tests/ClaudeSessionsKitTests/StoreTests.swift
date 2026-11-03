@@ -298,3 +298,18 @@ private func approvableStore() -> (Store, URL, URL, URL) {
     store.refresh(at: Date())
     #expect(store.editing == nil)
 }
+
+// One conversation open in two processes (resumed in a second pane): one row, the newest process, and its cached surface stays.
+@Test func sameSessionInTwoProcessesShowsNewestOnce() {
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "new", cwd: frontend)
+    let old: [String: Any] = ["pid": getppid(), "sessionId": "a", "name": "old", "cwd": frontend, "status": "idle",
+                              "statusUpdatedAt": (Date().timeIntervalSince1970 - 600) * 1000]
+    try! JSONSerialization.data(withJSONObject: old).write(to: dir.appendingPathComponent("old.json"))
+    store.refresh(at: Date())
+    #expect(store.sessions.map(\.name) == ["new"])
+    store.surfaces["a"] = "S"
+    store.refresh(at: Date())
+    #expect(store.surfaces["a"] == "S")
+}
