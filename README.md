@@ -271,6 +271,9 @@ Test trạng thái (logic + ảnh PNG của từng trạng thái, không cần q
 cd ~/.claude/skills-repo/claude-sessions && swift test   # ảnh PNG nằm trong .build/snapshots/
 ```
 
+Chạy `swift test` trong Bash sandbox của Claude Code có thể lỗi "plugin for module 'TestingMacros' not found"
+(sandbox chặn plugin macro của Swift); chạy ở terminal thường thì qua.
+
 Đẩy thay đổi ngược lên repo (bản đang dùng nằm ở `~/.claude/tools/claude-sessions/`):
 
 ```bash
