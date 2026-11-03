@@ -1,3 +1,5 @@
 .DS_Store
 skills/*/tests/out/
 .omc/
+plans/
+claude-sessions/.build/

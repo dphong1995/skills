@@ -61,9 +61,8 @@ node --test 'hooks/tests/*.test.mjs'
 claude plugin validate ~/.claude/mods/main-context-compact
 claude plugin test ~/.claude/skills-repo/mods/main-context-compact
 
-# claude-sessions widget (from claude-sessions/; prints PASS/FAIL and writes state PNGs)
-swiftc -swift-version 5 -D SNAPSHOT main.swift snapshot.swift -o /tmp/claude-sessions-snap
-/tmp/claude-sessions-snap /tmp/claude-sessions-snap-out
+# claude-sessions widget
+cd claude-sessions && swift test   # writes state PNGs to .build/snapshots/
 ```
 
 Pass test globs quoted; a bare directory argument fails on Node 24. Test output lands in `skills/*/tests/out/`

@@ -239,7 +239,7 @@ git add hud && git commit -m "..." && git push
 
 ## Widget Claude sessions
 
-App macOS nhỏ (SwiftUI, một file `main.swift`), hiện các session Claude Code đang mở trên máy trong một
+App macOS nhỏ (SwiftUI, Swift package), hiện các session Claude Code đang mở trên máy trong một
 widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouTube fullscreen).
 
 - Đọc `~/.claude/sessions/*.json` mỗi giây, file mà mỗi session Claude Code tự ghi: `status` là `busy`
@@ -262,15 +262,13 @@ Muốn tự chạy khi đăng nhập: System Settings → General → Login Item
 Test trạng thái (logic + ảnh PNG của từng trạng thái, không cần quyền Screen Recording):
 
 ```bash
-cd ~/.claude/skills-repo/claude-sessions
-swiftc -swift-version 5 -D SNAPSHOT main.swift snapshot.swift -o /tmp/claude-sessions-snap
-/tmp/claude-sessions-snap /tmp/claude-sessions-snap-out   # in PASS/FAIL, ảnh nằm trong thư mục này
+cd ~/.claude/skills-repo/claude-sessions && swift test   # ảnh PNG nằm trong .build/snapshots/
 ```
 
 Đẩy thay đổi ngược lên repo (bản đang dùng nằm ở `~/.claude/tools/claude-sessions/`):
 
 ```bash
 cd ~/.claude/skills-repo
-cp ~/.claude/tools/claude-sessions/{main.swift,snapshot.swift,build.sh} claude-sessions/
+rsync -a --exclude .build ~/.claude/tools/claude-sessions/ claude-sessions/
 git add claude-sessions && git commit -m "..." && git push
 ```
