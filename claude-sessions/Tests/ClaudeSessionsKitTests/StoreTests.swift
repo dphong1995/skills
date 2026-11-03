@@ -276,10 +276,11 @@ private func approvableStore() -> (Store, URL, URL, URL) {
 
 @Test func statusFlipWithUnchangedFileSizeIsSeen() {
     let (store, dir, _, _) = approvableStore()
-    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    let t = Date()
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend, updatedAt: t)
     store.refresh(at: Date())
     #expect(store.sessions.first?.pending == nil)
-    writeSession(dir, "a", pid: me, status: "waiting", waitingFor: "permission prompt", ageSec: 0, name: "a", cwd: frontend)
+    writeSession(dir, "a", pid: me, status: "waiting", waitingFor: "permission prompt", ageSec: 0, name: "a", cwd: frontend, updatedAt: t)
     store.refresh(at: Date())
     #expect(store.sessions.first?.pending == .one(Pending(toolId: "t1", tool: "Bash", text: "npm test")))
 }

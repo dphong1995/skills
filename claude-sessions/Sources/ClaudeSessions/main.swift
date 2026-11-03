@@ -82,8 +82,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Calls `then` on main with the session's cmux surface: the cached one, else the result of a `cmux sessions` lookup.
     /// Hits are cached in the store; misses are recorded there too, but only the background check consults them.
-    /// Calls `then` on main with the session's cmux surface: the cached one, else the result of a `cmux sessions` lookup.
-    /// Hits are cached in the store; misses are recorded there too, but only the background check consults them.
     func resolveSurface(_ id: String, then: @escaping (String?) -> Void) {
         if let surface = store.surfaces[id] { return then(surface) }
         lookingUp.insert(id)
@@ -119,9 +117,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !sending.contains(id) else { return NSSound.beep() }
         sending.insert(id)
         var fromEditor = false
+        var sentText = ""
         switch a {
-        case .reply(_, _, let e): fromEditor = e
-        case .deny: fromEditor = true
+        case .reply(_, let text, let e): fromEditor = e; sentText = text
+        case .deny(_, _, let reason): fromEditor = true; sentText = reason
         default: break
         }
         // Close the editor now so a second Enter cannot queue a second send; the draft stays until the send succeeds.
@@ -139,7 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self else { return }
                 sending.remove(id)
                 guard ok else { return NSSound.beep() }
-                if fromEditor { store.drafts[id] = nil }
+                if fromEditor, store.drafts[id] == sentText { store.drafts[id] = nil }
                 store.markSeen(id)
             }
         }
