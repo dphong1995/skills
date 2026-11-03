@@ -61,10 +61,17 @@ public final class Store: ObservableObject {
     }
 
     public init(dir: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/sessions"),
-                projects: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/projects")) {
+                projects: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/projects"),
+                startHidden: Bool = false) {
         self.dir = dir
         self.projects = projects
+        self.startHidden = startHidden
     }
+
+    private let startHidden: Bool
+    private var refreshed = false
+    public private(set) var emptySince: Date?
+    public var hidden: Bool { emptySince.map { now.timeIntervalSince($0) >= 30 } ?? false }
 
     private func readTail(for s: Session) -> (reply: String?, pending: PendingState?) {
         guard s.isFinished else { return (nil, nil) }
@@ -114,6 +121,13 @@ public final class Store: ObservableObject {
             if s.status == "waiting" && s.waitingFor == "permission prompt" { s.pending = t.pending }
             list.append(s)
         }
+
+        if list.isEmpty {
+            if emptySince == nil { emptySince = (startHidden && !refreshed) ? .distantPast : now }
+        } else {
+            emptySince = nil
+        }
+        refreshed = true
 
         var newUnseen = unseen
         for s in list {

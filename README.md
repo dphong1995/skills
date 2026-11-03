@@ -273,7 +273,9 @@ Cài (cần Command Line Tools: `xcode-select --install`), build ra `~/Applicati
 bash ~/.claude/skills-repo/claude-sessions/build.sh && open ~/Applications/ClaudeSessions.app
 ```
 
-Muốn tự chạy khi đăng nhập: System Settings → General → Login Items → thêm `ClaudeSessions.app`.
+App tự đăng ký chạy khi đăng nhập. Nếu macOS đòi duyệt (app ký ad-hoc, có thể hỏi lại sau mỗi lần build) thì bật ở System Settings → General → Login Items.
+
+- Không còn session 30 giây thì widget ẩn, có session thì hiện lại.
 
 Test trạng thái (logic + ảnh PNG của từng trạng thái, không cần quyền Screen Recording):
 

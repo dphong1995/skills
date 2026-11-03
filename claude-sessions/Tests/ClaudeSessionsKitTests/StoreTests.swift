@@ -203,3 +203,48 @@ private func approvableStore() -> (Store, URL, URL, URL) {
     store.editing = Store.Editing(id: "a", kind: .reply)
     #expect(store.expanded)
 }
+
+@Test func hiddenAfter30sEmpty() {
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
+    let t0 = Date()
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 5, name: "a", cwd: frontend)
+    store.refresh(at: t0)
+    #expect(!store.hidden)
+    try? FileManager.default.removeItem(at: dir.appendingPathComponent("a.json"))
+    store.refresh(at: t0.addingTimeInterval(1))
+    #expect(!store.hidden)
+    store.refresh(at: t0.addingTimeInterval(30))
+    #expect(!store.hidden)
+    store.refresh(at: t0.addingTimeInterval(31))
+    #expect(store.hidden)
+}
+
+@Test func shownWhenSessionAppears() {
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
+    let t0 = Date()
+    store.refresh(at: t0.addingTimeInterval(-60))
+    store.refresh(at: t0)
+    #expect(store.hidden)
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 5, name: "a", cwd: frontend)
+    store.refresh(at: t0.addingTimeInterval(1))
+    #expect(!store.hidden && store.emptySince == nil)
+}
+
+@Test func startHiddenHidesImmediately() {
+    let store = Store(dir: makeTempDir(), projects: makeTempDir(), startHidden: true)
+    store.refresh(at: Date())
+    #expect(store.hidden)
+    let dir = makeTempDir()
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 5, name: "a", cwd: frontend)
+    let live = Store(dir: dir, projects: makeTempDir(), startHidden: true)
+    live.refresh(at: Date())
+    #expect(!live.hidden)
+}
+
+@Test func defaultStartsVisible() {
+    let store = Store(dir: makeTempDir(), projects: makeTempDir(), startHidden: false)
+    store.refresh(at: Date())
+    #expect(!store.hidden)
+}

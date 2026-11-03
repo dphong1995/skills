@@ -1,9 +1,10 @@
 import AppKit
 import ClaudeSessionsKit
 import Combine
+import ServiceManagement
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    let store = Store()
+    let store = Store(startHidden: true)
     var panel: WidgetPanel!
     var timer: Timer?
     var monitors: [Any] = []
@@ -28,7 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         store.$editing.sink { [weak self] e in
             guard let panel = self?.panel else { return }
             // @Published fires before the value is stored, so defer until canBecomeKey sees it.
-            DispatchQueue.main.async { if e != nil { panel.makeKey() } else { panel.resignKey() } }
+            DispatchQueue.main.async { if e != nil { if self?.store.hidden == false { panel.makeKey() } } else { panel.resignKey() } }
         }.store(in: &cancellables)
         NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: panel, queue: .main) { [weak self] _ in
             self?.store.editing = nil
@@ -48,12 +49,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let m = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged], handler: track) { monitors.append(m) }
         if let m = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged], handler: { track($0); return $0 }) { monitors.append(m) }
 
-        store.refresh()
-        panel.orderFrontRegardless()
+        if SMAppService.mainApp.status != .enabled { try? SMAppService.mainApp.register() }
+        refreshAndSyncVisibility()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            self?.store.refresh()
+            self?.refreshAndSyncVisibility()
             self?.trackMouse()
             self?.checkFocusedPane()
+        }
+    }
+
+    func refreshAndSyncVisibility() {
+        store.refresh()
+        if store.hidden && panel.isVisible {
+            panel.orderOut(nil)
+            panel.ignoresMouseEvents = true
+        } else if !store.hidden && !panel.isVisible {
+            panel.orderFrontRegardless()
         }
     }
 
@@ -124,6 +135,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func trackMouse() {
+        if store.hidden { return }
         let zone = Layout.pill(in: panel.frame, size: Layout.size(store), anchor: store.anchor)
         if store.editing != nil {
             panel.ignoresMouseEvents = false
