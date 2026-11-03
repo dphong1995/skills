@@ -1,0 +1,75 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this repo is
+
+The source of truth for a personal Claude Code setup: four skills (`brainstorm-pro` → `ck-plan` → `cook`, plus
+`routing-bug-fixes-to-cook`), the 19 subagents they dispatch, two hooks, one mod, always-on CLAUDE.md rule blocks
+and a shared settings fragment. `README.md` (Vietnamese) documents every component and its behaviour; keep it in
+sync when behaviour changes. `cmux/`, `hud/` and `claude-sessions/` are separate tools with their own installers,
+not touched by `install.sh`.
+
+## Install model (copy, not symlink)
+
+`bash install.sh` copies `skills/`, `agents/`, `hooks/*.mjs` and `mods/` into `~/.claude/` (existing entries moved
+to `~/.claude/backups/skills-install-<timestamp>/`). Edit here, then rerun `install.sh`; the live copies under
+`~/.claude/` are overwritten on every install. If something was edited live, copy it back first (README
+"Đẩy thay đổi ngược lên repo").
+
+Merge rules that matter when editing `settings/settings.json` or `claude-md/`:
+- Settings: top-level keys overwrite `~/.claude/settings.json`; `env` merges per variable; hook groups are
+  **add-only** (added unless their commands are already registered). Removing a hook means deleting it from both
+  the repo fragment and `~/.claude/settings.json`, or the next install re-adds it.
+- `claude-md/<name>.md` is written into `~/.claude/CLAUDE.md` between `<!-- skills-repo: <name> -->` and
+  `<!-- /skills-repo: <name> -->`. Edit the rule here, never between the markers on the machine.
+
+## Cross-file coupling
+
+- Skills read each other by relative path (`../ck-plan/references/plan-writing.md`,
+  `../brainstorm-pro/references/design-flow.md`, `builder-check.md`, `html-interview.md`, `jira-snapshot.md`, ...),
+  so all four must stay siblings. `claude-md/` and some skill text also use absolute
+  `~/.claude/skills/brainstorm-pro/...` paths. Before renaming or moving a reference file, grep `skills/`,
+  `claude-md/`, `agents/` and `hooks/` for both forms.
+- `cook` dispatches agents by name (`executor`, `code-reviewer`, `test-engineer`, `code-simplifier`, `writer`,
+  `designer`, `debugger`, `explore`, `document-specialist`); renaming an agent file breaks it. Every agent
+  definition sets `disallowedTools` including `Artifact`.
+- `cook` writes plans in `ck-plan`'s format (frontmatter, `plan.md` skeleton, phase files) defined in
+  `skills/ck-plan/references/plan-writing.md`, `plan-organization.md`, `output-standards.md`.
+
+## brainstorm-pro pages
+
+`skills/brainstorm-pro/assets/render-interview.mjs` builds the interview/review pages into one self-contained HTML
+from `assets/lib/` (Node) and `assets/page/` (browser modules bundled into a single scope). Read
+`skills/brainstorm-pro/DEVELOPING.md` before touching these: file map, the bundler's import/export and
+no-duplicate-top-level-name rules, Tailwind carrier classes, key tables and known traps. Never edit a built page.
+
+## Tests
+
+```bash
+# brainstorm-pro (run from skills/brainstorm-pro; full suite needs Google Chrome, network for CDNs, Node >= 22.12)
+node --test 'tests/unit/*.test.mjs'                      # unit only, no Chrome, ~1 s
+node --test --test-concurrency=1 'tests/**/*.test.mjs'   # everything, a few minutes
+node --test tests/page/shortcuts.test.mjs                # one file
+UPDATE_SNAPSHOTS=1 node --test tests/page/snapshot.test.mjs   # only for a deliberate DOM change
+
+# hooks (from repo root)
+node --test 'hooks/tests/*.test.mjs'
+
+# mod
+claude plugin validate ~/.claude/mods/main-context-compact
+claude plugin test ~/.claude/skills-repo/mods/main-context-compact
+
+# claude-sessions widget (from claude-sessions/; prints PASS/FAIL and writes state PNGs)
+swiftc -swift-version 5 -D SNAPSHOT main.swift snapshot.swift -o /tmp/claude-sessions-snap
+/tmp/claude-sessions-snap /tmp/claude-sessions-snap-out
+```
+
+Pass test globs quoted; a bare directory argument fails on Node 24. Test output lands in `skills/*/tests/out/`
+(gitignored).
+
+## Conventions
+
+- Skill, agent, reference and code text is English; `README.md` and user-facing page strings are Vietnamese.
+- Commit subjects: imperative sentence, no prefix (e.g. "Add a mod that compacts the main thread at its own
+  threshold"); plan-driven work uses "Phase N: ...".
