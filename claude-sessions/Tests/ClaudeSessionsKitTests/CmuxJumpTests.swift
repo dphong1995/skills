@@ -32,11 +32,16 @@ private let line = "claude 7d0fcbef-0908-41eb-9779-ea86d5bf838a  workspace=4E6B8
 
 @Test func denyKeysWithReason() {
     #expect(CmuxJump.keys(for: .deny("s", toolId: "t", reason: "chỉ chạy make clean"))
-        == [.raw("\\x1b"), .pause(0.3), .paste("chỉ chạy make clean"), .raw("\\r")])
+        == [.raw("\\x1b"), .pause(0.3), CmuxJump.clearInput, .paste("chỉ chạy make clean"), .raw("\\r")])
 }
 
 @Test func replyKeys() {
-    #expect(CmuxJump.keys(for: .reply("s", text: "ok, làm đi")) == [.paste("ok, làm đi"), .raw("\\r")])
+    #expect(CmuxJump.keys(for: .reply("s", text: "ok, làm đi")) == [CmuxJump.clearInput, .paste("ok, làm đi"), .raw("\\r")])
+}
+
+// A half-typed draft in Claude's input must not be sent with the reply: Ctrl-E, then Ctrl-U + Backspace per line.
+@Test func clearInputEmptiesMultiLineDraft() {
+    #expect(CmuxJump.clearInput == .raw("\\x05" + String(repeating: "\\x15\\x7f", count: 20)))
 }
 
 @Test func scriptRaw() {
