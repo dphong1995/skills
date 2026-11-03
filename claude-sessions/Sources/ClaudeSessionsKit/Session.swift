@@ -9,6 +9,7 @@ struct Session: Identifiable, Equatable {
     let waitingFor: String?
     let since: Date?
     var lastReply: String? = nil
+    var pending: PendingState? = nil
 }
 
 extension Session {
@@ -17,7 +18,10 @@ extension Session {
 
 public final class Store: ObservableObject {
     @Published var sessions: [Session] = []
-    @Published var attention: Set<String> = []
+    @Published public var unseen: Set<String> = []
+    @Published public var measuredHeight: CGFloat?
+    /// Session id -> cmux surface UUID, filled by the app and pruned to live ids.
+    public var surfaces: [String: String] = [:]
     @Published public var hovering = false
     @Published var now = Date()
     @Published public var peekUntil: Date?
@@ -26,7 +30,6 @@ public final class Store: ObservableObject {
     var expanded: Bool { hovering || (peekUntil.map { now < $0 } ?? false) }
 
     private var lastStatus: [String: String] = [:]
-    private var attentionAt: [String: Date] = [:]
     private let dir: URL
     private let projects: URL
     private var cache: [String: Cached] = [:]
@@ -36,6 +39,7 @@ public final class Store: ObservableObject {
         var url: URL?
         var size: Int
         var reply: String?
+        var pending: PendingState?
     }
 
     public init(dir: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/sessions"),
@@ -44,25 +48,27 @@ public final class Store: ObservableObject {
         self.projects = projects
     }
 
-    private func reply(for s: Session) -> String? {
-        guard s.isFinished else { return nil }
+    private func readTail(for s: Session) -> (reply: String?, pending: PendingState?) {
+        guard s.isFinished else { return (nil, nil) }
         var c: Cached
         if let cached = cache[s.id], cached.url != nil || cached.since == s.since {
             c = cached
         } else {
-            c = Cached(since: s.since, url: Transcript.find(sessionId: s.id, cwd: s.cwd, projects: projects), size: -1, reply: nil)
+            c = Cached(since: s.since, url: Transcript.find(sessionId: s.id, cwd: s.cwd, projects: projects), size: -1, reply: nil, pending: nil)
         }
         guard let url = c.url else {
             cache[s.id] = c
-            return nil
+            return (nil, nil)
         }
         let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
-        if c.size == size && c.since == s.since { return c.reply }
+        if c.size == size && c.since == s.since { return (c.reply, c.pending) }
         c.since = s.since
         c.size = size
-        c.reply = Transcript.lastReply(in: Transcript.tail(url))
+        let tail = Transcript.tail(url)
+        c.reply = Transcript.lastReply(in: tail)
+        c.pending = Transcript.pending(in: tail)
         cache[s.id] = c
-        return c.reply
+        return (c.reply, c.pending)
     }
 
     public func refresh(at date: Date = Date()) {
@@ -85,28 +91,35 @@ public final class Store: ObservableObject {
                 waitingFor: o["waitingFor"] as? String,
                 since: ms.map { Date(timeIntervalSince1970: $0 / 1000) }
             )
-            s.lastReply = reply(for: s)
+            let t = readTail(for: s)
+            s.lastReply = t.reply
+            if s.status == "waiting" && s.waitingFor == "permission prompt" { s.pending = t.pending }
             list.append(s)
         }
 
+        var newUnseen = unseen
         for s in list {
             if lastStatus[s.id] == "busy" && s.isFinished {
-                attentionAt[s.id] = now
+                newUnseen.insert(s.id)
                 peekUntil = now.addingTimeInterval(5)
             }
-            if s.status == "busy" { attentionAt[s.id] = nil }
+            if s.status == "busy" { newUnseen.remove(s.id) }
             lastStatus[s.id] = s.status
         }
         let live = Set(list.map(\.id))
         cache = cache.filter { live.contains($0.key) }
-        attentionAt = attentionAt.filter { live.contains($0.key) && now.timeIntervalSince($0.value) < 20 }
-        let newAttention = Set(attentionAt.keys)
-        if newAttention != attention { attention = newAttention }
+        surfaces = surfaces.filter { live.contains($0.key) }
+        newUnseen.formIntersection(live)
+        if newUnseen != unseen { unseen = newUnseen }
 
         func rank(_ s: Session) -> Int {
             switch s.status { case "waiting": 0; case "idle": 1; case "busy": 2; default: 3 }
         }
         list.sort { (rank($0), $0.name) < (rank($1), $1.name) }
         if list != sessions { sessions = list }
+    }
+
+    public func markSeen(_ id: String) {
+        if unseen.contains(id) { unseen.remove(id) }
     }
 }

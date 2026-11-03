@@ -94,4 +94,25 @@ struct SnapshotTests {
         store.hovering = true
         render(store, "10-last-reply-hover")
     }
+
+    @Test func renderUnseenPending() {
+        let dir = makeTempDir(), projects = makeTempDir()
+        let store = makeStore(dir: dir, projects: projects)
+        let t0 = Date()
+        _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [assistantLine("Đã sửa xong, bạn xem lại diff giúp mình nhé.")])
+        _ = writeTranscript(projects, cwd: backend, id: "b", lines: [toolUseLine(id: "t1", name: "Bash", input: ["command": "npm test"])])
+        _ = writeTranscript(projects, cwd: "/Users/phong/ocr-service", id: "c", lines: [
+            toolUseLine(id: "t2", name: "Bash", input: ["command": "git add -A\ngit commit -m \"fix\"\ngit push origin main"])])
+        _ = writeTranscript(projects, cwd: "/Users/phong/talos-v2", id: "d", lines: [
+            toolUseLine(id: "t3", name: "Bash", input: ["command": "ls"]), toolUseLine(id: "t4", name: "Edit", input: ["file_path": "/x"])])
+        writeSession(dir, "a", pid: me, status: "busy", ageSec: 30, name: "talo6-dct-frontend-d7", cwd: frontend)
+        store.refresh(at: t0)
+        writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "talo6-dct-frontend-d7", cwd: frontend)
+        writeSession(dir, "b", pid: me, status: "waiting", waitingFor: "permission prompt", ageSec: 5, name: "talo6-dct-backend-3f", cwd: backend)
+        writeSession(dir, "c", pid: me, status: "waiting", waitingFor: "permission prompt", ageSec: 9, name: "ocr-service-a1", cwd: "/Users/phong/ocr-service")
+        writeSession(dir, "d", pid: me, status: "waiting", waitingFor: "permission prompt", ageSec: 12, name: "talo-v2-9c", cwd: "/Users/phong/talos-v2")
+        store.refresh(at: t0.addingTimeInterval(1))
+        store.hovering = true
+        render(store, "11-unseen-pending-hover")
+    }
 }

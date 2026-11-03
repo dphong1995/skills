@@ -1,6 +1,19 @@
 import Foundation
 
+struct Pending: Equatable {
+    let toolId: String
+    let tool: String
+    let text: String
+}
+
+enum PendingState: Equatable {
+    case one(Pending)
+    case unclear(count: Int)
+}
+
 enum Transcript {
+    static let approvable: Set<String> = ["Bash", "Edit", "Write", "MultiEdit", "NotebookEdit", "Read", "Glob", "Grep", "WebFetch", "WebSearch"]
+
     /// Claude Code names a project directory after the cwd with every non-alphanumeric char replaced by "-".
     static func projectDirName(_ cwd: String) -> String {
         String(cwd.unicodeScalars.map { s in
@@ -37,5 +50,38 @@ enum Transcript {
             if !collapsed.isEmpty { return String(collapsed.prefix(300)) }
         }
         return nil
+    }
+
+    /// The tool calls still waiting for a result. Exactly one approvable call is `.one`; anything else open is `.unclear`.
+    static func pending(in data: Data) -> PendingState? {
+        var open: [(id: String, name: String, input: [String: Any])] = []
+        for line in data.split(separator: 0x0A) {
+            guard let o = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
+                  let content = (o["message"] as? [String: Any])?["content"] as? [[String: Any]]
+            else { continue }
+            switch o["type"] as? String {
+            case "assistant" where (o["isSidechain"] as? Bool) != true:
+                for c in content where c["type"] as? String == "tool_use" {
+                    guard let id = c["id"] as? String, let name = c["name"] as? String else { continue }
+                    open.append((id, name, c["input"] as? [String: Any] ?? [:]))
+                }
+            case "user":
+                for c in content where c["type"] as? String == "tool_result" {
+                    if let id = c["tool_use_id"] as? String { open.removeAll { $0.id == id } }
+                }
+            default: break
+            }
+        }
+        guard let first = open.first else { return nil }
+        guard open.count == 1, approvable.contains(first.name) else { return .unclear(count: open.count) }
+        let key: String
+        switch first.name {
+        case "Bash": key = "command"
+        case "WebFetch": key = "url"
+        case "WebSearch": key = "query"
+        case "Glob", "Grep": key = "pattern"
+        default: key = "file_path"
+        }
+        return .one(Pending(toolId: first.id, tool: first.name, text: first.input[key] as? String ?? ""))
     }
 }

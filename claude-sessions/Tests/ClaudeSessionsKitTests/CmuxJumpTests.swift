@@ -15,3 +15,8 @@ private let line = "claude 7d0fcbef-0908-41eb-9779-ea86d5bf838a  workspace=4E6B8
     let second = line.replacingOccurrences(of: "20FAA4D5-E0C5-4F59-9D8E-277C0038558C", with: "AAAAAAAA-E0C5-4F59-9D8E-277C0038558C")
     #expect(CmuxJump.surface(fromSessionsOutput: line + "\n" + second) == "20FAA4D5-E0C5-4F59-9D8E-277C0038558C")
 }
+
+@Test func focusedSurfaceScriptText() {
+    #expect(CmuxJump.focusedSurfaceScript.contains("focused terminal of selected tab of front window"))
+    #expect(CmuxJump.focusedSurfaceScript.contains("com.cmuxterm.app"))
+}

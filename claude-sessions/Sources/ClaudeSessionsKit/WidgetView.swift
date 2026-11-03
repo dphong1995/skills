@@ -52,16 +52,23 @@ public struct WidgetView: View {
 
     public var body: some View {
         let expanded = store.expanded
-        let size = Layout.size(store)
         let radius: CGFloat = expanded ? 20 : Layout.headerHeight / 2
-        let hot = !store.attention.isEmpty
+        let hot = !store.unseen.isEmpty
 
         VStack(spacing: 0) {
             if expanded && store.anchor.up { list }
             header(expanded: expanded).frame(height: Layout.headerHeight)
             if expanded && !store.anchor.up { list }
         }
-        .frame(width: size.width, height: size.height, alignment: store.anchor.up ? .bottom : .top)
+        .frame(width: expanded ? 420 : Layout.collapsed.width, alignment: store.anchor.up ? .bottom : .top)
+        .frame(height: expanded ? nil : Layout.collapsed.height)
+        .fixedSize(horizontal: false, vertical: expanded)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
+            guard store.expanded else { return }
+            if abs(h - (store.measuredHeight ?? 0)) > 0.5 { store.measuredHeight = h }
+        }
+        .frame(maxHeight: expanded ? Layout.canvas.height - 2 * Layout.margin : nil, alignment: store.anchor.up ? .bottom : .top)
+        .fixedSize(horizontal: false, vertical: expanded)
         .background(RoundedRectangle(cornerRadius: radius, style: .continuous).fill(Color.black.opacity(0.92)))
         .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous)
             .stroke(hot ? Color.orange : Color.white.opacity(0.14), lineWidth: hot ? 2 : 1))
@@ -92,7 +99,7 @@ public struct WidgetView: View {
     private var urgent: (color: Color, pulsing: Bool) {
         let st = Set(store.sessions.map(\.status))
         if st.contains("waiting") { return (color("waiting"), true) }
-        if !store.attention.isEmpty { return (color("idle"), true) }
+        if !store.unseen.isEmpty { return (color("idle"), true) }
         if st.contains("busy") { return (color("busy"), true) }
         if st.contains("idle") { return (color("idle"), false) }
         return (.gray, false)
@@ -104,6 +111,9 @@ public struct WidgetView: View {
         return HStack(spacing: 7) {
             PulseDot(color: u.color, pulsing: u.pulsing)
             Text("Claude").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(.white)
+            if !store.unseen.isEmpty {
+                Text("\(store.unseen.count) mới").font(.system(size: 11)).foregroundStyle(.orange)
+            }
             Spacer(minLength: 6)
             if store.sessions.isEmpty {
                 Text("–").font(.system(size: 12)).foregroundStyle(.white.opacity(0.5))
@@ -120,8 +130,15 @@ public struct WidgetView: View {
         .padding(.horizontal, expanded ? 18 : 13)
     }
 
+    private func pendingText(_ p: PendingState) -> String {
+        switch p {
+        case .one(let p): p.text
+        case .unclear: "Cần duyệt trong cmux"
+        }
+    }
+
     private func row(_ s: Session) -> some View {
-        let hot = store.attention.contains(s.id)
+        let hot = store.unseen.contains(s.id)
         return HStack(spacing: 10) {
             Circle().fill(color(s.status)).frame(width: 8, height: 8)
             VStack(alignment: .leading, spacing: 1) {
@@ -132,6 +149,10 @@ public struct WidgetView: View {
                     Text(reply).font(.system(size: 11)).foregroundStyle(.white.opacity(0.75))
                         .lineLimit(2).truncationMode(.tail)
                 }
+                if let pending = s.pending {
+                    Text(pendingText(pending)).font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.8)).lineLimit(4).truncationMode(.tail)
+                }
             }
             Spacer(minLength: 12)
             Text(label(s)).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(color(s.status))
@@ -139,7 +160,8 @@ public struct WidgetView: View {
                 .foregroundStyle(.white.opacity(0.55)).frame(minWidth: 36, alignment: .trailing)
         }
         .padding(.horizontal, 8)
-        .frame(height: Layout.height(of: s))
+        .padding(.vertical, 5)
+        .frame(minHeight: Layout.rowHeight)
         .background(RoundedRectangle(cornerRadius: 9).fill(hot ? color(s.status).opacity(0.18) : .clear))
         .contentShape(Rectangle())
         .onTapGesture { onSelect(s.id) }

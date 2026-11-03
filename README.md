@@ -247,7 +247,10 @@ widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouT
   `idle` (xong, chờ bạn). Bỏ qua tiến trình đã chết. Không cần hook hay mod.
 - Thu gọn: viên đen gồm chấm trạng thái + số session theo màu (đỏ chờ, cam xong, xanh đang chạy).
 - Rê chuột vào thì mở danh sách (tên, thư mục, trạng thái, thời gian). Session vừa chuyển từ đang chạy
-  sang xong/chờ thì widget tự mở 5 giây và có viền cam 20 giây.
+  sang xong/chờ thì widget tự mở 5 giây. Dấu chưa xem (viền cam, tên đậm, "N mới" ở header) giữ tới khi
+  bạn bấm vào session, nó chạy lại, hoặc pane của nó đang mở trong cmux.
+- Dòng `chờ duyệt` hiện lệnh hoặc file đang xin duyệt (đọc từ transcript); nhiều tool cùng chờ hoặc tool
+  lạ thì hiện "Cần duyệt trong cmux".
 - Kéo để đổi vị trí (nhớ vị trí). Hướng mở theo vị trí: nửa trên mở xuống, nửa dưới mở lên; phần ba
   trái/phải mở sang phải/trái. Chuột phải → Thoát.
 - Bấm một dòng → cmux lên trước, đúng pane của session đó. Session không chạy trong cmux thì chỉ kêu beep.

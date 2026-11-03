@@ -46,3 +46,14 @@ private func session(_ id: String, _ status: String, _ text: String?) -> Session
     #expect(Layout.isDrag(from: o, to: CGPoint(x: 3, y: 3)))
     #expect(Layout.isDrag(from: o, to: CGPoint(x: 5, y: 0)))
 }
+
+@Test func sizeUsesMeasuredHeight() {
+    let store = Store(dir: makeTempDir(), projects: makeTempDir())
+    store.hovering = true
+    store.measuredHeight = 200
+    #expect(Layout.size(store).height == 200)
+    store.measuredHeight = 5000
+    #expect(Layout.size(store).height == Layout.canvas.height - 2 * Layout.margin)
+    store.measuredHeight = nil
+    #expect(Layout.size(store).height == Layout.expanded(store.sessions).height)
+}

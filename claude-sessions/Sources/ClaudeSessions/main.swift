@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var panel: WidgetPanel!
     var timer: Timer?
     var monitors: [Any] = []
+    var lookingUp: Set<String> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         panel = WidgetPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -17,7 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.hidesOnDeactivate = false
         panel.ignoresMouseEvents = true
         panel.acceptsMouseMovedEvents = true
-        let host = DragHostingView(rootView: WidgetView(store: store, onSelect: CmuxJump.jump))
+        let host = DragHostingView(rootView: WidgetView(store: store, onSelect: { [store] id in CmuxJump.jump(sessionId: id); store.markSeen(id) }))
         host.onDragEnd = { [weak self] in self?.settle() }
         panel.contentView = host
 
@@ -40,7 +41,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             self?.store.refresh()
             self?.trackMouse()
+            self?.checkFocusedPane()
         }
+    }
+
+    /// Marks an unseen session as seen when its cmux pane is the focused one.
+    func checkFocusedPane() {
+        guard !store.unseen.isEmpty,
+              NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.cmuxterm.app" else { return }
+        for id in store.unseen where store.surfaces[id] == nil && !lookingUp.contains(id) {
+            lookingUp.insert(id)
+            DispatchQueue.global().async { [store] in
+                let surface = CmuxJump.surface(sessionId: id)
+                DispatchQueue.main.async { [weak self] in
+                    self?.lookingUp.remove(id)
+                    if let surface { store.surfaces[id] = surface }
+                }
+            }
+        }
+        guard let focused = CmuxJump.focusedSurface() else { return }
+        for id in store.unseen where store.surfaces[id] == focused { store.markSeen(id) }
     }
 
     func place(pillOrigin raw: CGPoint) {

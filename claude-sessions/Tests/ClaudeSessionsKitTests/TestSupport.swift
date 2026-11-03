@@ -41,3 +41,14 @@ func writeTranscript(_ projects: URL, cwd: String, id: String, lines: [String]) 
     try! Data(lines.joined(separator: "\n").utf8).write(to: f)
     return f
 }
+
+func toolUseLine(id: String, name: String, input: [String: Any], sidechain: Bool = false) -> String {
+    let o: [String: Any] = ["type": "assistant", "isSidechain": sidechain,
+                            "message": ["content": [["type": "tool_use", "id": id, "name": name, "input": input]]]]
+    return String(data: try! JSONSerialization.data(withJSONObject: o), encoding: .utf8)!
+}
+
+func toolResultLine(id: String) -> String {
+    let o: [String: Any] = ["type": "user", "message": ["content": [["type": "tool_result", "tool_use_id": id]]]]
+    return String(data: try! JSONSerialization.data(withJSONObject: o), encoding: .utf8)!
+}

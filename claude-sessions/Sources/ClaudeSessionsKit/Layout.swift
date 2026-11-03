@@ -47,7 +47,9 @@ public enum Layout {
     }
 
     public static func size(_ store: Store) -> CGSize {
-        store.expanded ? expanded(store.sessions) : collapsed
+        guard store.expanded else { return collapsed }
+        let h = store.measuredHeight ?? expanded(store.sessions).height
+        return CGSize(width: 420, height: min(h, canvas.height - 2 * margin))
     }
 
     public static func pill(in f: NSRect, size: CGSize, anchor: Anchor) -> NSRect {
