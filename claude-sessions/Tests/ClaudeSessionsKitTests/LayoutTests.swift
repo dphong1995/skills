@@ -57,3 +57,14 @@ private func session(_ id: String, _ status: String, _ text: String?) -> Session
     store.measuredHeight = nil
     #expect(Layout.size(store).height == Layout.expanded(store.sessions).height)
 }
+
+@Test func commandFitThresholds() {
+    #expect(Layout.commandFit("npm test") == .short)
+    // 4 lines, 240 characters including the 3 newlines
+    let four = [59, 59, 59, 60].map { String(repeating: "a", count: $0) }.joined(separator: "\n")
+    #expect(four.count == 240 && Layout.commandFit(four) == .short)
+    #expect(Layout.commandFit(Array(repeating: "a", count: 5).joined(separator: "\n")) == .long)
+    #expect(Layout.commandFit(String(repeating: "a", count: 241)) == .long)
+    #expect(Layout.commandFit(Array(repeating: "a", count: 13).joined(separator: "\n")) == .tooLong)
+    #expect(Layout.commandFit(String(repeating: "a", count: 1201)) == .tooLong)
+}

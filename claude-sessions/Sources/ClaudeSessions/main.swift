@@ -1,5 +1,6 @@
 import AppKit
 import ClaudeSessionsKit
+import Combine
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let store = Store()
@@ -7,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var timer: Timer?
     var monitors: [Any] = []
     var lookingUp: Set<String> = []
+    var cancellables: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         panel = WidgetPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -18,9 +20,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.hidesOnDeactivate = false
         panel.ignoresMouseEvents = true
         panel.acceptsMouseMovedEvents = true
-        let host = DragHostingView(rootView: WidgetView(store: store, onSelect: { [store] id in CmuxJump.jump(sessionId: id); store.markSeen(id) }))
+        panel.store = store
+        let host = DragHostingView(rootView: WidgetView(store: store, onAction: { [weak self] in self?.handle($0) }))
         host.onDragEnd = { [weak self] in self?.settle() }
         panel.contentView = host
+
+        store.$editing.sink { [weak self] e in
+            guard let panel = self?.panel else { return }
+            // @Published fires before the value is stored, so defer until canBecomeKey sees it.
+            DispatchQueue.main.async { if e != nil { panel.makeKey() } else { panel.resignKey() } }
+        }.store(in: &cancellables)
+        NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: panel, queue: .main) { [weak self] _ in
+            self?.store.editing = nil
+        }
 
         let d = UserDefaults.standard
         if d.object(forKey: "pillX") != nil {
@@ -42,6 +54,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.store.refresh()
             self?.trackMouse()
             self?.checkFocusedPane()
+        }
+    }
+
+    func handle(_ a: WidgetAction) {
+        let id = a.sessionId
+        if case .jump = a {
+            CmuxJump.jump(sessionId: id)
+            store.markSeen(id)
+            return
+        }
+        store.refresh()
+        guard store.stillValid(a) else {
+            NSSound.beep()
+            store.editing = nil
+            return
+        }
+        CmuxJump.send(sessionId: id, keys: CmuxJump.keys(for: a), knownSurface: store.surfaces[id])
+        store.markSeen(id)
+        switch a {
+        case .reply, .deny:
+            store.editing = nil
+            store.drafts[id] = nil
+        default: break
         }
     }
 
@@ -90,6 +125,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func trackMouse() {
         let zone = Layout.pill(in: panel.frame, size: Layout.size(store), anchor: store.anchor)
+        if store.editing != nil {
+            panel.ignoresMouseEvents = false
+            return
+        }
         let inside = zone.contains(NSEvent.mouseLocation)
         if inside != store.hovering {
             store.hovering = inside

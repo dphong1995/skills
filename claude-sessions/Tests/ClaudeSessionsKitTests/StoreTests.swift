@@ -147,3 +147,59 @@ import Testing
     store.refresh(at: Date())
     #expect(store.sessions.first?.pending == nil)
 }
+
+private func approvableStore() -> (Store, URL, URL, URL) {
+    let dir = makeTempDir(), projects = makeTempDir()
+    let store = makeStore(dir: dir, projects: projects)
+    let f = writeTranscript(projects, cwd: frontend, id: "a", lines: [toolUseLine(id: "t1", name: "Bash", input: ["command": "npm test"])])
+    return (store, dir, projects, f)
+}
+
+@Test func stillValidRejectsChangedState() {
+    let (store, dir, _, f) = approvableStore()
+    writeSession(dir, "a", pid: me, status: "waiting", waitingFor: "permission prompt", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(store.stillValid(.approve("a", toolId: "t1")))
+    #expect(!store.stillValid(.approve("a", toolId: "t2")))
+
+    try! Data([toolUseLine(id: "t1", name: "Bash", input: ["command": "npm test"]), toolResultLine(id: "t1")].joined(separator: "\n").utf8).write(to: f)
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(!store.stillValid(.approve("a", toolId: "t1")))
+    #expect(!store.stillValid(.reply("a", text: "x")))
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(store.stillValid(.reply("a", text: "x")))
+    #expect(store.stillValid(.jump("zzz")))
+}
+
+@Test func editingClearedWhenSessionGone() {
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    store.editing = Store.Editing(id: "a", kind: .reply)
+    try! FileManager.default.removeItem(at: dir.appendingPathComponent("a.json"))
+    store.refresh(at: Date())
+    #expect(store.editing == nil && !store.expanded)
+}
+
+@Test func editingClearedWhenReplyNotAllowed() {
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    store.editing = Store.Editing(id: "a", kind: .reply)
+    store.refresh(at: Date())
+    #expect(store.editing != nil)
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(store.editing == nil)
+}
+
+@Test func editingKeepsExpanded() {
+    let store = makeStore(dir: makeTempDir())
+    store.hovering = false
+    store.editing = Store.Editing(id: "a", kind: .reply)
+    #expect(store.expanded)
+}

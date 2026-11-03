@@ -14,6 +14,11 @@ struct Session: Identifiable, Equatable {
 
 extension Session {
     var isFinished: Bool { status == "idle" || status == "waiting" }
+    var approvable: Pending? {
+        guard status == "waiting", waitingFor == "permission prompt", case .one(let p)? = pending else { return nil }
+        return p
+    }
+    var canReply: Bool { status == "idle" }
 }
 
 public final class Store: ObservableObject {
@@ -22,12 +27,25 @@ public final class Store: ObservableObject {
     @Published public var measuredHeight: CGFloat?
     /// Session id -> cmux surface UUID, filled by the app and pruned to live ids.
     public var surfaces: [String: String] = [:]
+    public struct Editing: Equatable {
+        public enum Kind { case reply, deny }
+        public let id: String
+        public let kind: Kind
+        public init(id: String, kind: Kind) {
+            self.id = id
+            self.kind = kind
+        }
+    }
+    @Published public var editing: Editing?
+    /// Tool ids whose long command the user expanded with Xem đủ.
+    @Published var shownCommands: Set<String> = []
+    @Published public var drafts: [String: String] = [:]
     @Published public var hovering = false
     @Published var now = Date()
     @Published public var peekUntil: Date?
     @Published public var anchor = Anchor()
 
-    var expanded: Bool { hovering || (peekUntil.map { now < $0 } ?? false) }
+    var expanded: Bool { hovering || editing != nil || (peekUntil.map { now < $0 } ?? false) }
 
     private var lastStatus: [String: String] = [:]
     private let dir: URL
@@ -115,8 +133,22 @@ public final class Store: ObservableObject {
         func rank(_ s: Session) -> Int {
             switch s.status { case "waiting": 0; case "idle": 1; case "busy": 2; default: 3 }
         }
+        if let e = editing {
+            let live = list.first { $0.id == e.id }
+            let ok = e.kind == .reply ? live?.canReply == true : live?.approvable != nil
+            if !ok { editing = nil }
+        }
         list.sort { (rank($0), $0.name) < (rank($1), $1.name) }
         if list != sessions { sessions = list }
+    }
+
+    public func stillValid(_ a: WidgetAction) -> Bool {
+        let live = sessions.first { $0.id == a.sessionId }
+        switch a {
+        case .jump: return true
+        case .approve(_, let toolId), .deny(_, let toolId, _): return live?.approvable?.toolId == toolId
+        case .reply: return live?.canReply == true
+        }
     }
 
     public func markSeen(_ id: String) {

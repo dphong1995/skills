@@ -56,4 +56,64 @@ public enum CmuxJump {
             }
         }
     }
+
+    public enum Key: Equatable {
+        case raw(String)
+        case paste(String)
+        case pause(TimeInterval)
+    }
+
+    public static func keys(for a: WidgetAction) -> [Key] {
+        switch a {
+        case .jump: return []
+        case .approve: return [.raw("1")]
+        case .deny(_, _, let reason):
+            let r = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+            return r.isEmpty ? [.raw("\\x1b")] : [.raw("\\x1b"), .pause(0.3), .paste(r), .raw("\\r")]
+        case .reply(_, let text): return [.paste(text), .raw("\\r")]
+        }
+    }
+
+    static func quote(_ s: String) -> String {
+        "\"" + s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\""
+    }
+
+    static func script(surface: String, key: Key) -> String? {
+        let target = "(first terminal whose id is \(quote(surface)))"
+        switch key {
+        case .raw(let r): return "tell application id \"\(bundleID)\" to perform action \(quote("text:" + r)) on \(target)"
+        case .paste(let t): return "tell application id \"\(bundleID)\" to input text \(quote(t)) to \(target)"
+        case .pause: return nil
+        }
+    }
+
+    /// Types the keys into the session's terminal without activating cmux. Beeps on a missing surface or the first error.
+    public static func send(sessionId: String, keys: [Key], knownSurface: String?) {
+        func run(_ surface: String) {
+            var i = 0
+            func step() {
+                guard i < keys.count else { return }
+                let key = keys[i]
+                i += 1
+                if case .pause(let t) = key {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + t) { step() }
+                    return
+                }
+                guard let body = script(surface: surface, key: key) else { return }
+                var err: NSDictionary?
+                NSAppleScript(source: "with timeout of 5 seconds\n\(body)\nend timeout")?.executeAndReturnError(&err)
+                if err != nil { return NSSound.beep() }
+                step()
+            }
+            step()
+        }
+        if let knownSurface { return run(knownSurface) }
+        DispatchQueue.global().async {
+            let surface = CmuxJump.surface(sessionId: sessionId)
+            DispatchQueue.main.async {
+                guard let surface else { return NSSound.beep() }
+                run(surface)
+            }
+        }
+    }
 }

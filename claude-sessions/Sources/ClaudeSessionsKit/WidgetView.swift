@@ -40,14 +40,44 @@ struct PulseDot: View {
     }
 }
 
+public enum WidgetAction: Equatable {
+    case jump(String)
+    case approve(String, toolId: String)
+    case deny(String, toolId: String, reason: String)
+    case reply(String, text: String)
+
+    public var sessionId: String {
+        switch self {
+        case .jump(let id), .approve(let id, _), .deny(let id, _, _), .reply(let id, _): id
+        }
+    }
+}
+
+struct PillButton: View {
+    let title: String
+    var fill: Color = .white.opacity(0.12)
+    var textColor: Color = .white
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title).font(.system(size: 11, weight: .semibold)).foregroundStyle(textColor)
+                .padding(.horizontal, 9).padding(.vertical, 3)
+                .background(Capsule().fill(fill))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 public struct WidgetView: View {
     @ObservedObject var store: Store
+    @FocusState private var focused: Bool
 
-    let onSelect: (String) -> Void
+    let onAction: (WidgetAction) -> Void
 
-    public init(store: Store, onSelect: @escaping (String) -> Void = { _ in }) {
+    public init(store: Store, onAction: @escaping (WidgetAction) -> Void = { _ in }) {
         self.store = store
-        self.onSelect = onSelect
+        self.onAction = onAction
     }
 
     public var body: some View {
@@ -130,41 +160,104 @@ public struct WidgetView: View {
         .padding(.horizontal, expanded ? 18 : 13)
     }
 
-    private func pendingText(_ p: PendingState) -> String {
-        switch p {
-        case .one(let p): p.text
-        case .unclear: "Cần duyệt trong cmux"
+    private func approvalBlock(_ s: Session, _ pending: PendingState) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            switch pending {
+            case .unclear:
+                jumpLine("Cần duyệt trong cmux", s)
+            case .one(let p):
+                let fit = Layout.commandFit(p.text)
+                let full = fit == .short || (fit == .long && store.shownCommands.contains(p.toolId))
+                Text(p.text).font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.8))
+                    .lineLimit(full ? nil : 4).truncationMode(.tail)
+                if s.approvable != nil {
+                    if fit == .tooLong {
+                        jumpLine("Lệnh dài, bấm để duyệt trong cmux", s)
+                    } else if full {
+                        HStack(spacing: 6) {
+                            PillButton(title: "Cho phép", fill: color(s.status), textColor: .black) {
+                                onAction(.approve(s.id, toolId: p.toolId))
+                            }
+                            PillButton(title: "Từ chối…") { store.editing = Store.Editing(id: s.id, kind: .deny) }
+                        }
+                    } else {
+                        PillButton(title: "Xem đủ") { store.shownCommands.insert(p.toolId) }
+                    }
+                }
+            }
         }
+    }
+
+    private func jumpLine(_ text: String, _ s: Session) -> some View {
+        Text(text).font(.system(size: 11)).foregroundStyle(.white.opacity(0.8))
+            .contentShape(Rectangle())
+            .onTapGesture { onAction(.jump(s.id)) }
+    }
+
+    private func editor(_ s: Session, _ kind: Store.Editing.Kind) -> some View {
+        let draft = Binding(get: { store.drafts[s.id, default: ""] }, set: { store.drafts[s.id] = $0 })
+        return TextField(kind == .reply ? "Trả lời… (Enter gửi)" : "Lý do (để trống = chỉ từ chối)", text: draft, axis: .vertical)
+            .textFieldStyle(.plain)
+            .font(.system(size: 11.5))
+            .lineLimit(1...4)
+            .padding(.horizontal, 8).padding(.vertical, 5)
+            .background(RoundedRectangle(cornerRadius: 7).fill(.white.opacity(0.1)))
+            .focused($focused)
+            .onAppear { focused = true }
+            .onSubmit {
+                let text = draft.wrappedValue
+                switch kind {
+                case .reply:
+                    if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { onAction(.reply(s.id, text: text)) }
+                case .deny:
+                    onAction(.deny(s.id, toolId: s.approvable?.toolId ?? "", reason: text))
+                }
+            }
+            .onExitCommand { store.editing = nil }
     }
 
     private func row(_ s: Session) -> some View {
         let hot = store.unseen.contains(s.id)
-        return HStack(spacing: 10) {
-            Circle().fill(color(s.status)).frame(width: 8, height: 8)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(s.name).font(.system(size: 12.5, weight: hot ? .bold : .medium)).foregroundStyle(.white).lineLimit(1)
-                Text((s.cwd as NSString).lastPathComponent).font(.system(size: 10.5))
-                    .foregroundStyle(.white.opacity(0.45)).lineLimit(1)
-                if s.isFinished, let reply = s.lastReply {
-                    Text(reply).font(.system(size: 11)).foregroundStyle(.white.opacity(0.75))
-                        .lineLimit(2).truncationMode(.tail)
+        let editingKind = store.editing?.id == s.id ? store.editing?.kind : nil
+        return VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 10) {
+                Circle().fill(color(s.status)).frame(width: 8, height: 8)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(s.name).font(.system(size: 12.5, weight: hot ? .bold : .medium)).foregroundStyle(.white).lineLimit(1)
+                    Text((s.cwd as NSString).lastPathComponent).font(.system(size: 10.5))
+                        .foregroundStyle(.white.opacity(0.45)).lineLimit(1)
+                    if s.isFinished, let reply = s.lastReply {
+                        Text(reply).font(.system(size: 11)).foregroundStyle(.white.opacity(0.75))
+                            .lineLimit(2).truncationMode(.tail)
+                    }
                 }
-                if let pending = s.pending {
-                    Text(pendingText(pending)).font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.8)).lineLimit(4).truncationMode(.tail)
-                }
+                Spacer(minLength: 12)
+                Text(label(s)).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(color(s.status))
+                Text(elapsed(s.since, store.now)).font(.system(size: 11.5).monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.55)).frame(minWidth: 36, alignment: .trailing)
             }
-            Spacer(minLength: 12)
-            Text(label(s)).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(color(s.status))
-            Text(elapsed(s.since, store.now)).font(.system(size: 11.5).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.55)).frame(minWidth: 36, alignment: .trailing)
+            .contentShape(Rectangle())
+            .onTapGesture { onAction(.jump(s.id)) }
+            if let pending = s.pending {
+                approvalBlock(s, pending).padding(.leading, 18)
+            }
+            if s.canReply {
+                HStack(spacing: 6) {
+                    PillButton(title: "tiếp tục") { onAction(.reply(s.id, text: "tiếp tục")) }
+                    PillButton(title: "ok, làm đi") { onAction(.reply(s.id, text: "ok, làm đi")) }
+                    PillButton(title: "Trả lời…") { store.editing = Store.Editing(id: s.id, kind: .reply) }
+                }
+                .padding(.leading, 18)
+            }
+            if let kind = editingKind {
+                editor(s, kind).padding(.leading, 18)
+            }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
         .frame(minHeight: Layout.rowHeight)
         .background(RoundedRectangle(cornerRadius: 9).fill(hot ? color(s.status).opacity(0.18) : .clear))
-        .contentShape(Rectangle())
-        .onTapGesture { onSelect(s.id) }
     }
 }
 
@@ -194,5 +287,6 @@ public final class DragHostingView<V: View>: NSHostingView<V> {
 
 public final class WidgetPanel: NSPanel {
     public override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
-    public override var canBecomeKey: Bool { false }
+    public weak var store: Store?
+    public override var canBecomeKey: Bool { store?.editing != nil }
 }

@@ -115,4 +115,30 @@ struct SnapshotTests {
         store.hovering = true
         render(store, "11-unseen-pending-hover")
     }
+
+    @Test func renderActions() {
+        let dir = makeTempDir(), projects = makeTempDir()
+        let store = makeStore(dir: dir, projects: projects)
+        let six = (1...6).map { "echo line \($0)" }.joined(separator: "\n")
+        let twenty = (1...20).map { "echo line \($0)" }.joined(separator: "\n")
+        _ = writeTranscript(projects, cwd: backend, id: "b", lines: [toolUseLine(id: "t1", name: "Bash", input: ["command": "npm test"])])
+        _ = writeTranscript(projects, cwd: "/Users/phong/ocr-service", id: "c", lines: [toolUseLine(id: "t2", name: "Bash", input: ["command": six])])
+        _ = writeTranscript(projects, cwd: "/Users/phong/talos-v2", id: "d", lines: [toolUseLine(id: "t3", name: "Bash", input: ["command": twenty])])
+        _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [assistantLine("Đã sửa xong, bạn xem lại diff giúp mình nhé.")])
+        _ = writeTranscript(projects, cwd: "/Users/phong/api", id: "e", lines: [assistantLine("Bạn muốn mình làm tiếp phần nào?")])
+        writeSession(dir, "b", pid: me, status: "waiting", waitingFor: "permission prompt", ageSec: 5, name: "talo6-dct-backend-3f", cwd: backend)
+        writeSession(dir, "c", pid: me, status: "waiting", waitingFor: "permission prompt", ageSec: 9, name: "ocr-service-a1", cwd: "/Users/phong/ocr-service")
+        writeSession(dir, "d", pid: me, status: "waiting", waitingFor: "permission prompt", ageSec: 12, name: "talo-v2-9c", cwd: "/Users/phong/talos-v2")
+        writeSession(dir, "a", pid: me, status: "idle", ageSec: 30, name: "talo6-dct-frontend-d7", cwd: frontend)
+        writeSession(dir, "e", pid: me, status: "idle", ageSec: 40, name: "api-5e", cwd: "/Users/phong/api")
+        store.refresh(at: Date())
+        store.hovering = true
+        store.editing = Store.Editing(id: "e", kind: .reply)
+        store.drafts["e"] = "có, chạy luôn"
+        render(store, "12-actions-hover")
+
+        store.editing = Store.Editing(id: "b", kind: .deny)
+        store.drafts["b"] = nil
+        render(store, "13-deny-reason")
+    }
 }

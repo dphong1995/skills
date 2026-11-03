@@ -12,7 +12,7 @@ private func clickRow(dragTo dx: CGFloat?) -> [String] {
     store.hovering = true
     var recorded: [String] = []
     _ = NSApplication.shared
-    let host = DragHostingView(rootView: WidgetView(store: store, onSelect: { recorded.append($0) }))
+    let host = DragHostingView(rootView: WidgetView(store: store, onAction: { if case .jump(let id) = $0 { recorded.append(id) } }))
     let panel = WidgetPanel(contentRect: NSRect(origin: .zero, size: Layout.canvas), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
     panel.contentView = host
     host.frame = NSRect(origin: .zero, size: Layout.canvas)

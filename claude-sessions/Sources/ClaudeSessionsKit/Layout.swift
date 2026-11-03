@@ -37,6 +37,14 @@ public enum Layout {
         hypot(b.x - a.x, b.y - a.y) > dragThreshold
     }
 
+    public enum Fit { case short, long, tooLong }
+
+    static func commandFit(_ s: String) -> Fit {
+        let lines = s.split(separator: "\n", omittingEmptySubsequences: false).count
+        if lines > 12 || s.count > 1200 { return .tooLong }
+        return lines <= 4 && s.count <= 240 ? .short : .long
+    }
+
     static func height(of s: Session) -> CGFloat {
         s.isFinished && s.lastReply != nil ? replyRowHeight : rowHeight
     }

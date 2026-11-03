@@ -259,6 +259,13 @@ widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouT
 - Kéo được từ mọi chỗ trên widget; dời từ 4 pt trở xuống vẫn tính là bấm.
 - Session xong/chờ hiện thêm câu trả lời cuối của Claude (tối đa 2 dòng), đọc từ transcript
   `~/.claude/projects/…/<sessionId>.jsonl`.
+- Dòng `chờ duyệt` có nút **Cho phép** và **Từ chối…** (bấm Từ chối… để gõ lý do, để trống = chỉ từ chối).
+  Lệnh dài phải bấm **Xem đủ** mới hiện nút; lệnh quá dài, subagent, nhiều việc cùng chờ hoặc tool lạ
+  (MCP…) thì chỉ nhảy tới cmux để duyệt.
+- Dòng `xong` có nút trả lời nhanh (`tiếp tục`, `ok, làm đi`) và ô **Trả lời…** (Enter gửi, Esc đóng).
+- Cơ chế: widget gõ phím hộ vào terminal cmux qua AppleScript (`1` = Yes, Esc = từ chối, trả lời = dán
+  chữ rồi Enter), chỉ cho session chạy trong cmux, và kiểm lại trạng thái ngay trước khi gõ (đổi rồi thì
+  chỉ kêu beep, không gõ gì).
 
 Cài (cần Command Line Tools: `xcode-select --install`), build ra `~/Applications/ClaudeSessions.app`:
 
