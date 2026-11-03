@@ -17,7 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.hidesOnDeactivate = false
         panel.ignoresMouseEvents = true
         panel.acceptsMouseMovedEvents = true
-        let host = DragHostingView(rootView: WidgetView(store: store))
+        let host = DragHostingView(rootView: WidgetView(store: store, onSelect: CmuxJump.jump))
         host.onDragEnd = { [weak self] in self?.settle() }
         panel.contentView = host
 

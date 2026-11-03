@@ -30,6 +30,11 @@ public enum Layout {
     public static let rowHeight: CGFloat = 36
     public static let headerHeight: CGFloat = 32
     public static let collapsed = CGSize(width: 190, height: headerHeight)
+    public static let dragThreshold: CGFloat = 4
+
+    public static func isDrag(from a: CGPoint, to b: CGPoint) -> Bool {
+        hypot(b.x - a.x, b.y - a.y) > dragThreshold
+    }
 
     public static func expanded(rows: Int) -> CGSize {
         CGSize(width: 420, height: headerHeight + 4 + CGFloat(max(rows, 1)) * rowHeight + 10)

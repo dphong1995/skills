@@ -15,6 +15,7 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
   <key>CFBundleExecutable</key><string>ClaudeSessions</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>LSUIElement</key><true/>
+  <key>NSAppleEventsUsageDescription</key><string>Để nhảy tới đúng tab cmux của session.</string>
 </dict>
 </plist>
 EOF

@@ -23,3 +23,11 @@ func canvasPillRoundTrip(a: Anchor) {
     let open = Layout.pill(in: corner, size: Layout.expanded(rows: 6), anchor: a)
     #expect(scr.contains(open))
 }
+
+@Test func isDragThreshold() {
+    let o = CGPoint.zero
+    #expect(!Layout.isDrag(from: o, to: CGPoint(x: 3, y: 0)))
+    #expect(!Layout.isDrag(from: o, to: CGPoint(x: 4, y: 0)))
+    #expect(Layout.isDrag(from: o, to: CGPoint(x: 3, y: 3)))
+    #expect(Layout.isDrag(from: o, to: CGPoint(x: 5, y: 0)))
+}

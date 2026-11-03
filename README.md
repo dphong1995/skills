@@ -250,6 +250,10 @@ widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouT
   sang xong/chờ thì widget tự mở 5 giây và có viền cam 20 giây.
 - Kéo để đổi vị trí (nhớ vị trí). Hướng mở theo vị trí: nửa trên mở xuống, nửa dưới mở lên; phần ba
   trái/phải mở sang phải/trái. Chuột phải → Thoát.
+- Bấm một dòng → cmux lên trước, đúng pane của session đó. Session không chạy trong cmux thì chỉ kêu beep.
+- Lần đầu macOS hỏi quyền "ClaudeSessions điều khiển cmux" (có thể hỏi lại sau mỗi lần build). Lỡ từ chối
+  thì bật lại ở System Settings → Privacy & Security → Automation.
+- Kéo được từ mọi chỗ trên widget; dời dưới 4 pt vẫn tính là bấm.
 
 Cài (cần Command Line Tools: `xcode-select --install`), build ra `~/Applications/ClaudeSessions.app`:
 

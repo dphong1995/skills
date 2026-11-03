@@ -43,7 +43,12 @@ struct PulseDot: View {
 public struct WidgetView: View {
     @ObservedObject var store: Store
 
-    public init(store: Store) { self.store = store }
+    let onSelect: (String) -> Void
+
+    public init(store: Store, onSelect: @escaping (String) -> Void = { _ in }) {
+        self.store = store
+        self.onSelect = onSelect
+    }
 
     public var body: some View {
         let expanded = store.expanded
@@ -132,15 +137,35 @@ public struct WidgetView: View {
         .padding(.horizontal, 8)
         .frame(height: Layout.rowHeight)
         .background(RoundedRectangle(cornerRadius: 9).fill(hot ? color(s.status).opacity(0.18) : .clear))
+        .contentShape(Rectangle())
+        .onTapGesture { onSelect(s.id) }
     }
 }
 
 public final class DragHostingView<V: View>: NSHostingView<V> {
     public var onDragEnd: (() -> Void)?
+    private var replaying = false
     public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    public override func mouseDown(with event: NSEvent) {
-        window?.performDrag(with: event)
-        onDragEnd?()
+    public override func mouseDown(with down: NSEvent) {
+        if replaying {
+            replaying = false
+            return super.mouseDown(with: down)
+        }
+        guard let window else { return super.mouseDown(with: down) }
+        while let e = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+            if e.type == .leftMouseUp {
+                // A click: replay the press and release so SwiftUI sees them through the normal event path.
+                replaying = true
+                window.sendEvent(down)
+                window.sendEvent(e)
+                return
+            }
+            if Layout.isDrag(from: down.locationInWindow, to: e.locationInWindow) {
+                window.performDrag(with: down)
+                onDragEnd?()
+                return
+            }
+        }
     }
 }
 
