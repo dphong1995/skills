@@ -266,6 +266,7 @@ widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouT
 - Cơ chế: widget gõ phím hộ vào terminal cmux qua AppleScript (`1` = Yes, Esc = từ chối, trả lời = dán
   chữ rồi Enter), chỉ cho session chạy trong cmux, và kiểm lại trạng thái ngay trước khi gõ (đổi rồi thì
   chỉ kêu beep, không gõ gì).
+- Không còn session 30 giây thì widget ẩn, có session thì hiện lại; mở app lúc chưa có session nào thì widget ẩn ngay.
 
 Cài (cần Command Line Tools: `xcode-select --install`), build ra `~/Applications/ClaudeSessions.app`:
 
@@ -274,8 +275,6 @@ bash ~/.claude/skills-repo/claude-sessions/build.sh && open ~/Applications/Claud
 ```
 
 App tự đăng ký chạy khi đăng nhập. Nếu macOS đòi duyệt (app ký ad-hoc, có thể hỏi lại sau mỗi lần build) thì bật ở System Settings → General → Login Items.
-
-- Không còn session 30 giây thì widget ẩn, có session thì hiện lại.
 
 Test trạng thái (logic + ảnh PNG của từng trạng thái, không cần quyền Screen Recording):
 

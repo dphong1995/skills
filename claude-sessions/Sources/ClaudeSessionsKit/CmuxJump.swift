@@ -1,18 +1,14 @@
 import AppKit
 
 public enum CmuxJump {
-    static let bundleID = "com.cmuxterm.app"
+    public static let bundleID = "com.cmuxterm.app"
 
     static func surface(fromSessionsOutput out: String) -> String? {
         guard let r = out.range(of: "surface=[0-9A-Fa-f-]{36}", options: .regularExpression) else { return nil }
         return String(out[r].dropFirst("surface=".count))
     }
 
-    static let focusedSurfaceScript = """
-    with timeout of 2 seconds
-        tell application id "com.cmuxterm.app" to get id of focused terminal of selected tab of front window
-    end timeout
-    """
+    static let focusedSurfaceScript = "tell application id \"\(bundleID)\" to get id of focused terminal of selected tab of front window"
 
     /// Blocking: call off the main thread. Nil when cmux is missing or the output has no surface.
     public static func surface(sessionId: String) -> String? {
@@ -30,31 +26,25 @@ public enum CmuxJump {
         return surface(fromSessionsOutput: String(decoding: data, as: UTF8.self))
     }
 
-    /// Main thread. Nil on any AppleScript error.
-    public static func focusedSurface() -> String? {
+    /// Main thread. Runs the AppleScript body under a timeout; nil on any error.
+    static func run(_ body: String, timeout: Int) -> NSAppleEventDescriptor? {
         var err: NSDictionary?
-        let r = NSAppleScript(source: focusedSurfaceScript)?.executeAndReturnError(&err)
-        return err == nil ? r?.stringValue : nil
+        let r = NSAppleScript(source: "with timeout of \(timeout) seconds\n\(body)\nend timeout")?.executeAndReturnError(&err)
+        return err == nil ? r : nil
     }
 
-    public static func jump(sessionId: String) {
-        DispatchQueue.global().async {
-            let surface = CmuxJump.surface(sessionId: sessionId)
-            DispatchQueue.main.async {
-                guard let surface else { return NSSound.beep() }
-                let src = """
-                with timeout of 5 seconds
-                    tell application id "\(bundleID)"
-                        activate
-                        focus (first terminal whose id is "\(surface)")
-                    end tell
-                end timeout
-                """
-                var err: NSDictionary?
-                NSAppleScript(source: src)?.executeAndReturnError(&err)
-                if err != nil { NSSound.beep() }
-            }
-        }
+    static func target(_ surface: String) -> String {
+        "(first terminal whose id is \(quote(surface)))"
+    }
+
+    /// Main thread. Nil on any AppleScript error.
+    public static func focusedSurface() -> String? {
+        run(focusedSurfaceScript, timeout: 2)?.stringValue
+    }
+
+    /// Main thread. Activates cmux and focuses the terminal; false on any AppleScript error.
+    public static func jump(surface: String) -> Bool {
+        run("tell application id \"\(bundleID)\"\nactivate\nfocus \(target(surface))\nend tell", timeout: 5) != nil
     }
 
     public enum Key: Equatable {
@@ -78,42 +68,30 @@ public enum CmuxJump {
         "\"" + s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\""
     }
 
-    static func script(surface: String, key: Key) -> String? {
-        let target = "(first terminal whose id is \(quote(surface)))"
+    /// The AppleScript body for one key. Pauses are handled by `send`, so they have no script.
+    static func script(surface: String, key: Key) -> String {
         switch key {
-        case .raw(let r): return "tell application id \"\(bundleID)\" to perform action \(quote("text:" + r)) on \(target)"
-        case .paste(let t): return "tell application id \"\(bundleID)\" to input text \(quote(t)) to \(target)"
-        case .pause: return nil
+        case .raw(let r): return "tell application id \"\(bundleID)\" to perform action \(quote("text:" + r)) on \(target(surface))"
+        case .paste(let t): return "tell application id \"\(bundleID)\" to input text \(quote(t)) to \(target(surface))"
+        case .pause: return ""
         }
     }
 
-    /// Types the keys into the session's terminal without activating cmux. Beeps on a missing surface or the first error.
-    public static func send(sessionId: String, keys: [Key], knownSurface: String?) {
-        func run(_ surface: String) {
-            var i = 0
-            func step() {
-                guard i < keys.count else { return }
-                let key = keys[i]
-                i += 1
-                if case .pause(let t) = key {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + t) { step() }
-                    return
-                }
-                guard let body = script(surface: surface, key: key) else { return }
-                var err: NSDictionary?
-                NSAppleScript(source: "with timeout of 5 seconds\n\(body)\nend timeout")?.executeAndReturnError(&err)
-                if err != nil { return NSSound.beep() }
-                step()
+    /// Types the keys into the surface's terminal without activating cmux. `completion` runs on main: false on the first error.
+    public static func send(surface: String, keys: [Key], completion: @escaping (Bool) -> Void) {
+        send(surface: surface, keys: keys[...], completion: completion)
+    }
+
+    private static func send(surface: String, keys: ArraySlice<Key>, completion: @escaping (Bool) -> Void) {
+        var rest = keys
+        while let key = rest.popFirst() {
+            if case .pause(let t) = key {
+                let remaining = rest
+                DispatchQueue.main.asyncAfter(deadline: .now() + t) { send(surface: surface, keys: remaining, completion: completion) }
+                return
             }
-            step()
+            guard run(script(surface: surface, key: key), timeout: 5) != nil else { return completion(false) }
         }
-        if let knownSurface { return run(knownSurface) }
-        DispatchQueue.global().async {
-            let surface = CmuxJump.surface(sessionId: sessionId)
-            DispatchQueue.main.async {
-                guard let surface else { return NSSound.beep() }
-                run(surface)
-            }
-        }
+        completion(true)
     }
 }

@@ -162,6 +162,14 @@ private func approvableStore() -> (Store, URL, URL, URL) {
     #expect(store.stillValid(.approve("a", toolId: "t1")))
     #expect(!store.stillValid(.approve("a", toolId: "t2")))
 
+    // Same state, a different tool open: only the toolId differs.
+    try! Data([toolUseLine(id: "t1", name: "Bash", input: ["command": "npm test"]), toolResultLine(id: "t1"),
+               toolUseLine(id: "t2", name: "Bash", input: ["command": "ls"])].joined(separator: "\n").utf8).write(to: f)
+    writeSession(dir, "a", pid: me, status: "waiting", waitingFor: "permission prompt", ageSec: 1, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(!store.stillValid(.approve("a", toolId: "t1")))
+    #expect(store.stillValid(.approve("a", toolId: "t2")))
+
     try! Data([toolUseLine(id: "t1", name: "Bash", input: ["command": "npm test"]), toolResultLine(id: "t1")].joined(separator: "\n").utf8).write(to: f)
     writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
     store.refresh(at: Date())
@@ -247,4 +255,32 @@ private func approvableStore() -> (Store, URL, URL, URL) {
     let store = Store(dir: makeTempDir(), projects: makeTempDir(), startHidden: false)
     store.refresh(at: Date())
     #expect(!store.hidden)
+}
+
+@Test func surfaceDroppedWhenPidChanges() {
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    store.surfaces["a"] = "S"
+    store.surfaceMisses.insert("a")
+    store.refresh(at: Date())
+    #expect(store.surfaces["a"] == "S" && store.surfaceMisses.contains("a"))
+    writeSession(dir, "a", pid: 1, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(store.surfaces["a"] == nil && store.surfaceMisses.isEmpty)
+}
+
+@Test func editingDenyClosedWhenToolChanges() {
+    let (store, dir, _, f) = approvableStore()
+    writeSession(dir, "a", pid: me, status: "waiting", waitingFor: "permission prompt", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    store.editing = Store.Editing(id: "a", kind: .deny, toolId: "t1")
+    store.refresh(at: Date())
+    #expect(store.editing != nil)
+    try! Data([toolUseLine(id: "t1", name: "Bash", input: ["command": "npm test"]), toolResultLine(id: "t1"),
+               toolUseLine(id: "t2", name: "Bash", input: ["command": "ls"])].joined(separator: "\n").utf8).write(to: f)
+    writeSession(dir, "a", pid: me, status: "waiting", waitingFor: "permission prompt", ageSec: 1, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(store.editing == nil)
 }

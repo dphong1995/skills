@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var timer: Timer?
     var monitors: [Any] = []
     var lookingUp: Set<String> = []
+    var tick = 0
     var cancellables: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -29,7 +30,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         store.$editing.sink { [weak self] e in
             guard let panel = self?.panel else { return }
             // @Published fires before the value is stored, so defer until canBecomeKey sees it.
-            DispatchQueue.main.async { if e != nil { if self?.store.hidden == false { panel.makeKey() } } else { panel.resignKey() } }
+            DispatchQueue.main.async {
+                guard let store = self?.store else { return }
+                if e != nil {
+                    if !store.hidden { panel.makeKey() }
+                } else if panel.isKeyWindow && !store.hidden {
+                    // resignKey() is only a callback; reordering the panel is what hands key status back.
+                    panel.orderOut(nil)
+                    panel.orderFrontRegardless()
+                }
+            }
         }.store(in: &cancellables)
         NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: panel, queue: .main) { [weak self] _ in
             self?.store.editing = nil
@@ -54,7 +64,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             self?.refreshAndSyncVisibility()
             self?.trackMouse()
-            self?.checkFocusedPane()
+            self?.tick += 1
+            if self?.tick.isMultiple(of: 2) == true { self?.checkFocusedPane() }
         }
     }
 
@@ -68,45 +79,63 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Calls `then` on main with the session's cmux surface: the cached one, else the result of a `cmux sessions` lookup.
+    /// Hits are cached in the store; misses are recorded there too, but only the background check consults them.
+    func resolveSurface(_ id: String, then: @escaping (String?) -> Void) {
+        if let surface = store.surfaces[id] { return then(surface) }
+        lookingUp.insert(id)
+        DispatchQueue.global().async {
+            let surface = CmuxJump.surface(sessionId: id)
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                lookingUp.remove(id)
+                if let surface {
+                    store.surfaces[id] = surface
+                    store.surfaceMisses.remove(id)
+                } else {
+                    store.surfaceMisses.insert(id)
+                }
+                then(surface)
+            }
+        }
+    }
+
     func handle(_ a: WidgetAction) {
         let id = a.sessionId
-        if case .jump = a {
-            CmuxJump.jump(sessionId: id)
-            store.markSeen(id)
-            return
-        }
-        store.refresh()
-        guard store.stillValid(a) else {
-            NSSound.beep()
-            store.editing = nil
-            return
-        }
-        CmuxJump.send(sessionId: id, keys: CmuxJump.keys(for: a), knownSurface: store.surfaces[id])
-        store.markSeen(id)
-        switch a {
-        case .reply, .deny:
-            store.editing = nil
-            store.drafts[id] = nil
-        default: break
+        resolveSurface(id) { [weak self] surface in
+            guard let self else { return }
+            guard let surface else { return NSSound.beep() }
+            if case .jump = a {
+                if CmuxJump.jump(surface: surface) { store.markSeen(id) } else { NSSound.beep() }
+                return
+            }
+            // Validate right before the first keystroke: the lookup above may have taken a while.
+            store.refresh()
+            let fromEditor = store.editing?.id == id
+            guard store.stillValid(a) else {
+                NSSound.beep()
+                if fromEditor { store.editing = nil }
+                return
+            }
+            if fromEditor { store.editing = nil }
+            CmuxJump.send(surface: surface, keys: CmuxJump.keys(for: a)) { [weak self] ok in
+                guard let self else { return }
+                guard ok else { return NSSound.beep() }
+                if fromEditor { store.drafts[id] = nil }
+                store.markSeen(id)
+            }
         }
     }
 
     /// Marks an unseen session as seen when its cmux pane is the focused one.
     func checkFocusedPane() {
         guard !store.unseen.isEmpty,
-              NSWorkspace.shared.frontmostApplication?.bundleIdentifier == "com.cmuxterm.app" else { return }
-        for id in store.unseen where store.surfaces[id] == nil && !lookingUp.contains(id) {
-            lookingUp.insert(id)
-            DispatchQueue.global().async { [store] in
-                let surface = CmuxJump.surface(sessionId: id)
-                DispatchQueue.main.async { [weak self] in
-                    self?.lookingUp.remove(id)
-                    if let surface { store.surfaces[id] = surface }
-                }
-            }
+              NSWorkspace.shared.frontmostApplication?.bundleIdentifier == CmuxJump.bundleID else { return }
+        for id in store.unseen where store.surfaces[id] == nil && !store.surfaceMisses.contains(id) && !lookingUp.contains(id) {
+            resolveSurface(id) { _ in }
         }
-        guard let focused = CmuxJump.focusedSurface() else { return }
-        for id in store.unseen where store.surfaces[id] == focused { store.markSeen(id) }
+        guard store.unseen.contains(where: { store.surfaces[$0] != nil }), let focused = CmuxJump.focusedSurface() else { return }
+        for id in store.unseen where store.surfaces[id]?.caseInsensitiveCompare(focused) == .orderedSame { store.markSeen(id) }
     }
 
     func place(pillOrigin raw: CGPoint) {
@@ -136,16 +165,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func trackMouse() {
         if store.hidden { return }
-        let zone = Layout.pill(in: panel.frame, size: Layout.size(store), anchor: store.anchor)
-        if store.editing != nil {
-            panel.ignoresMouseEvents = false
-            return
-        }
-        let inside = zone.contains(NSEvent.mouseLocation)
-        if inside != store.hovering {
+        let inside = Layout.pill(in: panel.frame, size: Layout.size(store), anchor: store.anchor).contains(NSEvent.mouseLocation)
+        if store.editing == nil && inside != store.hovering {
             store.hovering = inside
             if inside { store.peekUntil = nil }
         }
+        // While editing, clicks outside the card must reach the app beneath (and make the panel resign key).
         panel.ignoresMouseEvents = !inside
     }
 }

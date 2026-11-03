@@ -116,6 +116,22 @@ struct SnapshotTests {
         render(store, "11-unseen-pending-hover")
     }
 
+    @Test func renderUnseenCollapsed() {
+        let dir = makeTempDir()
+        let store = makeStore(dir: dir)
+        let t0 = Date()
+        writeSession(dir, "a", pid: me, status: "busy", ageSec: 30, name: "talo6-dct-frontend-d7", cwd: frontend)
+        writeSession(dir, "b", pid: me, status: "busy", ageSec: 30, name: "talo6-dct-backend-3f", cwd: backend)
+        writeSession(dir, "c", pid: me, status: "busy", ageSec: 30, name: "ocr-service-a1", cwd: "/Users/phong/ocr-service")
+        store.refresh(at: t0)
+        writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "talo6-dct-frontend-d7", cwd: frontend)
+        writeSession(dir, "b", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 0, name: "talo6-dct-backend-3f", cwd: backend)
+        store.refresh(at: t0.addingTimeInterval(1))
+        store.refresh(at: t0.addingTimeInterval(10))
+        #expect(store.unseen.count == 2 && !store.expanded)
+        render(store, "14-unseen-collapsed")
+    }
+
     @Test func renderActions() {
         let dir = makeTempDir(), projects = makeTempDir()
         let store = makeStore(dir: dir, projects: projects)
@@ -137,7 +153,7 @@ struct SnapshotTests {
         store.drafts["e"] = "có, chạy luôn"
         render(store, "12-actions-hover")
 
-        store.editing = Store.Editing(id: "b", kind: .deny)
+        store.editing = Store.Editing(id: "b", kind: .deny, toolId: "t1")
         store.drafts["b"] = nil
         render(store, "13-deny-reason")
     }

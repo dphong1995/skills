@@ -90,14 +90,14 @@ public struct WidgetView: View {
             header(expanded: expanded).frame(height: Layout.headerHeight)
             if expanded && !store.anchor.up { list }
         }
-        .frame(width: expanded ? 420 : Layout.collapsed.width, alignment: store.anchor.up ? .bottom : .top)
+        .frame(width: expanded ? Layout.expandedWidth : Layout.collapsed.width, alignment: store.anchor.up ? .bottom : .top)
         .frame(height: expanded ? nil : Layout.collapsed.height)
         .fixedSize(horizontal: false, vertical: expanded)
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
             guard store.expanded else { return }
             if abs(h - (store.measuredHeight ?? 0)) > 0.5 { store.measuredHeight = h }
         }
-        .frame(maxHeight: expanded ? Layout.canvas.height - 2 * Layout.margin : nil, alignment: store.anchor.up ? .bottom : .top)
+        .frame(maxHeight: expanded ? Layout.maxExpandedHeight : nil, alignment: store.anchor.up ? .bottom : .top)
         .fixedSize(horizontal: false, vertical: expanded)
         .background(RoundedRectangle(cornerRadius: radius, style: .continuous).fill(Color.black.opacity(0.92)))
         .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous)
@@ -179,7 +179,7 @@ public struct WidgetView: View {
                             PillButton(title: "Cho phép", fill: color(s.status), textColor: .black) {
                                 onAction(.approve(s.id, toolId: p.toolId))
                             }
-                            PillButton(title: "Từ chối…") { store.editing = Store.Editing(id: s.id, kind: .deny) }
+                            PillButton(title: "Từ chối…") { store.editing = Store.Editing(id: s.id, kind: .deny, toolId: p.toolId) }
                         }
                     } else {
                         PillButton(title: "Xem đủ") { store.shownCommands.insert(p.toolId) }

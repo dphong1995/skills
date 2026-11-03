@@ -18,7 +18,7 @@ private let line = "claude 7d0fcbef-0908-41eb-9779-ea86d5bf838a  workspace=4E6B8
 
 @Test func focusedSurfaceScriptText() {
     #expect(CmuxJump.focusedSurfaceScript.contains("focused terminal of selected tab of front window"))
-    #expect(CmuxJump.focusedSurfaceScript.contains("com.cmuxterm.app"))
+    #expect(CmuxJump.focusedSurfaceScript.contains(CmuxJump.bundleID))
 }
 
 @Test func approveKeys() {
@@ -41,14 +41,14 @@ private let line = "claude 7d0fcbef-0908-41eb-9779-ea86d5bf838a  workspace=4E6B8
 
 @Test func scriptRaw() {
     let s = CmuxJump.script(surface: "S", key: .raw("\\x1b"))
-    #expect(s?.contains(#"perform action "text:\\x1b" on (first terminal whose id is "S")"#) == true)
+    #expect(s.contains(#"perform action "text:\\x1b" on (first terminal whose id is "S")"#))
 }
 
 @Test func scriptEscapesPaste() {
     let s = CmuxJump.script(surface: "S", key: .paste("a \"b\" \\ c\nd"))
-    #expect(s?.contains("input text \"a \\\"b\\\" \\\\ c\nd\" to (first terminal whose id is \"S\")") == true)
+    #expect(s.contains("input text \"a \\\"b\\\" \\\\ c\nd\" to (first terminal whose id is \"S\")"))
 }
 
-@Test func scriptPauseIsNil() {
-    #expect(CmuxJump.script(surface: "S", key: .pause(0.3)) == nil)
+@Test func scriptPauseIsEmpty() {
+    #expect(CmuxJump.script(surface: "S", key: .pause(0.3)).isEmpty)
 }

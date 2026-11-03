@@ -82,6 +82,7 @@ enum Transcript {
         case "Glob", "Grep": key = "pattern"
         default: key = "file_path"
         }
-        return .one(Pending(toolId: first.id, tool: first.name, text: first.input[key] as? String ?? ""))
+        guard let text = first.input[key] as? String, !text.isEmpty else { return .unclear(count: 1) }
+        return .one(Pending(toolId: first.id, tool: first.name, text: text))
     }
 }

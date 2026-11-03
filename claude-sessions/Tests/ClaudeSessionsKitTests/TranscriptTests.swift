@@ -72,6 +72,11 @@ private func bash(_ id: String, _ cmd: String = "npm test") -> String {
     #expect(Transcript.pending(in: data([toolUseLine(id: "t1", name: "ExitPlanMode", input: [:])])) == .unclear(count: 1))
 }
 
+@Test func pendingEmptyCommandIsUnclear() {
+    #expect(Transcript.pending(in: data([toolUseLine(id: "t1", name: "Bash", input: [:])])) == .unclear(count: 1))
+    #expect(Transcript.pending(in: data([toolUseLine(id: "t1", name: "Bash", input: ["command": ""])])) == .unclear(count: 1))
+}
+
 @Test func pendingSkipsSidechain() {
     #expect(Transcript.pending(in: data([toolUseLine(id: "t1", name: "Bash", input: ["command": "x"], sidechain: true)])) == nil)
 }

@@ -10,30 +10,46 @@ struct Session: Identifiable, Equatable {
     let since: Date?
     var lastReply: String? = nil
     var pending: PendingState? = nil
+    var pid: Int32 = 0
 }
 
 extension Session {
     var isFinished: Bool { status == "idle" || status == "waiting" }
+    var isPermissionPrompt: Bool { status == "waiting" && waitingFor == "permission prompt" }
     var approvable: Pending? {
-        guard status == "waiting", waitingFor == "permission prompt", case .one(let p)? = pending else { return nil }
+        guard case .one(let p)? = pending else { return nil }
         return p
     }
     var canReply: Bool { status == "idle" }
+
+    /// Whether an editor of this kind, or an approve/deny of `toolId` (approve and deny are both `.deny`), still applies.
+    func allows(_ kind: Store.Editing.Kind, toolId: String?) -> Bool {
+        switch kind {
+        case .reply: canReply
+        case .deny: toolId != nil && approvable?.toolId == toolId
+        }
+    }
 }
 
 public final class Store: ObservableObject {
     @Published var sessions: [Session] = []
     @Published public var unseen: Set<String> = []
     @Published public var measuredHeight: CGFloat?
-    /// Session id -> cmux surface UUID, filled by the app and pruned to live ids.
+    /// Session id -> cmux surface UUID, filled by the app. Pruned to live ids and dropped when the session's pid changes.
     public var surfaces: [String: String] = [:]
+    /// Session ids whose cmux lookup found nothing. Same pruning as `surfaces`.
+    public var surfaceMisses: Set<String> = []
+    private var pids: [String: Int32] = [:]
     public struct Editing: Equatable {
         public enum Kind { case reply, deny }
         public let id: String
         public let kind: Kind
-        public init(id: String, kind: Kind) {
+        /// The tool a `.deny` editor is for.
+        public let toolId: String?
+        public init(id: String, kind: Kind, toolId: String? = nil) {
             self.id = id
             self.kind = kind
+            self.toolId = toolId
         }
     }
     @Published public var editing: Editing?
@@ -58,6 +74,7 @@ public final class Store: ObservableObject {
         var size: Int
         var reply: String?
         var pending: PendingState?
+        var prompt = false
     }
 
     public init(dir: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/sessions"),
@@ -65,11 +82,9 @@ public final class Store: ObservableObject {
                 startHidden: Bool = false) {
         self.dir = dir
         self.projects = projects
-        self.startHidden = startHidden
+        emptySince = startHidden ? .distantPast : nil
     }
 
-    private let startHidden: Bool
-    private var refreshed = false
     public private(set) var emptySince: Date?
     public var hidden: Bool { emptySince.map { now.timeIntervalSince($0) >= 30 } ?? false }
 
@@ -86,12 +101,14 @@ public final class Store: ObservableObject {
             return (nil, nil)
         }
         let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
-        if c.size == size && c.since == s.since { return (c.reply, c.pending) }
+        let prompt = s.isPermissionPrompt
+        if c.size == size && c.since == s.since && c.prompt == prompt { return (c.reply, c.pending) }
         c.since = s.since
         c.size = size
+        c.prompt = prompt
         let tail = Transcript.tail(url)
         c.reply = Transcript.lastReply(in: tail)
-        c.pending = Transcript.pending(in: tail)
+        c.pending = prompt ? Transcript.pending(in: tail) : nil
         cache[s.id] = c
         return (c.reply, c.pending)
     }
@@ -114,20 +131,20 @@ public final class Store: ObservableObject {
                 cwd: o["cwd"] as? String ?? "",
                 status: o["status"] as? String ?? "",
                 waitingFor: o["waitingFor"] as? String,
-                since: ms.map { Date(timeIntervalSince1970: $0 / 1000) }
+                since: ms.map { Date(timeIntervalSince1970: $0 / 1000) },
+                pid: pid
             )
             let t = readTail(for: s)
             s.lastReply = t.reply
-            if s.status == "waiting" && s.waitingFor == "permission prompt" { s.pending = t.pending }
+            if s.isPermissionPrompt { s.pending = t.pending }
             list.append(s)
         }
 
         if list.isEmpty {
-            if emptySince == nil { emptySince = (startHidden && !refreshed) ? .distantPast : now }
+            if emptySince == nil { emptySince = now }
         } else {
             emptySince = nil
         }
-        refreshed = true
 
         var newUnseen = unseen
         for s in list {
@@ -140,7 +157,17 @@ public final class Store: ObservableObject {
         }
         let live = Set(list.map(\.id))
         cache = cache.filter { live.contains($0.key) }
+        for s in list where pids[s.id] != nil && pids[s.id] != s.pid {
+            surfaces[s.id] = nil
+            surfaceMisses.remove(s.id)
+        }
+        pids = Dictionary(list.map { ($0.id, $0.pid) }, uniquingKeysWith: { $1 })
         surfaces = surfaces.filter { live.contains($0.key) }
+        surfaceMisses.formIntersection(live)
+        let liveDrafts = drafts.filter { live.contains($0.key) }
+        if liveDrafts.count != drafts.count { drafts = liveDrafts }
+        let openTools = Set(list.compactMap { $0.approvable?.toolId })
+        if !shownCommands.isSubset(of: openTools) { shownCommands.formIntersection(openTools) }
         newUnseen.formIntersection(live)
         if newUnseen != unseen { unseen = newUnseen }
 
@@ -148,9 +175,7 @@ public final class Store: ObservableObject {
             switch s.status { case "waiting": 0; case "idle": 1; case "busy": 2; default: 3 }
         }
         if let e = editing {
-            let live = list.first { $0.id == e.id }
-            let ok = e.kind == .reply ? live?.canReply == true : live?.approvable != nil
-            if !ok { editing = nil }
+            if list.first(where: { $0.id == e.id })?.allows(e.kind, toolId: e.toolId) != true { editing = nil }
         }
         list.sort { (rank($0), $0.name) < (rank($1), $1.name) }
         if list != sessions { sessions = list }
@@ -160,8 +185,8 @@ public final class Store: ObservableObject {
         let live = sessions.first { $0.id == a.sessionId }
         switch a {
         case .jump: return true
-        case .approve(_, let toolId), .deny(_, let toolId, _): return live?.approvable?.toolId == toolId
-        case .reply: return live?.canReply == true
+        case .approve(_, let toolId), .deny(_, let toolId, _): return live?.allows(.deny, toolId: toolId) == true
+        case .reply: return live?.allows(.reply, toolId: nil) == true
         }
     }
 
