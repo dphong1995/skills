@@ -132,6 +132,9 @@ claude-md/            Khối quy tắc luôn bật, install.sh giữ trong ~/.cl
 cmux/                 Settings của cmux (không thuộc install.sh ở trên, xem mục cmux bên dưới)
 
 hud/                  Statusline OMC HUD (không thuộc install.sh ở trên, xem mục OMC HUD bên dưới)
+
+claude-sessions/      Widget macOS hiện các session Claude Code đang chạy (không thuộc install.sh ở trên, xem mục
+                      Widget Claude sessions bên dưới)
 ```
 
 Chuỗi thiết kế: `brainstorm-pro` → `ck-plan` → `cook` chạy liền mạch, không dừng hỏi ở giữa (trừ
@@ -215,4 +218,42 @@ cd ~/.claude/skills-repo
 cp ~/.claude/hud/omc-hud.mjs ~/.claude/hud/PATCH-NOTES.md hud/
 node -e 'const s=require(process.env.HOME+"/.claude/settings.json");console.log(JSON.stringify({statusLine:s.statusLine,omcHud:s.omcHud},null,2))' > hud/settings.json
 git add hud && git commit -m "..." && git push
+```
+
+## Widget Claude sessions
+
+App macOS nhỏ (SwiftUI, một file `main.swift`), hiện các session Claude Code đang mở trên máy trong một
+widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouTube fullscreen).
+
+- Đọc `~/.claude/sessions/*.json` mỗi giây, file mà mỗi session Claude Code tự ghi: `status` là `busy`
+  (đang chạy), `waiting` (`waitingFor`: `permission prompt` → chờ duyệt, còn lại → chờ trả lời) hoặc
+  `idle` (xong, chờ bạn). Bỏ qua tiến trình đã chết. Không cần hook hay mod.
+- Thu gọn: viên đen gồm chấm trạng thái + số session theo màu (đỏ chờ, cam xong, xanh đang chạy).
+- Rê chuột vào thì mở danh sách (tên, thư mục, trạng thái, thời gian). Session vừa chuyển từ đang chạy
+  sang xong/chờ thì widget tự mở 5 giây và có viền cam 20 giây.
+- Kéo để đổi vị trí (nhớ vị trí). Hướng mở theo vị trí: nửa trên mở xuống, nửa dưới mở lên; phần ba
+  trái/phải mở sang phải/trái. Chuột phải → Thoát.
+
+Cài (cần Command Line Tools: `xcode-select --install`), build ra `~/Applications/ClaudeSessions.app`:
+
+```bash
+bash ~/.claude/skills-repo/claude-sessions/build.sh && open ~/Applications/ClaudeSessions.app
+```
+
+Muốn tự chạy khi đăng nhập: System Settings → General → Login Items → thêm `ClaudeSessions.app`.
+
+Test trạng thái (logic + ảnh PNG của từng trạng thái, không cần quyền Screen Recording):
+
+```bash
+cd ~/.claude/skills-repo/claude-sessions
+swiftc -swift-version 5 -D SNAPSHOT main.swift snapshot.swift -o /tmp/claude-sessions-snap
+/tmp/claude-sessions-snap /tmp/claude-sessions-snap-out   # in PASS/FAIL, ảnh nằm trong thư mục này
+```
+
+Đẩy thay đổi ngược lên repo (bản đang dùng nằm ở `~/.claude/tools/claude-sessions/`):
+
+```bash
+cd ~/.claude/skills-repo
+cp ~/.claude/tools/claude-sessions/{main.swift,snapshot.swift,build.sh} claude-sessions/
+git add claude-sessions && git commit -m "..." && git push
 ```
