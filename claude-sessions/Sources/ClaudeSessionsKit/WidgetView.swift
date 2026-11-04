@@ -23,7 +23,13 @@ func markdown(_ s: String) -> AttributedString {
     guard var a = try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) else {
         return AttributedString(s)
     }
-    for run in a.runs where run.link != nil { a[run.range].link = nil }
+    for run in a.runs {
+        if run.link != nil { a[run.range].link = nil }
+        if run.inlinePresentationIntent?.contains(.code) == true {
+            let bold = run.inlinePresentationIntent?.contains(.stronglyEmphasized) == true
+            a[run.range].font = Font.system(size: 11, weight: bold ? .bold : .regular).monospaced()
+        }
+    }
     return a
 }
 
@@ -111,10 +117,11 @@ public enum WidgetAction: Equatable {
     case jump(String)
     case approve(String, toolId: String)
     case deny(String, toolId: String, reason: String)
+    case openLink(String, URL)
 
     public var sessionId: String {
         switch self {
-        case .jump(let id), .approve(let id, _), .deny(let id, _, _): id
+        case .jump(let id), .approve(let id, _), .deny(let id, _, _), .openLink(let id, _): id
         }
     }
 }
@@ -318,6 +325,14 @@ public struct WidgetView: View {
             }
             .contentShape(Rectangle())
             .onTapGesture { onAction(.jump(s.id)) }
+            if !s.links.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(s.links, id: \.url) { link in
+                        PillButton(title: "↗ \(link.label)") { onAction(.openLink(s.id, link.url)) }
+                    }
+                }
+                .padding(.leading, 18)
+            }
             if let pending = s.pending {
                 approvalBlock(s, pending).padding(.leading, 18)
             }

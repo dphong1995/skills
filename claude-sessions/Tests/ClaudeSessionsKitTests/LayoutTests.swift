@@ -38,6 +38,9 @@ private func session(_ id: String, _ status: String, _ text: String?) -> Session
     var withTodo = session("a", "busy", nil)
     withTodo.todo = Todo(done: 1, total: 4, current: "x")
     #expect(Layout.height(of: withTodo) == CGFloat(36 + 15))
+    var withLinks = session("a", "idle", "hi")
+    withLinks.links = [Link(label: "PR #1", url: URL(string: "https://x.y/pull/1")!)]
+    #expect(Layout.height(of: withLinks) == CGFloat(92 + 22))
 }
 
 @Test func expandedSumsHeights() {

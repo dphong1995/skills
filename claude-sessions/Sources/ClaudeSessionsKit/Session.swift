@@ -16,6 +16,7 @@ struct Session: Identifiable, Equatable {
     var firstPrompt: String? = nil
     var branch: String? = nil
     var todo: Todo? = nil
+    var links: [Link] = []
 }
 
 extension Session {
@@ -80,7 +81,7 @@ public final class Store: ObservableObject {
     private var cache: [String: Cached] = [:]
     private var urls: [String: URL] = [:]
     private var urlTried: [String: Date?] = [:]
-    private var heads: [String: (prompt: String?, fullPrompt: String?, branch: String?, size: Int)] = [:]
+    private var heads: [String: (prompt: String?, fullPrompt: String?, links: [Link], branch: String?, size: Int)] = [:]
     private var todos: [String: (key: TaskKey, todo: Todo?)] = [:]
 
     /// Changes whenever a task file is added, removed or rewritten; sizes cover writes within one timestamp tick.
@@ -96,6 +97,7 @@ public final class Store: ObservableObject {
         var size: Int
         var reply: String?
         var fullReply: String?
+        var links: [Link] = []
         var branch: String?
         var aiTitle: String?
         var pending: PendingState?
@@ -148,33 +150,34 @@ public final class Store: ObservableObject {
         heads[id].map { $0.prompt != nil || $0.size > Transcript.headBytes } ?? false
     }
 
-    private func readHead(for s: Session, url: URL?, size: Int) -> (prompt: String?, branch: String?) {
-        guard let url else { return (nil, nil) }
-        if let h = heads[s.id], headIsFinal(s.id) || h.size == size { return (h.prompt, h.branch) }
+    private func readHead(for s: Session, url: URL?, size: Int) -> (prompt: String?, links: [Link], branch: String?) {
+        guard let url else { return (nil, [], nil) }
+        if let h = heads[s.id], headIsFinal(s.id) || h.size == size { return (h.prompt, h.links, h.branch) }
         let d = Transcript.head(url)
         let full = Transcript.firstPrompt(in: d)
-        let h = (prompt: full.map { Transcript.displayText($0, limit: 140) }, fullPrompt: full, branch: Transcript.gitBranch(in: d, last: false), size: size)
+        let h = (prompt: full.map { Transcript.displayText($0, limit: 140) }, fullPrompt: full, links: full.map(Transcript.links) ?? [], branch: Transcript.gitBranch(in: d, last: false), size: size)
         heads[s.id] = h
-        return (h.prompt, h.branch)
+        return (h.prompt, h.links, h.branch)
     }
 
-    private func readTail(for s: Session, url: URL?, size: Int) -> (reply: String?, pending: PendingState?, branch: String?) {
+    private func readTail(for s: Session, url: URL?, size: Int) -> (reply: String?, links: [Link], pending: PendingState?, branch: String?) {
         // A busy row keeps the branch the last tail read saw.
-        guard s.isFinished, let url else { return (nil, nil, cache[s.id]?.branch) }
+        guard s.isFinished, let url else { return (nil, [], nil, cache[s.id]?.branch) }
         var c = cache[s.id] ?? Cached(since: s.since, size: -1, reply: nil, branch: nil, pending: nil)
         let prompt = s.isPermissionPrompt
-        if c.size == size && c.since == s.since && c.prompt == prompt { return (c.reply, c.pending, c.branch) }
+        if c.size == size && c.since == s.since && c.prompt == prompt { return (c.reply, c.links, c.pending, c.branch) }
         c.since = s.since
         c.size = size
         c.prompt = prompt
         let tail = Transcript.tail(url)
         c.fullReply = Transcript.lastReply(in: tail)
         c.reply = c.fullReply.map { Transcript.displayText($0, limit: 600) }
+        c.links = c.fullReply.map(Transcript.links) ?? []
         c.branch = Transcript.gitBranch(in: tail, last: true)
         c.pending = prompt ? Transcript.pending(in: tail) : nil
         if let t = Transcript.lastAITitle(in: tail) { c.aiTitle = t }
         cache[s.id] = c
-        return (c.reply, c.pending, c.branch)
+        return (c.reply, c.links, c.pending, c.branch)
     }
 
     public func refresh(at date: Date = Date()) {
@@ -208,6 +211,8 @@ public final class Store: ObservableObject {
             s.aiTitle = cache[s.id]?.aiTitle
             s.branch = t.branch ?? head.branch
             s.lastReply = t.reply
+            var seen = Set<URL>()
+            s.links = Array((head.links + (s.isFinished ? t.links : [])).filter { seen.insert($0.url).inserted }.prefix(3))
             s.todo = readTodo(for: s)
             if s.isPermissionPrompt { s.pending = t.pending }
             list.append(s)
@@ -265,7 +270,7 @@ public final class Store: ObservableObject {
     public func stillValid(_ a: WidgetAction) -> Bool {
         let live = sessions.first { $0.id == a.sessionId }
         switch a {
-        case .jump: return true
+        case .jump, .openLink: return true
         case .approve(_, let toolId), .deny(_, let toolId, _): return live?.allows(.deny, toolId: toolId) == true
         }
     }

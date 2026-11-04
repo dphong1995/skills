@@ -132,8 +132,9 @@ struct SnapshotTests {
     @Test func renderLongContent() {
         let dir = makeTempDir(), projects = makeTempDir()
         let store = makeStore(dir: dir, projects: projects)
-        let reply = "Đã xong. **bold** và `code` xem https://talosix.atlassian.net/browse/T6IR-14728 " + String(repeating: "nội dung dài ", count: 70)
-        _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine(String(repeating: "Hãy sửa lỗi đăng nhập ", count: 6)), assistantLine(reply)])
+        let reply = "Đã xong. **bold** và `code iiWW` xem https://talosix.atlassian.net/browse/T6IR-14728 " + String(repeating: "nội dung dài ", count: 70)
+            + " https://bitbucket.org/t/r/pull-requests/6867 https://github.com/x/y/pull/12"
+        _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine("/cook https://talosix.atlassian.net/browse/T6IR-14500 " + String(repeating: "Hãy sửa lỗi đăng nhập ", count: 6)), assistantLine(reply)])
         writeSession(dir, "a", pid: me, status: "idle", ageSec: 30, name: "talo6-dct-frontend-d7", cwd: frontend)
         writeSession(dir, "b", pid: me, status: "busy", ageSec: 90, name: "short-title", cwd: backend, nameSource: "user")
         store.refresh(at: Date())
@@ -144,7 +145,7 @@ struct SnapshotTests {
     @Test func renderScroll() {
         let dir = makeTempDir(), projects = makeTempDir()
         let store = makeStore(dir: dir, projects: projects)
-        for i in 0..<8 {
+        for i in 0..<12 {
             _ = writeTranscript(projects, cwd: frontend, id: "s\(i)", lines: [assistantLine(String(repeating: "câu trả lời dài \(i) ", count: 40))])
             writeSession(dir, "s\(i)", pid: me, status: "idle", ageSec: Double(30 + i), name: "session-\(i)", cwd: frontend)
         }

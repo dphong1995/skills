@@ -11,6 +11,11 @@ enum PendingState: Equatable {
     case unclear(count: Int)
 }
 
+public struct Link: Equatable {
+    public let label: String
+    public let url: URL
+}
+
 enum Transcript {
     /// How much of a transcript's start is read for the first prompt and branch.
     static let headBytes = 65_536
@@ -85,6 +90,14 @@ enum Transcript {
             }
             guard let range = Range(r, in: s), let url = URL(string: String(s[range])) else { return nil }
             return (range, url)
+        }
+    }
+
+    /// The links in `text` in order of appearance (markdown links count as their URL), duplicate URLs dropped.
+    static func links(in text: String) -> [Link] {
+        var seen = Set<String>()
+        return urlRanges(in: text).compactMap { _, url in
+            seen.insert(url.absoluteString).inserted ? Link(label: label(for: url), url: url) : nil
         }
     }
 

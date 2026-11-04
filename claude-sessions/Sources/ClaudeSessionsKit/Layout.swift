@@ -51,7 +51,7 @@ public enum Layout {
 
     static func height(of s: Session) -> CGFloat {
         (s.isFinished && s.lastReply != nil ? replyRowHeight : rowHeight) + (s.todo != nil ? todoHeight : 0)
-            + (s.title.count > 60 ? 16 : 0)
+            + (s.title.count > 60 ? 16 : 0) + (s.links.isEmpty ? 0 : 22)
     }
 
     static func expanded(_ sessions: [Session]) -> CGSize {

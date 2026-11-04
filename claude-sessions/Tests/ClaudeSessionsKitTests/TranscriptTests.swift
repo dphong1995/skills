@@ -169,3 +169,25 @@ private func bash(_ id: String, _ cmd: String = "npm test") -> String {
     #expect(a.runs.allSatisfy { $0.link == nil })
     #expect(String(markdown("**open").characters) == "**open")
 }
+
+@Test func linksInOrderDeduped() {
+    let links = Transcript.links(in: "a https://github.com/x/y/pull/1, b [t](https://talosix.atlassian.net/browse/T6IR-1). https://github.com/x/y/pull/1")
+    #expect(links == [Link(label: "PR #1", url: URL(string: "https://github.com/x/y/pull/1")!),
+                      Link(label: "T6IR-1", url: URL(string: "https://talosix.atlassian.net/browse/T6IR-1")!)])
+}
+
+@Test func linksStripTrailingPunctuation() {
+    let links = Transcript.links(in: "see https://bitbucket.org/t/r/pull-requests/7562**.")
+    #expect(links.count == 1)
+    #expect(links[0].url.absoluteString.hasSuffix("/7562"))
+}
+
+@Test func linksNone() {
+    #expect(Transcript.links(in: "no links here").isEmpty)
+}
+
+@Test func markdownCodeRunsGetMonospacedFont() {
+    let a = markdown("plain **bold** `code`")
+    let withFont = a.runs.filter { $0.font != nil }.map { String(a[$0.range].characters) }
+    #expect(withFont == ["code"])
+}

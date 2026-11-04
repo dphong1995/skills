@@ -107,6 +107,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func handle(_ a: WidgetAction) {
         let id = a.sessionId
+        if case .openLink(_, let url) = a {
+            NSWorkspace.shared.open(url)
+            store.markSeen(id)
+            return
+        }
         if case .jump = a {
             store.markSeen(id)
             resolveSurface(id) { surface in

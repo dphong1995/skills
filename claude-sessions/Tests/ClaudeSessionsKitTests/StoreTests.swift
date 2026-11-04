@@ -442,3 +442,33 @@ private func approvableStore() -> (Store, URL, URL, URL) {
     #expect(reply?.hasSuffix("…") == true)
     #expect(reply?.count == 601)
 }
+
+private let jira = "https://talosix.atlassian.net/browse/T6IR-14728"
+
+@Test func sessionLinksIncludeLateReplyLink() {
+    let dir = makeTempDir(), projects = makeTempDir()
+    let store = makeStore(dir: dir, projects: projects)
+    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [assistantLine(String(repeating: "x", count: 1700) + " https://bitbucket.org/t/r/pull-requests/6867")])
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(store.sessions.first?.links.map(\.label) == ["PR #6867"])
+}
+
+private func linkStore(status: String) -> Store {
+    let dir = makeTempDir(), projects = makeTempDir()
+    let store = makeStore(dir: dir, projects: projects)
+    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [
+        userLine("/cook \(jira)"),
+        assistantLine("PRs https://github.com/a/b/pull/1 https://github.com/a/b/pull/2 https://github.com/a/b/pull/3 and \(jira)")])
+    writeSession(dir, "a", pid: me, status: status, ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    return store
+}
+
+@Test func sessionLinksPromptFirstMaxThree() {
+    #expect(linkStore(status: "idle").sessions.first?.links.map(\.label) == ["T6IR-14728", "PR #1", "PR #2"])
+}
+
+@Test func busyRowHasOnlyPromptLinks() {
+    #expect(linkStore(status: "busy").sessions.first?.links.map(\.label) == ["T6IR-14728"])
+}
