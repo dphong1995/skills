@@ -165,10 +165,8 @@ public struct WidgetView: View {
     private func header(expanded: Bool) -> some View {
         Group {
             if expanded {
-                HStack(spacing: 7) {
-                    Spacer(minLength: 6)
-                    groups(expanded: true, dot: 3, gap: 7)
-                }
+                groups(expanded: true, dot: 3, gap: 7)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             } else {
                 // Two-digit counts fall back to the tight spacing.
                 ViewThatFits(in: .horizontal) {
