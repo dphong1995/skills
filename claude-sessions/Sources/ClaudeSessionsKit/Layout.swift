@@ -38,7 +38,17 @@ public enum Layout {
     static let listPaddingFar: CGFloat = 10
     static let listPadding = listPaddingNear + listPaddingFar
     static var maxListHeight: CGFloat { maxExpandedHeight - headerHeight }
-    public static let collapsed = CGSize(width: 232, height: headerHeight)
+    public static let collapsed = CGSize(width: 124, height: headerHeight)
+    static let bgOpacities: [Double] = [0, 0.25, 0.5, 0.75, 0.92]
+
+    /// Shifts a saved pill x when the collapsed width changed, keeping the anchored edge (or centre) in place.
+    public static func migrate(pillX x: CGFloat, from old: CGFloat, to new: CGFloat, anchor: Anchor) -> CGFloat {
+        switch anchor.h {
+        case .trailing: x + (old - new)
+        case .center: x + (old - new) / 2
+        case .leading: x
+        }
+    }
     static let dragThreshold: CGFloat = 4
 
     static func isDrag(from a: CGPoint, to b: CGPoint) -> Bool {

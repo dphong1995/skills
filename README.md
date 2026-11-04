@@ -245,7 +245,7 @@ widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouT
 - Đọc `~/.claude/sessions/*.json` mỗi giây, file mà mỗi session Claude Code tự ghi: `status` là `busy`
   (đang chạy), `waiting` (`waitingFor`: `permission prompt` → chờ duyệt, còn lại → chờ trả lời) hoặc
   `idle` (xong, chờ bạn). Bỏ qua tiến trình đã chết. Không cần hook hay mod.
-- Thu gọn: viên đen gồm chấm trạng thái + số session theo màu (đỏ chờ, cam xong, xanh đang chạy).
+- Thu gọn: viên nhỏ chỉ có chấm trạng thái + số session theo màu (đỏ chờ, cam xong, xanh đang chạy).
 - Rê chuột vào thì mở danh sách rộng 520 pt (tiêu đề, `thư mục · nhánh`, trạng thái, thời gian). Session vừa chuyển từ đang chạy
   sang xong/chờ thì widget tự mở 5 giây.
 - Tên dòng lấy theo thứ tự: tên đặt bằng `/rename` → tiêu đề AI → prompt đầu (bỏ `/clear`, lệnh không đối số,
@@ -256,7 +256,7 @@ widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouT
 - Dòng `chờ duyệt` hiện lệnh hoặc file đang xin duyệt (đọc từ transcript); nhiều tool cùng chờ hoặc tool
   lạ thì hiện "Cần duyệt trong cmux".
 - Kéo để đổi vị trí (nhớ vị trí). Hướng mở theo vị trí: nửa trên mở xuống, nửa dưới mở lên; phần ba
-  trái/phải mở sang phải/trái. Chuột phải → Tắt tiếng / Bật tiếng, Thoát.
+  trái/phải mở sang phải/trái. Chuột phải → `Độ đậm nền` (0/25/50/75/92%, mặc định 25%, nhớ sau khi mở lại; chỉ áp cho viên thu gọn, khung danh sách luôn nền đậm), `Tắt tiếng` / `Bật tiếng`, `Thoát`.
 - Âm báo: session vừa xong (chạy → xong) kêu `Glass`, session vừa chuyển sang chờ bạn (chạy → chờ) kêu `Funk`; mỗi giây tối đa một tiếng, `Funk` ưu tiên, lần quét đầu không kêu. Chuột phải → `Tắt tiếng` / `Bật tiếng`, lựa chọn được nhớ sau khi mở lại app.
 - Bấm một dòng → cmux lên trước, đúng pane của session đó. Session không chạy trong cmux thì chỉ kêu beep.
 - Lần đầu macOS hỏi quyền "ClaudeSessions điều khiển cmux" (có thể hỏi lại sau mỗi lần build). Quyền Automation

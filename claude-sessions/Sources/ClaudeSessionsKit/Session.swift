@@ -74,6 +74,7 @@ public final class Store: ObservableObject {
     @Published public var peekUntil: Date?
     @Published public var anchor = Anchor()
     @Published public var muted = false
+    @Published public var bgOpacity: Double = 0.25
     public private(set) var chime: Chime?
 
     var expanded: Bool { hovering || editing != nil || (peekUntil.map { now < $0 } ?? false) }

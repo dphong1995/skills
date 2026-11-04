@@ -189,6 +189,32 @@ struct SnapshotTests {
         render(store, "11-pending-hover")
     }
 
+    @Test func renderCollapsedOpacity() {
+        let dir = makeTempDir()
+        let store = makeStore(dir: dir)
+        writeSession(dir, "a", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 5, name: "a", cwd: frontend)
+        writeSession(dir, "b", pid: me, status: "idle", ageSec: 5, name: "b", cwd: backend)
+        writeSession(dir, "c", pid: me, status: "busy", ageSec: 5, name: "c", cwd: backend)
+        store.refresh(at: Date())
+        for (v, name) in [(0.0, "0"), (0.25, "25"), (0.92, "92")] {
+            store.bgOpacity = v
+            render(store, "20-collapsed-opacity-\(name)")
+        }
+        store.bgOpacity = 0
+        store.hovering = true
+        render(store, "20-expanded-at-0")
+    }
+
+    @Test func renderCollapsedTwoDigits() {
+        let dir = makeTempDir()
+        let store = makeStore(dir: dir)
+        for i in 0..<10 { writeSession(dir, "w\(i)", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 5, name: "w\(i)", cwd: frontend) }
+        for i in 0..<11 { writeSession(dir, "i\(i)", pid: me, status: "idle", ageSec: 5, name: "i\(i)", cwd: frontend) }
+        for i in 0..<12 { writeSession(dir, "b\(i)", pid: me, status: "busy", ageSec: 5, name: "b\(i)", cwd: frontend) }
+        store.refresh(at: Date())
+        render(store, "21-collapsed-two-digits")
+    }
+
     @Test func renderFinishedCollapsed() {
         let dir = makeTempDir()
         let store = makeStore(dir: dir)

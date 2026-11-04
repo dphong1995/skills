@@ -24,6 +24,20 @@ func canvasPillRoundTrip(a: Anchor) {
     #expect(scr.contains(open))
 }
 
+@Test func migrateShiftsByAnchor() {
+    #expect(Layout.migrate(pillX: 1280, from: 232, to: 124, anchor: Anchor(h: .trailing)) == 1388)
+    #expect(Layout.migrate(pillX: 600, from: 232, to: 124, anchor: Anchor(h: .center)) == 654)
+    #expect(Layout.migrate(pillX: 40, from: 232, to: 124, anchor: Anchor(h: .leading)) == 40)
+}
+
+@Test func migrateNoOpWhenWidthUnchanged() {
+    #expect(Layout.migrate(pillX: 1388, from: 124, to: 124, anchor: Anchor(h: .trailing)) == 1388)
+}
+
+@Test func collapsedWidth() {
+    #expect(Layout.collapsed == CGSize(width: 124, height: 32))
+}
+
 private func session(_ id: String, _ status: String, _ text: String?) -> Session {
     Session(id: id, name: id, cwd: "/x", status: status, waitingFor: nil, since: nil, lastReply: text)
 }

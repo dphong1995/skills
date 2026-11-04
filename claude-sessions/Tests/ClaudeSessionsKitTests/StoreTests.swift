@@ -640,3 +640,9 @@ func activitySurvivesDuplicateSessionIdOrder(busyFile: String, idleFile: String)
     store.refresh(at: t0.addingTimeInterval(2))
     #expect(store.chime == nil)
 }
+
+@Test func bgOpacityDefault() {
+    let store = makeStore(dir: makeTempDir())
+    #expect(store.bgOpacity == 0.25)
+    #expect(Layout.bgOpacities == [0, 0.25, 0.5, 0.75, 0.92])
+}

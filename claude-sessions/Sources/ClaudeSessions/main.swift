@@ -47,7 +47,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let d = UserDefaults.standard
         if d.object(forKey: "pillX") != nil {
-            place(pillOrigin: CGPoint(x: d.double(forKey: "pillX"), y: d.double(forKey: "pillY")))
+            var x = d.double(forKey: "pillX")
+            let y = d.double(forKey: "pillY")
+            let w = d.object(forKey: "pillWidth") as? Double ?? 232
+            if w != Layout.collapsed.width {
+                let centre = CGPoint(x: x + w / 2, y: y + Layout.collapsed.height / 2)
+                if let f = (NSScreen.screens.first { $0.frame.contains(centre) } ?? NSScreen.main)?.frame {
+                    x = Layout.migrate(pillX: x, from: w, to: Layout.collapsed.width, anchor: Anchor.near(centre, in: f))
+                }
+            }
+            place(pillOrigin: CGPoint(x: x, y: y))
         } else if let s = NSScreen.main?.visibleFrame {
             place(pillOrigin: CGPoint(x: s.maxX - Layout.collapsed.width - 16, y: s.maxY - Layout.collapsed.height - 10))
         }
@@ -61,6 +70,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         store.muted = UserDefaults.standard.bool(forKey: "muted")
         store.$muted.dropFirst().sink { UserDefaults.standard.set($0, forKey: "muted") }.store(in: &cancellables)
+        store.bgOpacity = UserDefaults.standard.object(forKey: "bgOpacity") as? Double ?? 0.25
+        store.$bgOpacity.dropFirst().sink { UserDefaults.standard.set($0, forKey: "bgOpacity") }.store(in: &cancellables)
 
         if SMAppService.mainApp.status != .enabled { try? SMAppService.mainApp.register() }
         refreshAndSyncVisibility()
@@ -155,6 +166,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.setFrame(Layout.canvasFrame(pillOrigin: o, anchor: store.anchor), display: true)
         UserDefaults.standard.set(Double(o.x), forKey: "pillX")
         UserDefaults.standard.set(Double(o.y), forKey: "pillY")
+        UserDefaults.standard.set(Double(Layout.collapsed.width), forKey: "pillWidth")
     }
 
     func settle() {

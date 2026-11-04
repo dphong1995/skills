@@ -163,6 +163,7 @@ public struct WidgetView: View {
     public var body: some View {
         let expanded = store.expanded
         let radius: CGFloat = expanded ? 20 : Layout.headerHeight / 2
+        let o = expanded ? 0.92 : store.bgOpacity
 
         VStack(spacing: 0) {
             if expanded && store.anchor.up { list }
@@ -178,12 +179,18 @@ public struct WidgetView: View {
         }
         .frame(maxHeight: expanded ? Layout.maxExpandedHeight : nil, alignment: store.anchor.up ? .bottom : .top)
         .fixedSize(horizontal: false, vertical: expanded)
-        .background(RoundedRectangle(cornerRadius: radius, style: .continuous).fill(Color.black.opacity(0.92)))
+        .background(RoundedRectangle(cornerRadius: radius, style: .continuous).fill(Color.black.opacity(o)))
         .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous)
-            .stroke(Color.white.opacity(0.14), lineWidth: 1))
+            .stroke(Color.white.opacity(0.14 * o / 0.92), lineWidth: 1))
         .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
-        .shadow(color: .black.opacity(0.4), radius: expanded ? 12 : 6, y: 3)
+        .contentShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+        .shadow(color: .black.opacity(0.4 * o / 0.92), radius: expanded ? 12 : 6, y: 3)
         .contextMenu {
+            Menu("Độ đậm nền") {
+                ForEach(Layout.bgOpacities, id: \.self) { v in
+                    Button("\(store.bgOpacity == v ? "✓ " : "")\(Int((v * 100).rounded()))%") { store.bgOpacity = v }
+                }
+            }
             Button(store.muted ? "Bật tiếng" : "Tắt tiếng") { store.muted.toggle() }
             Button("Thoát") { NSApp.terminate(nil) }
         }
@@ -231,10 +238,13 @@ public struct WidgetView: View {
     private func header(expanded: Bool) -> some View {
         let counts = Dictionary(grouping: store.sessions, by: \.status).mapValues(\.count)
         let u = urgent
-        return HStack(spacing: 7) {
-            PulseDot(color: u.color, pulsing: u.pulsing)
-            Text("Claude").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(.white)
-            Spacer(minLength: 6)
+        let glow = Color.black.opacity(0.6)
+        return HStack(spacing: expanded ? 7 : 6) {
+            PulseDot(color: u.color, pulsing: u.pulsing).shadow(color: expanded ? .clear : glow, radius: 1.5)
+            if expanded {
+                Text("Claude").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(.white)
+                Spacer(minLength: 6)
+            }
             if store.sessions.isEmpty {
                 Text("–").font(.system(size: 12)).foregroundStyle(.white.opacity(0.5))
             }
@@ -242,12 +252,14 @@ public struct WidgetView: View {
                 if let n = counts[st] {
                     HStack(spacing: 3) {
                         Circle().fill(color(st)).frame(width: 6, height: 6)
-                        Text("\(n)").font(.system(size: 12, weight: .semibold).monospacedDigit()).foregroundStyle(.white)
+                        Text("\(n)").font(.system(size: 12, weight: .semibold).monospacedDigit()).foregroundStyle(.white).fixedSize()
                     }
+                    .shadow(color: expanded ? .clear : glow, radius: 1.5)
                 }
             }
+            if !expanded { Spacer(minLength: 0) }
         }
-        .padding(.horizontal, expanded ? 18 : 13)
+        .padding(.horizontal, expanded ? 18 : 12)
     }
 
     private func approvalBlock(_ s: Session, _ pending: PendingState) -> some View {
