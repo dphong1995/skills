@@ -276,6 +276,13 @@ public struct WidgetView: View {
     private func groups(expanded: Bool, dot: CGFloat, gap: CGFloat) -> some View {
         let counts = Dictionary(grouping: store.sessions, by: \.status).mapValues(\.count)
         return HStack(spacing: gap) {
+            if store.newCount > 0 {
+                HStack(spacing: dot) {
+                    Text("✦").font(.system(size: 11, weight: .bold)).fixedSize()
+                    Text("\(store.newCount)").font(.system(size: 12, weight: .semibold).monospacedDigit()).fixedSize()
+                }
+                .foregroundStyle(.yellow)
+            }
             if store.sessions.isEmpty {
                 HStack(spacing: 6) {
                     if !expanded { Circle().fill(.gray).frame(width: 6, height: 6) }
@@ -347,6 +354,7 @@ public struct WidgetView: View {
 
     private func row(_ s: Session) -> some View {
         let editing = panel.editing?.id == s.id
+        let fresh = store.unseen.contains(s.id)
         return VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 10) {
                 Circle().fill(color(s.status)).frame(width: 8, height: 8)
@@ -370,6 +378,11 @@ public struct WidgetView: View {
                     }
                 }
                 Spacer(minLength: 12)
+                if fresh {
+                    Text("MỚI").font(.system(size: 9.5, weight: .bold)).foregroundStyle(.black)
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(Capsule().fill(.yellow))
+                }
                 Text(label(s)).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(color(s.status))
                 Text(elapsed(s.since, store.now)).font(.system(size: 11.5).monospacedDigit())
                     .foregroundStyle(.white.opacity(0.55)).frame(minWidth: 36, alignment: .trailing)
@@ -410,6 +423,10 @@ public struct WidgetView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
         .frame(minHeight: Layout.rowHeight)
+        .background(fresh ? Color.yellow.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 8))
+        .overlay(alignment: .leading) {
+            if fresh { Capsule().fill(.yellow).frame(width: 3).padding(.vertical, 4) }
+        }
     }
 }
 

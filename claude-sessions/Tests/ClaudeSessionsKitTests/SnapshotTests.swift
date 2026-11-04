@@ -225,6 +225,41 @@ struct SnapshotTests {
         render(store, panel, "21-collapsed-two-digits")
     }
 
+    private func newMarkStore(_ dir: URL, waiting: Int, idle: Int, busy: Int) -> Store {
+        let store = makeStore(dir: dir)
+        for i in 0..<waiting { writeSession(dir, "w\(i)", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 5, name: "w\(i)", cwd: frontend) }
+        for i in 0..<idle { writeSession(dir, "i\(i)", pid: me, status: "idle", ageSec: 5, name: "i\(i)", cwd: backend) }
+        for i in 0..<busy { writeSession(dir, "b\(i)", pid: me, status: "busy", ageSec: 5, name: "b\(i)", cwd: backend) }
+        store.refresh(at: Date())
+        return store
+    }
+
+    @Test func renderCollapsedNew() {
+        let store = newMarkStore(makeTempDir(), waiting: 1, idle: 2, busy: 1)
+        store.unseen = ["w0", "i1"]
+        render(store, PanelState(), "22-collapsed-new")
+    }
+
+    @Test func renderCollapsedNewTwoDigits() {
+        let store = newMarkStore(makeTempDir(), waiting: 3, idle: 12, busy: 1)
+        store.unseen = Set((0..<12).map { "i\($0)" })
+        render(store, PanelState(), "23-collapsed-new-two-digits")
+    }
+
+    @Test func renderCollapsedNoNew() {
+        let store = newMarkStore(makeTempDir(), waiting: 1, idle: 2, busy: 1)
+        store.unseen = []
+        render(store, PanelState(), "24-collapsed-no-new")
+    }
+
+    @Test func renderExpandedNew() {
+        let store = newMarkStore(makeTempDir(), waiting: 1, idle: 2, busy: 1)
+        store.unseen = ["i1"]
+        let panel = PanelState()
+        panel.hovering = true
+        render(store, panel, "25-expanded-new")
+    }
+
     @Test func renderFinishedCollapsed() {
         let dir = makeTempDir()
         let store = makeStore(dir: dir)

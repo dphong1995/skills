@@ -35,7 +35,7 @@ func canvasPillRoundTrip(a: Anchor) {
 }
 
 @Test func collapsedWidth() {
-    #expect(Layout.collapsed == CGSize(width: 104, height: 32))
+    #expect(Layout.collapsed == CGSize(width: 126, height: 32))
 }
 
 private func session(_ id: String, _ status: String, _ text: String?) -> Session {
@@ -102,12 +102,12 @@ private func session(_ id: String, _ status: String, _ text: String?) -> Session
 
 @Test func settledPillOriginKeepsDroppedCard() {
     #expect(Layout.settledPillOrigin(card: NSRect(x: 0, y: 500, width: 520, height: 400), screen: scr) == CGPoint(x: 0, y: 868))
-    #expect(Layout.settledPillOrigin(card: NSRect(x: 992, y: 582, width: 520, height: 400), screen: scr) == CGPoint(x: 1408, y: 950))
+    #expect(Layout.settledPillOrigin(card: NSRect(x: 992, y: 582, width: 520, height: 400), screen: scr) == CGPoint(x: 1386, y: 950))
     #expect(Layout.settledPillOrigin(card: NSRect(x: 0, y: 20, width: 520, height: 400), screen: scr) == CGPoint(x: 0, y: 20))
 }
 
 @Test func settledPillOriginCollapsedIsIdentity() {
-    for o in [CGPoint(x: 1388, y: 950), CGPoint(x: 100, y: 50), CGPoint(x: 694, y: 950)] {
+    for o in [CGPoint(x: 1370, y: 950), CGPoint(x: 100, y: 50), CGPoint(x: 694, y: 950)] {
         let r = NSRect(origin: o, size: Layout.collapsed)
         #expect(Layout.settledPillOrigin(card: r, screen: scr) == o)
     }
@@ -138,8 +138,8 @@ private let ext = NSRect(x: 1512, y: 0, width: 2560, height: 1440)
 
 @Test func relativeOriginKeepsEdgeDistances() {
     let t = Anchor(h: .trailing, up: false)
-    #expect(Layout.relativeOrigin(CGPoint(x: scr.maxX - 104 - 16, y: scr.maxY - 32 - 10), from: scr, to: ext, anchor: t)
-        == CGPoint(x: ext.maxX - 120, y: ext.maxY - 42))
+    #expect(Layout.relativeOrigin(CGPoint(x: scr.maxX - 126 - 16, y: scr.maxY - 32 - 10), from: scr, to: ext, anchor: t)
+        == CGPoint(x: ext.maxX - 142, y: ext.maxY - 42))
     let l = Anchor(h: .leading, up: true)
     #expect(Layout.relativeOrigin(CGPoint(x: scr.minX + 20, y: scr.minY + 30), from: scr, to: ext, anchor: l)
         == CGPoint(x: ext.minX + 20, y: ext.minY + 30))
