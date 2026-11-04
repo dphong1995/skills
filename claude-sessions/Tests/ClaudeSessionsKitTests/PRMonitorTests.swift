@@ -524,6 +524,66 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         #expect(snap.events.isEmpty)
     }
 
+    @Test func reviewedReviewIsSlowPolledUntilItFlipsToApproved() {
+        let api = fake(open: [prJSON(id: 7571, comments: 1)])
+        setStatuses(api, rabbitStatus(description: "Review completed", created: Self.started))
+        api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 1**", at: Self.later)]])
+        let m = monitor(api)
+        m.update([target([prRef(7571)])], at: t0)
+        #expect(rabbitOf(m) == .reviewed(findings: 1))
+        _ = m.takeSnapshot()
+        let n = api.requests(containing: "/statuses")
+        m.update([target([prRef(7571)])], at: t0 + 299)
+        #expect(api.requests(containing: "/statuses") == n)
+        setStatuses(api, rabbitStatus(description: "Review approved", created: Self.started))
+        m.update([target([prRef(7571)])], at: t0 + 700)
+        #expect(api.requests(containing: "/statuses") == n + 1)
+        let snap = m.takeSnapshot()
+        #expect(snap.prs["s"]?.first?.rabbit == .approved)
+        #expect(CodeRabbit.label(.approved) == "🐰 đã duyệt")
+        #expect(snap.events == [.rabbitDone])
+    }
+
+    @Test func settledRabbitKindsAreNotSlowPolled() {
+        let cases: [(String, String)] = [("SUCCESSFUL", "Review approved"), ("SUCCESSFUL", "Review skipped"), ("FAILED", "Review failed")]
+        for (state, description) in cases {
+            let api = fake(open: [prJSON(id: 7571, comments: 1)])
+            setStatuses(api, rabbitStatus(state: state, description: description, created: Self.started))
+            let m = monitor(api)
+            m.update([target([prRef(7571)])], at: t0)
+            let n = api.requests(containing: "/statuses")
+            m.update([target([prRef(7571)])], at: t0 + 700)
+            m.update([target([prRef(7571)])], at: t0 + 1400)
+            #expect(api.requests(containing: "/statuses") == n, "\(description)")
+        }
+    }
+
+    @Test func slowPollAfterOverrideWithStatusStillInProgressChangesNothing() {
+        let api = fake(open: [prJSON(id: 7571, comments: 1)])
+        let m = overriddenMonitor(api)
+        _ = m.takeSnapshot()
+        let statuses = api.requests(containing: "/statuses")
+        let comments = api.requests(containing: "/comments")
+        m.update([target([prRef(7571)])], at: t0 + 700)
+        #expect(api.requests(containing: "/statuses") == statuses + 1)
+        #expect(api.requests(containing: "/comments") == comments)
+        #expect(rabbitOf(m) == .reviewed(findings: 1))
+        #expect(m.takeSnapshot().events.isEmpty)
+    }
+
+    @Test func closedPRIsNeverSlowPolled() {
+        let api = fake(open: [prJSON(id: 7571, comments: 1)])
+        setStatuses(api, rabbitStatus(description: "Review completed", created: Self.started))
+        let m = monitor(api)
+        m.update([target([prRef(7571)])], at: t0)
+        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": []])
+        api.set("/talo6-dct-backend/pullrequests/7571?", json: prJSON(id: 7571, state: "MERGED"))
+        m.update([target([prRef(7571)])], at: t0 + 61)
+        let n = api.requests(containing: "/statuses")
+        m.update([target([prRef(7571)])], at: t0 + 700)
+        #expect(api.requests(containing: "/statuses") == n)
+    }
+
     @Test func statusAppearingAfterWindowIsPickedUpByTheSlowPoll() {
         let api = fake(open: [prJSON(id: 7571, comments: 1)])
         api.set("/statuses", json: ["values": []])

@@ -263,8 +263,11 @@ public final class PRMonitor {
                 if headSeen[ref].map({ $0.commit != pr.commit }) ?? true { headSeen[ref] = (pr.commit, now) }
                 let inWindow = now.timeIntervalSince(headSeen[ref]!.at) < Self.rabbitWait
                 let rabbitPending = prev?.rabbit == .reviewing || (prev?.rabbit == nil && inWindow)
-                // After the window a missing pipeline or CodeRabbit status is still looked for, at a slow rate.
-                let slowPoll = !inWindow && (pr.pipeline == nil || prev?.rabbit == nil)
+                // A missing pipeline or CodeRabbit status (after the window) and a finished review (a later approval or
+                // failure) are still looked for, at a slow rate.
+                var reviewed = false
+                if case .reviewed? = prev?.rabbit { reviewed = true }
+                let slowPoll = (reviewed || (!inWindow && (pr.pipeline == nil || prev?.rabbit == nil)))
                     && statusesAt[ref].map { now.timeIntervalSince($0) >= Self.statusesSlowPoll } ?? true
                 if prev == nil || prev?.commit != pr.commit || (pr.pipeline == nil && inWindow) || pr.pipeline == .running
                     || rabbitPending || prev?.comments != pr.comments || !statusesFetched.contains(ref) || slowPoll {
