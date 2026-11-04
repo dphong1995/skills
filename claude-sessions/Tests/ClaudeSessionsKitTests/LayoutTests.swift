@@ -35,7 +35,7 @@ func canvasPillRoundTrip(a: Anchor) {
 }
 
 @Test func collapsedWidth() {
-    #expect(Layout.collapsed == CGSize(width: 124, height: 32))
+    #expect(Layout.collapsed == CGSize(width: 104, height: 32))
 }
 
 private func session(_ id: String, _ status: String, _ text: String?) -> Session {
@@ -101,7 +101,7 @@ private func session(_ id: String, _ status: String, _ text: String?) -> Session
 
 @Test func settledPillOriginKeepsDroppedCard() {
     #expect(Layout.settledPillOrigin(card: NSRect(x: 0, y: 500, width: 520, height: 400), screen: scr) == CGPoint(x: 0, y: 868))
-    #expect(Layout.settledPillOrigin(card: NSRect(x: 992, y: 582, width: 520, height: 400), screen: scr) == CGPoint(x: 1388, y: 950))
+    #expect(Layout.settledPillOrigin(card: NSRect(x: 992, y: 582, width: 520, height: 400), screen: scr) == CGPoint(x: 1408, y: 950))
     #expect(Layout.settledPillOrigin(card: NSRect(x: 0, y: 20, width: 520, height: 400), screen: scr) == CGPoint(x: 0, y: 20))
 }
 

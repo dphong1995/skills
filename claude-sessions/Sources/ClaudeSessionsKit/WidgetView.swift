@@ -243,22 +243,40 @@ public struct WidgetView: View {
     }
 
     private func header(expanded: Bool) -> some View {
+        Group {
+            if expanded {
+                HStack(spacing: 7) {
+                    PulseDot(color: urgent.color, pulsing: urgent.pulsing)
+                    Text("Claude").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(.white)
+                    Spacer(minLength: 6)
+                    groups(expanded: true, dot: 3, gap: 7)
+                }
+            } else {
+                // The pulsing dot's ring (an overlay, 2.4x wide) needs room before the count; two-digit counts fall back to the tight spacing.
+                ViewThatFits(in: .horizontal) {
+                    groups(expanded: false, dot: 6, gap: 10)
+                    groups(expanded: false, dot: 3, gap: 6)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .shadow(color: expanded ? .clear : Color.black.opacity(0.6), radius: 1.5)
+        .padding(.horizontal, expanded ? 18 : 12)
+    }
+
+    private func groups(expanded: Bool, dot: CGFloat, gap: CGFloat) -> some View {
         let counts = Dictionary(grouping: store.sessions, by: \.status).mapValues(\.count)
         let u = urgent
-        let glow = Color.black.opacity(0.6)
-        return HStack(spacing: expanded ? 7 : 6) {
-            if expanded {
-                PulseDot(color: u.color, pulsing: u.pulsing)
-                Text("Claude").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(.white)
-                Spacer(minLength: 6)
-            }
+        return HStack(spacing: gap) {
             if store.sessions.isEmpty {
-                if !expanded { Circle().fill(.gray).frame(width: 6, height: 6) }
-                Text("–").font(.system(size: 12)).foregroundStyle(.white.opacity(0.5))
+                HStack(spacing: 6) {
+                    if !expanded { Circle().fill(.gray).frame(width: 6, height: 6) }
+                    Text("–").font(.system(size: 12)).foregroundStyle(.white.opacity(0.5))
+                }
             }
             ForEach(["waiting", "idle", "busy"], id: \.self) { st in
                 if let n = counts[st] {
-                    HStack(spacing: 3) {
+                    HStack(spacing: dot) {
                         if expanded {
                             Circle().fill(color(st)).frame(width: 6, height: 6)
                         } else {
@@ -268,10 +286,7 @@ public struct WidgetView: View {
                     }
                 }
             }
-            if !expanded { Spacer(minLength: 0) }
         }
-        .shadow(color: expanded ? .clear : glow, radius: 1.5)
-        .padding(.horizontal, expanded ? 18 : 12)
     }
 
     private func approvalBlock(_ s: Session, _ pending: PendingState) -> some View {

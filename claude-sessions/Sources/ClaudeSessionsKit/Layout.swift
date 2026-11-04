@@ -38,7 +38,7 @@ public enum Layout {
     static let listPaddingFar: CGFloat = 10
     static let listPadding = listPaddingNear + listPaddingFar
     static var maxListHeight: CGFloat { maxExpandedHeight - headerHeight }
-    public static let collapsed = CGSize(width: 124, height: headerHeight)
+    public static let collapsed = CGSize(width: 104, height: headerHeight)
     /// Background opacity of the expanded card; the last of `bgOpacities`.
     static let cardOpacity: Double = 0.92
     public static let bgOpacities: [Double] = [0, 0.25, 0.5, 0.75, cardOpacity]
