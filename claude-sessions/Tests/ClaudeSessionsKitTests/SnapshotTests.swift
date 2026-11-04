@@ -19,6 +19,7 @@ private func render(_ store: Store, _ name: String) {
         WidgetView(store: store)
     }
     .frame(width: Layout.canvas.width, height: Layout.canvas.height)
+    .environment(\.snapshotRendering, true)
     let r = ImageRenderer(content: view)
     r.scale = 2
     let cg = r.cgImage

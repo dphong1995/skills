@@ -27,15 +27,73 @@ func label(_ s: Session) -> String {
     }
 }
 
+struct SnapshotRenderingKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// True while `ImageRenderer` draws a snapshot; AppKit-backed views render as a placeholder there, so views leave them out.
+    var snapshotRendering: Bool {
+        get { self[SnapshotRenderingKey.self] }
+        set { self[SnapshotRenderingKey.self] = newValue }
+    }
+}
+
 struct PulseDot: View {
     let color: Color
     let pulsing: Bool
+    @Environment(\.snapshotRendering) private var snapshotRendering
 
     var body: some View {
-        TimelineView(.animation(paused: !pulsing)) { ctx in
-            let phase = pulsing ? ctx.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.2) / 1.2 : 1
-            Circle().fill(color).frame(width: 8, height: 8)
-                .overlay(Circle().stroke(color.opacity(0.8 * (1 - phase)), lineWidth: 2).scaleEffect(1 + 1.4 * phase))
+        Circle().fill(color).frame(width: 8, height: 8)
+            .overlay {
+                if !snapshotRendering { PulseRing(color: color, pulsing: pulsing) }
+            }
+    }
+}
+
+/// The expanding ring is a Core Animation layer animation, which the render server runs; a SwiftUI animation would cost the app a redraw per frame.
+struct PulseRing: NSViewRepresentable {
+    let color: Color
+    let pulsing: Bool
+    private static let animationKey = "pulse"
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 8, height: 8))
+        view.wantsLayer = true
+        view.layer?.masksToBounds = false
+        let ring = CAShapeLayer()
+        ring.frame = view.bounds
+        ring.path = CGPath(ellipseIn: view.bounds, transform: nil)
+        ring.fillColor = nil
+        ring.lineWidth = 2
+        view.layer?.addSublayer(ring)
+        return view
+    }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        guard let ring = view.layer?.sublayers?.first as? CAShapeLayer else { return }
+        ring.strokeColor = NSColor(color).cgColor
+        if pulsing {
+            ring.isHidden = false
+            if ring.animation(forKey: Self.animationKey) == nil {
+                let scale = CABasicAnimation(keyPath: "transform.scale")
+                scale.fromValue = 1
+                scale.toValue = 2.4
+                let fade = CABasicAnimation(keyPath: "opacity")
+                fade.fromValue = 0.8
+                fade.toValue = 0
+                let group = CAAnimationGroup()
+                group.animations = [scale, fade]
+                group.duration = 1.2
+                group.timingFunction = CAMediaTimingFunction(name: .linear)
+                group.repeatCount = .infinity
+                group.isRemovedOnCompletion = false
+                ring.add(group, forKey: Self.animationKey)
+            }
+        } else {
+            ring.removeAnimation(forKey: Self.animationKey)
+            ring.isHidden = true
         }
     }
 }
