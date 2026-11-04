@@ -75,13 +75,14 @@ private func session(_ id: String, _ status: String, _ text: String?) -> Session
 
 @Test func sizeUsesMeasuredHeight() {
     let store = makeStore(dir: makeTempDir())
-    store.hovering = true
-    store.measuredHeight = 200
-    #expect(Layout.size(store).height == 200)
-    store.measuredHeight = 5000
-    #expect(Layout.size(store).height == Layout.canvas.height - 2 * Layout.margin)
-    store.measuredHeight = nil
-    #expect(Layout.size(store).height == Layout.expanded(store.sessions).height)
+    let panel = PanelState()
+    panel.hovering = true
+    panel.measuredHeight = 200
+    #expect(Layout.size(store, panel).height == 200)
+    panel.measuredHeight = 5000
+    #expect(Layout.size(store, panel).height == Layout.canvas.height - 2 * Layout.margin)
+    panel.measuredHeight = nil
+    #expect(Layout.size(store, panel).height == Layout.expanded(store.sessions).height)
 }
 
 @Test func commandFitThresholds() {

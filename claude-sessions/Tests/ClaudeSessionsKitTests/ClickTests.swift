@@ -9,11 +9,13 @@ private func clickRow(dragTo dx: CGFloat?) -> [String] {
     writeSession(dir, "s1", pid: getpid(), status: "idle", ageSec: 5, name: "x", cwd: "/tmp/x")
     let store = makeStore(dir: dir)
     store.refresh(at: Date())
-    store.hovering = true
+    let state = PanelState()
+    state.hovering = true
     var recorded: [String] = []
     _ = NSApplication.shared
-    let host = DragHostingView(rootView: WidgetView(store: store, onAction: { if case .jump(let id) = $0 { recorded.append(id) } }))
+    let host = DragHostingView(rootView: WidgetView(store: store, panel: state, onAction: { if case .jump(let id) = $0 { recorded.append(id) } }))
     let panel = WidgetPanel(contentRect: NSRect(origin: .zero, size: Layout.canvas), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+    panel.state = state
     panel.contentView = host
     host.frame = NSRect(origin: .zero, size: Layout.canvas)
     host.layoutSubtreeIfNeeded()

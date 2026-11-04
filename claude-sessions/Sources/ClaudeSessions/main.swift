@@ -5,6 +5,7 @@ import ServiceManagement
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let store = Store(startHidden: true)
+    let state = PanelState()
     var panel: WidgetPanel!
     var timer: Timer?
     var monitors: [Any] = []
@@ -21,12 +22,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.hidesOnDeactivate = false
         panel.ignoresMouseEvents = true
         panel.acceptsMouseMovedEvents = true
-        panel.store = store
-        let host = DragHostingView(rootView: WidgetView(store: store, onAction: { [weak self] in self?.handle($0) }))
+        panel.state = state
+        let host = DragHostingView(rootView: WidgetView(store: store, panel: state, onAction: { [weak self] in self?.handle($0) }))
         host.onDragEnd = { [weak self] in self?.settleAfterDrop() }
         panel.contentView = host
 
-        store.$editing.sink { [weak self] e in
+        state.$editing.sink { [weak self] e in
             guard let panel = self?.panel else { return }
             // @Published fires before the value is stored, so defer until canBecomeKey sees it.
             DispatchQueue.main.async {
@@ -41,7 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }.store(in: &cancellables)
         NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: panel, queue: .main) { [weak self] _ in
-            self?.store.editing = nil
+            self?.state.editing = nil
         }
 
         let d = UserDefaults.standard
@@ -86,6 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// `refresh()` clears the chime, so every refresh plays it right away.
     func refreshAndChime() {
         store.refresh()
+        if let e = state.editing, !store.allows(e) { state.editing = nil }
         playChime()
     }
 
@@ -138,7 +140,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sending.insert(id)
         let denyReason: String? = { if case .deny(_, _, let r) = a { return r }; return nil }()
         // Close the editor now so a second Enter cannot queue a second send; the draft stays until the send succeeds.
-        if denyReason != nil { store.editing = nil }
+        if denyReason != nil { state.editing = nil }
         resolveSurface(id) { [weak self] surface in
             guard let self else { return }
             guard let surface else { sending.remove(id); return NSSound.beep() }
@@ -161,8 +163,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let center = CGPoint(x: raw.x + Layout.collapsed.width / 2, y: raw.y + Layout.collapsed.height / 2)
         guard let s = screenFrame(containing: center) else { return }
         let o = Layout.clamp(pillOrigin: raw, to: s)
-        store.anchor = Anchor.near(CGPoint(x: o.x + Layout.collapsed.width / 2, y: o.y + Layout.collapsed.height / 2), in: s)
-        panel.setFrame(Layout.canvasFrame(pillOrigin: o, anchor: store.anchor), display: true)
+        state.anchor = Anchor.near(CGPoint(x: o.x + Layout.collapsed.width / 2, y: o.y + Layout.collapsed.height / 2), in: s)
+        panel.setFrame(Layout.canvasFrame(pillOrigin: o, anchor: state.anchor), display: true)
         UserDefaults.standard.set(Double(o.x), forKey: "pillX")
         UserDefaults.standard.set(Double(o.y), forKey: "pillY")
         UserDefaults.standard.set(Double(Layout.collapsed.width), forKey: "pillWidth")
@@ -174,7 +176,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// After a drop the card stays where it was dropped and the pill moves to its corner.
     func settleAfterDrop() {
-        let card = Layout.pill(in: panel.frame, size: Layout.size(store), anchor: store.anchor)
+        let card = Layout.pill(in: panel.frame, size: Layout.size(store, state), anchor: state.anchor)
         guard let s = screenFrame(containing: CGPoint(x: card.midX, y: card.midY)) else { return }
         place(pillOrigin: Layout.settledPillOrigin(card: card, screen: s))
         trackMouse()
@@ -182,15 +184,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// After a screen change the pill stays put and is only re-clamped to the screens.
     func resettle() {
-        place(pillOrigin: Layout.pill(in: panel.frame, size: Layout.collapsed, anchor: store.anchor).origin)
+        place(pillOrigin: Layout.pill(in: panel.frame, size: Layout.collapsed, anchor: state.anchor).origin)
         trackMouse()
     }
 
     func trackMouse() {
         if store.hidden { return }
-        let inside = Layout.pill(in: panel.frame, size: Layout.size(store), anchor: store.anchor).contains(NSEvent.mouseLocation)
-        if store.editing == nil && inside != store.hovering {
-            store.hovering = inside
+        let inside = Layout.pill(in: panel.frame, size: Layout.size(store, state), anchor: state.anchor).contains(NSEvent.mouseLocation)
+        if state.editing == nil && inside != state.hovering {
+            state.hovering = inside
             if inside { store.peekUntil = nil }
         }
         // While editing, clicks outside the card must reach the app beneath (and make the panel resign key).

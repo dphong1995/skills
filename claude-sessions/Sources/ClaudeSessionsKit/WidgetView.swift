@@ -85,34 +85,36 @@ struct PillButton: View {
 
 public struct WidgetView: View {
     @ObservedObject var store: Store
+    @ObservedObject var panel: PanelState
     @FocusState private var focused: Bool
     @Environment(\.snapshotRendering) private var snapshotRendering
 
     let onAction: (WidgetAction) -> Void
 
-    public init(store: Store, onAction: @escaping (WidgetAction) -> Void = { _ in }) {
+    public init(store: Store, panel: PanelState, onAction: @escaping (WidgetAction) -> Void = { _ in }) {
         self.store = store
+        self.panel = panel
         self.onAction = onAction
     }
 
     public var body: some View {
-        let expanded = store.expanded
+        let expanded = panel.expanded(store)
         let radius: CGFloat = expanded ? 20 : Layout.headerHeight / 2
         let o = expanded ? Layout.cardOpacity : store.bgOpacity
 
         VStack(spacing: 0) {
-            if expanded && store.anchor.up { list }
+            if expanded && panel.anchor.up { list }
             header(expanded: expanded).frame(height: Layout.headerHeight)
-            if expanded && !store.anchor.up { list }
+            if expanded && !panel.anchor.up { list }
         }
-        .frame(width: expanded ? Layout.expandedWidth : Layout.collapsed.width, alignment: store.anchor.up ? .bottom : .top)
+        .frame(width: expanded ? Layout.expandedWidth : Layout.collapsed.width, alignment: panel.anchor.up ? .bottom : .top)
         .frame(height: expanded ? nil : Layout.collapsed.height)
         .fixedSize(horizontal: false, vertical: expanded)
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
-            guard store.expanded else { return }
-            if abs(h - (store.measuredHeight ?? 0)) > 0.5 { store.measuredHeight = h }
+            guard panel.expanded(store) else { return }
+            if abs(h - (panel.measuredHeight ?? 0)) > 0.5 { panel.measuredHeight = h }
         }
-        .frame(maxHeight: expanded ? Layout.maxExpandedHeight : nil, alignment: store.anchor.up ? .bottom : .top)
+        .frame(maxHeight: expanded ? Layout.maxExpandedHeight : nil, alignment: panel.anchor.up ? .bottom : .top)
         .fixedSize(horizontal: false, vertical: expanded)
         .background(RoundedRectangle(cornerRadius: radius, style: .continuous).fill(Color.black.opacity(o)))
         .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous)
@@ -131,7 +133,7 @@ public struct WidgetView: View {
         }
         .animation(.spring(response: 0.36, dampingFraction: 0.8), value: expanded)
         .animation(.spring(response: 0.36, dampingFraction: 0.8), value: store.sessions.count)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: store.anchor.alignment)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: panel.anchor.alignment)
         .padding(Layout.margin)
         .environment(\.colorScheme, .dark)
     }
@@ -145,16 +147,16 @@ public struct WidgetView: View {
             }
         }
         .padding(.horizontal, 10)
-        .padding(store.anchor.up ? .top : .bottom, Layout.listPaddingFar)
-        .padding(store.anchor.up ? .bottom : .top, Layout.listPaddingNear)
+        .padding(panel.anchor.up ? .top : .bottom, Layout.listPaddingFar)
+        .padding(panel.anchor.up ? .bottom : .top, Layout.listPaddingNear)
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
-            if abs(h - (store.listHeight ?? 0)) > 0.5 { store.listHeight = h }
+            if abs(h - (panel.listHeight ?? 0)) > 0.5 { panel.listHeight = h }
         }
-        let height = min(store.listHeight ?? (Layout.expanded(store.sessions).height - Layout.headerHeight), Layout.maxListHeight)
+        let height = min(panel.listHeight ?? (Layout.expanded(store.sessions).height - Layout.headerHeight), Layout.maxListHeight)
         return Group {
             if snapshotRendering {
                 rows.fixedSize(horizontal: false, vertical: true)
-                    .frame(maxHeight: Layout.maxListHeight, alignment: store.anchor.up ? .bottom : .top).clipped()
+                    .frame(maxHeight: Layout.maxListHeight, alignment: panel.anchor.up ? .bottom : .top).clipped()
             } else {
                 ScrollView(.vertical) { rows }.frame(height: height)
             }
@@ -219,7 +221,7 @@ public struct WidgetView: View {
                             PillButton(title: "Cho phép", fill: color(s.status), textColor: .black) {
                                 onAction(.approve(s.id, toolId: p.toolId))
                             }
-                            PillButton(title: "Từ chối…") { store.editing = Store.Editing(id: s.id, kind: .deny, toolId: p.toolId) }
+                            PillButton(title: "Từ chối…") { panel.editing = Store.Editing(id: s.id, kind: .deny, toolId: p.toolId) }
                         }
                     } else {
                         PillButton(title: "Xem đủ") { store.shownCommands.insert(p.toolId) }
@@ -249,11 +251,11 @@ public struct WidgetView: View {
                 let text = draft.wrappedValue
                 onAction(.deny(s.id, toolId: s.approvable?.toolId ?? "", reason: text))
             }
-            .onExitCommand { store.editing = nil }
+            .onExitCommand { panel.editing = nil }
     }
 
     private func row(_ s: Session) -> some View {
-        let editing = store.editing?.id == s.id
+        let editing = panel.editing?.id == s.id
         return VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 10) {
                 Circle().fill(color(s.status)).frame(width: 8, height: 8)
@@ -336,6 +338,6 @@ public final class DragHostingView<V: View>: NSHostingView<V> {
 
 public final class WidgetPanel: NSPanel {
     public override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
-    public weak var store: Store?
-    public override var canBecomeKey: Bool { store?.editing != nil }
+    public weak var state: PanelState?
+    public override var canBecomeKey: Bool { state?.editing != nil }
 }

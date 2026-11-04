@@ -85,9 +85,9 @@ public enum Layout {
         return CGSize(width: expandedWidth, height: headerHeight + listPadding + rows)
     }
 
-    public static func size(_ store: Store) -> CGSize {
-        guard store.expanded else { return collapsed }
-        let h = store.measuredHeight ?? expanded(store.sessions).height
+    public static func size(_ store: Store, _ panel: PanelState) -> CGSize {
+        guard panel.expanded(store) else { return collapsed }
+        let h = panel.measuredHeight ?? expanded(store.sessions).height
         return CGSize(width: expandedWidth, height: min(h, maxExpandedHeight))
     }
 

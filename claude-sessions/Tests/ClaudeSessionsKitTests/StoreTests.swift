@@ -16,7 +16,7 @@ import Testing
     writeSession(dir, "dead", pid: 999_999, status: "idle", ageSec: 10, name: "dead", cwd: "/tmp")
     store.refresh(at: Date())
     #expect(store.sessions.count == 2)
-    #expect(!store.expanded)
+    #expect(!PanelState().expanded(store))
 }
 
 @Test func busyToIdlePeeks() {
@@ -29,12 +29,12 @@ import Testing
 
     writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "talo6-dct-frontend-d7", cwd: frontend)
     store.refresh(at: t0.addingTimeInterval(1))
-    #expect(store.expanded)
+    #expect(PanelState().expanded(store))
     #expect(store.chime == .done)
     #expect(store.sessions.first?.id == "a")
 
     store.refresh(at: t0.addingTimeInterval(7))
-    #expect(!store.expanded)
+    #expect(!PanelState().expanded(store))
 }
 
 @Test func waitingOrderingAndLabels() {
@@ -58,8 +58,9 @@ import Testing
 
 @Test func hoverExpands() {
     let store = makeStore(dir: makeTempDir())
-    store.hovering = true
-    #expect(store.expanded)
+    let panel = PanelState()
+    panel.hovering = true
+    #expect(panel.expanded(store))
 }
 
 @Test func secondTurnFinishingPeeksAgain() {
@@ -71,13 +72,13 @@ import Testing
     writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "talo6-dct-frontend-d7", cwd: frontend)
     store.refresh(at: t0.addingTimeInterval(1))
     store.refresh(at: t0.addingTimeInterval(30))
-    #expect(!store.expanded)
+    #expect(!PanelState().expanded(store))
 
     writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "talo6-dct-frontend-d7", cwd: frontend)
     store.refresh(at: t0.addingTimeInterval(31))
     writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "talo6-dct-frontend-d7", cwd: frontend)
     store.refresh(at: t0.addingTimeInterval(32))
-    #expect(store.expanded)
+    #expect(PanelState().expanded(store))
 }
 
 @Test func lastReplyOnIdle() {
@@ -158,22 +159,22 @@ private func approvableStore() -> (Store, URL, URL, URL) {
     #expect(store.stillValid(.jump("zzz")))
 }
 
-@Test func editingClearedWhenSessionGone() {
+@Test func allowsFalseWhenSessionGone() {
     let dir = makeTempDir()
     let store = makeStore(dir: dir)
     writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
     store.refresh(at: Date())
-    store.editing = Store.Editing(id: "a", kind: .deny, toolId: "t1")
+    let e = Store.Editing(id: "a", kind: .deny, toolId: "t1")
     try! FileManager.default.removeItem(at: dir.appendingPathComponent("a.json"))
     store.refresh(at: Date())
-    #expect(store.editing == nil && !store.expanded)
+    #expect(!store.allows(e))
 }
 
 @Test func editingKeepsExpanded() {
     let store = makeStore(dir: makeTempDir())
-    store.hovering = false
-    store.editing = Store.Editing(id: "a", kind: .deny, toolId: "t1")
-    #expect(store.expanded)
+    let panel = PanelState()
+    panel.editing = Store.Editing(id: "a", kind: .deny, toolId: "t1")
+    #expect(panel.expanded(store))
 }
 
 @Test func hiddenAfter30sEmpty() {
@@ -248,18 +249,18 @@ private func approvableStore() -> (Store, URL, URL, URL) {
     #expect(store.sessions.first?.pending == .one(Pending(toolId: "t1", tool: "Bash", text: "npm test")))
 }
 
-@Test func editingDenyClosedWhenToolChanges() {
+@Test func allowsFalseWhenToolChanges() {
     let (store, dir, _, f) = approvableStore()
     writeSession(dir, "a", pid: me, status: "waiting", waitingFor: "permission prompt", ageSec: 0, name: "a", cwd: frontend)
     store.refresh(at: Date())
-    store.editing = Store.Editing(id: "a", kind: .deny, toolId: "t1")
+    let e = Store.Editing(id: "a", kind: .deny, toolId: "t1")
     store.refresh(at: Date())
-    #expect(store.editing != nil)
+    #expect(store.allows(e))
     try! Data([toolUseLine(id: "t1", name: "Bash", input: ["command": "npm test"]), toolResultLine(id: "t1"),
                toolUseLine(id: "t2", name: "Bash", input: ["command": "ls"])].joined(separator: "\n").utf8).write(to: f)
     writeSession(dir, "a", pid: me, status: "waiting", waitingFor: "permission prompt", ageSec: 1, name: "a", cwd: frontend)
     store.refresh(at: Date())
-    #expect(store.editing == nil)
+    #expect(!store.allows(e))
 }
 
 // One conversation open in two processes (resumed in a second pane): one row, the newest process, and its cached surface stays.

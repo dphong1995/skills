@@ -45,9 +45,6 @@ public enum Chime: Equatable { case done, needsYou }
 
 public final class Store: ObservableObject {
     @Published var sessions: [Session] = []
-    @Published public var measuredHeight: CGFloat?
-    /// Height of the session rows alone, so the list can scroll when the panel is full.
-    @Published public var listHeight: CGFloat?
     /// Session id -> cmux surface UUID, filled by the app. Pruned to live ids and dropped when the session's pid changes.
     public var surfaces: [String: String] = [:]
     private var pids: [String: Int32] = [:]
@@ -65,19 +62,21 @@ public final class Store: ObservableObject {
             self.toolId = toolId
         }
     }
-    @Published public var editing: Editing?
     /// Tool ids whose long command the user expanded with Xem đủ.
     @Published var shownCommands: Set<String> = []
     @Published public var drafts: [String: String] = [:]
-    @Published public var hovering = false
     @Published var now = Date()
     @Published public var peekUntil: Date?
-    @Published public var anchor = Anchor()
     @Published public var muted = false
     @Published public var bgOpacity: Double = 0.25
     public private(set) var chime: Chime?
 
-    var expanded: Bool { hovering || editing != nil || (peekUntil.map { now < $0 } ?? false) }
+    public var peeking: Bool { peekUntil.map { now < $0 } ?? false }
+
+    /// Whether the session `e.id` still exists and still allows what `e` is editing.
+    public func allows(_ e: Editing) -> Bool {
+        sessions.first(where: { $0.id == e.id })?.allows(e.kind, toolId: e.toolId) == true
+    }
 
     private var lastStatus: [String: String] = [:]
     private let dir: URL
@@ -308,9 +307,6 @@ public final class Store: ObservableObject {
 
         func rank(_ s: Session) -> Int {
             switch s.status { case "waiting": 0; case "idle": 1; case "busy": 2; default: 3 }
-        }
-        if let e = editing {
-            if list.first(where: { $0.id == e.id })?.allows(e.kind, toolId: e.toolId) != true { editing = nil }
         }
         list.sort { (rank($0), $0.title) < (rank($1), $1.title) }
         if list != sessions { sessions = list }
