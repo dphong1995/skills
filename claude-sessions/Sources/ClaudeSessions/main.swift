@@ -170,16 +170,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func settle() {
-        let size = Layout.size(store)
-        let pill = Layout.pill(in: panel.frame, size: size, anchor: store.anchor)
-        let x: CGFloat
-        switch store.anchor.h {
-        case .leading: x = pill.minX
-        case .center: x = pill.midX - Layout.collapsed.width / 2
-        case .trailing: x = pill.maxX - Layout.collapsed.width
-        }
-        let y = store.anchor.up ? pill.minY : pill.maxY - Layout.collapsed.height
-        place(pillOrigin: CGPoint(x: x, y: y))
+        let card = Layout.pill(in: panel.frame, size: Layout.size(store), anchor: store.anchor)
+        let c = CGPoint(x: card.midX, y: card.midY)
+        let screen = NSScreen.screens.first { $0.frame.contains(c) } ?? NSScreen.main ?? NSScreen.screens[0]
+        place(pillOrigin: Layout.settledPillOrigin(card: card, screen: screen.frame))
         trackMouse()
     }
 

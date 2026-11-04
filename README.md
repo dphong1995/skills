@@ -255,7 +255,7 @@ widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouT
 - Session đang chạy hiện thêm dòng `▸ Bash: …` là tool Claude vừa gọi gần nhất (chỉ đọc phần transcript mới được ghi từ giây trước, tối đa 256 KB, không đọc cả file, chỉ phân tích dòng có `"tool_use"`); hết chạy thì dòng này biến mất.
 - Dòng `chờ duyệt` hiện lệnh hoặc file đang xin duyệt (đọc từ transcript); nhiều tool cùng chờ hoặc tool
   lạ thì hiện "Cần duyệt trong cmux".
-- Kéo để đổi vị trí (nhớ vị trí). Hướng mở theo vị trí: nửa trên mở xuống, nửa dưới mở lên; phần ba
+- Kéo để đổi vị trí (nhớ vị trí). Kéo sát mép màn hình hay thanh menu thì macOS không bắt vào tính năng chia cửa sổ (tiling); khung đang mở nằm yên chỗ buông, viên thu gọn dời về góc của khung. Hướng mở theo vị trí: nửa trên mở xuống, nửa dưới mở lên; phần ba
   trái/phải mở sang phải/trái. Chuột phải → `Độ đậm nền` (0/25/50/75/92%, mặc định 25%, nhớ sau khi mở lại; chỉ áp cho viên thu gọn, khung danh sách luôn nền đậm), `Tắt tiếng` / `Bật tiếng`, `Thoát`.
 - Âm báo: session vừa xong (chạy → xong) kêu `Glass`, session vừa chuyển sang chờ bạn (chạy → chờ) kêu `Funk`; mỗi giây tối đa một tiếng, `Funk` ưu tiên, lần quét đầu không kêu. Chuột phải → `Tắt tiếng` / `Bật tiếng`, lựa chọn được nhớ sau khi mở lại app.
 - Bấm một dòng → cmux lên trước, đúng pane của session đó. Session không chạy trong cmux thì chỉ kêu beep.

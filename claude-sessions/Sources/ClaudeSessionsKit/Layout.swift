@@ -51,6 +51,22 @@ public enum Layout {
     }
     static let dragThreshold: CGFloat = 4
 
+    static func dragOrigin(start: CGPoint, mouseDown: CGPoint, mouse: CGPoint) -> CGPoint {
+        CGPoint(x: start.x + mouse.x - mouseDown.x, y: start.y + mouse.y - mouseDown.y)
+    }
+
+    /// Pill origin after a drop: the dropped card stays put and the pill takes the card's corner for the anchor its centre implies.
+    public static func settledPillOrigin(card: NSRect, screen: NSRect) -> CGPoint {
+        let a = Anchor.near(CGPoint(x: card.midX, y: card.midY), in: screen)
+        let x: CGFloat
+        switch a.h {
+        case .leading: x = card.minX
+        case .center: x = card.midX - collapsed.width / 2
+        case .trailing: x = card.maxX - collapsed.width
+        }
+        return CGPoint(x: x, y: a.up ? card.minY : card.maxY - collapsed.height)
+    }
+
     static func isDrag(from a: CGPoint, to b: CGPoint) -> Bool {
         hypot(b.x - a.x, b.y - a.y) > dragThreshold
     }

@@ -372,8 +372,15 @@ public final class DragHostingView<V: View>: NSHostingView<V> {
     public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     public override func mouseDown(with down: NSEvent) {
         guard !replaying, let window else { return super.mouseDown(with: down) }
+        let mouse0 = window.convertPoint(toScreen: down.locationInWindow)
+        let start = window.frame.origin
+        var moving = false
         while let e = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
             if e.type == .leftMouseUp {
+                if moving {
+                    onDragEnd?()
+                    return
+                }
                 // A click: replay the press and release so SwiftUI sees them through the normal event path.
                 replaying = true
                 window.sendEvent(down)
@@ -381,10 +388,9 @@ public final class DragHostingView<V: View>: NSHostingView<V> {
                 window.sendEvent(e)
                 return
             }
-            if Layout.isDrag(from: down.locationInWindow, to: e.locationInWindow) {
-                window.performDrag(with: down)
-                onDragEnd?()
-                return
+            if !moving && Layout.isDrag(from: down.locationInWindow, to: e.locationInWindow) { moving = true }
+            if moving {
+                window.setFrameOrigin(Layout.dragOrigin(start: start, mouseDown: mouse0, mouse: NSEvent.mouseLocation))
             }
         }
     }

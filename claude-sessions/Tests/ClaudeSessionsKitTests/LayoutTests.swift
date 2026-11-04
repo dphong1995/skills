@@ -94,3 +94,20 @@ private func session(_ id: String, _ status: String, _ text: String?) -> Session
     #expect(Layout.commandFit(Array(repeating: "a", count: 13).joined(separator: "\n")) == .tooLong)
     #expect(Layout.commandFit(String(repeating: "a", count: 1201)) == .tooLong)
 }
+
+@Test func dragOriginFollowsPointer() {
+    #expect(Layout.dragOrigin(start: CGPoint(x: 100, y: 200), mouseDown: CGPoint(x: 150, y: 230), mouse: CGPoint(x: 10, y: 900)) == CGPoint(x: -40, y: 870))
+}
+
+@Test func settledPillOriginKeepsDroppedCard() {
+    #expect(Layout.settledPillOrigin(card: NSRect(x: 0, y: 500, width: 520, height: 400), screen: scr) == CGPoint(x: 0, y: 868))
+    #expect(Layout.settledPillOrigin(card: NSRect(x: 992, y: 582, width: 520, height: 400), screen: scr) == CGPoint(x: 1388, y: 950))
+    #expect(Layout.settledPillOrigin(card: NSRect(x: 0, y: 20, width: 520, height: 400), screen: scr) == CGPoint(x: 0, y: 20))
+}
+
+@Test func settledPillOriginCollapsedIsIdentity() {
+    for o in [CGPoint(x: 1388, y: 950), CGPoint(x: 100, y: 50), CGPoint(x: 694, y: 950)] {
+        let r = NSRect(origin: o, size: Layout.collapsed)
+        #expect(Layout.settledPillOrigin(card: r, screen: scr) == o)
+    }
+}
