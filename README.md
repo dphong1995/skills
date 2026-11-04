@@ -257,7 +257,8 @@ widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouT
 - Dòng `chờ duyệt` hiện lệnh hoặc file đang xin duyệt (đọc từ transcript); nhiều tool cùng chờ hoặc tool
   lạ thì hiện "Cần duyệt trong cmux".
 - Kéo để đổi vị trí (nhớ vị trí). Hướng mở theo vị trí: nửa trên mở xuống, nửa dưới mở lên; phần ba
-  trái/phải mở sang phải/trái. Chuột phải → Thoát.
+  trái/phải mở sang phải/trái. Chuột phải → Tắt tiếng / Bật tiếng, Thoát.
+- Âm báo: session vừa xong (chạy → xong) kêu `Glass`, session vừa chuyển sang chờ bạn (chạy → chờ) kêu `Funk`; mỗi giây tối đa một tiếng, `Funk` ưu tiên, lần quét đầu không kêu. Chuột phải → `Tắt tiếng` / `Bật tiếng`, lựa chọn được nhớ sau khi mở lại app.
 - Bấm một dòng → cmux lên trước, đúng pane của session đó. Session không chạy trong cmux thì chỉ kêu beep.
 - Lần đầu macOS hỏi quyền "ClaudeSessions điều khiển cmux" (có thể hỏi lại sau mỗi lần build). Quyền Automation
   cho cmux này cần cho cả nhảy pane và duyệt. Lỡ từ chối thì bật lại ở System Settings → Privacy &

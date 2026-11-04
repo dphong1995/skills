@@ -39,6 +39,8 @@ extension Session {
     }
 }
 
+public enum Chime: Equatable { case done, needsYou }
+
 public final class Store: ObservableObject {
     @Published var sessions: [Session] = []
     @Published public var unseen: Set<String> = []
@@ -72,6 +74,8 @@ public final class Store: ObservableObject {
     @Published var now = Date()
     @Published public var peekUntil: Date?
     @Published public var anchor = Anchor()
+    @Published public var muted = false
+    public private(set) var chime: Chime?
 
     var expanded: Bool { hovering || editing != nil || (peekUntil.map { now < $0 } ?? false) }
 
@@ -225,6 +229,7 @@ public final class Store: ObservableObject {
 
     public func refresh(at date: Date = Date()) {
         now = date
+        chime = nil
         let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
         var list: [Session] = []
         for file in files where file.pathExtension == "json" {
@@ -276,6 +281,7 @@ public final class Store: ObservableObject {
             if lastStatus[s.id] == "busy" && s.isFinished {
                 newUnseen.insert(s.id)
                 peekUntil = now.addingTimeInterval(5)
+                if s.status == "waiting" { chime = .needsYou } else if chime == nil { chime = .done }
             }
             if s.status == "busy" { newUnseen.remove(s.id) }
             lastStatus[s.id] = s.status

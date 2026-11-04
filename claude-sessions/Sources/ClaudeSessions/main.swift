@@ -60,6 +60,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let m = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged], handler: track) { monitors.append(m) }
         if let m = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged], handler: { track($0); return $0 }) { monitors.append(m) }
 
+        store.muted = UserDefaults.standard.bool(forKey: "muted")
+        store.$muted.dropFirst().sink { UserDefaults.standard.set($0, forKey: "muted") }.store(in: &cancellables)
+
         if SMAppService.mainApp.status != .enabled { try? SMAppService.mainApp.register() }
         refreshAndSyncVisibility()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
@@ -70,8 +73,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    func playChime() {
+        guard let chime = store.chime, !store.muted else { return }
+        NSSound(named: chime == .done ? "Glass" : "Funk")?.play()
+    }
+
     func refreshAndSyncVisibility() {
         store.refresh()
+        playChime()
         if store.hidden && panel.isVisible {
             panel.orderOut(nil)
             panel.ignoresMouseEvents = true
@@ -129,6 +138,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let surface else { sending.remove(id); return NSSound.beep() }
             // Validate right before the first keystroke: the lookup above may have taken a while.
             store.refresh()
+            playChime()
             guard store.surfaces[id] == surface, store.stillValid(a) else {
                 sending.remove(id)
                 return NSSound.beep()

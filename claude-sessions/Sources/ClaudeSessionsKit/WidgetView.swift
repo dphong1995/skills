@@ -178,7 +178,10 @@ public struct WidgetView: View {
             .stroke(hot ? Color.orange : Color.white.opacity(0.14), lineWidth: hot ? 2 : 1))
         .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
         .shadow(color: .black.opacity(0.4), radius: expanded ? 12 : 6, y: 3)
-        .contextMenu { Button("Thoát") { NSApp.terminate(nil) } }
+        .contextMenu {
+            Button(store.muted ? "Bật tiếng" : "Tắt tiếng") { store.muted.toggle() }
+            Button("Thoát") { NSApp.terminate(nil) }
+        }
         .animation(.spring(response: 0.36, dampingFraction: 0.8), value: expanded)
         .animation(.spring(response: 0.36, dampingFraction: 0.8), value: store.sessions.count)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: store.anchor.alignment)

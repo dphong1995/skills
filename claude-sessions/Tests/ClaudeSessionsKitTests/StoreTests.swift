@@ -564,3 +564,60 @@ private func bash(_ c: String) -> String { toolUseLine(id: UUID().uuidString, na
     #expect(r.activity == nil)
     #expect(r.store.activityReads == 1)
 }
+
+@Test func chimeSilentOnFirstRefresh() {
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    writeSession(dir, "b", pid: me, status: "waiting", waitingFor: "permission prompt", ageSec: 0, name: "b", cwd: backend)
+    store.refresh(at: Date())
+    #expect(store.chime == nil)
+}
+
+@Test func chimeDoneOnBusyToIdle() {
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
+    let t0 = Date()
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: t0)
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: t0.addingTimeInterval(1))
+    #expect(store.chime == .done)
+}
+
+@Test func chimeNeedsYouOnBusyToWaiting() {
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
+    let t0 = Date()
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: t0)
+    writeSession(dir, "a", pid: me, status: "waiting", waitingFor: "permission prompt", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: t0.addingTimeInterval(1))
+    #expect(store.chime == .needsYou)
+}
+
+@Test func chimeNeedsYouWins() {
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
+    let t0 = Date()
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
+    writeSession(dir, "b", pid: me, status: "busy", ageSec: 0, name: "b", cwd: backend)
+    store.refresh(at: t0)
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    writeSession(dir, "b", pid: me, status: "waiting", waitingFor: "permission prompt", ageSec: 0, name: "b", cwd: backend)
+    store.refresh(at: t0.addingTimeInterval(1))
+    #expect(store.chime == .needsYou)
+}
+
+@Test func chimeResetsNextRefresh() {
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
+    let t0 = Date()
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: t0)
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: t0.addingTimeInterval(1))
+    #expect(store.chime == .done)
+    store.refresh(at: t0.addingTimeInterval(2))
+    #expect(store.chime == nil)
+}
