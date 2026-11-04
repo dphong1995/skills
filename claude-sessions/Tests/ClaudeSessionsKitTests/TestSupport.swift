@@ -24,8 +24,8 @@ let frontend = "/Users/phong/talo6-dct-frontend"
 let backend = "/Users/phong/talo6-dct-backend"
 
 /// Store whose transcript lookups never touch the real ~/.claude/projects.
-func makeStore(dir: URL, projects: URL = makeTempDir(), tasks: URL = makeTempDir(), startHidden: Bool = false) -> Store {
-    Store(dir: dir, projects: projects, tasks: tasks, startHidden: startHidden)
+func makeStore(dir: URL, projects: URL = makeTempDir(), tasks: URL = makeTempDir(), startHidden: Bool = false, prs: PRMonitor? = nil) -> Store {
+    Store(dir: dir, projects: projects, tasks: tasks, startHidden: startHidden, prs: prs)
 }
 
 /// Writes `<dir>/<session>/<id>.json` like Claude Code's TaskCreate; without a `session` it writes straight into `dir`.

@@ -33,6 +33,42 @@ func markdown(_ s: String) -> AttributedString {
     return a
 }
 
+/// The parts of a PR line in order; `prLine` joins them and the row colours the red and green ones.
+private func prParts(_ pr: PRStatus, now: Date, stale: Date?) -> [(text: String, tint: Color?)] {
+    var parts: [(String, Color?)] = [("PR #\(pr.ref.id)", nil)]
+    if !pr.isOpen {
+        parts.append((pr.state == "MERGED" ? "đã merge" : "đã đóng", nil))
+        return parts
+    }
+    if pr.changesRequested > 0 { parts.append(("✗ \(pr.changesRequested) yêu cầu sửa", .red)) }
+    if pr.reviewers > 0 { parts.append(("✓ \(pr.approved)/\(pr.reviewers)", pr.approved > 0 ? .green : nil)) }
+    switch pr.pipeline {
+    case .passed?: parts.append(("pipeline ✓", nil))
+    case .failed?: parts.append(("pipeline ✗", nil))
+    case .running?: parts.append(("pipeline …", nil))
+    case nil: break
+    }
+    if pr.comments > 0 { parts.append(("💬 \(pr.comments)", nil)) }
+    if let c = pr.lastOther { parts.append(("\(c.name) \(elapsed(c.at, now))", nil)) }
+    if let stale { parts.append(("cũ \(elapsed(stale, now))", nil)) }
+    return parts
+}
+
+func prLine(_ pr: PRStatus, now: Date, stale: Date?) -> String {
+    prParts(pr, now: now, stale: stale).map(\.text).joined(separator: " · ")
+}
+
+private func prAttributed(_ pr: PRStatus, now: Date, stale: Date?) -> AttributedString {
+    var out = AttributedString()
+    for (i, p) in prParts(pr, now: now, stale: stale).enumerated() {
+        if i > 0 { out += AttributedString(" · ") }
+        var a = AttributedString(p.text)
+        if let tint = p.tint { a.foregroundColor = tint }
+        out += a
+    }
+    return out
+}
+
 func label(_ s: Session) -> String {
     switch s.status {
     case "waiting": s.waitingFor == "permission prompt" ? "chờ duyệt" : "chờ trả lời"
@@ -292,6 +328,14 @@ public struct WidgetView: View {
                     }
                 }
                 .padding(.leading, 18)
+            }
+            ForEach(s.prs, id: \.ref) { pr in
+                Text(prAttributed(pr, now: store.now, stale: store.prStale ? store.prLastSuccess : nil))
+                    .font(.system(size: 11)).foregroundStyle(.white.opacity(0.75))
+                    .lineLimit(1).truncationMode(.tail)
+                    .padding(.leading, 18)
+                    .contentShape(Rectangle())
+                    .onTapGesture { onAction(.openLink(s.id, pr.url)) }
             }
             if let pending = s.pending {
                 approvalBlock(s, pending).padding(.leading, 18)

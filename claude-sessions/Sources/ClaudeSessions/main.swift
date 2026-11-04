@@ -18,7 +18,7 @@ final class Panel {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    let store = Store(startHidden: true)
+    let store = Store(startHidden: true, prs: BitbucketClient().map { PRMonitor(api: $0) })
     var panels: [String: Panel] = [:]
     var timer: Timer?
     var monitors: [Any] = []

@@ -266,4 +266,34 @@ struct SnapshotTests {
         store.drafts["b"] = nil
         render(store, panel, "13-deny-reason")
     }
+
+    @Test func renderPRLines() {
+        let dir = makeTempDir(), projects = makeTempDir()
+        let api = FakeBitbucket()
+        let repo = "t6engineering/talo6-dct-backend"
+        var open = prJSON(id: 7571, repo: repo, comments: 23, reviewers: 5)
+        open["participants"] = (open["participants"] as! [[String: Any]]).map { $0["role"] as? String == "REVIEWER" && $0["approved"] as? Bool == true ? $0.merging(["approved": false]) { $1 } : $0 }
+        api.set("/2.0/user", json: ["uuid": "{me}"])
+        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [open, prJSON(id: 7567, repo: repo)]])
+        api.set("/statuses", json: ["values": [["state": "FAILED"]]])
+        let t0 = Date()
+        let stamp = ISO8601DateFormatter().string(from: t0.addingTimeInterval(-180))
+        api.set("/comments", json: ["values": [["user": ["uuid": "{tin}", "display_name": "Tin Tran"], "created_on": stamp, "deleted": false]]])
+        let links = [7571, 7567].map { "https://bitbucket.org/\(repo)/pull-requests/\($0)" }.joined(separator: " ")
+        _ = writeTranscript(projects, cwd: backend, id: "b", lines: [assistantLine("Đã push, xem " + links), ""])
+        writeSession(dir, "b", pid: me, status: "idle", ageSec: 30, name: "talo6-dct-backend-3f", cwd: backend)
+        let store = makeStore(dir: dir, projects: projects, prs: PRMonitor(api: api, queue: nil, remote: { _ in nil }))
+        let panel = PanelState()
+        panel.hovering = true
+        store.refresh(at: t0)
+        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [open]])
+        api.set("/talo6-dct-backend/pullrequests/7567?", json: prJSON(id: 7567, repo: repo, state: "MERGED"))
+        store.refresh(at: t0.addingTimeInterval(61))
+        render(store, panel, "22-pr-lines")
+
+        api.failAll = .transport
+        store.refresh(at: t0.addingTimeInterval(122))
+        store.refresh(at: t0.addingTimeInterval(420))
+        render(store, panel, "22-pr-lines-stale")
+    }
 }

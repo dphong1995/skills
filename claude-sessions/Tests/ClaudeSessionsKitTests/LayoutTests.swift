@@ -182,3 +182,30 @@ private let ext = NSRect(x: 1512, y: 0, width: 2560, height: 1440)
     #expect(Layout.origin(offset: off, in: NSRect(x: 0, y: 0, width: 2560, height: 1440)) == CGPoint(x: 300, y: 900))
     #expect(Layout.origin(offset: [1], in: ext) == nil)
 }
+
+private func prStatus(id: Int, state: String = "OPEN", reviewers: Int = 0, approved: Int = 0, changes: Int = 0, comments: Int = 0,
+                      pipeline: Pipeline? = nil, lastOther: PRComment? = nil) -> PRStatus {
+    PRStatus(ref: PRRef(workspace: "w", repo: "r", id: id), url: URL(string: "https://bitbucket.org/w/r/pull-requests/\(id)")!,
+             state: state, reviewers: reviewers, approved: approved, changesRequested: changes, comments: comments,
+             commit: nil, sourceRepo: nil, branch: nil, pipeline: pipeline, lastOther: lastOther)
+}
+
+@Test func prLineText() {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    let pr = prStatus(id: 7571, reviewers: 5, changes: 1, comments: 23, pipeline: .failed,
+                      lastOther: PRComment(name: "Tin Tran", at: now - 180))
+    #expect(prLine(pr, now: now, stale: now - 420) == "PR #7571 · ✗ 1 yêu cầu sửa · ✓ 0/5 · pipeline ✗ · 💬 23 · Tin Tran 3m · cũ 7m")
+    #expect(prLine(pr, now: now, stale: nil) == "PR #7571 · ✗ 1 yêu cầu sửa · ✓ 0/5 · pipeline ✗ · 💬 23 · Tin Tran 3m")
+    #expect(prLine(prStatus(id: 9), now: now, stale: nil) == "PR #9")
+    #expect(prLine(prStatus(id: 9, pipeline: .passed), now: now, stale: nil) == "PR #9 · pipeline ✓")
+    #expect(prLine(prStatus(id: 9, pipeline: .running), now: now, stale: nil) == "PR #9 · pipeline …")
+    #expect(prLine(prStatus(id: 7567, state: "MERGED", reviewers: 2), now: now, stale: nil) == "PR #7567 · đã merge")
+    #expect(prLine(prStatus(id: 7567, state: "DECLINED"), now: now, stale: nil) == "PR #7567 · đã đóng")
+}
+
+@Test func heightCountsPRLines() {
+    var s = session("a", "idle", "hi")
+    let base = Layout.height(of: s)
+    s.prs = [prStatus(id: 1), prStatus(id: 2)]
+    #expect(Layout.height(of: s) == base + 36)
+}

@@ -20,6 +20,7 @@ struct Session: Identifiable, Equatable {
     var todo: Todo? = nil
     var links: [SessionLink] = []
     var activity: String? = nil
+    var prs: [PRStatus] = []
 }
 
 extension Session {
@@ -114,12 +115,19 @@ public final class Store: ObservableObject {
     public init(dir: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/sessions"),
                 projects: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/projects"),
                 tasks: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/tasks"),
-                startHidden: Bool = false) {
+                startHidden: Bool = false,
+                prs: PRMonitor? = nil) {
+        self.prMonitor = prs
         self.dir = dir
         self.projects = projects
         self.tasks = tasks
         emptySince = startHidden ? .distantPast : nil
     }
+
+    private let prMonitor: PRMonitor?
+    @Published public private(set) var prLastSuccess: Date?
+    /// No successful open-list call for 300 s while the feature is live.
+    var prStale: Bool { prLastSuccess.map { now.timeIntervalSince($0) > 300 } ?? false }
 
     public private(set) var emptySince: Date?
     public var hidden: Bool { emptySince.map { now.timeIntervalSince($0) >= 30 } ?? false }
@@ -287,6 +295,25 @@ public final class Store: ObservableObject {
                 if s.status == "waiting" { chime = .needsYou } else if chime == nil { chime = .done }
             }
             lastStatus[s.id] = s.status
+        }
+        if let prMonitor {
+            let targets = list.map { PRTarget(sessionId: $0.id, transcript: transcriptURL(for: $0), cwd: $0.cwd, branch: $0.branch) }
+            prMonitor.update(targets, at: now)
+            let snap = prMonitor.takeSnapshot()
+            for i in list.indices {
+                list[i].prs = Array((snap.prs[list[i].id] ?? []).prefix(3))
+                let shown = Set(list[i].prs.map(\.ref))
+                if !shown.isEmpty {
+                    list[i].links = list[i].links.filter { link in
+                        !PullRequests.refs(in: link.url.absoluteString).contains(where: shown.contains)
+                    }
+                }
+            }
+            if prLastSuccess != snap.lastSuccess { prLastSuccess = snap.lastSuccess }
+            if !snap.events.isEmpty {
+                peekUntil = now.addingTimeInterval(5)
+                if let c = PullRequests.chime(for: snap.events), chime != .needsYou { chime = c }
+            }
         }
         let live = Set(list.map(\.id))
         cache = cache.filter { live.contains($0.key) }

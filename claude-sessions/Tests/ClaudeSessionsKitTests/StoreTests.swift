@@ -647,3 +647,98 @@ func activitySurvivesDuplicateSessionIdOrder(busyFile: String, idleFile: String)
     #expect(store.bgOpacity == 0.25)
     #expect(Layout.bgOpacities == [0, 0.25, 0.5, 0.75, 0.92])
 }
+
+// MARK: - Pull requests
+
+private let prRepo = "t6engineering/talo6-dct-backend"
+private let prT0 = Date(timeIntervalSince1970: 1_800_000_000)
+
+private func prFake(open: [[String: Any]]) -> FakeBitbucket {
+    let api = FakeBitbucket()
+    api.set("/2.0/user", json: ["uuid": "{me}"])
+    api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": open])
+    api.set("/statuses", json: ["values": [["state": "SUCCESSFUL"]]])
+    api.set("/comments", json: ["values": []])
+    return api
+}
+
+private func prReply(_ ids: [Int], extra: String = "") -> String {
+    assistantLine(ids.map { "https://bitbucket.org/\(prRepo)/pull-requests/\($0)" }.joined(separator: " ") + extra)
+}
+
+/// One idle session `a` whose last reply is `lines`, with a PR monitor on the fake.
+private func prStore(_ api: FakeBitbucket, reply: String) -> (Store, URL, URL) {
+    let dir = makeTempDir(), projects = makeTempDir()
+    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [reply, ""])
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    let monitor = PRMonitor(api: api, queue: nil, remote: { _ in nil })
+    return (makeStore(dir: dir, projects: projects, prs: monitor), dir, projects)
+}
+
+private func prWithReviewer(id: Int, approved: Bool, comments: Int = 0) -> [String: Any] {
+    var o = prJSON(id: id, comments: comments)
+    o["participants"] = [["role": "REVIEWER", "approved": approved, "state": approved ? "approved" : NSNull(), "user": ["uuid": "{r}"]]]
+    return o
+}
+
+@Test func prsAttachedToSession() {
+    let api = prFake(open: [7571, 6874, 1, 2].map { prJSON(id: $0) })
+    let (store, _, _) = prStore(api, reply: prReply([7571, 6874, 1, 2]))
+    store.refresh(at: prT0)
+    #expect(store.sessions.first?.prs.map(\.ref.id) == [7571, 6874, 1])
+}
+
+@Test func prLinkButtonDropped() {
+    let reply = prReply([7571], extra: " https://example.com/x")
+    let api = prFake(open: [prJSON(id: 7571)])
+    let (store, _, _) = prStore(api, reply: reply)
+    store.refresh(at: prT0)
+    #expect(store.sessions.first?.links.map(\.url.absoluteString) == ["https://example.com/x"])
+
+    let failing = prFake(open: [])
+    failing.failAll = .transport
+    let (other, _, _) = prStore(failing, reply: reply)
+    other.refresh(at: prT0)
+    #expect(other.sessions.first?.prs.isEmpty == true)
+    #expect(other.sessions.first?.links.count == 2)
+}
+
+@Test func prEventChimesAndPeeks() {
+    let api = prFake(open: [prWithReviewer(id: 7571, approved: false)])
+    let (store, dir, _) = prStore(api, reply: prReply([7571]))
+    store.refresh(at: prT0)
+    #expect(store.chime == nil)
+    #expect(!store.peeking)
+
+    api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prWithReviewer(id: 7571, approved: false, comments: 1)]])
+    api.set("/comments", json: ["values": [["user": ["uuid": "{tin}", "display_name": "Tin Tran"], "created_on": "2026-11-04T10:00:00.000000+00:00", "deleted": false]]])
+    store.refresh(at: prT0 + 61)
+    #expect(store.chime == .needsYou)
+    #expect(store.peeking)
+
+    api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prWithReviewer(id: 7571, approved: true, comments: 1)]])
+    store.refresh(at: prT0 + 122)
+    #expect(store.chime == .done)
+
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: prT0 + 130)
+    api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prWithReviewer(id: 7571, approved: true, comments: 2)]])
+    api.set("/comments", json: ["values": [["user": ["uuid": "{tin}", "display_name": "Tin Tran"], "created_on": "2026-11-04T11:00:00.000000+00:00", "deleted": false]]])
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: prT0 + 200)
+    #expect(store.chime == .needsYou)
+}
+
+@Test func prStaleAfterFiveMinutes() {
+    let api = prFake(open: [prJSON(id: 7571)])
+    let (store, _, _) = prStore(api, reply: prReply([7571]))
+    store.refresh(at: prT0)
+    #expect(store.prLastSuccess == prT0)
+    api.failAll = .transport
+    store.refresh(at: prT0 + 61)
+    store.refresh(at: prT0 + 299)
+    #expect(!store.prStale)
+    store.refresh(at: prT0 + 301)
+    #expect(store.prStale)
+    #expect(store.prLastSuccess == prT0)
+}
