@@ -65,13 +65,22 @@ enum Transcript {
         return Data(cut[cut.startIndex...nl])
     }
 
-    /// A one-line prompt for a row title, or nil when the text is not something the user typed.
-    static func cleanPrompt(_ text: String) -> String? {
+    static func stripReminders(_ text: String) -> String {
         var t = text
         while let a = t.range(of: "<system-reminder>"), let b = t.range(of: "</system-reminder>", range: a.upperBound..<t.endIndex) {
             t.removeSubrange(a.lowerBound..<b.upperBound)
         }
-        t = t.trimmingCharacters(in: .whitespacesAndNewlines)
+        return t
+    }
+
+    /// The Jira project of a ticket key: `T6IR` for `T6IR-12`.
+    static func projectPrefix(of key: String) -> String? {
+        key.split(separator: "-").first.map(String.init)
+    }
+
+    /// A one-line prompt for a row title, or nil when the text is not something the user typed.
+    static func cleanPrompt(_ text: String) -> String? {
+        var t = stripReminders(text).trimmingCharacters(in: .whitespacesAndNewlines)
         if t.hasPrefix("<local-command") || t.hasPrefix("Caveat:") { return nil }
         func inner(_ tag: String) -> String? {
             guard let a = t.range(of: "<\(tag)>"), let b = t.range(of: "</\(tag)>", range: a.upperBound..<t.endIndex) else { return nil }

@@ -473,6 +473,28 @@ private func labels(_ store: Store) -> [String]? { store.sessions.first?.links.m
     #expect(store.sessions.first?.links.first?.url.absoluteString == "https://\(jiraHost)/browse/T6IR-5")
 }
 
+@Test func ticketButtonCacheInvalidates() {
+    let dir = makeTempDir(), projects = makeTempDir()
+    let store = makeStore(dir: dir, projects: projects)
+    let a = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine("T6IR-5", branch: "main"), ""])
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    func links(_ id: String) -> [String]? { store.sessions.first { $0.id == id }?.links.map(\.label) }
+    store.refresh(at: Date())
+    store.refresh(at: Date())
+    #expect(links("a") == [])
+    // Another session teaches the T6IR prefix: the bare key appears.
+    _ = writeTranscript(projects, cwd: backend, id: "b", lines: [userLine("https://\(jiraHost)/browse/T6IR-1"), ""])
+    writeSession(dir, "b", pid: me, status: "idle", ageSec: 0, name: "b", cwd: backend)
+    store.refresh(at: Date())
+    store.refresh(at: Date())
+    #expect(links("a") == ["T6IR-5"])
+    #expect(links("b") == ["T6IR-1"])
+    // A new branch puts its ticket first.
+    append(a, userLine("x", branch: "bugfix/T6IR-30") + "\n")
+    store.refresh(at: Date())
+    #expect(links("a") == ["T6IR-30", "T6IR-5"])
+}
+
 @Test func ticketButtonsSurviveBusy() {
     let (store, dir) = scanStore([userLine("/cook https://\(jiraHost)/browse/T6IR-14728"), assistantLine("PR https://github.com/a/b/pull/1")])
     let idle = labels(store)
@@ -515,12 +537,7 @@ private struct ActivityRig {
     func idle() { writeSession(dir, "a", pid: me, status: "idle", ageSec: 5, name: "n", cwd: frontend) }
     func refresh() { store.refresh(at: Date()) }
     var activity: String? { store.sessions.first?.activity }
-    func append(_ s: String) {
-        let h = try! FileHandle(forWritingTo: file)
-        try! h.seekToEnd()
-        try! h.write(contentsOf: Data(s.utf8))
-        try! h.close()
-    }
+    func append(_ s: String) { ClaudeSessionsKitTests.append(file, s) }
 }
 
 private func bash(_ c: String) -> String { toolUseLine(id: UUID().uuidString, name: "Bash", input: ["command": c]) }

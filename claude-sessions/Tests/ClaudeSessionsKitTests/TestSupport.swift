@@ -28,6 +28,13 @@ func makeStore(dir: URL, projects: URL = makeTempDir(), tasks: URL = makeTempDir
     Store(dir: dir, projects: projects, tasks: tasks, startHidden: startHidden, prs: prs, scanner: TranscriptScanner(queue: nil))
 }
 
+func append(_ url: URL, _ s: String) {
+    let h = try! FileHandle(forWritingTo: url)
+    try! h.seekToEnd()
+    try! h.write(contentsOf: Data(s.utf8))
+    try! h.close()
+}
+
 /// Writes `<dir>/<session>/<id>.json` like Claude Code's TaskCreate; without a `session` it writes straight into `dir`.
 func writeTask(_ dir: URL, session: String? = nil, id: Int, status: String, subject: String, activeForm: String? = nil) {
     let d = session.map { dir.appendingPathComponent($0, isDirectory: true) } ?? dir

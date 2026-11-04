@@ -70,7 +70,8 @@ enum CodeRabbit {
     static func label(_ r: Rabbit) -> String {
         switch r {
         case .reviewing: return "🐰 đang review"
-        case .reviewed(let n): return n.map { $0 > 0 } == true ? "🐰 \(n!) góp ý" : "🐰 xong"
+        case .reviewed(let n?) where n > 0: return "🐰 \(n) góp ý"
+        case .reviewed: return "🐰 xong"
         case .approved: return "🐰 đã duyệt"
         case .skipped: return "🐰 bỏ qua"
         case .failed: return "🐰 lỗi"

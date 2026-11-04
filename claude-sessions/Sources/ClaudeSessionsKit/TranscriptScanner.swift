@@ -16,6 +16,8 @@ struct ScanResult: Equatable {
     var prLinks: [URL] = []
     /// Bitbucket refs, first appearance order, deduped.
     var prRefs: [PRRef] = []
+    /// Bumped whenever `absorb` adds or changes anything, so callers can cache what they derive from it.
+    var version = 0
 }
 
 struct ScanTarget: Equatable {
@@ -49,9 +51,9 @@ public final class TranscriptScanner {
     private var states: [String: State] = [:]
 
     /// JSON parses done, for tests.
-    private(set) var parsedLines: Int {
-        get { lock.lock(); defer { lock.unlock() }; return parsed }
-        set { lock.lock(); parsed = newValue; lock.unlock() }
+    var parsedLines: Int {
+        lock.lock(); defer { lock.unlock() }
+        return parsed
     }
 
     public init(queue: DispatchQueue? = DispatchQueue(label: "claude-sessions.transcript-scanner", qos: .utility)) {
@@ -103,33 +105,32 @@ public final class TranscriptScanner {
 
     /// Reads `[offset, size)` in chunks; returns how many lines were parsed as JSON.
     private func scan(_ s: inout State, size: UInt64) -> Int {
-        var parsedLines = 0
+        var parsedCount = 0
         while s.offset < size {
             let chunk = Transcript.read(s.url, from: s.offset, to: min(size, s.offset + Self.chunkBytes))
             if chunk.isEmpty { break }
             s.offset += UInt64(chunk.count)
-            var buf = chunk
+            let buf: Data
             if s.skipping {
                 guard let nl = chunk.firstIndex(of: 0x0A) else { continue }
                 s.skipping = false
-                buf = Data(chunk[(nl + 1)...])
+                buf = chunk[(nl + 1)...]
             } else {
-                buf = s.carry + chunk
+                buf = s.carry.isEmpty ? chunk : s.carry + chunk
             }
-            guard let end = buf.lastIndex(of: 0x0A) else {
+            if let end = buf.lastIndex(of: 0x0A) {
+                s.carry = Data(buf[(end + 1)...])
+                for line in buf[buf.startIndex..<end].split(separator: 0x0A) where line.count <= Self.maxLineBytes {
+                    guard Self.keep(line) else { continue }
+                    parsedCount += 1
+                    Self.absorb(line, into: &s)
+                }
+            } else {
                 s.carry = buf
-                if s.carry.count > Self.maxLineBytes { s.carry = Data(); s.skipping = true }
-                continue
-            }
-            s.carry = Data(buf[(end + 1)...])
-            for line in buf[buf.startIndex..<end].split(separator: 0x0A) where line.count <= Self.maxLineBytes {
-                guard Self.keep(line) else { continue }
-                parsedLines += 1
-                Self.absorb(line, into: &s)
             }
             if s.carry.count > Self.maxLineBytes { s.carry = Data(); s.skipping = true }
         }
-        return parsedLines
+        return parsedCount
     }
 
     private static let want = ["\"type\":\"user\"", "\"type\":\"assistant\""].map { Data($0.utf8) }
@@ -140,17 +141,9 @@ public final class TranscriptScanner {
         want.contains { line.range(of: $0) != nil } && !reject.contains { line.range(of: $0) != nil }
     }
 
-    private static func stripReminders(_ text: String) -> String {
-        var t = text
-        while let a = t.range(of: "<system-reminder>"), let b = t.range(of: "</system-reminder>", range: a.upperBound..<t.endIndex) {
-            t.removeSubrange(a.lowerBound..<b.upperBound)
-        }
-        return t
-    }
-
     /// Parses one kept line and folds its text into `s.result`.
     private static func absorb(_ line: Data.SubSequence, into s: inout State) {
-        guard let o = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any] else { return }
+        guard let o = try? JSONSerialization.jsonObject(with: line) as? [String: Any] else { return }
         guard (o["isSidechain"] as? Bool) != true, (o["isMeta"] as? Bool) != true,
               let type = o["type"] as? String, let content = (o["message"] as? [String: Any])?["content"]
         else { return }
@@ -163,10 +156,11 @@ public final class TranscriptScanner {
             let kept = isUser ? blocks.filter { !PullRequests.isShellOutput($0["text"] as? String ?? "") } : blocks
             text = Transcript.text(of: kept)
         } else { return }
-        let clean = stripReminders(text)
+        let clean = Transcript.stripReminders(text)
         let byUser = isUser && (o["isCompactSummary"] as? Bool) != true
         for key in Transcript.ticketKeys(in: clean) {
             s.counter += 1
+            s.result.version += 1
             if var m = s.result.tickets[key] {
                 m.byUser = m.byUser || byUser
                 m.last = s.counter
@@ -176,14 +170,20 @@ public final class TranscriptScanner {
             }
         }
         for (_, url) in Transcript.urlRanges(in: clean) {
-            if let j = Transcript.jiraTicket(in: url), let prefix = j.key.split(separator: "-").first,
-               s.result.jiraHosts[String(prefix)] == nil {
-                s.result.jiraHosts[String(prefix)] = j.host
+            if let j = Transcript.jiraTicket(in: url), let prefix = Transcript.projectPrefix(of: j.key),
+               s.result.jiraHosts[prefix] == nil {
+                s.result.jiraHosts[prefix] = j.host
+                s.result.version += 1
+            }
+            guard Transcript.isPullRequest(url) else { continue }
+            for r in PullRequests.refs(in: url.absoluteString) where !s.result.prRefs.contains(r) {
+                s.result.prRefs.append(r)
+                s.result.version += 1
             }
             if let key = Transcript.pullRequestKey(url), !s.result.prLinks.contains(where: { Transcript.pullRequestKey($0) == key }) {
                 s.result.prLinks.append(url)
+                s.result.version += 1
             }
         }
-        for r in PullRequests.refs(in: clean) where !s.result.prRefs.contains(r) { s.result.prRefs.append(r) }
     }
 }

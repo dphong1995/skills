@@ -12,13 +12,6 @@ private func transcript(_ lines: [String]) -> URL {
     writeTranscript(makeTempDir(), cwd: frontend, id: "a", lines: lines + [""])
 }
 
-private func append(_ url: URL, _ s: String) {
-    let h = try! FileHandle(forWritingTo: url)
-    try! h.seekToEnd()
-    try! h.write(contentsOf: Data(s.utf8))
-    try! h.close()
-}
-
 private func ref(_ repo: String, _ id: Int) -> PRRef { PRRef(workspace: "t", repo: repo, id: id) }
 private func link(_ repo: String, _ id: Int) -> String { "https://bitbucket.org/t/\(repo)/pull-requests/\(id)" }
 

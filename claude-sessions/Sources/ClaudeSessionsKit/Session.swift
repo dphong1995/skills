@@ -94,6 +94,15 @@ public final class Store: ObservableObject {
     private let projects: URL
     private let tasks: URL
     private var cache: [String: Cached] = [:]
+    private struct ButtonKey: Equatable {
+        let version: Int
+        let projectsGeneration: Int
+        let branch: String?
+    }
+    /// Buttons per session with the PR refs each link points at, rebuilt only when their `ButtonKey` changes.
+    private var buttonCache: [String: (key: ButtonKey, buttons: [(link: SessionLink, refs: [PRRef])])] = [:]
+    /// Bumped whenever `jiraProjects` changes, so `ButtonKey` need not compare the dictionary.
+    private var projectsGeneration = 0
     private var urls: [String: URL] = [:]
     private var urlTried: [String: Date?] = [:]
     private var heads: [String: (prompt: String?, branch: String?, size: Int)] = [:]
@@ -330,9 +339,20 @@ public final class Store: ObservableObject {
         let learned = scans.values.reduce(into: jiraProjects) { acc, r in
             for (prefix, host) in r.jiraHosts where acc[prefix] == nil { acc[prefix] = host }
         }
-        if learned != jiraProjects { jiraProjects = learned }
+        if learned != jiraProjects {
+            jiraProjects = learned
+            projectsGeneration += 1
+        }
+        var buttonRefs: [String: [[PRRef]]] = [:]
         for i in list.indices {
-            list[i].links = Store.buttons(scans[list[i].id] ?? ScanResult(), projects: jiraProjects, branch: list[i].branch)
+            let id = list[i].id
+            let key = ButtonKey(version: scans[id]?.version ?? 0, projectsGeneration: projectsGeneration, branch: list[i].branch)
+            if buttonCache[id]?.key != key {
+                buttonCache[id] = (key, Store.buttons(scans[id] ?? ScanResult(), projects: jiraProjects, branch: list[i].branch))
+            }
+            let buttons = buttonCache[id]?.buttons ?? []
+            list[i].links = buttons.map(\.link)
+            buttonRefs[id] = buttons.map(\.refs)
         }
         if let prMonitor {
             let targets = list.map { PRTarget(sessionId: $0.id, linkRefs: scans[$0.id]?.prRefs ?? [], cwd: $0.cwd, branch: $0.branch) }
@@ -344,9 +364,8 @@ public final class Store: ObservableObject {
                 list[i].prs = Array(all.prefix(3))
                 let shown = Set(list[i].prs.map(\.ref))
                 if !shown.isEmpty {
-                    list[i].links = list[i].links.filter { link in
-                        !PullRequests.refs(in: link.url.absoluteString).contains(where: shown.contains)
-                    }
+                    let refs = buttonRefs[list[i].id] ?? []
+                    list[i].links = list[i].links.enumerated().filter { !refs[$0.offset].contains(where: shown.contains) }.map(\.element)
                 }
             }
             if prLastSuccess != snap.lastSuccess { prLastSuccess = snap.lastSuccess }
@@ -357,6 +376,7 @@ public final class Store: ObservableObject {
         }
         let live = Set(list.map(\.id))
         cache = cache.filter { live.contains($0.key) }
+        buttonCache = buttonCache.filter { live.contains($0.key) }
         urls = urls.filter { live.contains($0.key) }
         urlTried = urlTried.filter { live.contains($0.key) }
         heads = heads.filter { live.contains($0.key) }
@@ -384,17 +404,19 @@ public final class Store: ObservableObject {
     }
 
     /// Buttons for one session: the branch's ticket, tickets the user mentioned, tickets only Claude mentioned, then PR-shaped links.
-    static func buttons(_ r: ScanResult, projects: [String: String], branch: String?) -> [SessionLink] {
-        func host(_ key: String) -> String? { key.split(separator: "-").first.flatMap { projects[String($0)] } }
+    static func buttons(_ r: ScanResult, projects: [String: String], branch: String?) -> [(link: SessionLink, refs: [PRRef])] {
+        func host(_ key: String) -> String? { Transcript.projectPrefix(of: key).flatMap { projects[$0] } }
         var keys: [String] = []
         for k in branch.map(Transcript.ticketKeys) ?? [] where host(k) != nil && !keys.contains(k) { keys.append(k) }
         let known = r.tickets.values.filter { host($0.key) != nil && !keys.contains($0.key) }
         keys += known.filter(\.byUser).sorted { $0.first < $1.first }.map(\.key)
         keys += known.filter { !$0.byUser }.sorted { $0.last > $1.last }.map(\.key)
         let tickets = keys.compactMap { k in
-            host(k).flatMap { URL(string: "https://\($0)/browse/\(k)") }.map { SessionLink(label: k, url: $0) }
+            host(k).flatMap { URL(string: "https://\($0)/browse/\(k)") }.map { (link: SessionLink(label: k, url: $0), refs: [PRRef]()) }
         }
-        return tickets + r.prLinks.map { SessionLink(label: Transcript.label(for: $0), url: $0) }
+        return tickets + r.prLinks.map {
+            (link: SessionLink(label: Transcript.label(for: $0), url: $0), refs: PullRequests.refs(in: $0.absoluteString))
+        }
     }
 
     public func stillValid(_ a: WidgetAction) -> Bool {
