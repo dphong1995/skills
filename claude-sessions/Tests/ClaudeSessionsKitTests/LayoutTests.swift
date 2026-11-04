@@ -32,6 +32,9 @@ private func session(_ id: String, _ status: String, _ text: String?) -> Session
     #expect(Layout.height(of: session("a", "busy", "hi")) == 36)
     #expect(Layout.height(of: session("a", "idle", "hi")) == 64)
     #expect(Layout.height(of: session("a", "idle", nil)) == 36)
+    var withTodo = session("a", "busy", nil)
+    withTodo.todo = Todo(done: 1, total: 4, current: "x")
+    #expect(Layout.height(of: withTodo) == CGFloat(36 + 15))
 }
 
 @Test func expandedSumsHeights() {

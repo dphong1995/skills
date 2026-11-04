@@ -94,6 +94,24 @@ struct SnapshotTests {
         render(store, "15-titles-branch")
     }
 
+    @Test func renderTodo() {
+        let dir = makeTempDir(), projects = makeTempDir(), tasks = makeTempDir()
+        let store = makeStore(dir: dir, projects: projects, tasks: tasks)
+        _ = writeTranscript(projects, cwd: backend, id: "b", lines: [assistantLine("Đã sửa xong, bạn xem lại diff giúp mình nhé.")])
+        writeSession(dir, "a", pid: me, status: "busy", ageSec: 90, name: "talo6-dct-frontend-d7", cwd: frontend)
+        writeSession(dir, "b", pid: me, status: "idle", ageSec: 30, name: "talo6-dct-backend-3f", cwd: backend)
+        writeSession(dir, "c", pid: me, status: "busy", ageSec: 3700, name: "talo-v2-9c", cwd: "/Users/phong/talos-v2")
+        writeTask(tasks, session: "a", id: 1, status: "completed", subject: "Phase 1")
+        writeTask(tasks, session: "a", id: 2, status: "in_progress", subject: "Phase 2", activeForm: "Implementing phase 2")
+        writeTask(tasks, session: "a", id: 3, status: "pending", subject: "Phase 3")
+        writeTask(tasks, session: "a", id: 4, status: "pending", subject: "Phase 4")
+        writeTask(tasks, session: "b", id: 1, status: "in_progress", subject: "Phase 1",
+                  activeForm: "Implementing the deadlock retry in the transaction owner and adding a regression test for the lock timeout path")
+        store.refresh(at: Date())
+        store.hovering = true
+        render(store, "16-todo")
+    }
+
     @Test func renderLastReply() {
         let dir = makeTempDir(), projects = makeTempDir()
         let store = makeStore(dir: dir, projects: projects)

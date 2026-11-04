@@ -15,6 +15,7 @@ struct Session: Identifiable, Equatable {
     var aiTitle: String? = nil
     var firstPrompt: String? = nil
     var branch: String? = nil
+    var todo: Todo? = nil
 }
 
 extension Session {
@@ -73,11 +74,21 @@ public final class Store: ObservableObject {
     private var lastStatus: [String: String] = [:]
     private let dir: URL
     private let projects: URL
+    private let tasks: URL
     private var cache: [String: Cached] = [:]
     private var urls: [String: URL] = [:]
     private var urlTried: [String: Date?] = [:]
     private var heads: [String: (prompt: String?, branch: String?, size: Int)] = [:]
     private var aiTitles: [String: String] = [:]
+    private var todos: [String: (key: TaskKey, todo: Todo?)] = [:]
+
+    /// Changes whenever a task file is added, removed or rewritten; sizes cover writes within one timestamp tick.
+    private struct TaskKey: Equatable {
+        var dirDate: Date?
+        var files: [String]
+        var dates: [Date?]
+        var sizes: [Int]
+    }
 
     private struct Cached {
         var since: Date?
@@ -90,9 +101,11 @@ public final class Store: ObservableObject {
 
     public init(dir: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/sessions"),
                 projects: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/projects"),
+                tasks: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/tasks"),
                 startHidden: Bool = false) {
         self.dir = dir
         self.projects = projects
+        self.tasks = tasks
         emptySince = startHidden ? .distantPast : nil
     }
 
@@ -110,6 +123,24 @@ public final class Store: ObservableObject {
 
     private func fileSize(_ url: URL) -> Int {
         (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+    }
+
+    private func readTodo(for s: Session) -> Todo? {
+        let d = tasks.appendingPathComponent(s.id, isDirectory: true)
+        let fm = FileManager.default
+        let keys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey]
+        let files = ((try? fm.contentsOfDirectory(at: d, includingPropertiesForKeys: keys)) ?? [])
+            .filter { $0.pathExtension == "json" && !$0.lastPathComponent.hasPrefix(".") }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+        let values = files.map { try? $0.resourceValues(forKeys: Set(keys)) }
+        let key = TaskKey(dirDate: (try? d.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
+                          files: files.map(\.lastPathComponent),
+                          dates: values.map { $0?.contentModificationDate },
+                          sizes: values.map { $0?.fileSize ?? -1 })
+        if let c = todos[s.id], c.key == key { return c.todo }
+        let todo = Tasks.read(d)
+        todos[s.id] = (key, todo)
+        return todo
     }
 
     private func readHead(for s: Session, url: URL?) -> (prompt: String?, branch: String?) {
@@ -169,6 +200,7 @@ public final class Store: ObservableObject {
             s.aiTitle = aiTitles[s.id]
             s.branch = t.branch ?? head.branch
             s.lastReply = t.reply
+            s.todo = readTodo(for: s)
             if s.isPermissionPrompt { s.pending = t.pending }
             list.append(s)
         }
@@ -198,6 +230,7 @@ public final class Store: ObservableObject {
         urlTried = urlTried.filter { live.contains($0.key) }
         heads = heads.filter { live.contains($0.key) }
         aiTitles = aiTitles.filter { live.contains($0.key) }
+        todos = todos.filter { live.contains($0.key) }
         for s in list where pids[s.id] != nil && pids[s.id] != s.pid {
             surfaces[s.id] = nil
             surfaceMisses.remove(s.id)

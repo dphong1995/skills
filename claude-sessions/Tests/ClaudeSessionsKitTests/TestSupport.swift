@@ -24,8 +24,17 @@ let frontend = "/Users/phong/talo6-dct-frontend"
 let backend = "/Users/phong/talo6-dct-backend"
 
 /// Store whose transcript lookups never touch the real ~/.claude/projects.
-func makeStore(dir: URL, projects: URL = makeTempDir()) -> Store {
-    Store(dir: dir, projects: projects)
+func makeStore(dir: URL, projects: URL = makeTempDir(), tasks: URL = makeTempDir()) -> Store {
+    Store(dir: dir, projects: projects, tasks: tasks)
+}
+
+/// Writes `<dir>/<session>/<id>.json` like Claude Code's TaskCreate; an empty `session` writes straight into `dir`.
+func writeTask(_ dir: URL, session: String, id: Int, status: String, subject: String, activeForm: String? = nil) {
+    let d = session.isEmpty ? dir : dir.appendingPathComponent(session, isDirectory: true)
+    try! FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+    var o: [String: Any] = ["id": String(id), "subject": subject, "status": status, "blocks": [], "blockedBy": []]
+    if let activeForm { o["activeForm"] = activeForm }
+    try! JSONSerialization.data(withJSONObject: o).write(to: d.appendingPathComponent("\(id).json"))
 }
 
 func assistantLine(_ text: String?, sidechain: Bool = false, branch: String? = nil) -> String {

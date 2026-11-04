@@ -372,3 +372,37 @@ private func approvableStore() -> (Store, URL, URL, URL) {
     store.refresh(at: Date())
     #expect(store.sessions.map(\.id) == ["b", "a"])
 }
+
+@Test func todoForBusySession() {
+    let dir = makeTempDir(), tasks = makeTempDir()
+    let store = makeStore(dir: dir, tasks: tasks)
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 5, name: "a", cwd: frontend)
+    writeTask(tasks, session: "a", id: 1, status: "in_progress", subject: "Phase 1", activeForm: "Doing phase 1")
+    store.refresh(at: Date())
+    #expect(store.sessions.first?.todo == Todo(done: 0, total: 1, current: "Doing phase 1"))
+}
+
+@Test func todoUpdatesWhenTaskChanges() {
+    let dir = makeTempDir(), tasks = makeTempDir()
+    let store = makeStore(dir: dir, tasks: tasks)
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 5, name: "a", cwd: frontend)
+    writeTask(tasks, session: "a", id: 1, status: "in_progress", subject: "Phase 1")
+    store.refresh(at: Date())
+    #expect(store.sessions.first?.todo?.done == 0)
+    writeTask(tasks, session: "a", id: 1, status: "completed", subject: "Phase 1")
+    writeTask(tasks, session: "a", id: 2, status: "pending", subject: "Phase 2")
+    store.refresh(at: Date())
+    #expect(store.sessions.first?.todo == Todo(done: 1, total: 2, current: "Phase 2"))
+}
+
+@Test func todoGoneWhenFilesDeleted() throws {
+    let dir = makeTempDir(), tasks = makeTempDir()
+    let store = makeStore(dir: dir, tasks: tasks)
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 5, name: "a", cwd: frontend)
+    writeTask(tasks, session: "a", id: 1, status: "in_progress", subject: "Phase 1")
+    store.refresh(at: Date())
+    #expect(store.sessions.first?.todo != nil)
+    try FileManager.default.removeItem(at: tasks.appendingPathComponent("a/1.json"))
+    store.refresh(at: Date())
+    #expect(store.sessions.first?.todo == nil)
+}
