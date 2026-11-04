@@ -68,7 +68,46 @@ enum Transcript {
         }
         let collapsed = oneLine(t)
         if collapsed.isEmpty { return nil }
-        return collapsed.count > 60 ? String(collapsed.prefix(60)) + "…" : collapsed
+        return collapsed
+    }
+
+    /// `https?://` up to whitespace, brackets, parentheses or quotes; trailing punctuation is stripped by `urlRanges`.
+    static let urlPattern = try! NSRegularExpression(pattern: #"https?://[^\s<>()\[\]"'`]+"#)
+    private static let markdownLinkPattern = try! NSRegularExpression(pattern: #"\[([^\]]*)\]\((https?://[^\s)]+)\)"#)
+
+    /// The URLs in `s` with their ranges, trailing `.,;:!?*` stripped.
+    static func urlRanges(in s: String) -> [(range: Range<String.Index>, url: URL)] {
+        let ns = s as NSString
+        return urlPattern.matches(in: s, range: NSRange(location: 0, length: ns.length)).compactMap { m in
+            var r = m.range
+            while r.length > 0, ".,;:!?*".contains(ns.substring(with: NSRange(location: r.location + r.length - 1, length: 1))) {
+                r.length -= 1
+            }
+            guard let range = Range(r, in: s), let url = URL(string: String(s[range])) else { return nil }
+            return (range, url)
+        }
+    }
+
+    /// A short label for a link button or inline URL.
+    static func label(for url: URL) -> String {
+        let path = url.path
+        func capture(_ pattern: String) -> String? {
+            guard let m = try? NSRegularExpression(pattern: pattern).firstMatch(in: path, range: NSRange(path.startIndex..., in: path)),
+                  let r = Range(m.range(at: 1), in: path) else { return nil }
+            return String(path[r])
+        }
+        if let n = capture(#"/pull-requests/(\d+)"#) ?? capture(#"/pull/(\d+)"#) ?? capture(#"/merge_requests/(\d+)"#) { return "PR #\(n)" }
+        if let k = capture(#"/browse/([A-Z][A-Z0-9]+-\d+)"#) { return k }
+        if let n = capture(#"/issues/(\d+)"#) { return "#\(n)" }
+        let host = url.host ?? url.absoluteString
+        return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+    }
+
+    /// Markdown links become their text, bare URLs their label; then cut to `limit` characters plus `…`.
+    static func displayText(_ text: String, limit: Int) -> String {
+        var t = markdownLinkPattern.stringByReplacingMatches(in: text, range: NSRange(location: 0, length: (text as NSString).length), withTemplate: "$1")
+        for (range, url) in urlRanges(in: t).reversed() { t.replaceSubrange(range, with: label(for: url)) }
+        return t.count > limit ? String(t.prefix(limit)) + "…" : t
     }
 
     /// Parses lazily, so a scan that stops at its first hit does not parse the rest.
@@ -124,7 +163,7 @@ enum Transcript {
                   let content = (o["message"] as? [String: Any])?["content"] as? [[String: Any]]
             else { continue }
             let collapsed = oneLine(text(of: content))
-            if !collapsed.isEmpty { return String(collapsed.prefix(300)) }
+            if !collapsed.isEmpty { return collapsed }
         }
         return nil
     }

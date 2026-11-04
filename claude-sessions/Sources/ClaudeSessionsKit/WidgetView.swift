@@ -18,6 +18,15 @@ func color(_ status: String) -> Color {
     }
 }
 
+/// Inline markdown for a reply; links are dropped (phase buttons open them) and a parse failure shows the text as is.
+func markdown(_ s: String) -> AttributedString {
+    guard var a = try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) else {
+        return AttributedString(s)
+    }
+    for run in a.runs where run.link != nil { a[run.range].link = nil }
+    return a
+}
+
 func label(_ s: Session) -> String {
     switch s.status {
     case "waiting": s.waitingFor == "permission prompt" ? "chờ duyệt" : "chờ trả lời"
@@ -129,6 +138,7 @@ struct PillButton: View {
 public struct WidgetView: View {
     @ObservedObject var store: Store
     @FocusState private var focused: Bool
+    @Environment(\.snapshotRendering) private var snapshotRendering
 
     let onAction: (WidgetAction) -> Void
 
@@ -170,7 +180,7 @@ public struct WidgetView: View {
     }
 
     private var list: some View {
-        VStack(spacing: 0) {
+        let rows = VStack(spacing: 0) {
             ForEach(store.sessions) { row($0) }
             if store.sessions.isEmpty {
                 Text("Không có session nào").font(.system(size: 12)).foregroundStyle(.white.opacity(0.5))
@@ -180,6 +190,18 @@ public struct WidgetView: View {
         .padding(.horizontal, 10)
         .padding(store.anchor.up ? .top : .bottom, 10)
         .padding(store.anchor.up ? .bottom : .top, 4)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
+            if abs(h - (store.listHeight ?? 0)) > 0.5 { store.listHeight = h }
+        }
+        let height = min(store.listHeight ?? (Layout.expanded(store.sessions).height - Layout.headerHeight - 14), Layout.maxListHeight)
+        return Group {
+            if snapshotRendering {
+                rows.fixedSize(horizontal: false, vertical: true)
+                    .frame(maxHeight: Layout.maxListHeight, alignment: store.anchor.up ? .bottom : .top).clipped()
+            } else {
+                ScrollView(.vertical) { rows }.frame(height: height)
+            }
+        }
         .transition(.opacity)
     }
 
@@ -276,7 +298,7 @@ public struct WidgetView: View {
             HStack(spacing: 10) {
                 Circle().fill(color(s.status)).frame(width: 8, height: 8)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(s.title).font(.system(size: 12.5, weight: hot ? .bold : .medium)).foregroundStyle(.white).lineLimit(1)
+                    Text(s.title).font(.system(size: 12.5, weight: hot ? .bold : .medium)).foregroundStyle(.white).lineLimit(2)
                     Text(s.subtitle).font(.system(size: 10.5))
                         .foregroundStyle(.white.opacity(0.45)).lineLimit(1)
                     if let todo = s.todo {
@@ -285,8 +307,8 @@ public struct WidgetView: View {
                             .lineLimit(1).truncationMode(.tail)
                     }
                     if s.isFinished, let reply = s.lastReply {
-                        Text(reply).font(.system(size: 11)).foregroundStyle(.white.opacity(0.75))
-                            .lineLimit(2).truncationMode(.tail)
+                        Text(markdown(reply)).font(.system(size: 11)).foregroundStyle(.white.opacity(0.75))
+                            .lineLimit(4).truncationMode(.tail)
                     }
                 }
                 Spacer(minLength: 12)

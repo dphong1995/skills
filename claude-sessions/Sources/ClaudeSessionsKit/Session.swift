@@ -41,6 +41,8 @@ public final class Store: ObservableObject {
     @Published var sessions: [Session] = []
     @Published public var unseen: Set<String> = []
     @Published public var measuredHeight: CGFloat?
+    /// Height of the session rows alone, so the list can scroll when the panel is full.
+    @Published public var listHeight: CGFloat?
     /// Session id -> cmux surface UUID, filled by the app. Pruned to live ids and dropped when the session's pid changes.
     public var surfaces: [String: String] = [:]
     /// Session ids whose cmux lookup found nothing. Same pruning as `surfaces`.
@@ -78,7 +80,7 @@ public final class Store: ObservableObject {
     private var cache: [String: Cached] = [:]
     private var urls: [String: URL] = [:]
     private var urlTried: [String: Date?] = [:]
-    private var heads: [String: (prompt: String?, branch: String?, size: Int)] = [:]
+    private var heads: [String: (prompt: String?, fullPrompt: String?, branch: String?, size: Int)] = [:]
     private var todos: [String: (key: TaskKey, todo: Todo?)] = [:]
 
     /// Changes whenever a task file is added, removed or rewritten; sizes cover writes within one timestamp tick.
@@ -93,6 +95,7 @@ public final class Store: ObservableObject {
         var since: Date?
         var size: Int
         var reply: String?
+        var fullReply: String?
         var branch: String?
         var aiTitle: String?
         var pending: PendingState?
@@ -149,7 +152,8 @@ public final class Store: ObservableObject {
         guard let url else { return (nil, nil) }
         if let h = heads[s.id], headIsFinal(s.id) || h.size == size { return (h.prompt, h.branch) }
         let d = Transcript.head(url)
-        let h = (prompt: Transcript.firstPrompt(in: d), branch: Transcript.gitBranch(in: d, last: false), size: size)
+        let full = Transcript.firstPrompt(in: d)
+        let h = (prompt: full.map { Transcript.displayText($0, limit: 140) }, fullPrompt: full, branch: Transcript.gitBranch(in: d, last: false), size: size)
         heads[s.id] = h
         return (h.prompt, h.branch)
     }
@@ -164,7 +168,8 @@ public final class Store: ObservableObject {
         c.size = size
         c.prompt = prompt
         let tail = Transcript.tail(url)
-        c.reply = Transcript.lastReply(in: tail)
+        c.fullReply = Transcript.lastReply(in: tail)
+        c.reply = c.fullReply.map { Transcript.displayText($0, limit: 600) }
         c.branch = Transcript.gitBranch(in: tail, last: true)
         c.pending = prompt ? Transcript.pending(in: tail) : nil
         if let t = Transcript.lastAITitle(in: tail) { c.aiTitle = t }

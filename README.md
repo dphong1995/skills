@@ -250,7 +250,7 @@ widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouT
   sang xong/chờ thì widget tự mở 5 giây. Dấu chưa xem (viền cam, tên đậm, "N mới" ở header) giữ tới khi
   bạn bấm vào session, nó chạy lại, hoặc pane của nó đang mở trong cmux.
 - Tên dòng lấy theo thứ tự: tên đặt bằng `/rename` → tiêu đề AI → prompt đầu (bỏ `/clear`, lệnh không đối số,
-  thẻ hệ thống; cắt 60 ký tự) → tên mặc định. Mẹo: gõ `/rename` để Claude tự đặt tên.
+  thẻ hệ thống; cắt 140 ký tự, hiện tối đa 2 dòng) → tên mặc định. Mẹo: gõ `/rename` để Claude tự đặt tên.
 - Session có task (TaskCreate/TaskUpdate, `~/.claude/tasks/<sessionId>/`) thì hiện thêm dòng `☑ đã xong/tổng · việc đang làm`;
   xong hết thì ẩn. Có task đang làm thì hiện chữ của nó (không có chữ thì chỉ hiện số), không thì hiện task chờ đầu tiên.
 - Dòng `chờ duyệt` hiện lệnh hoặc file đang xin duyệt (đọc từ transcript); nhiều tool cùng chờ hoặc tool
@@ -262,8 +262,9 @@ widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouT
   cho cmux này cần cho cả nhảy pane và duyệt. Lỡ từ chối thì bật lại ở System Settings → Privacy &
   Security → Automation.
 - Kéo được từ mọi chỗ trên widget; dời từ 4 pt trở xuống vẫn tính là bấm.
-- Session xong/chờ hiện thêm câu trả lời cuối của Claude (tối đa 2 dòng), đọc từ transcript
+- Session xong/chờ hiện thêm câu trả lời cuối của Claude (tối đa 4 dòng, cắt 600 ký tự, có chữ đậm và code, link hiện thành nhãn ngắn), đọc từ transcript
   `~/.claude/projects/…/<sessionId>.jsonl`.
+- Danh sách cuộn được khi có nhiều session và cao hơn khung widget.
 - Dòng `chờ duyệt` có nút **Cho phép** và **Từ chối…** (bấm Từ chối… để gõ lý do, để trống = chỉ từ chối).
   Lệnh dài phải bấm **Xem đủ** mới hiện nút; lệnh quá dài, subagent, nhiều việc cùng chờ hoặc tool lạ
   (MCP…) thì chỉ nhảy tới cmux để duyệt.

@@ -26,13 +26,14 @@ public struct Anchor: Equatable {
 }
 public enum Layout {
     static let margin: CGFloat = 14
-    static let expandedWidth: CGFloat = 420
+    static let expandedWidth: CGFloat = 520
     static let canvas = CGSize(width: expandedWidth + margin * 2, height: 640)
     static var maxExpandedHeight: CGFloat { canvas.height - 2 * margin }
     static let rowHeight: CGFloat = 36
-    static let replyRowHeight: CGFloat = 64
+    static let replyRowHeight: CGFloat = 92
     static let todoHeight: CGFloat = 15
     static let headerHeight: CGFloat = 32
+    static var maxListHeight: CGFloat { maxExpandedHeight - headerHeight - 14 }
     public static let collapsed = CGSize(width: 232, height: headerHeight)
     static let dragThreshold: CGFloat = 4
 
@@ -50,6 +51,7 @@ public enum Layout {
 
     static func height(of s: Session) -> CGFloat {
         (s.isFinished && s.lastReply != nil ? replyRowHeight : rowHeight) + (s.todo != nil ? todoHeight : 0)
+            + (s.title.count > 60 ? 16 : 0)
     }
 
     static func expanded(_ sessions: [Session]) -> CGSize {

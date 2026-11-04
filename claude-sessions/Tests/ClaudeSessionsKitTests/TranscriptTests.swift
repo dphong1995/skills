@@ -28,9 +28,9 @@ private func data(_ lines: [String]) -> Data { Data(lines.joined(separator: "\n"
     #expect(Transcript.lastReply(in: data([assistantLine("main"), assistantLine("side", sidechain: true)])) == "main")
 }
 
-@Test func lastReplyCollapsesAndCaps() {
+@Test func lastReplyCollapsesWithoutCap() {
     #expect(Transcript.lastReply(in: data([assistantLine("a\n\nb   c\n")])) == "a b c")
-    #expect(Transcript.lastReply(in: data([assistantLine(String(repeating: "x", count: 400))]))?.count == 300)
+    #expect(Transcript.lastReply(in: data([assistantLine(String(repeating: "x", count: 400))]))?.count == 400)
 }
 
 @Test func lastReplyNone() {
@@ -100,7 +100,7 @@ private func bash(_ id: String, _ cmd: String = "npm test") -> String {
     #expect(Transcript.cleanPrompt("sửa bug\n<system-reminder>x</system-reminder>  đăng nhập") == "sửa bug đăng nhập")
     #expect(Transcript.cleanPrompt("xem log <command-name>/x</command-name>") == "xem log <command-name>/x</command-name>")
     let long = String(repeating: "a", count: 70)
-    #expect(Transcript.cleanPrompt(long) == String(repeating: "a", count: 60) + "…")
+    #expect(Transcript.cleanPrompt(long) == long)
 }
 
 @Test func firstPromptSkipsClearAndLocalCommand() {
@@ -136,4 +136,36 @@ private func bash(_ id: String, _ cmd: String = "npm test") -> String {
     let h = Transcript.head(f, bytes: bytes)
     #expect(Transcript.firstPrompt(in: h) == "one")
     #expect(h.last != nil && String(decoding: h, as: UTF8.self) == l1 + "\n")
+}
+
+@Test func labelRules() {
+    let cases = [
+        ("https://bitbucket.org/t6engineering/talo6-dct-backend/pull-requests/7562", "PR #7562"),
+        ("https://bitbucket.org/t6engineering/talo6-dct-frontend/pull-requests/6867/_/diff", "PR #6867"),
+        ("https://github.com/formio/formio.js/pull/3759", "PR #3759"),
+        ("https://gitlab.com/a/b/-/merge_requests/12", "PR #12"),
+        ("https://talosix.atlassian.net/browse/T6IR-14728", "T6IR-14728"),
+        ("https://talosix.atlassian.net/browse/T6IR-13103?focusedCommentId=88378", "T6IR-13103"),
+        ("https://github.com/a/b/issues/42", "#42"),
+        ("https://www.anthropic.com/legal/consumer-terms", "anthropic.com"),
+        ("https://bitbucket.org/t6engineering/talo6-dct-frontend/pull-requests/new?source=x", "bitbucket.org"),
+        ("http://localhost:8080", "localhost"),
+    ]
+    for (u, l) in cases { #expect(Transcript.label(for: URL(string: u)!) == l, "\(u)") }
+}
+
+@Test func displayTextReplacesUrlsAndCuts() {
+    #expect(Transcript.displayText("/cook https://talosix.atlassian.net/browse/T6IR-14728", limit: 140) == "/cook T6IR-14728")
+    #expect(Transcript.displayText("xem **PR** [đây](https://github.com/a/b/pull/9).", limit: 140) == "xem **PR** đây.")
+    #expect(Transcript.displayText("done: https://bitbucket.org/x/y/pull-requests/7562**", limit: 140) == "done: PR #7562**")
+    #expect(Transcript.displayText(String(repeating: "a", count: 700), limit: 600) == String(repeating: "a", count: 600) + "…")
+    let exact = String(repeating: "a", count: 600)
+    #expect(Transcript.displayText(exact, limit: 600) == exact)
+}
+
+@Test func markdownStylesWithoutLinks() {
+    let a = markdown("a **b** `c` [d](https://x.y)")
+    #expect(String(a.characters) == "a b c d")
+    #expect(a.runs.allSatisfy { $0.link == nil })
+    #expect(String(markdown("**open").characters) == "**open")
 }

@@ -30,15 +30,18 @@ private func session(_ id: String, _ status: String, _ text: String?) -> Session
 
 @Test func rowHeights() {
     #expect(Layout.height(of: session("a", "busy", "hi")) == 36)
-    #expect(Layout.height(of: session("a", "idle", "hi")) == 64)
+    #expect(Layout.height(of: session("a", "idle", "hi")) == 92)
     #expect(Layout.height(of: session("a", "idle", nil)) == 36)
+    var longTitle = session("a", "busy", nil)
+    longTitle.firstPrompt = String(repeating: "x", count: 100)
+    #expect(Layout.height(of: longTitle) == 52)
     var withTodo = session("a", "busy", nil)
     withTodo.todo = Todo(done: 1, total: 4, current: "x")
     #expect(Layout.height(of: withTodo) == CGFloat(36 + 15))
 }
 
 @Test func expandedSumsHeights() {
-    #expect(Layout.expanded([session("a", "busy", nil), session("b", "idle", "hi")]).height == CGFloat(146))
+    #expect(Layout.expanded([session("a", "busy", nil), session("b", "idle", "hi")]).height == CGFloat(174))
     #expect(Layout.expanded([]).height == CGFloat(82))
 }
 
