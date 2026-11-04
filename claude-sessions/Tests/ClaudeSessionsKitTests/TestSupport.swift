@@ -25,7 +25,7 @@ let backend = "/Users/phong/talo6-dct-backend"
 
 /// Store whose transcript lookups never touch the real ~/.claude/projects.
 func makeStore(dir: URL, projects: URL = makeTempDir(), tasks: URL = makeTempDir(), startHidden: Bool = false, prs: PRMonitor? = nil) -> Store {
-    Store(dir: dir, projects: projects, tasks: tasks, startHidden: startHidden, prs: prs)
+    Store(dir: dir, projects: projects, tasks: tasks, startHidden: startHidden, prs: prs, scanner: TranscriptScanner(queue: nil))
 }
 
 /// Writes `<dir>/<session>/<id>.json` like Claude Code's TaskCreate; without a `session` it writes straight into `dir`.
@@ -42,8 +42,8 @@ func jsonLine(_ o: [String: Any]) -> String {
 }
 
 func assistantLine(_ text: String?, sidechain: Bool = false, branch: String? = nil) -> String {
-    var content: [[String: Any]] = [["type": "tool_use", "name": "Bash"]]
-    if let text { content.insert(["type": "text", "text": text], at: 0) }
+    // One content block per line, like Claude Code writes them.
+    let content: [[String: Any]] = [text.map { ["type": "text", "text": $0] } ?? ["type": "tool_use", "name": "Bash"]]
     var o: [String: Any] = ["type": "assistant", "isSidechain": sidechain, "message": ["content": content]]
     if let branch { o["gitBranch"] = branch }
     return jsonLine(o)

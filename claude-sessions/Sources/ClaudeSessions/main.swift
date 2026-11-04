@@ -163,6 +163,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         store.$bgOpacity.dropFirst().sink { UserDefaults.standard.set($0, forKey: "bgOpacity") }.store(in: &cancellables)
         if let p = d.string(forKey: "prPrompt") { store.prPrompt = p }
         store.$prPrompt.dropFirst().sink { UserDefaults.standard.set($0, forKey: "prPrompt") }.store(in: &cancellables)
+        if let j = d.dictionary(forKey: "jiraProjects") as? [String: String] { store.jiraProjects = j }
+        store.$jiraProjects.dropFirst().sink { UserDefaults.standard.set($0, forKey: "jiraProjects") }.store(in: &cancellables)
 
         if SMAppService.mainApp.status != .enabled { try? SMAppService.mainApp.register() }
         refreshAndSyncVisibility()

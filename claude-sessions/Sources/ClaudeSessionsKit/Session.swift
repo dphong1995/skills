@@ -96,7 +96,7 @@ public final class Store: ObservableObject {
     private var cache: [String: Cached] = [:]
     private var urls: [String: URL] = [:]
     private var urlTried: [String: Date?] = [:]
-    private var heads: [String: (prompt: String?, links: [SessionLink], branch: String?, size: Int)] = [:]
+    private var heads: [String: (prompt: String?, branch: String?, size: Int)] = [:]
     private var todos: [String: (key: TaskKey, todo: Todo?)] = [:]
     private var activities: [String: (offset: UInt64, text: String?)] = [:]
     /// File reads done for the running-tool line, for tests.
@@ -115,7 +115,6 @@ public final class Store: ObservableObject {
         var size: Int
         var reply: String?
         var replyText: AttributedString?
-        var links: [SessionLink] = []
         var branch: String?
         var aiTitle: String?
         var pending: PendingState?
@@ -126,8 +125,10 @@ public final class Store: ObservableObject {
                 projects: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/projects"),
                 tasks: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/tasks"),
                 startHidden: Bool = false,
-                prs: PRMonitor? = nil) {
+                prs: PRMonitor? = nil,
+                scanner: TranscriptScanner = TranscriptScanner()) {
         self.prMonitor = prs
+        self.scanner = scanner
         self.dir = dir
         self.projects = projects
         self.tasks = tasks
@@ -135,6 +136,9 @@ public final class Store: ObservableObject {
     }
 
     public var prMonitor: PRMonitor?
+    private let scanner: TranscriptScanner
+    /// Jira project prefix -> host, learned from `/browse/` and `selectedIssue=` links; persisted by the app.
+    @Published public var jiraProjects: [String: String] = [:]
     @Published public private(set) var prLastSuccess: Date?
     /// No successful open-list call for 300 s while the feature is live.
     var prStale: Bool { prLastSuccess.map { now.timeIntervalSince($0) > 300 } ?? false }
@@ -175,22 +179,22 @@ public final class Store: ObservableObject {
         heads[id].map { $0.prompt != nil || $0.size > Transcript.headBytes } ?? false
     }
 
-    private func readHead(for s: Session, url: URL?, size: Int) -> (prompt: String?, links: [SessionLink], branch: String?) {
-        guard let url else { return (nil, [], nil) }
-        if let h = heads[s.id], headIsFinal(s.id) || h.size == size { return (h.prompt, h.links, h.branch) }
+    private func readHead(for s: Session, url: URL?, size: Int) -> (prompt: String?, branch: String?) {
+        guard let url else { return (nil, nil) }
+        if let h = heads[s.id], headIsFinal(s.id) || h.size == size { return (h.prompt, h.branch) }
         let d = Transcript.head(url)
         let full = Transcript.firstPrompt(in: d)
-        let h = (prompt: full.map { Transcript.displayText($0, limit: 140) }, links: full.map(Transcript.links) ?? [], branch: Transcript.gitBranch(in: d, last: false), size: size)
+        let h = (prompt: full.map { Transcript.displayText($0, limit: 140) }, branch: Transcript.gitBranch(in: d, last: false), size: size)
         heads[s.id] = h
-        return (h.prompt, h.links, h.branch)
+        return (h.prompt, h.branch)
     }
 
-    private func readTail(for s: Session, url: URL?, size: Int) -> (reply: String?, replyText: AttributedString?, links: [SessionLink], pending: PendingState?, branch: String?) {
+    private func readTail(for s: Session, url: URL?, size: Int) -> (reply: String?, replyText: AttributedString?, pending: PendingState?, branch: String?) {
         // A busy row keeps the branch the last tail read saw.
-        guard s.isFinished, let url else { return (nil, nil, [], nil, cache[s.id]?.branch) }
+        guard s.isFinished, let url else { return (nil, nil, nil, cache[s.id]?.branch) }
         var c = cache[s.id] ?? Cached(since: s.since, size: -1, reply: nil, branch: nil, pending: nil)
         let prompt = s.isPermissionPrompt
-        if c.size == size && c.since == s.since && c.prompt == prompt { return (c.reply, c.replyText, c.links, c.pending, c.branch) }
+        if c.size == size && c.since == s.since && c.prompt == prompt { return (c.reply, c.replyText, c.pending, c.branch) }
         c.since = s.since
         c.size = size
         c.prompt = prompt
@@ -198,12 +202,11 @@ public final class Store: ObservableObject {
         let full = Transcript.lastReply(in: tail)
         c.reply = full.map { Transcript.displayText($0, limit: 600) }
         c.replyText = c.reply.map(markdown)
-        c.links = full.map(Transcript.links) ?? []
         c.branch = Transcript.gitBranch(in: tail, last: true)
         c.pending = prompt ? Transcript.pending(in: tail) : nil
         if let t = Transcript.lastAITitle(in: tail) { c.aiTitle = t }
         cache[s.id] = c
-        return (c.reply, c.replyText, c.links, c.pending, c.branch)
+        return (c.reply, c.replyText, c.pending, c.branch)
     }
 
     /// The last tool call of a busy session, read from the bytes appended since the last refresh (at most `activityWindow`).
@@ -292,8 +295,6 @@ public final class Store: ObservableObject {
             s.branch = t.branch ?? head.branch
             s.lastReply = t.reply
             s.replyText = t.replyText
-            var seen = Set<URL>()
-            s.links = Array((head.links + t.links).filter { seen.insert($0.url).inserted })
             s.todo = readTodo(for: s)
             if s.isPermissionPrompt { s.pending = t.pending }
             list.append(s)
@@ -324,6 +325,15 @@ public final class Store: ObservableObject {
             }
             lastStatus[s.id] = s.status
         }
+        scanner.update(list.map { ScanTarget(sessionId: $0.id, transcript: transcriptURL(for: $0), size: sizes[$0.id]) }, at: now)
+        let scans = scanner.takeSnapshot()
+        let learned = scans.values.reduce(into: jiraProjects) { acc, r in
+            for (prefix, host) in r.jiraHosts where acc[prefix] == nil { acc[prefix] = host }
+        }
+        if learned != jiraProjects { jiraProjects = learned }
+        for i in list.indices {
+            list[i].links = Store.buttons(scans[list[i].id] ?? ScanResult(), projects: jiraProjects, branch: list[i].branch)
+        }
         if let prMonitor {
             let targets = list.map { PRTarget(sessionId: $0.id, transcript: transcriptURL(for: $0), size: sizes[$0.id], cwd: $0.cwd, branch: $0.branch) }
             prMonitor.update(targets, at: now)
@@ -345,7 +355,6 @@ public final class Store: ObservableObject {
                 if let c = PullRequests.chime(for: snap.events), chime != .needsYou { chime = c }
             }
         }
-        for i in list.indices { list[i].links = Array(list[i].links.prefix(3)) }
         let live = Set(list.map(\.id))
         cache = cache.filter { live.contains($0.key) }
         urls = urls.filter { live.contains($0.key) }
@@ -372,6 +381,20 @@ public final class Store: ObservableObject {
         }
         list.sort { (rank($0), $0.title) < (rank($1), $1.title) }
         if list != sessions { sessions = list }
+    }
+
+    /// Buttons for one session: the branch's ticket, tickets the user mentioned, tickets only Claude mentioned, then PR-shaped links.
+    static func buttons(_ r: ScanResult, projects: [String: String], branch: String?) -> [SessionLink] {
+        func host(_ key: String) -> String? { key.split(separator: "-").first.flatMap { projects[String($0)] } }
+        var keys: [String] = []
+        for k in branch.map(Transcript.ticketKeys) ?? [] where host(k) != nil && !keys.contains(k) { keys.append(k) }
+        let known = r.tickets.values.filter { host($0.key) != nil && !keys.contains($0.key) }
+        keys += known.filter(\.byUser).sorted { $0.first < $1.first }.map(\.key)
+        keys += known.filter { !$0.byUser }.sorted { $0.last > $1.last }.map(\.key)
+        let tickets = keys.compactMap { k in
+            host(k).flatMap { URL(string: "https://\($0)/browse/\(k)") }.map { SessionLink(label: k, url: $0) }
+        }
+        return tickets + r.prLinks.map { SessionLink(label: Transcript.label(for: $0), url: $0) }
     }
 
     public func stillValid(_ a: WidgetAction) -> Bool {

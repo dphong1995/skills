@@ -103,12 +103,30 @@ enum Transcript {
         }
     }
 
-    /// The links in `text` in order of appearance (markdown links count as their URL), duplicate URLs dropped.
-    static func links(in text: String) -> [SessionLink] {
-        var seen = Set<String>()
-        return urlRanges(in: text).compactMap { _, url in
-            seen.insert(url.absoluteString).inserted ? SessionLink(label: label(for: url), url: url) : nil
+    private static let ticketPattern = try! NSRegularExpression(pattern: #"(?<![A-Za-z0-9-])([A-Z][A-Z0-9]{1,9})-(\d+)(?![A-Za-z0-9])"#)
+
+    /// Every `KEY-123` in `text`, in order of appearance (a key repeated appears repeatedly).
+    static func ticketKeys(in text: String) -> [String] {
+        let ns = text as NSString
+        return ticketPattern.matches(in: text, range: NSRange(location: 0, length: ns.length)).map { ns.substring(with: $0.range) }
+    }
+
+    /// The Jira key and host of a `/browse/KEY-N` path or a `selectedIssue=KEY-N` query item.
+    static func jiraTicket(in url: URL) -> (key: String, host: String)? {
+        guard let host = url.host else { return nil }
+        let path = url.path
+        if let m = jiraPattern.firstMatch(in: path, range: NSRange(path.startIndex..., in: path)),
+           let r = Range(m.range(at: 1), in: path) {
+            return (String(path[r]), host)
         }
+        let item = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "selectedIssue" }?.value
+        if let item, ticketKeys(in: item) == [item] { return (item, host) }
+        return nil
+    }
+
+    static func isPullRequest(_ url: URL) -> Bool {
+        let path = url.path
+        return prPatterns.contains { $0.firstMatch(in: path, range: NSRange(path.startIndex..., in: path)) != nil }
     }
 
     private static let prPatterns = [#"/pull-requests/(\d+)"#, #"/pull/(\d+)"#, #"/merge_requests/(\d+)"#]

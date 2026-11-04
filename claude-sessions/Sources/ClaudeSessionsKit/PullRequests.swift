@@ -57,7 +57,7 @@ enum PullRequests {
     }
 
     /// `!` bash-mode and local-command output, which Claude Code stores as plain user lines.
-    private static func isShellOutput(_ s: String) -> Bool {
+    static func isShellOutput(_ s: String) -> Bool {
         let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
         return ["<bash-stdout>", "<bash-stderr>", "<local-command-stdout>", "<local-command-stderr>"].contains { t.hasPrefix($0) }
     }

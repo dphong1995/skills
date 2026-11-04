@@ -433,51 +433,66 @@ private func approvableStore() -> (Store, URL, URL, URL) {
     #expect(reply?.count == 601)
 }
 
-private let jira = "https://talosix.atlassian.net/browse/T6IR-14728"
+private let jiraHost = "talosix.atlassian.net"
 
-@Test func sessionLinksIncludeLateReplyLink() {
+/// One idle session "a" whose transcript holds `lines`.
+private func scanStore(_ lines: [String], status: String = "idle") -> (Store, URL) {
     let dir = makeTempDir(), projects = makeTempDir()
     let store = makeStore(dir: dir, projects: projects)
-    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [assistantLine(String(repeating: "x", count: 1700) + " https://bitbucket.org/t/r/pull-requests/6867")])
-    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
-    store.refresh(at: Date())
-    #expect(store.sessions.first?.links.map(\.label) == ["PR #6867"])
-}
-
-private func linkStore(status: String) -> Store {
-    let dir = makeTempDir(), projects = makeTempDir()
-    let store = makeStore(dir: dir, projects: projects)
-    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [
-        userLine("/cook \(jira)"),
-        assistantLine("PRs https://github.com/a/b/pull/1 https://github.com/a/b/pull/2 https://github.com/a/b/pull/3 and \(jira)")])
+    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: lines + [""])
     writeSession(dir, "a", pid: me, status: status, ageSec: 0, name: "a", cwd: frontend)
     store.refresh(at: Date())
-    return store
+    return (store, dir)
 }
 
-@Test func sessionLinksPromptFirstMaxThree() {
-    #expect(linkStore(status: "idle").sessions.first?.links.map(\.label) == ["T6IR-14728", "PR #1", "PR #2"])
+private func labels(_ store: Store) -> [String]? { store.sessions.first?.links.map(\.label) }
+
+@Test func ticketButtonOrder() {
+    let (store, _) = scanStore([
+        userLine("https://\(jiraHost)/browse/T6IR-10", branch: "bugfix/T6IR-30"),
+        userLine("T6IR-11"),
+        assistantLine("T6IR-20"),
+        assistantLine("T6IR-21")])
+    #expect(labels(store) == ["T6IR-30", "T6IR-10", "T6IR-11", "T6IR-21", "T6IR-20"])
 }
 
-@Test func linksFollowStatusFromIdleToBusy() {
-    let dir = makeTempDir(), projects = makeTempDir()
-    let store = makeStore(dir: dir, projects: projects)
-    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [
-        userLine("/cook \(jira)"),
-        assistantLine("PRs https://github.com/a/b/pull/1 https://github.com/a/b/pull/2 https://github.com/a/b/pull/3 and \(jira)")])
-    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
-    store.refresh(at: Date())
-    #expect(store.sessions.first?.links.map(\.label) == ["T6IR-14728", "PR #1", "PR #2"])
+@Test func onlyJiraAndPRButtons() {
+    let (store, _) = scanStore([assistantLine("https://example.com/x https://docs.coderabbit.ai https://github.com/a/b/pull/1")])
+    #expect(labels(store) == ["PR #1"])
+}
+
+@Test func unknownPrefixDropped() {
+    let (store, _) = scanStore([userLine("AC-1 UTF-8 https://\(jiraHost)/browse/T6IR-1")])
+    #expect(labels(store) == ["T6IR-1"])
+}
+
+@Test func bareKeyShownOnceProjectLearned() {
+    let (store, _) = scanStore([userLine("T6IR-5"), assistantLine("see https://\(jiraHost)/browse/T6IR-1")])
+    #expect(labels(store) == ["T6IR-5", "T6IR-1"])
+    #expect(store.jiraProjects["T6IR"] == jiraHost)
+    #expect(store.sessions.first?.links.first?.url.absoluteString == "https://\(jiraHost)/browse/T6IR-5")
+}
+
+@Test func ticketButtonsSurviveBusy() {
+    let (store, dir) = scanStore([userLine("/cook https://\(jiraHost)/browse/T6IR-14728"), assistantLine("PR https://github.com/a/b/pull/1")])
+    let idle = labels(store)
+    #expect(idle == ["T6IR-14728", "PR #1"])
     writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
     store.refresh(at: Date())
-    #expect(store.sessions.first?.links.map(\.label) == ["T6IR-14728"])
+    #expect(labels(store) == idle)
+}
+
+@Test func noButtonCap() {
+    let keys = (1...6).map { "T6IR-\($0)" }
+    let (store, _) = scanStore([userLine("https://\(jiraHost)/browse/T6IR-1 " + keys.joined(separator: " "))])
+    #expect(labels(store) == keys)
 }
 
 @Test func titleCutInsideUrlShowsLabelAndKeepsLink() {
     let dir = makeTempDir(), projects = makeTempDir()
     let store = makeStore(dir: dir, projects: projects)
     let pr = "https://bitbucket.org/talosix/very-long-repository-name/pull-requests/6867/overview?tab=activity&filter=" + String(repeating: "z", count: 80)
-    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine(String(repeating: "a", count: 120) + " " + pr)])
+    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine(String(repeating: "a", count: 120) + " " + pr), ""])
     writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
     store.refresh(at: Date())
     let s = store.sessions.first
@@ -793,26 +808,14 @@ private func prWithReviewer(id: Int, approved: Bool, comments: Int = 0) -> [Stri
     let api = fake(open: [prJSON(id: 7571)])
     let (store, _, _) = prStore(api, reply: reply)
     store.refresh(at: prT0)
-    #expect(store.sessions.first?.links.map(\.url.absoluteString) == ["https://example.com/x"])
+    #expect(store.sessions.first?.links.isEmpty == true)
 
     let failing = fake()
     failing.failAll = .transport
     let (other, _, _) = prStore(failing, reply: reply)
     other.refresh(at: prT0)
     #expect(other.sessions.first?.prs.isEmpty == true)
-    #expect(other.sessions.first?.links.count == 2)
-}
-
-@Test func prLinkButtonsCappedAfterPRFilter() {
-    let reply = prReply([7571], extra: " https://example.com/a https://example.com/b https://example.com/c")
-    let api = fake(open: [prJSON(id: 7571)])
-    let (store, _, _) = prStore(api, reply: reply)
-    store.refresh(at: prT0)
-    #expect(store.sessions.first?.links.map(\.url.absoluteString) == ["https://example.com/a", "https://example.com/b", "https://example.com/c"])
-
-    let (plain, _, _) = prStore(FakeBitbucket(), reply: assistantLine("https://example.com/a https://example.com/b https://example.com/c https://example.com/d"))
-    plain.refresh(at: prT0)
-    #expect(plain.sessions.first?.links.count == 3)
+    #expect(other.sessions.first?.links.count == 1)
 }
 
 @Test func prEventChimesAndPeeks() {

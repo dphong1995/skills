@@ -171,20 +171,24 @@ private func bash(_ id: String, _ cmd: String = "npm test") -> String {
     #expect(String(markdown("**open").characters) == "**open")
 }
 
-@Test func linksInOrderDeduped() {
-    let links = Transcript.links(in: "a https://github.com/x/y/pull/1, b [t](https://talosix.atlassian.net/browse/T6IR-1). https://github.com/x/y/pull/1")
-    #expect(links == [SessionLink(label: "PR #1", url: URL(string: "https://github.com/x/y/pull/1")!),
-                      SessionLink(label: "T6IR-1", url: URL(string: "https://talosix.atlassian.net/browse/T6IR-1")!)])
+@Test func ticketKeysBare() {
+    #expect(Transcript.ticketKeys(in: "fix T6IR-14725, AC-1 và UTF-8 trên bugfix/T6IR-14726") == ["T6IR-14725", "AC-1", "UTF-8", "T6IR-14726"])
+    #expect(Transcript.ticketKeys(in: "T6IR-1a").isEmpty)
 }
 
-@Test func linksStripTrailingPunctuation() {
-    let links = Transcript.links(in: "see https://bitbucket.org/t/r/pull-requests/7562**.")
-    #expect(links.count == 1)
-    #expect(links[0].url.absoluteString.hasSuffix("/7562"))
+@Test func jiraTicketFromBrowseAndSelectedIssue() {
+    let a = Transcript.jiraTicket(in: URL(string: "https://talosix.atlassian.net/browse/T6IR-13204?focusedCommentId=1")!)
+    #expect(a?.key == "T6IR-13204" && a?.host == "talosix.atlassian.net")
+    let b = Transcript.jiraTicket(in: URL(string: "https://talosix.atlassian.net/jira/software/projects/T6IR/boards/1?selectedIssue=T6IR-9")!)
+    #expect(b?.key == "T6IR-9" && b?.host == "talosix.atlassian.net")
+    #expect(Transcript.jiraTicket(in: URL(string: "https://example.com/x")!) == nil)
 }
 
-@Test func linksNone() {
-    #expect(Transcript.links(in: "no links here").isEmpty)
+@Test func isPullRequestShapes() {
+    #expect(Transcript.isPullRequest(URL(string: "https://bitbucket.org/a/b/pull-requests/1")!))
+    #expect(Transcript.isPullRequest(URL(string: "https://github.com/a/b/pull/2")!))
+    #expect(Transcript.isPullRequest(URL(string: "https://gitlab.com/a/b/-/merge_requests/3")!))
+    #expect(!Transcript.isPullRequest(URL(string: "https://talosix.atlassian.net/browse/T6IR-1")!))
 }
 
 @Test func markdownCodeRunsGetMonospacedFont() {
