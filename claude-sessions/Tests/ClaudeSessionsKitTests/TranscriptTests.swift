@@ -182,6 +182,8 @@ private func bash(_ id: String, _ cmd: String = "npm test") -> String {
     let b = Transcript.jiraTicket(in: URL(string: "https://talosix.atlassian.net/jira/software/projects/T6IR/boards/1?selectedIssue=T6IR-9")!)
     #expect(b?.key == "T6IR-9" && b?.host == "talosix.atlassian.net")
     #expect(Transcript.jiraTicket(in: URL(string: "https://example.com/x")!) == nil)
+    #expect(Transcript.jiraTicket(in: URL(string: "https://talosix.atlassian.net/browse/ABCDEFGHIJK-1")!) == nil)
+    #expect(Transcript.jiraTicket(in: URL(string: "https://talosix.atlassian.net/browse/ABCDEFGHIJ-1")!)?.key == "ABCDEFGHIJ-1")
 }
 
 @Test func isPullRequestShapes() {

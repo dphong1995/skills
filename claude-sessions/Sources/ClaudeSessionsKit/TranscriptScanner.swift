@@ -12,7 +12,7 @@ struct ScanResult: Equatable {
     var tickets: [String: TicketMention] = [:]
     /// Jira project prefix -> host.
     var jiraHosts: [String: String] = [:]
-    /// PR-shaped URLs, first appearance order, deduped.
+    /// PR-shaped URLs, first appearance order, one per PR.
     var prLinks: [URL] = []
     /// Bitbucket refs, first appearance order, deduped.
     var prRefs: [PRRef] = []
@@ -81,21 +81,23 @@ public final class TranscriptScanner {
     }
 
     private func tick(_ targets: [ScanTarget], at now: Date) {
-        var lines = 0
         for t in targets {
             guard let url = t.transcript, let size = t.size else { continue }
             var s = states[t.sessionId] ?? State(url: url, lastSeen: now)
             if s.url != url || size < s.offset { s = State(url: url, lastSeen: now) }
             s.lastSeen = now
-            lines += scan(&s, size: size)
+            let n = scan(&s, size: size)
             states[t.sessionId] = s
+            lock.lock()
+            snapshot[t.sessionId] = s.result
+            parsed += n
+            lock.unlock()
         }
         let live = Set(targets.map(\.sessionId))
         states = states.filter { live.contains($0.key) || now.timeIntervalSince($0.value.lastSeen) <= Self.forgetAfter }
         let results = states.mapValues(\.result)
         lock.lock()
         snapshot = results
-        parsed += lines
         lock.unlock()
     }
 
@@ -178,7 +180,9 @@ public final class TranscriptScanner {
                s.result.jiraHosts[String(prefix)] == nil {
                 s.result.jiraHosts[String(prefix)] = j.host
             }
-            if Transcript.isPullRequest(url), !s.result.prLinks.contains(url) { s.result.prLinks.append(url) }
+            if let key = Transcript.pullRequestKey(url), !s.result.prLinks.contains(where: { Transcript.pullRequestKey($0) == key }) {
+                s.result.prLinks.append(url)
+            }
         }
         for r in PullRequests.refs(in: clean) where !s.result.prRefs.contains(r) { s.result.prRefs.append(r) }
     }

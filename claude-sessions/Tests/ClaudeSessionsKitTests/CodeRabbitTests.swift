@@ -38,14 +38,15 @@ private func rabbit(_ state: String, _ description: String) -> Rabbit? {
         let since = Date(timeIntervalSince1970: 1_793_678_400) // 2026-11-03T04:00:00Z
         let summary = rabbitComment("**Actionable comments posted: 2**", at: "2026-11-03T04:05:00.000000+00:00")
         let inline = rabbitComment("nit: rename this", at: "2026-11-03T04:06:00.000000+00:00")
-        #expect(CodeRabbit.findings(fromComments: data([inline, summary]), since: since) == 2)
+        #expect(CodeRabbit.findings(fromComments: data([inline, summary]), since: since) == .count(2))
 
         let none = rabbitComment("No actionable comments were generated in the recent review.", at: "2026-11-03T04:05:00.000000+00:00")
-        #expect(CodeRabbit.findings(fromComments: data([none]), since: since) == 0)
+        #expect(CodeRabbit.findings(fromComments: data([none]), since: since) == .count(0))
 
         let stale = rabbitComment("**Actionable comments posted: 2**", at: "2026-11-03T03:00:00.000000+00:00")
-        #expect(CodeRabbit.findings(fromComments: data([stale]), since: since) == nil)
-        #expect(CodeRabbit.findings(fromComments: data([]), since: since) == nil)
+        #expect(CodeRabbit.findings(fromComments: data([stale]), since: since) == .stale)
+        #expect(CodeRabbit.findings(fromComments: data([]), since: since) == .notFound)
+        #expect(CodeRabbit.findings(fromComments: data([inline]), since: since) == .notFound)
     }
 
     @Test func labels() {

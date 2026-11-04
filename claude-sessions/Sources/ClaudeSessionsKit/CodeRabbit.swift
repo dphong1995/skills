@@ -42,10 +42,13 @@ enum CodeRabbit {
 
     private static let actionable = try! NSRegularExpression(pattern: #"Actionable comments posted: (\d+)"#)
 
-    /// Count from the newest summary comment (marked, with a count line); nil when it predates `since`.
-    static func findings(fromComments data: Data, since: Date) -> Int? {
+    enum Findings: Equatable { case notFound, stale, count(Int) }
+
+    /// Count from the newest summary comment (marked, with a count line); `.stale` when it predates `since`,
+    /// `.notFound` when this page of comments holds no summary.
+    static func findings(fromComments data: Data, since: Date) -> Findings {
         guard let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let values = o["values"] as? [[String: Any]] else { return nil }
+              let values = o["values"] as? [[String: Any]] else { return .notFound }
         for v in values where (v["deleted"] as? Bool) != true && isComment(v) {
             let raw = (v["content"] as? [String: Any])?["raw"] as? String ?? ""
             let count: Int
@@ -59,9 +62,9 @@ enum CodeRabbit {
                 continue
             }
             let dates = ["created_on", "updated_on"].compactMap { (v[$0] as? String).flatMap(PullRequests.date) }
-            return dates.contains { $0 >= since } ? count : nil
+            return dates.contains { $0 >= since } ? .count(count) : .stale
         }
-        return nil
+        return .notFound
     }
 
     static func label(_ r: Rabbit) -> String {

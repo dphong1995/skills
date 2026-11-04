@@ -405,6 +405,8 @@ public struct WidgetView: View {
                         }
                         .fixedSize(horizontal: true, vertical: false)
                     }
+                    Text("+\(s.links.count)").font(.system(size: 11)).foregroundStyle(.white.opacity(0.6))
+                        .help(s.links.map(\.label).joined(separator: ", "))
                 }
                 .padding(.leading, 18)
             }

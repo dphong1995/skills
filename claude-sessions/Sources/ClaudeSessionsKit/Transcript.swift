@@ -129,9 +129,20 @@ enum Transcript {
         return prPatterns.contains { $0.firstMatch(in: path, range: NSRange(path.startIndex..., in: path)) != nil }
     }
 
+    /// Host plus the path up to the PR number: one key for `/pull-requests/12` and `/pull-requests/12/diff`.
+    static func pullRequestKey(_ url: URL) -> String? {
+        let path = url.path
+        for re in prPatterns {
+            if let m = re.firstMatch(in: path, range: NSRange(path.startIndex..., in: path)), let r = Range(m.range, in: path) {
+                return (url.host ?? "") + path[..<r.upperBound]
+            }
+        }
+        return nil
+    }
+
     private static let prPatterns = [#"/pull-requests/(\d+)"#, #"/pull/(\d+)"#, #"/merge_requests/(\d+)"#]
         .map { try! NSRegularExpression(pattern: $0) }
-    private static let jiraPattern = try! NSRegularExpression(pattern: #"/browse/([A-Z][A-Z0-9]+-\d+)"#)
+    private static let jiraPattern = try! NSRegularExpression(pattern: #"/browse/([A-Z][A-Z0-9]{1,9}-\d+)"#)
     private static let issuePattern = try! NSRegularExpression(pattern: #"/issues/(\d+)"#)
 
     /// A short label for a link button or inline URL.

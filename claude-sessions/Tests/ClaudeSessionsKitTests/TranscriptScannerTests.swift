@@ -99,6 +99,35 @@ private func link(_ repo: String, _ id: Int) -> String { "https://bitbucket.org/
         #expect(r.prLinks.map(\.absoluteString) == [link("a", 1), link("e", 5), "https://github.com/x/y/pull/1", link("h", 8)])
     }
 
+    @Test func prLinksDedupedByIdentity() {
+        let lines = [
+            userLine("\(link("a", 12)) then \(link("a", 12))/diff and \(link("a", 12))/"),
+            userLine("https://github.com/x/y/pull/1 https://github.com/x/y/pull/1/files \(link("a", 1))")]
+        let r = scan(TranscriptScanner(queue: nil), transcript(lines))
+        #expect(r.prLinks.map(\.absoluteString) == [link("a", 12), "https://github.com/x/y/pull/1", link("a", 1)])
+    }
+
+    @Test func sessionPublishedBeforeLargerOneFinishes() {
+        let dir = makeTempDir()
+        let small = writeTranscript(dir, cwd: frontend, id: "small", lines: [userLine("T6IR-1"), ""])
+        let filler = userLine(String(repeating: "word ", count: 200))
+        let big = writeTranscript(dir, cwd: frontend, id: "big", lines: Array(repeating: filler, count: 40_000) + [""])
+        func size(_ u: URL) -> UInt64 { (try! FileManager.default.attributesOfItem(atPath: u.path)[.size] as! NSNumber).uint64Value }
+        let q = DispatchQueue(label: "test-scanner")
+        let s = TranscriptScanner(queue: q)
+        s.update([ScanTarget(sessionId: "small", transcript: small, size: size(small)),
+                  ScanTarget(sessionId: "big", transcript: big, size: size(big))], at: Date())
+        var early: [String: ScanResult]?
+        let deadline = Date().addingTimeInterval(30)
+        while Date() < deadline {
+            let snap = s.takeSnapshot()
+            if snap["small"] != nil { early = snap; break }
+        }
+        q.sync {}
+        #expect(early?["small"]?.tickets.keys.sorted() == ["T6IR-1"])
+        #expect(early?["big"] == nil)
+    }
+
     @Test func rewrittenFileRescanned() {
         let url = transcript([userLine("T6IR-1 " + String(repeating: "x", count: 200))])
         let s = TranscriptScanner(queue: nil)

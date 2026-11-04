@@ -350,6 +350,70 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         #expect(m.takeSnapshot().events == [.rabbitNeedsYou])
     }
 
+    @Test func findingsKeptWhenSummaryMissingFromCommentsPage() {
+        let api = fake(open: [prJSON(id: 7571, comments: 1)])
+        setStatuses(api, rabbitStatus(description: "Review completed", created: Self.started))
+        api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 8**", at: Self.later)]])
+        let m = monitor(api)
+        m.update([target([prRef(7571)])], at: t0)
+        #expect(rabbitOf(m) == .reviewed(findings: 8))
+
+        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7571, comments: 2)]])
+        api.set("/comments", json: ["values": [rabbitComment("nit: rename this", at: Self.later)]])
+        m.update([target([prRef(7571)])], at: t0 + 61)
+        let snap = m.takeSnapshot()
+        #expect(snap.prs["s"]?.first?.rabbit == .reviewed(findings: 8))
+        #expect(snap.events.isEmpty)
+    }
+
+    @Test func firstFailedStatusesFetchIsNotAChimeLater() {
+        let api = fake(open: [prJSON(id: 7571, comments: 1)])
+        api.routes["/statuses"] = .failure(.transport)
+        let m = monitor(api)
+        m.update([target([prRef(7571)])], at: t0)
+        setStatuses(api, rabbitStatus(description: "Review completed", created: Self.started))
+        api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 2**", at: Self.later)]])
+        m.update([target([prRef(7571)])], at: t0 + 61)
+        let snap = m.takeSnapshot()
+        #expect(snap.prs["s"]?.first?.rabbit == .reviewed(findings: 2))
+        #expect(snap.events.isEmpty)
+
+        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [withCommit(prJSON(id: 7571, comments: 1), "def456")]])
+        api.set("/statuses", json: ["values": [rabbitStatus(description: "Review completed", commit: "def456", created: "2026-11-03T05:00:00.000000+00:00")]])
+        api.set("/comments", json: ["values": [rabbitComment("No actionable comments were generated.", at: "2026-11-03T05:10:00.000000+00:00")]])
+        m.update([target([prRef(7571)])], at: t0 + 122)
+        #expect(m.takeSnapshot().events == [.rabbitDone])
+    }
+
+    @Test func failedFirstCommentsFetchIsRetried() {
+        let api = fake(open: [prJSON(id: 7571, comments: 1)])
+        setStatuses(api, rabbitStatus(description: "Review completed", created: Self.started))
+        api.routes["/comments"] = .failure(.transport)
+        let m = monitor(api)
+        m.update([target([prRef(7571)])], at: t0)
+        #expect(rabbitOf(m) == .reviewed(findings: nil))
+        let n = api.requests(containing: "/comments")
+
+        api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 2**", at: Self.later)]])
+        m.update([target([prRef(7571)])], at: t0 + 61)
+        #expect(api.requests(containing: "/comments") == n + 1)
+        let snap = m.takeSnapshot()
+        #expect(snap.prs["s"]?.first?.rabbit == .reviewed(findings: 2))
+        #expect(snap.events.isEmpty)
+    }
+
+    @Test func statusesNotPolledForeverWithoutRabbit() {
+        let api = fake(open: [prJSON(id: 7571, comments: 1)])
+        let m = monitor(api)
+        m.update([target([prRef(7571)])], at: t0)
+        m.update([target([prRef(7571)])], at: t0 + 61)
+        #expect(api.requests(containing: "/statuses") == 2)
+        m.update([target([prRef(7571)])], at: t0 + 660 + 61)
+        #expect(api.requests(containing: "/statuses") == 2)
+        m.update([target([prRef(7571)])], at: t0 + 660 + 122)
+        #expect(api.requests(containing: "/statuses") == 2)
+    }
+
     @Test func rabbitCommentDoesNotChime() {
         let api = fake(open: [prJSON(id: 7571, comments: 0)])
         let m = monitor(api)

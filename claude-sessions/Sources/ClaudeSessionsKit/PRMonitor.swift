@@ -38,6 +38,8 @@ public final class PRMonitor {
     private static let maxPages = 20
     private static let forgetAfter: TimeInterval = 30
     private static let remoteRetry: TimeInterval = 300
+    /// How long a PR head without a CodeRabbit status keeps asking for one.
+    private static let rabbitWait: TimeInterval = 600
     private static let singleFields = "id,title,state,comment_count,updated_on,source.branch.name,source.repository.full_name,source.commit.hash,participants.approved,participants.state,participants.role,participants.user.uuid,links.html.href"
     private static let openFields = singleFields.split(separator: ",").map { "values.\($0)" }.joined(separator: ",") + ",next"
     private static let statusFields = "values.state,values.commit.hash,values.key,values.name,values.description,values.created_on,values.updated_on"
@@ -59,6 +61,11 @@ public final class PRMonitor {
     private var absentSince: [String: Date] = [:]
     private var statuses: [PRRef: PRStatus] = [:]
     private var rabbitSeen: [PRRef: (commit: String?, label: String)] = [:]
+    /// PRs whose `/statuses` was fetched successfully at least once.
+    private var statusesFetched = Set<PRRef>()
+    /// PRs whose first `/comments` fetch failed and is still owed.
+    private var commentsOwed = Set<PRRef>()
+    private var headSeen: [PRRef: (commit: String?, at: Date)] = [:]
     private var hidden = Set<PRRef>()
     private var closed = Set<PRRef>()
     private var me: String?
@@ -127,6 +134,9 @@ public final class PRMonitor {
         let used = Set(sessions.values.flatMap(\.refs))
         statuses = statuses.filter { used.contains($0.key) }
         rabbitSeen = rabbitSeen.filter { used.contains($0.key) }
+        headSeen = headSeen.filter { used.contains($0.key) }
+        statusesFetched.formIntersection(used)
+        commentsOwed.formIntersection(used)
         hidden.formIntersection(used)
         closed.formIntersection(used)
 
@@ -135,7 +145,7 @@ public final class PRMonitor {
         var succeeded = false
         if needCycle {
             lastCycle = now
-            (events, eventRefs, succeeded) = cycle(targets)
+            (events, eventRefs, succeeded) = cycle(targets, at: now)
         }
         var prs: [String: [PRStatus]] = [:]
         for (id, s) in sessions {
@@ -173,7 +183,7 @@ public final class PRMonitor {
         return out
     }
 
-    private func cycle(_ targets: [PRTarget]) -> (events: [PREvent], refs: Set<PRRef>, succeeded: Bool) {
+    private func cycle(_ targets: [PRTarget], at now: Date) -> (events: [PREvent], refs: Set<PRRef>, succeeded: Bool) {
         var workspaces = Set(sessions.values.flatMap(\.refs).map(\.workspace))
         for t in targets { if let repo = remotes[t.cwd]?.repo { workspaces.insert(repo.workspace) } }
         guard !workspaces.isEmpty else { return ([], [], false) }
@@ -244,11 +254,15 @@ public final class PRMonitor {
             pr.rabbit = prev?.rabbit
             pr.rabbitSince = prev?.rabbitSince
             var rabbitFinished = false
+            var firstStatuses = false
             if pr.isOpen {
-                let rabbitPending = prev?.rabbit == nil || prev?.rabbit == .reviewing
+                if headSeen[ref].map({ $0.commit != pr.commit }) ?? true { headSeen[ref] = (pr.commit, now) }
+                let rabbitPending = prev?.rabbit == .reviewing
+                    || (prev?.rabbit == nil && now.timeIntervalSince(headSeen[ref]!.at) < Self.rabbitWait)
                 if prev == nil || prev?.commit != pr.commit || pr.pipeline == nil || pr.pipeline == .running
                     || rabbitPending || prev?.comments != pr.comments {
                     if let d = try? api.get("\(path)/statuses?fields=\(Self.statusFields)&pagelen=50&sort=-created_on") {
+                        firstStatuses = statusesFetched.insert(ref).inserted
                         pr.pipeline = PullRequests.pipeline(fromStatuses: d, commit: pr.commit)
                         let fresh = CodeRabbit.state(fromStatuses: d, commit: pr.commit)
                         let sameCommit = prev?.commit == pr.commit
@@ -266,22 +280,32 @@ public final class PRMonitor {
                         pr.pipeline = nil
                     }
                 }
-                if prev == nil || prev?.comments != pr.comments || rabbitFinished {
+                let owed = commentsOwed.contains(ref)
+                if prev == nil || prev?.comments != pr.comments || rabbitFinished || owed {
                     guard let d = try? api.get("\(path)/comments?sort=-created_on&pagelen=20&fields=\(Self.commentFields)") else {
                         if prev != nil { continue }
+                        commentsOwed.insert(ref)
                         recordRabbit(ref, pr)
                         statuses[ref] = pr
                         continue
                     }
+                    commentsOwed.remove(ref)
                     if let c = PullRequests.lastOther(fromComments: d, me: me) { pr.lastOther = c }
                     if case .reviewed? = pr.rabbit, let since = pr.rabbitSince {
-                        pr.rabbit = .reviewed(findings: CodeRabbit.findings(fromComments: d, since: since))
+                        switch CodeRabbit.findings(fromComments: d, since: since) {
+                        case .count(let n): pr.rabbit = .reviewed(findings: n)
+                        case .stale: pr.rabbit = .reviewed(findings: nil)
+                        case .notFound: break // the summary is beyond this page: keep the known count
+                        }
                     }
+                    if owed, rabbitSeen[ref]?.commit == pr.commit { recordRabbit(ref, pr) }
                 }
             }
             if let prev {
                 var found = PullRequests.events(old: prev, new: pr)
-                if pr.isOpen, let r = pr.rabbit, CodeRabbit.isFinal(r), rabbitSeen[ref].map({ $0 != (pr.commit, CodeRabbit.label(r)) }) ?? true {
+                if firstStatuses {
+                    recordRabbit(ref, pr)
+                } else if pr.isOpen, let r = pr.rabbit, CodeRabbit.isFinal(r), rabbitSeen[ref].map({ $0 != (pr.commit, CodeRabbit.label(r)) }) ?? true {
                     switch r {
                     case .reviewed(let n?) where n > 0: found.append(.rabbitNeedsYou)
                     case .failed: found.append(.rabbitNeedsYou)
