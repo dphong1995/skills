@@ -54,73 +54,6 @@ extension EnvironmentValues {
     }
 }
 
-struct PulseDot: View {
-    let color: Color
-    let pulsing: Bool
-    var size: CGFloat = 8
-    @Environment(\.snapshotRendering) private var snapshotRendering
-
-    var body: some View {
-        Circle().fill(color).frame(width: size, height: size)
-            .overlay {
-                if !snapshotRendering { PulseRing(color: color, pulsing: pulsing, size: size) }
-            }
-    }
-}
-
-/// Holds the ring layer and lets every click through to the hosting view.
-final class PulseRingView: NSView {
-    let ring = CAShapeLayer()
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-}
-
-/// The expanding ring is a Core Animation layer animation, which the render server runs; a SwiftUI animation would cost the app a redraw per frame.
-struct PulseRing: NSViewRepresentable {
-    let color: Color
-    let pulsing: Bool
-    let size: CGFloat
-    private static let animationKey = "pulse"
-
-    func makeNSView(context: Context) -> PulseRingView {
-        let view = PulseRingView(frame: NSRect(x: 0, y: 0, width: size, height: size))
-        view.wantsLayer = true
-        view.layer?.masksToBounds = false
-        let ring = view.ring
-        ring.frame = view.bounds
-        ring.path = CGPath(ellipseIn: view.bounds, transform: nil)
-        ring.fillColor = nil
-        ring.lineWidth = 2
-        view.layer?.addSublayer(ring)
-        return view
-    }
-
-    func updateNSView(_ view: PulseRingView, context: Context) {
-        let ring = view.ring
-        ring.strokeColor = NSColor(color).cgColor
-        if pulsing {
-            ring.isHidden = false
-            if ring.animation(forKey: Self.animationKey) == nil {
-                let scale = CABasicAnimation(keyPath: "transform.scale")
-                scale.fromValue = 1
-                scale.toValue = 2.4
-                let fade = CABasicAnimation(keyPath: "opacity")
-                fade.fromValue = 0.8
-                fade.toValue = 0
-                let group = CAAnimationGroup()
-                group.animations = [scale, fade]
-                group.duration = 1.2
-                group.timingFunction = CAMediaTimingFunction(name: .linear)
-                group.repeatCount = .infinity
-                group.isRemovedOnCompletion = false
-                ring.add(group, forKey: Self.animationKey)
-            }
-        } else {
-            ring.removeAnimation(forKey: Self.animationKey)
-            ring.isHidden = true
-        }
-    }
-}
-
 public enum WidgetAction: Equatable {
     case jump(String)
     case approve(String, toolId: String)
@@ -229,30 +162,22 @@ public struct WidgetView: View {
         .transition(.opacity)
     }
 
-    private var urgent: (color: Color, pulsing: Bool) {
+    private var urgentColor: Color {
         let st = Set(store.sessions.map(\.status))
-        if st.contains("waiting") { return (color("waiting"), true) }
-        if st.contains("busy") { return (color("busy"), true) }
-        if st.contains("idle") { return (color("idle"), false) }
-        return (.gray, false)
-    }
-
-    private var urgentStatus: String? {
-        let st = Set(store.sessions.map(\.status))
-        return ["waiting", "busy", "idle"].first(where: st.contains)
+        return color(["waiting", "busy", "idle"].first(where: st.contains) ?? "")
     }
 
     private func header(expanded: Bool) -> some View {
         Group {
             if expanded {
                 HStack(spacing: 7) {
-                    PulseDot(color: urgent.color, pulsing: urgent.pulsing)
+                    Circle().fill(urgentColor).frame(width: 8, height: 8)
                     Text("Claude").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(.white)
                     Spacer(minLength: 6)
                     groups(expanded: true, dot: 3, gap: 7)
                 }
             } else {
-                // The pulsing dot's ring (an overlay, 2.4x wide) needs room before the count; two-digit counts fall back to the tight spacing.
+                // Two-digit counts fall back to the tight spacing.
                 ViewThatFits(in: .horizontal) {
                     groups(expanded: false, dot: 6, gap: 10)
                     groups(expanded: false, dot: 3, gap: 6)
@@ -266,7 +191,6 @@ public struct WidgetView: View {
 
     private func groups(expanded: Bool, dot: CGFloat, gap: CGFloat) -> some View {
         let counts = Dictionary(grouping: store.sessions, by: \.status).mapValues(\.count)
-        let u = urgent
         return HStack(spacing: gap) {
             if store.sessions.isEmpty {
                 HStack(spacing: 6) {
@@ -277,11 +201,7 @@ public struct WidgetView: View {
             ForEach(["waiting", "idle", "busy"], id: \.self) { st in
                 if let n = counts[st] {
                     HStack(spacing: dot) {
-                        if expanded {
-                            Circle().fill(color(st)).frame(width: 6, height: 6)
-                        } else {
-                            PulseDot(color: color(st), pulsing: u.pulsing && st == urgentStatus, size: 6)
-                        }
+                        Circle().fill(color(st)).frame(width: 6, height: 6)
                         Text("\(n)").font(.system(size: 12, weight: .semibold).monospacedDigit()).foregroundStyle(.white).fixedSize()
                     }
                 }
