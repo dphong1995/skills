@@ -241,6 +241,7 @@ public final class Store: ObservableObject {
         chime = nil
         let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
         var list: [Session] = []
+        var sizes: [String: UInt64] = [:]
         for file in files where file.pathExtension == "json" {
             guard let data = try? Data(contentsOf: file),
                   let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -261,6 +262,7 @@ public final class Store: ObservableObject {
             s.nameSource = o["nameSource"] as? String
             let url = transcriptURL(for: s)
             let size = url.map(fileSize) ?? 0
+            if url != nil { sizes[s.id] = UInt64(size) }
             let t = readTail(for: s, url: url, size: size)
             let head = readHead(for: s, url: url, size: size)
             s.firstPrompt = head.prompt
@@ -269,7 +271,7 @@ public final class Store: ObservableObject {
             s.lastReply = t.reply
             s.replyText = t.replyText
             var seen = Set<URL>()
-            s.links = Array((head.links + t.links).filter { seen.insert($0.url).inserted }.prefix(3))
+            s.links = Array((head.links + t.links).filter { seen.insert($0.url).inserted })
             s.todo = readTodo(for: s)
             if s.isPermissionPrompt { s.pending = t.pending }
             list.append(s)
@@ -298,7 +300,7 @@ public final class Store: ObservableObject {
             lastStatus[s.id] = s.status
         }
         if let prMonitor {
-            let targets = list.map { PRTarget(sessionId: $0.id, transcript: transcriptURL(for: $0), cwd: $0.cwd, branch: $0.branch) }
+            let targets = list.map { PRTarget(sessionId: $0.id, transcript: transcriptURL(for: $0), size: sizes[$0.id], cwd: $0.cwd, branch: $0.branch) }
             prMonitor.update(targets, at: now)
             let snap = prMonitor.takeSnapshot()
             for i in list.indices {
@@ -316,6 +318,7 @@ public final class Store: ObservableObject {
                 if let c = PullRequests.chime(for: snap.events), chime != .needsYou { chime = c }
             }
         }
+        for i in list.indices { list[i].links = Array(list[i].links.prefix(3)) }
         let live = Set(list.map(\.id))
         cache = cache.filter { live.contains($0.key) }
         urls = urls.filter { live.contains($0.key) }

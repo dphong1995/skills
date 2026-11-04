@@ -11,7 +11,8 @@ private func link(_ id: Int, repo: String = be) -> String {
 }
 
 private func target(_ transcript: URL? = nil, branch: String? = nil, cwd: String = "/x") -> PRTarget {
-    PRTarget(sessionId: "s", transcript: transcript, cwd: cwd, branch: branch)
+    let size = transcript.flatMap { try? FileManager.default.attributesOfItem(atPath: $0.path)[.size] as? UInt64 }
+    return PRTarget(sessionId: "s", transcript: transcript, size: size, cwd: cwd, branch: branch)
 }
 
 private func monitor(_ api: FakeBitbucket, remote: String? = nil) -> PRMonitor {
@@ -22,26 +23,12 @@ private func transcript(_ lines: [String]) -> URL {
     writeTranscript(makeTempDir(), cwd: "/x", id: "s", lines: lines + [""])
 }
 
-/// Routes for the user, an open list and default passing pipeline / no comments.
-private func fake(open: [[String: Any]] = []) -> FakeBitbucket {
-    let api = FakeBitbucket()
-    api.set("/2.0/user", json: ["uuid": "{me}"])
-    api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": open])
-    api.set("/statuses", json: ["values": [["state": "SUCCESSFUL"]]])
-    api.set("/comments", json: ["values": []])
-    return api
-}
-
 private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
     var o = pr
     var source = o["source"] as! [String: Any]
     source["commit"] = ["hash": hash]
     o["source"] = source
     return o
-}
-
-private func comment(_ uuid: String, _ name: String, _ at: String) -> [String: Any] {
-    ["user": ["uuid": uuid, "display_name": name], "created_on": at, "deleted": false]
 }
 
 @Suite struct PRMonitorTests {
@@ -113,6 +100,16 @@ private func comment(_ uuid: String, _ name: String, _ at: String) -> [String: A
         m.update([target(branch: "master")], at: t0 + 120)
         #expect(api.requests(containing: "pullrequests/6874") == before)
         #expect(m.takeSnapshot().prs["s"]?.map(\.state) == ["MERGED"])
+    }
+
+    @Test func foreignWorkspaceRefAskedOnce() {
+        let api = fake(open: [prJSON(id: 7571)])
+        let m = monitor(api)
+        let url = transcript([link(7571), link(1, repo: "acme/app")])
+        m.update([target(url)], at: t0)
+        m.update([target(url)], at: t0 + 61)
+        #expect(api.requests(containing: "repositories/acme/app/pullrequests/1") == 1)
+        #expect(m.takeSnapshot().prs["s"]?.map(\.ref.id) == [7571])
     }
 
     @Test func closedOnFirstSightHidden() {

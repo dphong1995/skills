@@ -278,7 +278,7 @@ struct SnapshotTests {
         api.set("/statuses", json: ["values": [["state": "FAILED"]]])
         let t0 = Date()
         let stamp = ISO8601DateFormatter().string(from: t0.addingTimeInterval(-180))
-        api.set("/comments", json: ["values": [["user": ["uuid": "{tin}", "display_name": "Tin Tran"], "created_on": stamp, "deleted": false]]])
+        api.set("/comments", json: ["values": [comment("{tin}", "Tin Tran", stamp)]])
         let links = [7571, 7567].map { "https://bitbucket.org/\(repo)/pull-requests/\($0)" }.joined(separator: " ")
         _ = writeTranscript(projects, cwd: backend, id: "b", lines: [assistantLine("Đã push, xem " + links), ""])
         writeSession(dir, "b", pid: me, status: "idle", ageSec: 30, name: "talo6-dct-backend-3f", cwd: backend)

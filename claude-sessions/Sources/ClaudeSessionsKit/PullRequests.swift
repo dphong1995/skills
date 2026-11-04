@@ -59,13 +59,12 @@ enum PullRequests {
     /// `!` bash-mode and local-command output, which Claude Code stores as plain user lines.
     private static func isShellOutput(_ s: String) -> Bool {
         let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        return ["<bash-stdout>", "<bash-stderr>", "<local-command-stdout>"].contains { t.hasPrefix($0) }
+        return ["<bash-stdout>", "<bash-stderr>", "<local-command-stdout>", "<local-command-stderr>"].contains { t.hasPrefix($0) }
     }
 
     static func refs(inTranscript data: Data) -> [PRRef] {
         // No trailing slash: JSON may escape "/" as "\/", which would hide the marker.
         let marker = Data("pull-requests".utf8)
-        var seen = Set<PRRef>()
         var out: [PRRef] = []
         for line in data.split(separator: 0x0A) {
             let bytes = Data(line)
@@ -80,19 +79,20 @@ enum PullRequests {
                 if isShellOutput(s) { continue }
                 text = s
             } else if let blocks = content as? [[String: Any]], type == "user" || type == "assistant" {
-                text = blocks.compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }
-                    .filter { type != "user" || !isShellOutput($0) }.joined(separator: " ")
+                let kept = type == "user" ? blocks.filter { !isShellOutput($0["text"] as? String ?? "") } : blocks
+                text = Transcript.text(of: kept)
             } else { continue }
-            for r in refs(in: text) where seen.insert(r).inserted { out.append(r) }
+            out += refs(in: text)
         }
         return out
     }
 
+    private static let remoteRegex = try! NSRegularExpression(
+        pattern: #"^(?:git@bitbucket\.org:|https://(?:[^@/]+@)?bitbucket\.org/)([\w.-]+)/([\w.-]+?)(?:\.git)?/?$"#)
+
     static func repo(fromRemote s: String) -> (workspace: String, repo: String)? {
         let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
-        let pattern = #"^(?:git@bitbucket\.org:|https://(?:[^@/]+@)?bitbucket\.org/)([\w.-]+)/([\w.-]+?)(?:\.git)?/?$"#
-        guard let re = try? NSRegularExpression(pattern: pattern),
-              let m = re.firstMatch(in: t, range: NSRange(location: 0, length: (t as NSString).length))
+        guard let m = remoteRegex.firstMatch(in: t, range: NSRange(location: 0, length: (t as NSString).length))
         else { return nil }
         let ns = t as NSString
         return (ns.substring(with: m.range(at: 1)), ns.substring(with: m.range(at: 2)))
@@ -151,12 +151,15 @@ enum PullRequests {
         return nil
     }
 
-    private static func date(_ s: String) -> Date? {
+    private static let fractionalDate: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = f.date(from: s) { return d }
-        f.formatOptions = [.withInternetDateTime]
-        return f.date(from: s)
+        return f
+    }()
+    private static let plainDate = ISO8601DateFormatter()
+
+    private static func date(_ s: String) -> Date? {
+        fractionalDate.date(from: s) ?? plainDate.date(from: s)
     }
 
     static func events(old: PRStatus, new: PRStatus) -> [PREvent] {

@@ -98,7 +98,7 @@ func editPrompt(_ store: Store) {
     let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 380, height: 120))
     scroll.hasVerticalScroller = true
     scroll.borderType = .bezelBorder
-    let text = NSTextView(frame: scroll.bounds)
+    let text = NSTextView(frame: NSRect(origin: .zero, size: scroll.contentSize))
     text.isRichText = false
     text.minSize = scroll.contentSize
     text.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)

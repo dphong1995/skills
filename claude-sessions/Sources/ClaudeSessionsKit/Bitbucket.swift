@@ -7,22 +7,6 @@ public protocol BitbucketAPI: AnyObject {
     func get(_ path: String) throws -> Data
 }
 
-/// Runs a program and returns its stdout, or nil when it cannot start, times out, or exits non-zero.
-func runProcess(_ path: String, _ args: [String], timeout: TimeInterval) -> String? {
-    let p = Process()
-    p.executableURL = URL(fileURLWithPath: path)
-    p.arguments = args
-    let pipe = Pipe()
-    p.standardOutput = pipe
-    p.standardError = FileHandle.nullDevice
-    guard (try? p.run()) != nil else { return nil }
-    DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { if p.isRunning { p.terminate() } }
-    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-    p.waitUntilExit()
-    guard p.terminationStatus == 0 else { return nil }
-    return String(decoding: data, as: UTF8.self)
-}
-
 public final class BitbucketClient: BitbucketAPI {
     static let base = "https://api.bitbucket.org"
     private static let service = "bitbucket-api-token"

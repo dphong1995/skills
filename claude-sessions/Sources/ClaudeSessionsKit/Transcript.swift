@@ -157,7 +157,7 @@ enum Transcript {
             .compactMap { try? JSONSerialization.jsonObject(with: Data($0)) as? [String: Any] }
     }
 
-    private static func text(of blocks: [[String: Any]]) -> String {
+    static func text(of blocks: [[String: Any]]) -> String {
         blocks.compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }.joined(separator: " ")
     }
 

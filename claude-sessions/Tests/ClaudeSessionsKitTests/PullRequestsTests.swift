@@ -32,6 +32,7 @@ private func data(_ o: [String: Any]) -> Data { try! JSONSerialization.data(with
             userLine("<bash-stdout>\(link("a", 1))</bash-stdout>"),
             userLine("<bash-stderr>\(link("b", 2))</bash-stderr>"),
             userLine("  <local-command-stdout>\(link("c", 3))</local-command-stdout>"),
+            userLine("<local-command-stderr>\(link("e", 5))</local-command-stderr>"),
             userLine("real \(link("d", 4))"),
         ]
         #expect(PullRequests.refs(inTranscript: Data(lines.joined(separator: "\n").utf8)) == [ref("d", 4)])

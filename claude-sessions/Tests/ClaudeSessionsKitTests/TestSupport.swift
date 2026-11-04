@@ -122,3 +122,17 @@ final class FakeBitbucket: BitbucketAPI {
         return try routes[key]!.get()
     }
 }
+
+/// Routes for the user, an open list and default passing pipeline / no comments.
+func fake(open: [[String: Any]] = []) -> FakeBitbucket {
+    let api = FakeBitbucket()
+    api.set("/2.0/user", json: ["uuid": "{me}"])
+    api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": open])
+    api.set("/statuses", json: ["values": [["state": "SUCCESSFUL"]]])
+    api.set("/comments", json: ["values": []])
+    return api
+}
+
+func comment(_ uuid: String, _ name: String, _ at: String) -> [String: Any] {
+    ["user": ["uuid": uuid, "display_name": name], "created_on": at, "deleted": false]
+}

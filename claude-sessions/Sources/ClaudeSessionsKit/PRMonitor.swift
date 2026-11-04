@@ -1,21 +1,23 @@
 import Foundation
 
-public struct PRTarget: Equatable {
-    public let sessionId: String
-    public let transcript: URL?
-    public let cwd: String
-    public let branch: String?
-    public init(sessionId: String, transcript: URL?, cwd: String, branch: String?) {
-        self.sessionId = sessionId; self.transcript = transcript; self.cwd = cwd; self.branch = branch
+struct PRTarget: Equatable {
+    let sessionId: String
+    let transcript: URL?
+    /// Size of `transcript` in bytes as measured by the caller; nil when there is no readable transcript.
+    let size: UInt64?
+    let cwd: String
+    let branch: String?
+    init(sessionId: String, transcript: URL?, size: UInt64?, cwd: String, branch: String?) {
+        self.sessionId = sessionId; self.transcript = transcript; self.size = size; self.cwd = cwd; self.branch = branch
     }
 }
 
-public struct PRSnapshot: Equatable {
+struct PRSnapshot: Equatable {
     /// Shown PRs per session in display order: link refs by first appearance, then branch refs. Not capped.
-    public var prs: [String: [PRStatus]]
-    public var events: [PREvent]
-    public var lastSuccess: Date?
-    public init(prs: [String: [PRStatus]] = [:], events: [PREvent] = [], lastSuccess: Date? = nil) {
+    var prs: [String: [PRStatus]]
+    var events: [PREvent]
+    var lastSuccess: Date?
+    init(prs: [String: [PRStatus]] = [:], events: [PREvent] = [], lastSuccess: Date? = nil) {
         self.prs = prs; self.events = events; self.lastSuccess = lastSuccess
     }
 }
@@ -30,14 +32,20 @@ public final class PRMonitor {
         var linkRefs: [PRRef] = []
         var branchRefs: [PRRef] = []
         var branch: String?
+
+        /// Link refs first, then branch refs, without duplicates.
+        var refs: [PRRef] {
+            var seen = Set<PRRef>()
+            return (linkRefs + branchRefs).filter { seen.insert($0).inserted }
+        }
     }
 
     private static let chunkBytes: UInt64 = 1 << 20
     private static let maxPages = 20
     private static let forgetAfter: TimeInterval = 30
     private static let remoteRetry: TimeInterval = 300
-    private static let openFields = "values.id,values.title,values.state,values.comment_count,values.updated_on,values.source.branch.name,values.source.repository.full_name,values.source.commit.hash,values.participants.approved,values.participants.state,values.participants.role,values.participants.user.uuid,values.links.html.href,next"
     private static let singleFields = "id,title,state,comment_count,updated_on,source.branch.name,source.repository.full_name,source.commit.hash,participants.approved,participants.state,participants.role,participants.user.uuid,links.html.href"
+    private static let openFields = singleFields.split(separator: ",").map { "values.\($0)" }.joined(separator: ",") + ",next"
     private static let commentFields = "values.user.uuid,values.user.display_name,values.created_on,values.deleted"
 
     private let api: BitbucketAPI
@@ -61,17 +69,17 @@ public final class PRMonitor {
     private var lastCycle: Date?
 
     public init(api: BitbucketAPI, queue: DispatchQueue? = DispatchQueue(label: "claude-sessions.pr-monitor"),
-                remote: @escaping (String) -> String? = PRMonitor.gitRemote, interval: TimeInterval = 60) {
-        self.api = api; self.queue = queue; self.remote = remote; self.interval = interval
+                remote: ((String) -> String?)? = nil, interval: TimeInterval = 60) {
+        self.api = api; self.queue = queue; self.remote = remote ?? Self.gitRemote; self.interval = interval
     }
 
-    public static func gitRemote(_ cwd: String) -> String? {
+    static func gitRemote(_ cwd: String) -> String? {
         runProcess("/usr/bin/git", ["-C", cwd, "remote", "get-url", "origin"], timeout: 2)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Main thread, cheap: queues one `tick` with the latest targets.
-    public func update(_ targets: [PRTarget], at now: Date = Date()) {
+    func update(_ targets: [PRTarget], at now: Date = Date()) {
         guard let queue else { return tick(targets, at: now) }
         lock.lock()
         let queued = pending != nil
@@ -87,7 +95,7 @@ public final class PRMonitor {
         }
     }
 
-    public func takeSnapshot() -> PRSnapshot {
+    func takeSnapshot() -> PRSnapshot {
         lock.lock(); defer { lock.unlock() }
         let s = snapshot
         snapshot.events = []
@@ -110,13 +118,13 @@ public final class PRMonitor {
             var s = existing ?? SessionState()
             if existing == nil ? t.branch != nil : s.branch != t.branch { needCycle = true }
             s.branch = t.branch
-            if scan(&s, t.transcript) { needCycle = true }
+            if scan(&s, t.transcript, size: t.size) { needCycle = true }
             sessions[t.sessionId] = s
             if let known = remotes[t.cwd], known.repo != nil || now.timeIntervalSince(known.at) < Self.remoteRetry { continue }
             let repo = remote(t.cwd).flatMap(PullRequests.repo(fromRemote:)).map { Repo(workspace: $0.workspace, name: $0.repo) }
             remotes[t.cwd] = (repo, now)
         }
-        let used = Set(sessions.values.flatMap { $0.linkRefs + $0.branchRefs })
+        let used = Set(sessions.values.flatMap(\.refs))
         statuses = statuses.filter { used.contains($0.key) }
         hidden.formIntersection(used)
         closed.formIntersection(used)
@@ -129,8 +137,7 @@ public final class PRMonitor {
         }
         var prs: [String: [PRStatus]] = [:]
         for (id, s) in sessions {
-            var seen = Set<PRRef>()
-            let list = (s.linkRefs + s.branchRefs).filter { seen.insert($0).inserted }.compactMap { statuses[$0] }
+            let list = s.refs.compactMap { statuses[$0] }
             if !list.isEmpty { prs[id] = list }
         }
         lock.lock()
@@ -141,10 +148,9 @@ public final class PRMonitor {
     }
 
     /// Reads the transcript bytes appended since the last scan, whole lines only. True when a new ref was found.
-    private func scan(_ s: inout SessionState, _ url: URL?) -> Bool {
-        guard let url else { return false }
+    private func scan(_ s: inout SessionState, _ url: URL?, size: UInt64?) -> Bool {
+        guard let url, let size else { return false }
         if s.url != url { s.url = url; s.offset = 0; s.carry = Data() }
-        guard let size = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? UInt64 else { return false }
         if size < s.offset { s.offset = 0; s.carry = Data() }
         var gained = false
         while s.offset < size {
@@ -186,7 +192,7 @@ public final class PRMonitor {
     }
 
     private func cycle(_ targets: [PRTarget]) -> (events: [PREvent], succeeded: Bool) {
-        var workspaces = Set(sessions.values.flatMap { $0.linkRefs + $0.branchRefs }.map(\.workspace))
+        var workspaces = Set(sessions.values.flatMap(\.refs).map(\.workspace))
         for t in targets { if let repo = remotes[t.cwd]?.repo { workspaces.insert(repo.workspace) } }
         guard !workspaces.isEmpty else { return ([], false) }
 
@@ -216,28 +222,34 @@ public final class PRMonitor {
             let full = "\(repo.workspace)/\(repo.name)"
             for pr in open.values.sorted(by: { $0.ref.id < $1.ref.id }) where pr.sourceRepo == full && pr.branch == branch {
                 var s = sessions[t.sessionId]!
-                if !s.linkRefs.contains(pr.ref) && !s.branchRefs.contains(pr.ref) {
+                if !s.refs.contains(pr.ref) {
                     s.branchRefs.append(pr.ref)
                     sessions[t.sessionId] = s
                 }
             }
         }
 
-        var refs: [PRRef] = []
-        for key in sessions.keys.sorted() {
-            for r in sessions[key]!.linkRefs + sessions[key]!.branchRefs where !refs.contains(r) { refs.append(r) }
-        }
+        var seenRefs = Set<PRRef>()
+        let refs = sessions.keys.sorted().flatMap { sessions[$0]!.refs }.filter { seenRefs.insert($0).inserted }
 
         var events: [PREvent] = []
         for ref in refs where !hidden.contains(ref) && !closed.contains(ref) {
             let prev = statuses[ref]
+            let path = "/2.0/repositories/\(ref.workspace)/\(ref.repo)/pullrequests/\(ref.id)"
             var pr: PRStatus
             if let o = open[ref] {
                 pr = o
             } else {
-                let path = "/2.0/repositories/\(ref.workspace)/\(ref.repo)/pullrequests/\(ref.id)"
-                guard let d = try? api.get("\(path)?fields=\(Self.singleFields)"),
-                      let o = decode(d), let fetched = PullRequests.status(from: o) else { continue }
+                let d: Data
+                do {
+                    d = try api.get("\(path)?fields=\(Self.singleFields)")
+                } catch BitbucketError.http(let code) where prev == nil && (code == 403 || code == 404) {
+                    hidden.insert(ref) // foreign or placeholder workspace: never ask again
+                    continue
+                } catch {
+                    continue
+                }
+                guard let o = decode(d), let fetched = PullRequests.status(from: o) else { continue }
                 pr = fetched
                 if !pr.isOpen {
                     if prev == nil { hidden.insert(ref); continue }
@@ -247,9 +259,8 @@ public final class PRMonitor {
             pr.pipeline = prev?.pipeline
             pr.lastOther = prev?.lastOther
             if pr.isOpen {
-                let path = "/2.0/repositories/\(ref.workspace)/\(ref.repo)/pullrequests/\(ref.id)"
                 if prev == nil || prev?.commit != pr.commit || pr.pipeline == nil || pr.pipeline == .running {
-                    if let d = try? api.get("\(path)/statuses?fields=values.state,values.commit.hash") {
+                    if let d = try? api.get("\(path)/statuses?fields=values.state,values.commit.hash&pagelen=50&sort=-created_on") {
                         pr.pipeline = PullRequests.pipeline(fromStatuses: d, commit: pr.commit)
                     } else if prev != nil {
                         continue

@@ -11,17 +11,10 @@ public enum CmuxJump {
     /// Blocking: call off the main thread. Nil when cmux is missing or the output has no surface.
     public static func surface(sessionId: String) -> String? {
         guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return nil }
-        let p = Process()
-        p.executableURL = app.appendingPathComponent("Contents/Resources/bin/cmux")
-        p.arguments = ["sessions", "--session", sessionId, "--agent", "claude"]
-        let pipe = Pipe()
-        p.standardOutput = pipe
-        p.standardError = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return nil }
-        DispatchQueue.global().asyncAfter(deadline: .now() + 2) { if p.isRunning { p.terminate() } }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        p.waitUntilExit()
-        return surface(fromSessionsOutput: String(decoding: data, as: UTF8.self))
+        let cmux = app.appendingPathComponent("Contents/Resources/bin/cmux").path
+        guard let out = runProcess(cmux, ["sessions", "--session", sessionId, "--agent", "claude"], timeout: 2, requireSuccess: false)
+        else { return nil }
+        return surface(fromSessionsOutput: out)
     }
 
     /// Main thread. Runs the AppleScript body under a timeout; nil on any error.
