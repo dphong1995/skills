@@ -71,6 +71,13 @@ private func link(_ repo: String, _ id: Int) -> String { "https://bitbucket.org/
         #expect(scan(TranscriptScanner(queue: nil), url).jiraHosts == ["T6IR": "talosix.atlassian.net", "OPS": "talosix.atlassian.net"])
     }
 
+    @Test func jiraHostLowercasedAndAtlassianWins() {
+        let url = transcript([userLine("https://Evil.Example/browse/T6IR-1"),
+                              userLine("https://TaloSix.Atlassian.net/browse/T6IR-2"),
+                              userLine("https://Other.Example/browse/OPS-1")])
+        #expect(scan(TranscriptScanner(queue: nil), url).jiraHosts == ["T6IR": "talosix.atlassian.net", "OPS": "other.example"])
+    }
+
     @Test func shellOutputAndRemindersIgnored() {
         let url = transcript([userLine("<bash-stdout>T6IR-5</bash-stdout>"),
                               assistantLine("ok <system-reminder>T6IR-6</system-reminder>")])

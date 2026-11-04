@@ -94,6 +94,6 @@ public enum Credentials {
                   runProcess("/usr/bin/security", ["delete-generic-password", "-s", s.keychainService, "-a", other], timeout: 2) != nil
             else { break }
         }
-        return true
+        return Self.account(s) == account
     }
 }

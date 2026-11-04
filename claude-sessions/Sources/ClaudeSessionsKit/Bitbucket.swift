@@ -17,12 +17,6 @@ public final class BitbucketClient: BitbucketAPI, CredentialReloading {
 
     private let http: BasicAuthHTTP
 
-    /// Nil when the Keychain item or its account is missing.
-    public init?() {
-        guard let h = BasicAuthHTTP(service: .bitbucket) else { return nil }
-        http = h
-    }
-
     /// Uses the given credentials until `reload()`; no Keychain read.
     public init(account: String, token: String) {
         http = BasicAuthHTTP(service: .bitbucket, account: account, token: token)

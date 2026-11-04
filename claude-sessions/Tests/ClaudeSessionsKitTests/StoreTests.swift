@@ -1061,6 +1061,20 @@ private func section(_ s: Session?, _ title: String) -> [String]? { s?.menu.firs
     #expect(store.connectionText(.jira) == "Jira: ✗ chưa biết site Jira")
 }
 
+@Test func learnedAtlassianHostReplacesForeignOne() {
+    func learn(stored: String) -> String? {
+        let dir = makeTempDir(), projects = makeTempDir()
+        _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine("https://talosix.atlassian.net/browse/T6IR-2"), ""])
+        writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+        let store = makeStore(dir: dir, projects: projects)
+        store.jiraProjects = ["T6IR": stored]
+        store.refresh(at: prT0)
+        return store.jiraProjects["T6IR"]
+    }
+    #expect(learn(stored: "evil.example") == "talosix.atlassian.net")
+    #expect(learn(stored: "other.atlassian.net") == "other.atlassian.net")
+}
+
 @Test func ticketButtonHelp() {
     let (store, _, _) = menuStore()
     let links = store.sessions.first?.links

@@ -19,6 +19,12 @@ enum Jira {
     /// The only hosts that may receive the Jira token.
     static func isAtlassianHost(_ host: String) -> Bool { host.lowercased().hasSuffix(".atlassian.net") }
 
+    /// Whether a newly seen host replaces the stored one: first seen wins, except an Atlassian host replaces a foreign one.
+    static func replaces(_ stored: String?, with host: String) -> Bool {
+        guard let stored else { return true }
+        return isAtlassianHost(host) && !isAtlassianHost(stored)
+    }
+
     /// Every requested key is in the result; one `bulkfetch` did not return gets no title and no status. Nil when `data` is not JSON.
     static func issues(from data: Data, requested: [String]) -> [String: JiraIssue]? {
         guard let o = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
@@ -35,12 +41,6 @@ enum Jira {
 
 public final class JiraClient: JiraAPI, CredentialReloading {
     private let http: BasicAuthHTTP
-
-    /// Nil when the Keychain item or its account is missing.
-    public init?() {
-        guard let h = BasicAuthHTTP(service: .jira) else { return nil }
-        http = h
-    }
 
     /// Uses the given credentials until `reload()`; no Keychain read.
     public init(account: String, token: String) {

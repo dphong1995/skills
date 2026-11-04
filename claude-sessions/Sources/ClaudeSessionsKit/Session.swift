@@ -362,7 +362,7 @@ public final class Store: ObservableObject {
         scanner.update(list.map { ScanTarget(sessionId: $0.id, transcript: transcriptURL(for: $0), size: sizes[$0.id]) }, at: now)
         let scans = scanner.takeSnapshot()
         let learned = scans.values.reduce(into: jiraProjects) { acc, r in
-            for (prefix, host) in r.jiraHosts where acc[prefix] == nil { acc[prefix] = host }
+            for (prefix, host) in r.jiraHosts where Jira.replaces(acc[prefix], with: host) { acc[prefix] = host }
         }
         if learned != jiraProjects {
             jiraProjects = learned

@@ -19,13 +19,6 @@ final class BasicAuthHTTP {
         var response: URLResponse?
     }
 
-    /// Nil when the Keychain item or its account is missing.
-    init?(service: Service) {
-        self.service = service
-        guard let a = Self.readAuth(service) else { return nil }
-        auth = a
-    }
-
     /// Uses the given credentials until `reload()`; no Keychain read.
     init(service: Service, account: String, token: String) {
         self.service = service

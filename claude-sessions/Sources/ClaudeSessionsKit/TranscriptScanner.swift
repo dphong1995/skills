@@ -174,8 +174,8 @@ public final class TranscriptScanner {
         }
         for (_, url) in Transcript.urlRanges(in: clean) {
             if let j = Transcript.jiraTicket(in: url), let prefix = Transcript.projectPrefix(of: j.key),
-               s.result.jiraHosts[prefix] == nil {
-                s.result.jiraHosts[prefix] = j.host
+               Jira.replaces(s.result.jiraHosts[prefix], with: j.host.lowercased()) {
+                s.result.jiraHosts[prefix] = j.host.lowercased()
                 s.result.version += 1
             }
             guard Transcript.isPullRequest(url) else { continue }

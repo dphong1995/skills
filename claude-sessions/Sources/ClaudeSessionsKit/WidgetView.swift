@@ -440,7 +440,7 @@ public struct WidgetView: View {
                             }
                             .fixedSize(horizontal: true, vertical: false)
                         }
-                        EmptyView()
+                        Color.clear.frame(width: 0, height: 0)
                     }
                     menuButton(s)
                 }
