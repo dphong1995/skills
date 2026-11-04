@@ -723,9 +723,25 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         #expect(c.n == 2)
     }
 
-    @Test func accountParsedFromKeychainAttributes() {
-        let out = "keychain: \"/x/login.keychain-db\"\nattributes:\n    \"acct\"<blob>=\"phong@example.com\"\n    \"svce\"<blob>=\"bitbucket-api-token\"\n"
-        #expect(BitbucketClient.account(fromAttributes: out) == "phong@example.com")
-        #expect(BitbucketClient.account(fromAttributes: "    \"acct\"<blob>=<NULL>\n") == nil)
+    @Test func connectionOkAfterCycle() {
+        let m = monitor(fake())
+        m.update([target([prRef(7571)])], at: t0)
+        #expect(m.takeSnapshot().connection == .ok)
+    }
+
+    @Test func connectionRejectedOn401() {
+        let api = fake()
+        api.failAll = .http(401)
+        let m = monitor(api)
+        m.update([target([prRef(7571)])], at: t0)
+        #expect(m.takeSnapshot().connection == .rejected)
+    }
+
+    @Test func connectionIgnoresPerPRErrors() {
+        let api = fake(open: [prJSON(id: 7571, reviewers: 1)])
+        api.routes["/2.0/workspaces/t6engineering/pullrequests/9999"] = .failure(.http(404))
+        let m = monitor(api)
+        m.update([target([prRef(7571), prRef(9999)])], at: t0)
+        #expect(m.takeSnapshot().connection == .ok)
     }
 }

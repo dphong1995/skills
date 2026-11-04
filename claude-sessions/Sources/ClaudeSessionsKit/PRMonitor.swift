@@ -15,6 +15,7 @@ struct PRSnapshot: Equatable {
     /// The PRs that produced `events` since the last `takeSnapshot`.
     var eventRefs: Set<PRRef>
     var lastSuccess: Date?
+    var connection: ConnectionState = .checking
     init(prs: [String: [PRStatus]] = [:], events: [PREvent] = [], eventRefs: Set<PRRef> = [], lastSuccess: Date? = nil) {
         self.prs = prs; self.events = events; self.eventRefs = eventRefs; self.lastSuccess = lastSuccess
     }
@@ -73,6 +74,7 @@ public final class PRMonitor {
     private var closed = Set<PRRef>()
     private var me: String?
     private var lastCycle: Date?
+    private var connection: ConnectionState = .checking
 
     public init(api: BitbucketAPI, queue: DispatchQueue? = DispatchQueue(label: "claude-sessions.pr-monitor"),
                 remote: ((String) -> String?)? = nil, interval: TimeInterval = 60) {
@@ -158,6 +160,7 @@ public final class PRMonitor {
         }
         lock.lock()
         snapshot.prs = prs
+        snapshot.connection = connection
         snapshot.events += events
         snapshot.eventRefs.formUnion(eventRefs)
         if succeeded { snapshot.lastSuccess = now }
@@ -167,6 +170,18 @@ public final class PRMonitor {
     /// Remembers the `(commit, label)` of a finished review so only a new one chimes.
     private func recordRabbit(_ ref: PRRef, _ pr: PRStatus) {
         if let r = pr.rabbit, CodeRabbit.isFinal(r) { rabbitSeen[ref] = (pr.commit, CodeRabbit.label(r)) }
+    }
+
+    /// Every API call goes through here so each path records the connection state.
+    private func fetch(_ path: String) throws -> Data {
+        do {
+            let d = try api.get(path)
+            connection = ConnectionState.after(nil, previous: connection)
+            return d
+        } catch {
+            connection = ConnectionState.after(error, previous: connection)
+            throw error
+        }
     }
 
     private func decode(_ d: Data) -> [String: Any]? {
@@ -179,7 +194,7 @@ public final class PRMonitor {
         var out: [PRStatus] = []
         var pages = 0
         while let p = path, pages < Self.maxPages {
-            guard let page = PullRequests.page(try api.get(p)) else { throw BitbucketError.transport }
+            guard let page = PullRequests.page(try fetch(p)) else { throw BitbucketError.transport }
             out += page.values
             path = page.next.map { $0.hasPrefix(BitbucketClient.base) ? String($0.dropFirst(BitbucketClient.base.count)) : $0 }
             pages += 1
@@ -196,7 +211,7 @@ public final class PRMonitor {
         var listed = 0
         do {
             if me == nil {
-                guard let uuid = decode(try api.get("/2.0/user?fields=uuid"))?["uuid"] as? String else { throw BitbucketError.transport }
+                guard let uuid = decode(try fetch("/2.0/user?fields=uuid"))?["uuid"] as? String else { throw BitbucketError.transport }
                 me = uuid
             }
             for ws in workspaces.sorted() {
@@ -239,7 +254,7 @@ public final class PRMonitor {
             } else {
                 let d: Data
                 do {
-                    d = try api.get("\(path)?fields=\(Self.singleFields)")
+                    d = try fetch("\(path)?fields=\(Self.singleFields)")
                 } catch BitbucketError.http(let code) where prev == nil && (code == 403 || code == 404) {
                     hidden.insert(ref) // foreign or placeholder workspace: never ask again
                     continue
@@ -271,7 +286,7 @@ public final class PRMonitor {
                     && statusesAt[ref].map { now.timeIntervalSince($0) >= Self.statusesSlowPoll } ?? true
                 if prev == nil || prev?.commit != pr.commit || (pr.pipeline == nil && inWindow) || pr.pipeline == .running
                     || rabbitPending || prev?.comments != pr.comments || !statusesFetched.contains(ref) || slowPoll {
-                    if let d = try? api.get("\(path)/statuses?fields=\(Self.statusFields)&pagelen=50&sort=-created_on") {
+                    if let d = try? fetch("\(path)/statuses?fields=\(Self.statusFields)&pagelen=50&sort=-created_on") {
                         firstStatuses = !statusesFetched.contains(ref)
                         statusesAt[ref] = now
                         pr.pipeline = PullRequests.pipeline(fromStatuses: d, commit: pr.commit)
@@ -295,7 +310,7 @@ public final class PRMonitor {
                 }
                 let owed = commentsOwed.contains(ref)
                 if prev == nil || prev?.comments != pr.comments || rabbitFinished || owed {
-                    guard let d = try? api.get("\(path)/comments?sort=-created_on&pagelen=20&fields=\(Self.commentFields)") else {
+                    guard let d = try? fetch("\(path)/comments?sort=-created_on&pagelen=20&fields=\(Self.commentFields)") else {
                         if prev != nil { continue }
                         commentsOwed.insert(ref)
                         recordRabbit(ref, pr)

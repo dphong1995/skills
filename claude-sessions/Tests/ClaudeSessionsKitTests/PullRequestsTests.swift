@@ -136,3 +136,13 @@ private func data(_ o: [String: Any]) -> Data { try! JSONSerialization.data(with
         #expect(d == PullRequests.defaultPrompt.replacingOccurrences(of: "{url}", with: url.absoluteString))
     }
 }
+
+@Suite struct PullRequestTitleTests {
+    @Test func statusReadsTitle() {
+        var o = prJSON(id: 1, reviewers: 0)
+        o["title"] = "Fix site scope filter"
+        #expect(PullRequests.status(from: o)?.title == "Fix site scope filter")
+        o["title"] = nil
+        #expect(PullRequests.status(from: o)?.title == nil)
+    }
+}

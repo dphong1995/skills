@@ -9,7 +9,6 @@ public protocol BitbucketAPI: AnyObject {
 
 public final class BitbucketClient: BitbucketAPI {
     static let base = "https://api.bitbucket.org"
-    private static let service = "bitbucket-api-token"
 
     private let lock = NSLock()
     private var auth: String?
@@ -26,24 +25,23 @@ public final class BitbucketClient: BitbucketAPI {
         auth = a
     }
 
-    /// The value of the `"acct"` attribute line of `security find-generic-password` output.
-    static func account(fromAttributes out: String) -> String? {
-        for raw in out.split(separator: "\n") where raw.contains("\"acct\"<blob>=") {
-            let line = raw.trimmingCharacters(in: .whitespaces)
-            guard line.hasSuffix("\""), let eq = line.range(of: "<blob>=\"") else { return nil }
-            return String(line[eq.upperBound..<line.index(before: line.endIndex)])
-        }
-        return nil
+    /// Uses the given credentials until `reload()`; no Keychain read.
+    public init(account: String, token: String) {
+        auth = Self.header(account: account, token: token)
+    }
+
+    /// Re-reads the Keychain now, replacing any cached or explicit credentials.
+    public func reload() {
+        let a = Self.readAuth()
+        lock.lock(); auth = a; lock.unlock()
+    }
+
+    private static func header(account: String, token: String) -> String {
+        "Basic " + Data("\(account):\(token)".utf8).base64EncodedString()
     }
 
     private static func readAuth() -> String? {
-        guard let attrs = runProcess("/usr/bin/security", ["find-generic-password", "-s", service], timeout: 2),
-              let user = account(fromAttributes: attrs),
-              let pw = runProcess("/usr/bin/security", ["find-generic-password", "-s", service, "-w"], timeout: 2)
-        else { return nil }
-        let token = pw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !token.isEmpty else { return nil }
-        return "Basic " + Data("\(user):\(token)".utf8).base64EncodedString()
+        Credentials.read(.bitbucket).map { header(account: $0.account, token: $0.token) }
     }
 
     private func currentAuth() -> String? {

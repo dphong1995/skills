@@ -30,6 +30,7 @@ public struct PRStatus: Equatable {
     /// `full_name` of the source repository.
     public let sourceRepo: String?
     public let branch: String?
+    public var title: String?
     public var pipeline: Pipeline?
     public var lastOther: PRComment?
     public var rabbit: Rabbit?
@@ -89,7 +90,8 @@ enum PullRequests {
             comments: o["comment_count"] as? Int ?? 0,
             commit: (source?["commit"] as? [String: Any])?["hash"] as? String,
             sourceRepo: (source?["repository"] as? [String: Any])?["full_name"] as? String,
-            branch: (source?["branch"] as? [String: Any])?["name"] as? String)
+            branch: (source?["branch"] as? [String: Any])?["name"] as? String,
+            title: o["title"] as? String)
     }
 
     static func page(_ data: Data) -> (values: [PRStatus], next: String?)? {
