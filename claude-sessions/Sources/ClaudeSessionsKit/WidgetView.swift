@@ -360,7 +360,7 @@ public struct WidgetView: View {
         return VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 10) {
                 Circle().fill(color(s.status)).frame(width: 8, height: 8)
-                    .accessibilityLabel(statusText(s))
+                    .accessibilityLabel(fresh ? statusText(s) + ", mới" : statusText(s))
                 VStack(alignment: .leading, spacing: 1) {
                     Text(s.title).font(.system(size: 12.5, weight: .medium)).foregroundStyle(.white).lineLimit(2)
                     Text(s.subtitle).font(.system(size: 10.5))
@@ -381,11 +381,6 @@ public struct WidgetView: View {
                     }
                 }
                 Spacer(minLength: 12)
-                if fresh {
-                    Text("MỚI").font(.system(size: 9.5, weight: .bold)).foregroundStyle(.black)
-                        .padding(.horizontal, 5).padding(.vertical, 1)
-                        .background(Capsule().fill(.yellow))
-                }
                 Text(elapsed(s.since, store.now)).font(.system(size: 11.5).monospacedDigit())
                     .foregroundStyle(.white.opacity(0.55)).frame(minWidth: 36, alignment: .trailing)
             }
