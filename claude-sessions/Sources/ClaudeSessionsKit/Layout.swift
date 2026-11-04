@@ -39,7 +39,10 @@ public enum Layout {
     static let listPadding = listPaddingNear + listPaddingFar
     static var maxListHeight: CGFloat { maxExpandedHeight - headerHeight }
     public static let collapsed = CGSize(width: 124, height: headerHeight)
-    static let bgOpacities: [Double] = [0, 0.25, 0.5, 0.75, 0.92]
+    /// Background opacity of the expanded card; the last of `bgOpacities`.
+    static let cardOpacity: Double = 0.92
+    public static let bgOpacities: [Double] = [0, 0.25, 0.5, 0.75, cardOpacity]
+    static let dragThreshold: CGFloat = 4
 
     /// Shifts a saved pill x when the collapsed width changed, keeping the anchored edge (or centre) in place.
     public static func migrate(pillX x: CGFloat, from old: CGFloat, to new: CGFloat, anchor: Anchor) -> CGFloat {
@@ -49,22 +52,15 @@ public enum Layout {
         case .leading: x
         }
     }
-    static let dragThreshold: CGFloat = 4
-
     static func dragOrigin(start: CGPoint, mouseDown: CGPoint, mouse: CGPoint) -> CGPoint {
         CGPoint(x: start.x + mouse.x - mouseDown.x, y: start.y + mouse.y - mouseDown.y)
     }
 
     /// Pill origin after a drop: the dropped card stays put and the pill takes the card's corner for the anchor its centre implies.
     public static func settledPillOrigin(card: NSRect, screen: NSRect) -> CGPoint {
-        let a = Anchor.near(CGPoint(x: card.midX, y: card.midY), in: screen)
-        let x: CGFloat
-        switch a.h {
-        case .leading: x = card.minX
-        case .center: x = card.midX - collapsed.width / 2
-        case .trailing: x = card.maxX - collapsed.width
-        }
-        return CGPoint(x: x, y: a.up ? card.minY : card.maxY - collapsed.height)
+        // pill(in:) expects the canvas, which is the card grown by `margin`.
+        pill(in: card.insetBy(dx: -margin, dy: -margin), size: collapsed,
+             anchor: Anchor.near(CGPoint(x: card.midX, y: card.midY), in: screen)).origin
     }
 
     static func isDrag(from a: CGPoint, to b: CGPoint) -> Bool {

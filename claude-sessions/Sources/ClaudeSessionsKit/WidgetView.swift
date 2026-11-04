@@ -163,7 +163,7 @@ public struct WidgetView: View {
     public var body: some View {
         let expanded = store.expanded
         let radius: CGFloat = expanded ? 20 : Layout.headerHeight / 2
-        let o = expanded ? 0.92 : store.bgOpacity
+        let o = expanded ? Layout.cardOpacity : store.bgOpacity
 
         VStack(spacing: 0) {
             if expanded && store.anchor.up { list }
@@ -181,10 +181,10 @@ public struct WidgetView: View {
         .fixedSize(horizontal: false, vertical: expanded)
         .background(RoundedRectangle(cornerRadius: radius, style: .continuous).fill(Color.black.opacity(o)))
         .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous)
-            .stroke(Color.white.opacity(0.14 * o / 0.92), lineWidth: 1))
+            .stroke(Color.white.opacity(0.14 * o / Layout.cardOpacity), lineWidth: 1))
         .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
-        .shadow(color: .black.opacity(0.4 * o / 0.92), radius: expanded ? 12 : 6, y: 3)
+        .shadow(color: .black.opacity(0.4 * o / Layout.cardOpacity), radius: expanded ? 12 : 6, y: 3)
         .contextMenu {
             Menu("Độ đậm nền") {
                 ForEach(Layout.bgOpacities, id: \.self) { v in
@@ -240,7 +240,7 @@ public struct WidgetView: View {
         let u = urgent
         let glow = Color.black.opacity(0.6)
         return HStack(spacing: expanded ? 7 : 6) {
-            PulseDot(color: u.color, pulsing: u.pulsing).shadow(color: expanded ? .clear : glow, radius: 1.5)
+            PulseDot(color: u.color, pulsing: u.pulsing)
             if expanded {
                 Text("Claude").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(.white)
                 Spacer(minLength: 6)
@@ -254,11 +254,11 @@ public struct WidgetView: View {
                         Circle().fill(color(st)).frame(width: 6, height: 6)
                         Text("\(n)").font(.system(size: 12, weight: .semibold).monospacedDigit()).foregroundStyle(.white).fixedSize()
                     }
-                    .shadow(color: expanded ? .clear : glow, radius: 1.5)
                 }
             }
             if !expanded { Spacer(minLength: 0) }
         }
+        .shadow(color: expanded ? .clear : glow, radius: 1.5)
         .padding(.horizontal, expanded ? 18 : 12)
     }
 
@@ -388,7 +388,7 @@ public final class DragHostingView<V: View>: NSHostingView<V> {
                 window.sendEvent(e)
                 return
             }
-            if !moving && Layout.isDrag(from: down.locationInWindow, to: e.locationInWindow) { moving = true }
+            if !moving && Layout.isDrag(from: mouse0, to: NSEvent.mouseLocation) { moving = true }
             if moving {
                 window.setFrameOrigin(Layout.dragOrigin(start: start, mouseDown: mouse0, mouse: NSEvent.mouseLocation))
             }

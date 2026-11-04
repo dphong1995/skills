@@ -8,7 +8,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var panel: WidgetPanel!
     var timer: Timer?
     var monitors: [Any] = []
-    var lookingUp: Set<String> = []
     var sending: Set<String> = []
     var cancellables: Set<AnyCancellable> = []
 
@@ -24,7 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.acceptsMouseMovedEvents = true
         panel.store = store
         let host = DragHostingView(rootView: WidgetView(store: store, onAction: { [weak self] in self?.handle($0) }))
-        host.onDragEnd = { [weak self] in self?.settle() }
+        host.onDragEnd = { [weak self] in self?.settleAfterDrop() }
         panel.contentView = host
 
         store.$editing.sink { [weak self] e in
@@ -49,10 +48,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if d.object(forKey: "pillX") != nil {
             var x = d.double(forKey: "pillX")
             let y = d.double(forKey: "pillY")
-            let w = d.object(forKey: "pillWidth") as? Double ?? 232
+            let legacyPillWidth: Double = 232 // builds before the 124 pt pill wrote no pillWidth
+            let w = d.object(forKey: "pillWidth") as? Double ?? legacyPillWidth
             if w != Layout.collapsed.width {
                 let centre = CGPoint(x: x + w / 2, y: y + Layout.collapsed.height / 2)
-                if let f = (NSScreen.screens.first { $0.frame.contains(centre) } ?? NSScreen.main)?.frame {
+                if let f = screenFrame(containing: centre) {
                     x = Layout.migrate(pillX: x, from: w, to: Layout.collapsed.width, anchor: Anchor.near(centre, in: f))
                 }
             }
@@ -62,7 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
-            self?.settle()
+            self?.resettle()
         }
         let track: (NSEvent) -> Void = { [weak self] _ in self?.trackMouse() }
         if let m = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged], handler: track) { monitors.append(m) }
@@ -70,7 +70,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         store.muted = UserDefaults.standard.bool(forKey: "muted")
         store.$muted.dropFirst().sink { UserDefaults.standard.set($0, forKey: "muted") }.store(in: &cancellables)
-        store.bgOpacity = UserDefaults.standard.object(forKey: "bgOpacity") as? Double ?? 0.25
+        if let v = d.object(forKey: "bgOpacity") as? Double {
+            store.bgOpacity = Layout.bgOpacities.min { abs($0 - v) < abs($1 - v) } ?? v
+        }
         store.$bgOpacity.dropFirst().sink { UserDefaults.standard.set($0, forKey: "bgOpacity") }.store(in: &cancellables)
 
         if SMAppService.mainApp.status != .enabled { try? SMAppService.mainApp.register() }
@@ -106,13 +108,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Hits are cached in the store.
     func resolveSurface(_ id: String, then: @escaping (String?) -> Void) {
         if let surface = store.surfaces[id] { return then(surface) }
-        lookingUp.insert(id)
         let pid = store.pid(of: id)
         DispatchQueue.global().async {
             let surface = CmuxJump.surface(sessionId: id)
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                lookingUp.remove(id)
                 // The session's process changed while the lookup ran: the result may belong to the old one.
                 if store.pid(of: id) == pid {
                     if let surface { store.surfaces[id] = surface }
@@ -159,8 +159,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func place(pillOrigin raw: CGPoint) {
         let center = CGPoint(x: raw.x + Layout.collapsed.width / 2, y: raw.y + Layout.collapsed.height / 2)
-        let screen = NSScreen.screens.first { $0.frame.contains(center) } ?? NSScreen.main
-        guard let s = screen?.frame else { return }
+        guard let s = screenFrame(containing: center) else { return }
         let o = Layout.clamp(pillOrigin: raw, to: s)
         store.anchor = Anchor.near(CGPoint(x: o.x + Layout.collapsed.width / 2, y: o.y + Layout.collapsed.height / 2), in: s)
         panel.setFrame(Layout.canvasFrame(pillOrigin: o, anchor: store.anchor), display: true)
@@ -169,11 +168,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.set(Double(Layout.collapsed.width), forKey: "pillWidth")
     }
 
-    func settle() {
+    private func screenFrame(containing p: CGPoint) -> NSRect? {
+        NSScreen.screens.first { $0.frame.contains(p) }?.frame ?? NSScreen.main?.frame
+    }
+
+    /// After a drop the card stays where it was dropped and the pill moves to its corner.
+    func settleAfterDrop() {
         let card = Layout.pill(in: panel.frame, size: Layout.size(store), anchor: store.anchor)
-        let c = CGPoint(x: card.midX, y: card.midY)
-        let screen = NSScreen.screens.first { $0.frame.contains(c) } ?? NSScreen.main ?? NSScreen.screens[0]
-        place(pillOrigin: Layout.settledPillOrigin(card: card, screen: screen.frame))
+        guard let s = screenFrame(containing: CGPoint(x: card.midX, y: card.midY)) else { return }
+        place(pillOrigin: Layout.settledPillOrigin(card: card, screen: s))
+        trackMouse()
+    }
+
+    /// After a screen change the pill stays put and is only re-clamped to the screens.
+    func resettle() {
+        place(pillOrigin: Layout.pill(in: panel.frame, size: Layout.collapsed, anchor: store.anchor).origin)
         trackMouse()
     }
 
