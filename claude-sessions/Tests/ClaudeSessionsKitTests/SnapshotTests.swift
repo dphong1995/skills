@@ -351,4 +351,19 @@ struct SnapshotTests {
         store.refresh(at: Date())
         render(store, panel, "23-ticket-row-overflow")
     }
+
+    @Test func renderFreshLongTitle() {
+        let dir = makeTempDir(), projects = makeTempDir()
+        let store = makeStore(dir: dir, projects: projects)
+        let panel = PanelState()
+        _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [
+            userLine("Hãy sửa lỗi đăng nhập khi token hết hạn, thêm test cho luồng làm mới token và cập nhật tài liệu hướng dẫn cho đội"),
+            assistantLine("Đã sửa xong, test đều qua."),
+        ])
+        writeSession(dir, "a", pid: me, status: "idle", ageSec: 30, name: "talo6-dct-frontend-d7", cwd: frontend)
+        store.unseen = ["a"]
+        store.refresh(at: Date())
+        panel.hovering = true
+        render(store, panel, "27-fresh-long-title")
+    }
 }

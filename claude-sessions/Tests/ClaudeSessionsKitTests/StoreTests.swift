@@ -52,6 +52,8 @@ import Testing
     writeSession(dir, "d", pid: me, status: "busy", ageSec: 3700, name: "talo-v2-9c", cwd: "/Users/phong/talos-v2")
     store.refresh(at: t0.addingTimeInterval(8))
     #expect(store.sessions.map(\.id) == ["c", "b", "a", "d"])
+    #expect(store.sessions.first { $0.id == "b" }?.isPermissionPrompt == true)
+    #expect(store.sessions.first { $0.id == "c" }?.isPermissionPrompt == false)
 }
 
 @Test func hoverExpands() {

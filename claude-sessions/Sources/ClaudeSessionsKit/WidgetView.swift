@@ -18,6 +18,15 @@ func color(_ status: String) -> Color {
     }
 }
 
+private func statusText(_ s: Session) -> String {
+    switch s.status {
+    case "busy": "đang chạy"
+    case "idle": "xong"
+    case "waiting": s.isPermissionPrompt ? "chờ duyệt" : "chờ trả lời"
+    default: s.status.isEmpty ? "?" : s.status
+    }
+}
+
 /// Inline markdown for a reply; links are dropped (phase buttons open them) and a parse failure shows the text as is.
 func markdown(_ s: String) -> AttributedString {
     guard var a = try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) else {
@@ -351,6 +360,7 @@ public struct WidgetView: View {
         return VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 10) {
                 Circle().fill(color(s.status)).frame(width: 8, height: 8)
+                    .accessibilityLabel(statusText(s))
                 VStack(alignment: .leading, spacing: 1) {
                     Text(s.title).font(.system(size: 12.5, weight: .medium)).foregroundStyle(.white).lineLimit(2)
                     Text(s.subtitle).font(.system(size: 10.5))
