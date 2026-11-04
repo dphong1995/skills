@@ -48,6 +48,7 @@ private func prParts(_ pr: PRStatus, now: Date, stale: Date?) -> [(text: String,
     case .running?: parts.append(("pipeline …", nil))
     case nil: break
     }
+    if let rabbit = pr.rabbit { parts.append((CodeRabbit.label(rabbit), nil)) }
     if pr.comments > 0 { parts.append(("💬 \(pr.comments)", nil)) }
     if let c = pr.lastOther { parts.append(("\(c.name) \(elapsed(c.at, now))", nil)) }
     if let stale { parts.append(("cũ \(elapsed(stale, now))", nil)) }
@@ -391,9 +392,18 @@ public struct WidgetView: View {
             .contentShape(Rectangle())
             .onTapGesture { onAction(.jump(s.id)) }
             if !s.links.isEmpty {
-                HStack(spacing: 6) {
-                    ForEach(s.links, id: \.url) { link in
-                        PillButton(title: "↗ \(link.label)") { onAction(.openLink(s.id, link.url)) }
+                ViewThatFits(in: .horizontal) {
+                    ForEach(Array((1...min(s.links.count, 5)).reversed()), id: \.self) { k in
+                        HStack(spacing: 6) {
+                            ForEach(s.links.prefix(k), id: \.url) { link in
+                                PillButton(title: "↗ \(link.label)") { onAction(.openLink(s.id, link.url)) }
+                            }
+                            if s.links.count > k {
+                                Text("+\(s.links.count - k)").font(.system(size: 11)).foregroundStyle(.white.opacity(0.6))
+                                    .help(s.links.dropFirst(k).map(\.label).joined(separator: ", "))
+                            }
+                        }
+                        .fixedSize(horizontal: true, vertical: false)
                     }
                 }
                 .padding(.leading, 18)

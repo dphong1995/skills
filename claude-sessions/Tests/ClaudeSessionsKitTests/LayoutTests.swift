@@ -220,3 +220,13 @@ private func prStatus(id: Int, state: String = "OPEN", reviewers: Int = 0, appro
         #expect(menu.performKeyEquivalent(with: e), "Cmd-\(key)")
     }
 }
+
+@Test func prLineShowsRabbit() {
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    var pr = prStatus(id: 9, pipeline: .passed)
+    pr.rabbit = .reviewed(findings: 2)
+    #expect(prLine(pr, now: now, stale: nil) == "PR #9 · pipeline ✓ · 🐰 2 góp ý")
+    var closed = prStatus(id: 9, state: "MERGED")
+    closed.rabbit = .reviewed(findings: 2)
+    #expect(!prLine(closed, now: now, stale: nil).contains("🐰"))
+}
