@@ -149,6 +149,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             store.bgOpacity = Layout.bgOpacities.min { abs($0 - v) < abs($1 - v) } ?? v
         }
         store.$bgOpacity.dropFirst().sink { UserDefaults.standard.set($0, forKey: "bgOpacity") }.store(in: &cancellables)
+        if let p = d.string(forKey: "prPrompt") { store.prPrompt = p }
+        store.$prPrompt.dropFirst().sink { UserDefaults.standard.set($0, forKey: "prPrompt") }.store(in: &cancellables)
 
         if SMAppService.mainApp.status != .enabled { try? SMAppService.mainApp.register() }
         refreshAndSyncVisibility()

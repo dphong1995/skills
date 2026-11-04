@@ -70,6 +70,7 @@ public final class Store: ObservableObject {
     @Published public var peekUntil: Date?
     @Published public var muted = false
     @Published public var bgOpacity: Double = 0.25
+    @Published public var prPrompt: String = PullRequests.defaultPrompt
     public private(set) var chime: Chime?
 
     public var peeking: Bool { peekUntil.map { now < $0 } ?? false }
@@ -343,6 +344,7 @@ public final class Store: ObservableObject {
         switch a {
         case .jump, .openLink: return true
         case .approve(_, let toolId), .deny(_, let toolId, _): return allows(Editing(id: a.sessionId, kind: .deny, toolId: toolId))
+        case .askClaude(let id, _): return sessions.first { $0.id == id }?.status == "idle"
         }
     }
 }

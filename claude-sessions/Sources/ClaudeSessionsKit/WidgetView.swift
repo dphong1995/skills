@@ -90,15 +90,47 @@ extension EnvironmentValues {
     }
 }
 
+/// Modal editor for the Nhờ Claude prompt template.
+func editPrompt(_ store: Store) {
+    let alert = NSAlert()
+    alert.messageText = "Prompt Nhờ Claude"
+    alert.informativeText = "{url} = link PR, {id} = số PR"
+    let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 380, height: 120))
+    scroll.hasVerticalScroller = true
+    scroll.borderType = .bezelBorder
+    let text = NSTextView(frame: scroll.bounds)
+    text.isRichText = false
+    text.isVerticallyResizable = true
+    text.autoresizingMask = [.width]
+    text.textContainer?.widthTracksTextView = true
+    text.string = store.prPrompt
+    scroll.documentView = text
+    alert.accessoryView = scroll
+    alert.addButton(withTitle: "Lưu")
+    alert.addButton(withTitle: "Huỷ")
+    alert.addButton(withTitle: "Mặc định")
+    alert.window.initialFirstResponder = text
+    NSApp.activate(ignoringOtherApps: true)
+    switch alert.runModal() {
+    case .alertFirstButtonReturn:
+        let t = text.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        store.prPrompt = t.isEmpty ? PullRequests.defaultPrompt : t
+    case .alertThirdButtonReturn:
+        store.prPrompt = PullRequests.defaultPrompt
+    default: break
+    }
+}
+
 public enum WidgetAction: Equatable {
     case jump(String)
     case approve(String, toolId: String)
     case deny(String, toolId: String, reason: String)
     case openLink(String, URL)
+    case askClaude(String, prompt: String)
 
     public var sessionId: String {
         switch self {
-        case .jump(let id), .approve(let id, _), .deny(let id, _, _), .openLink(let id, _): id
+        case .jump(let id), .approve(let id, _), .deny(let id, _, _), .openLink(let id, _), .askClaude(let id, _): id
         }
     }
 }
@@ -165,6 +197,7 @@ public struct WidgetView: View {
                 }
             }
             Button(store.muted ? "Bật tiếng" : "Tắt tiếng") { store.muted.toggle() }
+            Button("Prompt Nhờ Claude…") { editPrompt(store) }
             Button("Thoát") { NSApp.terminate(nil) }
         }
         .animation(.spring(response: 0.36, dampingFraction: 0.8), value: expanded)
@@ -330,12 +363,20 @@ public struct WidgetView: View {
                 .padding(.leading, 18)
             }
             ForEach(s.prs, id: \.ref) { pr in
-                Text(prAttributed(pr, now: store.now, stale: store.prStale ? store.prLastSuccess : nil))
-                    .font(.system(size: 11)).foregroundStyle(.white.opacity(0.75))
-                    .lineLimit(1).truncationMode(.tail)
-                    .padding(.leading, 18)
-                    .contentShape(Rectangle())
-                    .onTapGesture { onAction(.openLink(s.id, pr.url)) }
+                HStack(spacing: 6) {
+                    Text(prAttributed(pr, now: store.now, stale: store.prStale ? store.prLastSuccess : nil))
+                        .font(.system(size: 11)).foregroundStyle(.white.opacity(0.75))
+                        .lineLimit(1).truncationMode(.tail)
+                        .contentShape(Rectangle())
+                        .onTapGesture { onAction(.openLink(s.id, pr.url)) }
+                    Spacer(minLength: 0)
+                    if pr.isOpen {
+                        PillButton(title: "Nhờ Claude") {
+                            onAction(.askClaude(s.id, prompt: PullRequests.prompt(store.prPrompt, url: pr.url, id: pr.ref.id)))
+                        }
+                    }
+                }
+                .padding(.leading, 18)
             }
             if let pending = s.pending {
                 approvalBlock(s, pending).padding(.leading, 18)

@@ -159,6 +159,18 @@ private func approvableStore() -> (Store, URL, URL, URL) {
     #expect(store.stillValid(.jump("zzz")))
 }
 
+@Test func askClaudeValidOnlyWhenIdle() {
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
+    let ask = WidgetAction.askClaude("a", prompt: "x")
+    for (status, waitingFor, ok) in [("idle", nil, true), ("busy", nil, false), ("waiting", "input needed", false), ("waiting", "permission prompt", false)] as [(String, String?, Bool)] {
+        writeSession(dir, "a", pid: me, status: status, waitingFor: waitingFor, ageSec: 0, name: "a", cwd: frontend)
+        store.refresh(at: Date())
+        #expect(store.stillValid(ask) == ok)
+    }
+    #expect(!store.stillValid(.askClaude("zzz", prompt: "x")))
+}
+
 @Test func allowsFalseWhenSessionGone() {
     let dir = makeTempDir()
     let store = makeStore(dir: dir)

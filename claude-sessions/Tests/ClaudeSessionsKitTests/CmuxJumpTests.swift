@@ -53,3 +53,7 @@ private let line = "claude 7d0fcbef-0908-41eb-9779-ea86d5bf838a  workspace=4E6B8
 @Test func openLinkSendsNoKeys() {
     #expect(CmuxJump.keys(for: .openLink("s", URL(string: "https://x.y")!)).isEmpty)
 }
+
+@Test func askClaudeKeys() {
+    #expect(CmuxJump.keys(for: .askClaude("s", prompt: "Fix PR")) == [CmuxJump.clearInput, .paste("Fix PR"), .raw("\\r")])
+}
