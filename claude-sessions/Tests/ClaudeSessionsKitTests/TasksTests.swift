@@ -74,6 +74,13 @@ import Testing
     #expect(Tasks.read(dir) == Todo(done: 1, total: 3, current: "B"))
 }
 
+@Test func tasksInProgressWithoutTextDoesNotShowPending() {
+    let dir = makeTempDir()
+    writeTask(dir, id: 1, status: "in_progress", subject: "")
+    writeTask(dir, id: 2, status: "pending", subject: "Phase 2")
+    #expect(Tasks.read(dir) == Todo(done: 0, total: 2, current: nil))
+}
+
 @Test func todoLabel() {
     #expect(Todo(done: 1, total: 3, current: "Phase 2").label == "☑ 1/3 · Phase 2")
     #expect(Todo(done: 1, total: 3, current: nil).label == "☑ 1/3")

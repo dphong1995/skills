@@ -14,6 +14,7 @@ struct Todo: Equatable {
 enum Tasks {
     private struct Item {
         let id: Int
+        let name: String
         let subject: String?
         let activeForm: String?
         let status: String
@@ -39,12 +40,12 @@ enum Tasks {
                   ["pending", "in_progress", "completed"].contains(status)
             else { continue }
             let id = (o["id"] as? String).flatMap { Int($0) } ?? Int.max
-            items.append(Item(id: id, subject: nonEmpty(o["subject"] as? String), activeForm: nonEmpty(o["activeForm"] as? String), status: status))
+            items.append(Item(id: id, name: f.lastPathComponent, subject: nonEmpty(o["subject"] as? String), activeForm: nonEmpty(o["activeForm"] as? String), status: status))
         }
-        items.sort { $0.id < $1.id }
+        items.sort { ($0.id, $0.name) < ($1.id, $1.name) }
         let done = items.filter { $0.status == "completed" }.count
         guard done < items.count else { return nil }
-        let current = items.first { $0.status == "in_progress" }.flatMap { $0.activeForm ?? $0.subject }
+        let current = items.first { $0.status == "in_progress" }.map { $0.activeForm ?? $0.subject }
             ?? items.first { $0.status == "pending" }?.subject
         return Todo(done: done, total: items.count, current: current)
     }
