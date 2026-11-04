@@ -56,8 +56,16 @@ private func session(_ id: String, _ status: String, _ text: String?) -> Session
     withActivity.activity = "Bash: ls"
     #expect(Layout.height(of: withActivity) == CGFloat(36 + 15))
     var withLinks = session("a", "idle", "hi")
-    withLinks.links = [SessionLink(label: "PR #1", url: URL(string: "https://x.y/pull/1")!)]
+    withLinks.menu = [LinkSection(title: "PR", items: [LinkItem(text: "PR #1", url: URL(string: "https://x.y/pull/1")!)])]
     #expect(Layout.height(of: withLinks) == CGFloat(92 + 22))
+}
+
+@Test func heightCountsMenuRowWithoutLinks() {
+    var s = session("a", "busy", nil)
+    s.menu = [LinkSection(title: "PR", items: [LinkItem(text: "PR #1  ·  mở", url: URL(string: "https://x.y/pull/1")!)])]
+    s.prs = [prStatus(id: 1)]
+    #expect(s.links.isEmpty)
+    #expect(Layout.height(of: s) == CGFloat(36 + 22 + 22))
 }
 
 @Test func expandedSumsHeights() {

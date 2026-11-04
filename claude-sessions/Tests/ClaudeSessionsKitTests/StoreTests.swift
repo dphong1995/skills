@@ -924,3 +924,180 @@ private func prWithReviewer(id: Int, approved: Bool, comments: Int = 0) -> [Stri
     store.refresh(at: prT0 + 62)
     #expect(store.unseen == ["a"])
 }
+
+// MARK: - Link menu
+
+private let menuTitle = "Export CSV thiếu cột site"
+
+private func menuPR(_ id: Int, _ title: String) -> [String: Any] {
+    var o = prJSON(id: id)
+    o["title"] = title
+    return o
+}
+
+/// One idle session `a` on branch feature/T6IR-1: the user mentions T6IR-2 then T6IR-3, Claude T6IR-4 and four PRs.
+private func menuStore(extra: [String] = [], jira: FakeJira? = nil, prs: Bool = true) -> (Store, FakeJira, FakeBitbucket) {
+    let fakeJira = jira ?? FakeJira()
+    if jira == nil { fakeJira.issues["T6IR-2"] = (menuTitle, "To Do") }
+    let api = fake(open: [menuPR(7571, "Fix site scope filter"), menuPR(6874, "Second"), menuPR(1, "Third"), menuPR(2, "Fourth")])
+    let dir = makeTempDir(), projects = makeTempDir()
+    _ = writeTranscript(projects, cwd: frontend, id: "a",
+                        lines: [userLine("T6IR-2", branch: "feature/T6IR-1"), userLine("T6IR-3"), assistantLine("T6IR-4"),
+                                prReply([7571, 6874, 1, 2])] + extra + [""])
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    let store = makeStore(dir: dir, projects: projects,
+                          prs: prs ? PRMonitor(api: api, queue: nil, remote: { _ in nil }) : nil,
+                          jira: JiraMonitor(api: fakeJira, queue: nil))
+    store.jiraProjects = ["T6IR": jiraHost]
+    store.refresh(at: prT0)
+    return (store, fakeJira, api)
+}
+
+private func section(_ s: Session?, _ title: String) -> [String]? { s?.menu.first { $0.title == title }?.items.map(\.text) }
+
+@Test func menuSectionsInOrder() {
+    let (store, _, _) = menuStore()
+    let s = store.sessions.first
+    #expect(s?.menu.map(\.title) == ["Nhánh", "Bạn nhắc", "Claude nhắc", "PR"])
+    #expect(s?.menu.dropLast().map { $0.items.map(\.url.lastPathComponent) } == [["T6IR-1"], ["T6IR-2", "T6IR-3"], ["T6IR-4"]])
+    #expect(section(s, "Bạn nhắc") == ["T6IR-2  \(menuTitle)  ·  To Do", "T6IR-3"])
+}
+
+@Test func menuListsAllPRs() {
+    let (store, _, _) = menuStore()
+    let s = store.sessions.first
+    #expect(s?.prs.count == 3)
+    #expect(section(s, "PR")?.count == 4)
+    #expect(section(s, "PR")?.first == "PR #7571  Fix site scope filter  ·  mở")
+    func status(_ state: String, _ title: String?) -> PRStatus {
+        PRStatus(ref: PRRef(workspace: "w", repo: "r", id: 5), url: URL(string: "https://x.y/5")!, state: state, reviewers: 0,
+                 approved: 0, changesRequested: 0, comments: 0, commit: nil, sourceRepo: nil, branch: nil, title: title)
+    }
+    let merged = status("MERGED", "Done")
+    let declined = status("DECLINED", nil)
+    #expect(Store.linkText(merged) == "PR #5  Done  ·  đã merge")
+    #expect(Store.linkText(declined) == "PR #5  ·  đã đóng")
+}
+
+@Test func menuUntrackedPRLink() {
+    let (store, _, _) = menuStore(extra: [assistantLine("https://github.com/a/b/pull/12")])
+    #expect(section(store.sessions.first, "PR")?.last == "PR #12")
+}
+
+@Test func menuTitleCutAt60() {
+    let jira = FakeJira()
+    jira.issues["T6IR-2"] = (String(repeating: "x", count: 70), "Done")
+    let (store, _, _) = menuStore(jira: jira)
+    #expect(section(store.sessions.first, "Bạn nhắc")?.first == "T6IR-2  \(String(repeating: "x", count: 60))…  ·  Done")
+}
+
+@Test func menuTitleWithoutStatus() {
+    let jira = FakeJira()
+    jira.issues["T6IR-2"] = ("Only title", nil)
+    let (store, _, _) = menuStore(jira: jira)
+    #expect(section(store.sessions.first, "Bạn nhắc")?.first == "T6IR-2  Only title")
+}
+
+@Test func menuNeedsJiraWhenNotOk() {
+    let (store, _, _) = menuStore()
+    #expect(store.sessions.first?.menuNeedsJira == false)
+
+    let failing = FakeJira()
+    failing.fail = .http(401)
+    let (rejected, _, _) = menuStore(jira: failing)
+    #expect(rejected.sessions.first?.menuNeedsJira == true)
+
+    let dir = makeTempDir(), projects = makeTempDir()
+    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine("T6IR-2"), ""])
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    let bare = makeStore(dir: dir, projects: projects)
+    bare.jiraProjects = ["T6IR": jiraHost]
+    bare.refresh(at: prT0)
+    #expect(bare.jiraMonitor == nil)
+    #expect(bare.sessions.first?.menuNeedsJira == true)
+
+    let none = makeStore(dir: makeTempDir())
+    none.refresh(at: prT0)
+    #expect(none.sessions.isEmpty)
+    let (noTickets, _, _) = prStore(fake(open: [prJSON(id: 7571)]), reply: prReply([7571]))
+    noTickets.refresh(at: prT0)
+    #expect(noTickets.sessions.first?.menuNeedsJira == false)
+}
+
+@Test func menuCountExcludesFooter() {
+    let (store, _, _) = menuStore(jira: {
+        let j = FakeJira()
+        j.fail = .transport
+        return j
+    }())
+    let s = store.sessions.first
+    #expect(s?.menuNeedsJira == true)
+    #expect(s?.menuCount == 1 + 2 + 1 + 4)
+}
+
+@Test func menuRowForPROnlySession() {
+    let (store, _, _) = prStore(fake(open: [prJSON(id: 7571)]), reply: prReply([7571]))
+    store.refresh(at: prT0)
+    let s = store.sessions.first
+    #expect(s?.links.isEmpty == true)
+    #expect(s?.prs.count == 1)
+    #expect(s?.menu.map(\.title) == ["PR"])
+}
+
+@Test func jiraTargetsOnlyKnownHosts() {
+    let (_, jira, _) = menuStore(extra: [userLine("X9-1 please")])
+    #expect(!jira.calls.isEmpty)
+    #expect(jira.calls.allSatisfy { $0.host == jiraHost })
+    #expect(jira.calls.flatMap(\.keys).allSatisfy { !$0.hasPrefix("X9") })
+}
+
+@Test func ticketButtonHelp() {
+    let (store, _, _) = menuStore()
+    let links = store.sessions.first?.links
+    #expect(links?.first { $0.label == "T6IR-2" }?.help == "T6IR-2 · \(menuTitle) · To Do")
+    #expect(links?.first { $0.label == "T6IR-3" }?.help == nil)
+}
+
+@Test func connectionTexts() {
+    let email = "pluu@talosix.com"
+    let (bare, _, _) = menuStore(prs: false)
+    #expect(bare.connectionText(.bitbucket) == "Bitbucket: ✗ chưa có token")
+
+    let api = fake(open: [prJSON(id: 7571)])
+    let (store, _, _) = prStore(api, reply: prReply([7571]))
+    store.accounts[.bitbucket] = email
+    #expect(store.connectionText(.bitbucket) == "Bitbucket: ✗ chưa có token")  // no refresh yet
+    store.refresh(at: prT0)
+    #expect(store.connectionText(.bitbucket) == "Bitbucket: ✓ \(email)")
+
+    func text(failing e: BitbucketError) -> String {
+        let f = fake(open: [prJSON(id: 7571)])
+        f.failAll = e
+        let (s, _, _) = prStore(f, reply: prReply([7571]))
+        s.accounts[.bitbucket] = email
+        s.refresh(at: prT0)
+        return s.connectionText(.bitbucket)
+    }
+    #expect(text(failing: .http(401)) == "Bitbucket: ✗ token bị từ chối (401)")
+    #expect(text(failing: .transport) == "Bitbucket: ✗ không kết nối được")
+
+    // Idle monitor that never called: still checking.
+    let (idle, _, _) = prStore(fake(), reply: assistantLine("hi"))
+    idle.accounts[.bitbucket] = email
+    idle.refresh(at: prT0)
+    #expect(idle.connectionText(.bitbucket) == "Bitbucket: \(email) (đang kiểm tra)")
+
+    let noSite = makeStore(dir: makeTempDir())
+    noSite.accounts[.jira] = email
+    noSite.refresh(at: prT0)
+    #expect(noSite.connectionText(.jira) == "Jira: ✗ chưa biết site Jira")
+
+    let (withJira, _, _) = menuStore()
+    withJira.accounts[.jira] = email
+    withJira.refresh(at: prT0.addingTimeInterval(1))
+    #expect(withJira.connectionText(.jira) == "Jira: ✓ \(email)")
+    let (noToken, _, _) = menuStore(prs: false)
+    noToken.jiraMonitor = nil
+    noToken.refresh(at: prT0.addingTimeInterval(1))
+    #expect(noToken.connectionText(.jira) == "Jira: ✗ chưa có token")
+}

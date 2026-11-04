@@ -150,11 +150,26 @@ public enum WidgetAction: Equatable {
     case deny(String, toolId: String, reason: String)
     case openLink(String, URL)
     case askClaude(String, prompt: String)
+    /// Opens the token dialog of a service; belongs to no session.
+    case connect(Service)
 
     public var sessionId: String {
         switch self {
         case .jump(let id), .approve(let id, _), .deny(let id, _, _), .openLink(let id, _), .askClaude(let id, _): id
+        case .connect: ""
         }
+    }
+}
+
+struct PillLabel: View {
+    let title: String
+    var fill: Color = .white.opacity(0.12)
+    var textColor: Color = .white
+
+    var body: some View {
+        Text(title).font(.system(size: 11, weight: .semibold)).foregroundStyle(textColor)
+            .padding(.horizontal, 9).padding(.vertical, 3)
+            .background(Capsule().fill(fill))
     }
 }
 
@@ -165,12 +180,8 @@ struct PillButton: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            Text(title).font(.system(size: 11, weight: .semibold)).foregroundStyle(textColor)
-                .padding(.horizontal, 9).padding(.vertical, 3)
-                .background(Capsule().fill(fill))
-        }
-        .buttonStyle(.plain)
+        Button(action: action) { PillLabel(title: title, fill: fill, textColor: textColor) }
+            .buttonStyle(.plain)
     }
 }
 
@@ -221,6 +232,11 @@ public struct WidgetView: View {
             }
             Button(store.muted ? "Bật tiếng" : "Tắt tiếng") { store.muted.toggle() }
             Button("Prompt Nhờ Claude…") { editPrompt(store) }
+            Divider()
+            ForEach(Service.allCases, id: \.self) { svc in
+                Button(store.connectionText(svc)) { onAction(.connect(svc)) }
+            }
+            Divider()
             Button("Thoát") { NSApp.terminate(nil) }
         }
         .animation(.spring(response: 0.36, dampingFraction: 0.8), value: expanded)
@@ -354,6 +370,32 @@ public struct WidgetView: View {
             .onExitCommand { panel.editing = nil }
     }
 
+    /// `☰ N`: every ticket and PR of the session in one menu. Snapshots draw a static pill, since `ImageRenderer` shows AppKit-backed views as placeholders.
+    @ViewBuilder
+    private func menuButton(_ s: Session) -> some View {
+        let label = PillLabel(title: "☰ \(s.menuCount)")
+        if snapshotRendering {
+            label
+        } else {
+            Menu {
+                ForEach(s.menu, id: \.title) { section in
+                    Section(section.title) {
+                        ForEach(Array(section.items.enumerated()), id: \.offset) { _, item in
+                            Button(item.text) { onAction(.openLink(s.id, item.url)) }
+                        }
+                    }
+                }
+                if s.menuNeedsJira {
+                    Divider()
+                    Button("Kết nối Jira…") { onAction(.connect(.jira)) }
+                }
+            } label: { label }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+        }
+    }
+
     private func row(_ s: Session) -> some View {
         let editing = panel.editing?.id == s.id
         let fresh = store.unseen.contains(s.id)
@@ -386,22 +428,19 @@ public struct WidgetView: View {
             }
             .contentShape(Rectangle())
             .onTapGesture { onAction(.jump(s.id)) }
-            if !s.links.isEmpty {
+            if !s.menu.isEmpty {
                 ViewThatFits(in: .horizontal) {
-                    ForEach(Array((1...min(s.links.count, 5)).reversed()), id: \.self) { k in
+                    ForEach(Array(stride(from: min(s.links.count, 5), through: 1, by: -1)), id: \.self) { k in
                         HStack(spacing: 6) {
                             ForEach(s.links.prefix(k), id: \.url) { link in
                                 PillButton(title: "↗ \(link.label)") { onAction(.openLink(s.id, link.url)) }
+                                    .help(link.help ?? "")
                             }
-                            if s.links.count > k {
-                                Text("+\(s.links.count - k)").font(.system(size: 11)).foregroundStyle(.white.opacity(0.6))
-                                    .help(s.links.dropFirst(k).map(\.label).joined(separator: ", "))
-                            }
+                            menuButton(s)
                         }
                         .fixedSize(horizontal: true, vertical: false)
                     }
-                    Text("+\(s.links.count)").font(.system(size: 11)).foregroundStyle(.white.opacity(0.6))
-                        .help(s.links.map(\.label).joined(separator: ", "))
+                    menuButton(s)
                 }
                 .padding(.leading, 18)
             }
@@ -412,6 +451,7 @@ public struct WidgetView: View {
                         .lineLimit(1).truncationMode(.tail)
                         .contentShape(Rectangle())
                         .onTapGesture { onAction(.openLink(s.id, pr.url)) }
+                        .help(pr.title ?? "")
                     Spacer(minLength: 0)
                     if pr.isOpen {
                         PillButton(title: "Nhờ Claude") {

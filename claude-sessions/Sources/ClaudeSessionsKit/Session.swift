@@ -1,6 +1,18 @@
 import Foundation
 import Combine
 
+struct LinkItem: Equatable {
+    let text: String
+    let url: URL
+}
+
+struct LinkSection: Equatable {
+    let title: String
+    let items: [LinkItem]
+}
+
+enum ConnectionLine: Equatable { case missing, checking(String), ok(String), rejected, unreachable, noSite }
+
 struct Session: Identifiable, Equatable {
     let id: String
     let name: String
@@ -21,12 +33,17 @@ struct Session: Identifiable, Equatable {
     var links: [SessionLink] = []
     var activity: String? = nil
     var prs: [PRStatus] = []
+    /// Every ticket and PR of the session, grouped for the `☰ N` menu.
+    var menu: [LinkSection] = []
+    /// The menu holds a ticket and Jira is not connected: the menu ends with a `Kết nối Jira…` item.
+    var menuNeedsJira = false
 }
 
 extension Session {
     var title: String { nameSource == "user" ? name : (aiTitle ?? firstPrompt ?? name) }
     var folder: String { (cwd as NSString).lastPathComponent }
     var subtitle: String { branch.map { "\(folder) · \($0)" } ?? folder }
+    var menuCount: Int { menu.reduce(0) { $0 + $1.items.count } }
     var isFinished: Bool { status == "idle" || status == "waiting" }
     var isPermissionPrompt: Bool { status == "waiting" && waitingFor == "permission prompt" }
     var approvable: Pending? {
@@ -100,7 +117,7 @@ public final class Store: ObservableObject {
         let branch: String?
     }
     /// Buttons per session with the PR refs each link points at, rebuilt only when their `ButtonKey` changes.
-    private var buttonCache: [String: (key: ButtonKey, buttons: [(link: SessionLink, refs: [PRRef])])] = [:]
+    private var buttonCache: [String: (key: ButtonKey, buttons: [ButtonEntry])] = [:]
     /// Bumped whenever `jiraProjects` changes, so `ButtonKey` need not compare the dictionary.
     private var projectsGeneration = 0
     private var urls: [String: URL] = [:]
@@ -135,8 +152,10 @@ public final class Store: ObservableObject {
                 tasks: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/tasks"),
                 startHidden: Bool = false,
                 prs: PRMonitor? = nil,
+                jira: JiraMonitor? = nil,
                 scanner: TranscriptScanner = TranscriptScanner()) {
         self.prMonitor = prs
+        self.jiraMonitor = jira
         self.scanner = scanner
         self.dir = dir
         self.projects = projects
@@ -145,6 +164,10 @@ public final class Store: ObservableObject {
     }
 
     public var prMonitor: PRMonitor?
+    public var jiraMonitor: JiraMonitor?
+    /// Keychain account (email) per service, set by the app.
+    @Published public var accounts: [Service: String] = [:]
+    @Published var connections: [Service: ConnectionLine] = [:]
     private let scanner: TranscriptScanner
     /// Jira project prefix -> host, learned from `/browse/` and `selectedIssue=` links; persisted by the app.
     @Published public var jiraProjects: [String: String] = [:]
@@ -343,23 +366,45 @@ public final class Store: ObservableObject {
             jiraProjects = learned
             projectsGeneration += 1
         }
-        var buttonRefs: [String: [[PRRef]]] = [:]
+        var entries: [String: [ButtonEntry]] = [:]
         for i in list.indices {
             let id = list[i].id
             let key = ButtonKey(version: scans[id]?.version ?? 0, projectsGeneration: projectsGeneration, branch: list[i].branch)
             if buttonCache[id]?.key != key {
                 buttonCache[id] = (key, Store.buttons(scans[id] ?? ScanResult(), projects: jiraProjects, branch: list[i].branch))
             }
-            let buttons = buttonCache[id]?.buttons ?? []
-            list[i].links = buttons.map(\.link)
-            buttonRefs[id] = buttons.map(\.refs)
+            entries[id] = buttonCache[id]?.buttons ?? []
+        }
+        var issues: [String: JiraIssue] = [:]
+        var jiraState: ConnectionState?
+        if let jiraMonitor {
+            var seen = Set<JiraTarget>()
+            let targets = list.flatMap { entries[$0.id] ?? [] }.compactMap(\.target).filter { seen.insert($0).inserted }
+            jiraMonitor.update(targets, at: now)
+            let snap = jiraMonitor.takeSnapshot()
+            issues = snap.issues
+            jiraState = snap.connection
+        }
+        var prState: ConnectionState?
+        var buttonRefs: [String: [[PRRef]]] = [:]
+        var allPRs: [String: [PRStatus]] = [:]
+        for i in list.indices {
+            let buttons = entries[list[i].id] ?? []
+            list[i].links = buttons.map { b in
+                var link = b.link
+                if let t = b.target { link.help = Store.help(key: t.key, issues[t.key]) }
+                return link
+            }
+            buttonRefs[list[i].id] = buttons.map(\.refs)
         }
         if let prMonitor {
             let targets = list.map { PRTarget(sessionId: $0.id, linkRefs: scans[$0.id]?.prRefs ?? [], cwd: $0.cwd, branch: $0.branch) }
             prMonitor.update(targets, at: now)
             let snap = prMonitor.takeSnapshot()
+            prState = snap.connection
             for i in list.indices {
                 let all = snap.prs[list[i].id] ?? []
+                allPRs[list[i].id] = all
                 if all.contains(where: { snap.eventRefs.contains($0.ref) }) { newUnseen.insert(list[i].id) }
                 list[i].prs = Array(all.prefix(3))
                 let shown = Set(list[i].prs.map(\.ref))
@@ -374,6 +419,16 @@ public final class Store: ObservableObject {
                 if let c = PullRequests.chime(for: snap.events), chime != .needsYou { chime = c }
             }
         }
+        for i in list.indices {
+            let id = list[i].id
+            list[i].menu = Store.menu(entries[id] ?? [], issues: issues, prs: prMonitor == nil ? nil : allPRs[id] ?? [])
+            list[i].menuNeedsJira = jiraState != .ok && list[i].menu.contains { $0.title != "PR" }
+        }
+        let lines: [Service: ConnectionLine] = [
+            .bitbucket: Store.line(present: prMonitor != nil, account: accounts[.bitbucket], state: prState ?? .checking),
+            .jira: jiraProjects.isEmpty ? .noSite : Store.line(present: jiraMonitor != nil, account: accounts[.jira], state: jiraState ?? .checking),
+        ]
+        if lines != connections { connections = lines }
         let live = Set(list.map(\.id))
         cache = cache.filter { live.contains($0.key) }
         buttonCache = buttonCache.filter { live.contains($0.key) }
@@ -403,25 +458,91 @@ public final class Store: ObservableObject {
         if list != sessions { sessions = list }
     }
 
+    struct ButtonEntry {
+        enum Source { case branch, user, claude, pr }
+        let link: SessionLink
+        let refs: [PRRef]
+        let source: Source
+        /// The Jira issue of a ticket button; every ticket button has a known host.
+        let target: JiraTarget?
+    }
+
     /// Buttons for one session: the branch's ticket, tickets the user mentioned, tickets only Claude mentioned, then PR-shaped links.
-    static func buttons(_ r: ScanResult, projects: [String: String], branch: String?) -> [(link: SessionLink, refs: [PRRef])] {
+    static func buttons(_ r: ScanResult, projects: [String: String], branch: String?) -> [ButtonEntry] {
         func host(_ key: String) -> String? { Transcript.projectPrefix(of: key).flatMap { projects[$0] } }
-        var keys: [String] = []
-        for k in branch.map(Transcript.ticketKeys) ?? [] where host(k) != nil && !keys.contains(k) { keys.append(k) }
-        let known = r.tickets.values.filter { host($0.key) != nil && !keys.contains($0.key) }
-        keys += known.filter(\.byUser).sorted { $0.first < $1.first }.map(\.key)
-        keys += known.filter { !$0.byUser }.sorted { $0.last > $1.last }.map(\.key)
-        let tickets = keys.compactMap { k in
-            host(k).flatMap { URL(string: "https://\($0)/browse/\(k)") }.map { (link: SessionLink(label: k, url: $0), refs: [PRRef]()) }
+        var keys: [(key: String, source: ButtonEntry.Source)] = []
+        for k in branch.map(Transcript.ticketKeys) ?? [] where host(k) != nil && !keys.contains(where: { $0.key == k }) { keys.append((k, .branch)) }
+        let known = r.tickets.values.filter { t in host(t.key) != nil && !keys.contains(where: { $0.key == t.key }) }
+        keys += known.filter(\.byUser).sorted { $0.first < $1.first }.map { ($0.key, .user) }
+        keys += known.filter { !$0.byUser }.sorted { $0.last > $1.last }.map { ($0.key, .claude) }
+        let tickets = keys.compactMap { k -> ButtonEntry? in
+            guard let h = host(k.key), let url = URL(string: "https://\(h)/browse/\(k.key)") else { return nil }
+            return ButtonEntry(link: SessionLink(label: k.key, url: url), refs: [], source: k.source, target: JiraTarget(key: k.key, host: h))
         }
         return tickets + r.prLinks.map {
-            (link: SessionLink(label: Transcript.label(for: $0), url: $0), refs: PullRequests.refs(in: $0.absoluteString))
+            ButtonEntry(link: SessionLink(label: Transcript.label(for: $0), url: $0), refs: PullRequests.refs(in: $0.absoluteString), source: .pr, target: nil)
+        }
+    }
+
+    /// `KEY · title · status` for a ticket button's hover text; nil until Jira answered with a title.
+    static func help(key: String, _ issue: JiraIssue?) -> String? {
+        guard let title = issue?.title else { return nil }
+        return ([key, title] + [issue?.status].compactMap { $0 }).joined(separator: " · ")
+    }
+
+    /// `KEY  title  ·  status`, the title cut at 60 characters; the key alone without a title.
+    static func ticketText(key: String, _ issue: JiraIssue?) -> String {
+        guard let title = issue?.title else { return key }
+        let cut = title.count > 60 ? String(title.prefix(60)) + "…" : title
+        return "\(key)  \(cut)" + (issue?.status.map { "  ·  \($0)" } ?? "")
+    }
+
+    /// `PR #id  title  ·  state`.
+    static func linkText(_ pr: PRStatus) -> String {
+        let state = pr.isOpen ? "mở" : pr.state == "MERGED" ? "đã merge" : "đã đóng"
+        return "PR #\(pr.ref.id)  " + (pr.title.map { "\($0)  ·  " } ?? "·  ") + state
+    }
+
+    /// The `☰ N` menu: tickets by origin, then every PR. `prs` is nil without a PR monitor, so every PR link is listed as it is.
+    static func menu(_ entries: [ButtonEntry], issues: [String: JiraIssue], prs: [PRStatus]?) -> [LinkSection] {
+        func tickets(_ source: ButtonEntry.Source, _ title: String) -> LinkSection {
+            LinkSection(title: title, items: entries.filter { $0.source == source }.compactMap { e in
+                e.target.map { LinkItem(text: ticketText(key: $0.key, issues[$0.key]), url: e.link.url) }
+            })
+        }
+        let tracked = Set((prs ?? []).map(\.ref))
+        let untracked = entries.filter { $0.source == .pr && !$0.refs.contains(where: tracked.contains) }
+            .map { LinkItem(text: $0.link.label, url: $0.link.url) }
+        let pr = LinkSection(title: "PR", items: (prs ?? []).map { LinkItem(text: linkText($0), url: $0.url) } + untracked)
+        return [tickets(.branch, "Nhánh"), tickets(.user, "Bạn nhắc"), tickets(.claude, "Claude nhắc"), pr].filter { !$0.items.isEmpty }
+    }
+
+    static func line(present: Bool, account: String?, state: ConnectionState) -> ConnectionLine {
+        guard present, let account else { return .missing }
+        switch state {
+        case .checking: return .checking(account)
+        case .ok: return .ok(account)
+        case .rejected: return .rejected
+        case .unreachable: return .unreachable
+        }
+    }
+
+    /// The context-menu line of one service.
+    public func connectionText(_ s: Service) -> String {
+        let name = s.displayName
+        switch connections[s] ?? .missing {
+        case .missing: return "\(name): ✗ chưa có token"
+        case .checking(let a): return "\(name): \(a) (đang kiểm tra)"
+        case .ok(let a): return "\(name): ✓ \(a)"
+        case .rejected: return "\(name): ✗ token bị từ chối (401)"
+        case .unreachable: return "\(name): ✗ không kết nối được"
+        case .noSite: return "\(name): ✗ chưa biết site Jira"
         }
     }
 
     public func stillValid(_ a: WidgetAction) -> Bool {
         switch a {
-        case .jump, .openLink: return true
+        case .jump, .openLink, .connect: return true
         case .approve(_, let toolId), .deny(_, let toolId, _): return allows(Editing(id: a.sessionId, kind: .deny, toolId: toolId))
         case .askClaude(let id, _): return sessions.first { $0.id == id }?.status == "idle"
         }

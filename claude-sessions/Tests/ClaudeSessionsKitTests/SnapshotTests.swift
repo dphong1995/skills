@@ -366,4 +366,19 @@ struct SnapshotTests {
         panel.hovering = true
         render(store, panel, "27-fresh-long-title")
     }
+
+    @Test func renderLinkMenuRow() {
+        let dir = makeTempDir(), projects = makeTempDir()
+        let keys = (101...107).map { "T6IR-\($0)" }
+        let urls = keys.map { "https://talo6.atlassian.net/browse/\($0)" }.joined(separator: " ")
+        let prs = "https://github.com/a/b/pull/1 https://github.com/a/b/pull/2"
+        _ = writeTranscript(projects, cwd: backend, id: "b", lines: [userLine(urls), assistantLine(prs), ""])
+        writeSession(dir, "b", pid: me, status: "idle", ageSec: 30, name: "talo6-dct-backend-3f", cwd: backend)
+        let store = makeStore(dir: dir, projects: projects)
+        let panel = PanelState()
+        panel.hovering = true
+        store.refresh(at: Date())
+        #expect(store.sessions.first?.menuCount == 9)
+        render(store, panel, "28-link-menu-row")
+    }
 }

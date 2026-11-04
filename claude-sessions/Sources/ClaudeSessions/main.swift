@@ -29,6 +29,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Bumped whenever the marks' focus streak is reset, so a slow query started before it is ignored.
     var focusGen = 0
     var cancellables: Set<AnyCancellable> = []
+    /// Live API clients, kept so a saved token can be picked up with `reload()`. Main thread only.
+    var bitbucketClient: BitbucketClient?
+    var jiraClient: JiraClient?
+    var connecting = false
 
     func displayUUID(_ s: NSScreen) -> String? {
         guard let id = s.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? CGDirectDisplayID,
@@ -140,9 +144,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.mainMenu = editMainMenu()
 
         // The Keychain read spawns `security`; keep it off the main thread.
-        DispatchQueue.global(qos: .utility).async { [store] in
-            guard let client = BitbucketClient() else { return }
-            DispatchQueue.main.async { store.prMonitor = PRMonitor(api: client) }
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let bitbucket = BitbucketClient()
+            let jira = JiraClient()
+            let accounts = Service.allCases.compactMap { s in Credentials.account(s).map { (s, $0) } }
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                store.accounts = Dictionary(uniqueKeysWithValues: accounts)
+                if let bitbucket {
+                    bitbucketClient = bitbucket
+                    store.prMonitor = PRMonitor(api: bitbucket)
+                }
+                if let jira {
+                    jiraClient = jira
+                    store.jiraMonitor = JiraMonitor(api: jira)
+                }
+            }
         }
 
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
@@ -255,7 +272,101 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         store.noteFocused(nil)
     }
 
+    /// Asks for an email and token, checks them against the service, stores them in the Keychain and starts the monitor.
+    /// `notice` is the error of the previous attempt, shown above the instructions.
+    func connect(_ service: Service, notice: String? = nil, email: String? = nil) {
+        let name = service.displayName
+        let host = store.jiraProjects.values.sorted().first
+        if service == .jira && host == nil { return NSSound.beep() }
+        guard !connecting || notice != nil else { return NSSound.beep() }
+        connecting = true
+        let how: String
+        switch service {
+        case .bitbucket:
+            how = "Tạo token with scopes: app Bitbucket, scope read:user, read:repository, read:pullrequest."
+        case .jira:
+            how = "Tạo bằng Create API token (loại classic) cho site \(host ?? "")."
+        }
+        let alert = NSAlert()
+        alert.messageText = "Kết nối \(name)"
+        alert.informativeText = (notice.map { $0 + "\n\n" } ?? "") + how
+        let emailField = NSTextField(frame: NSRect(x: 0, y: 30, width: 320, height: 24))
+        emailField.placeholderString = "Email Atlassian"
+        emailField.stringValue = email ?? Credentials.account(service) ?? ""
+        let tokenField = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
+        tokenField.placeholderString = "API token"
+        let box = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 54))
+        box.addSubview(emailField)
+        box.addSubview(tokenField)
+        alert.accessoryView = box
+        alert.addButton(withTitle: "Lưu")
+        alert.addButton(withTitle: "Huỷ")
+        alert.addButton(withTitle: "Tạo token…")
+        alert.window.initialFirstResponder = emailField.stringValue.isEmpty ? emailField : tokenField
+        NSApp.activate(ignoringOtherApps: true)
+        let response = alert.runModal()
+        let account = emailField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let token = tokenField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch response {
+        case .alertThirdButtonReturn:
+            NSWorkspace.shared.open(Service.tokenPage)
+            connect(service, notice: notice, email: account)
+        case .alertFirstButtonReturn:
+            guard !account.isEmpty, !token.isEmpty else {
+                return connect(service, notice: "✗ Nhập cả email và token", email: account)
+            }
+            let existing: AnyObject? = service == .bitbucket ? bitbucketClient : jiraClient
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                let failure = Self.validate(service, account: account, token: token, host: host)
+                    ?? (Credentials.write(service, account: account, token: token) ? nil : "✗ Không lưu được vào Keychain")
+                if failure == nil { (existing as? BitbucketClient)?.reload(); (existing as? JiraClient)?.reload() }
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    if let failure { return connect(service, notice: failure, email: account) }
+                    connecting = false
+                    store.accounts[service] = account
+                    guard existing == nil else { return }
+                    switch service {
+                    case .bitbucket:
+                        let c = BitbucketClient(account: account, token: token)
+                        bitbucketClient = c
+                        store.prMonitor = PRMonitor(api: c)
+                    case .jira:
+                        let c = JiraClient(account: account, token: token)
+                        jiraClient = c
+                        store.jiraMonitor = JiraMonitor(api: c)
+                    }
+                }
+            }
+        default:
+            connecting = false
+        }
+    }
+
+    /// Calls the service with the typed credentials; the error line to show, or nil when they work. Background queue only.
+    static func validate(_ service: Service, account: String, token: String, host: String?) -> String? {
+        let name = service.displayName
+        let site = service == .jira ? host ?? "" : "api.bitbucket.org"
+        do {
+            switch service {
+            case .bitbucket: _ = try BitbucketClient(account: account, token: token).get("/2.0/user?fields=uuid")
+            case .jira: _ = try JiraClient(account: account, token: token).myself(host: host ?? "")
+            }
+            return nil
+        } catch {
+            let code: Int?
+            switch error {
+            case let e as BitbucketError: if case .http(let c) = e { code = c } else { code = nil }
+            case let e as JiraError: if case .http(let c) = e { code = c } else { code = nil }
+            default: code = nil
+            }
+            guard let code else { return "✗ Không kết nối được tới \(site)" }
+            return code == 401 ? "✗ \(name) trả về 401: email hoặc token sai" : "✗ Lỗi HTTP \(code)"
+        }
+    }
+
     func handle(_ a: WidgetAction) {
+        if case .connect(let service) = a { return connect(service) }
         let id = a.sessionId
         if case .openLink(_, let url) = a {
             store.markSeen(id)

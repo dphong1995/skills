@@ -24,8 +24,8 @@ let frontend = "/Users/phong/talo6-dct-frontend"
 let backend = "/Users/phong/talo6-dct-backend"
 
 /// Store whose transcript lookups never touch the real ~/.claude/projects.
-func makeStore(dir: URL, projects: URL = makeTempDir(), tasks: URL = makeTempDir(), startHidden: Bool = false, prs: PRMonitor? = nil) -> Store {
-    Store(dir: dir, projects: projects, tasks: tasks, startHidden: startHidden, prs: prs, scanner: TranscriptScanner(queue: nil))
+func makeStore(dir: URL, projects: URL = makeTempDir(), tasks: URL = makeTempDir(), startHidden: Bool = false, prs: PRMonitor? = nil, jira: JiraMonitor? = nil) -> Store {
+    Store(dir: dir, projects: projects, tasks: tasks, startHidden: startHidden, prs: prs, jira: jira, scanner: TranscriptScanner(queue: nil))
 }
 
 func append(_ url: URL, _ s: String) {

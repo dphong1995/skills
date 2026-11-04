@@ -14,6 +14,8 @@ enum PendingState: Equatable {
 public struct SessionLink: Equatable {
     public let label: String
     public let url: URL
+    /// Hover text; a ticket button shows its Jira title and status here.
+    public var help: String? = nil
 }
 
 enum Transcript {

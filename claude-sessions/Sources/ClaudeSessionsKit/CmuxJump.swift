@@ -65,7 +65,7 @@ public enum CmuxJump {
 
     public static func keys(for a: WidgetAction) -> [Key] {
         switch a {
-        case .jump, .openLink: return []
+        case .jump, .openLink, .connect: return []
         case .approve: return [.raw("1")]
         case .deny(_, _, let reason):
             let r = reason.trimmingCharacters(in: .whitespacesAndNewlines)
