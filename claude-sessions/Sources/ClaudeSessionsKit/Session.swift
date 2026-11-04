@@ -79,7 +79,6 @@ public final class Store: ObservableObject {
     private var urls: [String: URL] = [:]
     private var urlTried: [String: Date?] = [:]
     private var heads: [String: (prompt: String?, branch: String?, size: Int)] = [:]
-    private var aiTitles: [String: String] = [:]
     private var todos: [String: (key: TaskKey, todo: Todo?)] = [:]
 
     /// Changes whenever a task file is added, removed or rewritten; sizes cover writes within one timestamp tick.
@@ -95,6 +94,7 @@ public final class Store: ObservableObject {
         var size: Int
         var reply: String?
         var branch: String?
+        var aiTitle: String?
         var pending: PendingState?
         var prompt = false
     }
@@ -127,36 +127,37 @@ public final class Store: ObservableObject {
 
     private func readTodo(for s: Session) -> Todo? {
         let d = tasks.appendingPathComponent(s.id, isDirectory: true)
-        let fm = FileManager.default
         let keys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey]
-        let files = ((try? fm.contentsOfDirectory(at: d, includingPropertiesForKeys: keys)) ?? [])
-            .filter { $0.pathExtension == "json" && !$0.lastPathComponent.hasPrefix(".") }
-            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+        let files = Tasks.files(in: d)
         let values = files.map { try? $0.resourceValues(forKeys: Set(keys)) }
         let key = TaskKey(dirDate: (try? d.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
                           files: files.map(\.lastPathComponent),
                           dates: values.map { $0?.contentModificationDate },
                           sizes: values.map { $0?.fileSize ?? -1 })
         if let c = todos[s.id], c.key == key { return c.todo }
-        let todo = Tasks.read(d)
+        let todo = Tasks.read(files)
         todos[s.id] = (key, todo)
         return todo
     }
 
-    private func readHead(for s: Session, url: URL?) -> (prompt: String?, branch: String?) {
+    /// The head of an append-only transcript cannot change once it holds a prompt or the file outgrew the head window.
+    private func headIsFinal(_ id: String) -> Bool {
+        heads[id].map { $0.prompt != nil || $0.size > Transcript.headBytes } ?? false
+    }
+
+    private func readHead(for s: Session, url: URL?, size: Int) -> (prompt: String?, branch: String?) {
         guard let url else { return (nil, nil) }
-        let size = fileSize(url)
-        if let h = heads[s.id], h.prompt != nil || h.size == size { return (h.prompt, h.branch) }
+        if let h = heads[s.id], headIsFinal(s.id) || h.size == size { return (h.prompt, h.branch) }
         let d = Transcript.head(url)
         let h = (prompt: Transcript.firstPrompt(in: d), branch: Transcript.gitBranch(in: d, last: false), size: size)
         heads[s.id] = h
         return (h.prompt, h.branch)
     }
 
-    private func readTail(for s: Session, url: URL?) -> (reply: String?, pending: PendingState?, branch: String?) {
-        guard s.isFinished, let url else { return (nil, nil, nil) }
+    private func readTail(for s: Session, url: URL?, size: Int) -> (reply: String?, pending: PendingState?, branch: String?) {
+        // A busy row keeps the branch the last tail read saw.
+        guard s.isFinished, let url else { return (nil, nil, cache[s.id]?.branch) }
         var c = cache[s.id] ?? Cached(since: s.since, size: -1, reply: nil, branch: nil, pending: nil)
-        let size = fileSize(url)
         let prompt = s.isPermissionPrompt
         if c.size == size && c.since == s.since && c.prompt == prompt { return (c.reply, c.pending, c.branch) }
         c.since = s.since
@@ -166,7 +167,7 @@ public final class Store: ObservableObject {
         c.reply = Transcript.lastReply(in: tail)
         c.branch = Transcript.gitBranch(in: tail, last: true)
         c.pending = prompt ? Transcript.pending(in: tail) : nil
-        if let t = Transcript.lastAITitle(in: tail) { aiTitles[s.id] = t }
+        if let t = Transcript.lastAITitle(in: tail) { c.aiTitle = t }
         cache[s.id] = c
         return (c.reply, c.pending, c.branch)
     }
@@ -194,10 +195,12 @@ public final class Store: ObservableObject {
             )
             s.nameSource = o["nameSource"] as? String
             let url = transcriptURL(for: s)
-            let t = readTail(for: s, url: url)
-            let head = readHead(for: s, url: url)
+            // Busy rows with a final head need no stat: neither read looks at the size.
+            let size = url.flatMap { s.isFinished || !headIsFinal(s.id) ? fileSize($0) : nil } ?? 0
+            let t = readTail(for: s, url: url, size: size)
+            let head = readHead(for: s, url: url, size: size)
             s.firstPrompt = head.prompt
-            s.aiTitle = aiTitles[s.id]
+            s.aiTitle = cache[s.id]?.aiTitle
             s.branch = t.branch ?? head.branch
             s.lastReply = t.reply
             s.todo = readTodo(for: s)
@@ -229,7 +232,6 @@ public final class Store: ObservableObject {
         urls = urls.filter { live.contains($0.key) }
         urlTried = urlTried.filter { live.contains($0.key) }
         heads = heads.filter { live.contains($0.key) }
-        aiTitles = aiTitles.filter { live.contains($0.key) }
         todos = todos.filter { live.contains($0.key) }
         for s in list where pids[s.id] != nil && pids[s.id] != s.pid {
             surfaces[s.id] = nil

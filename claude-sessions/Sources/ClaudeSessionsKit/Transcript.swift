@@ -12,6 +12,8 @@ enum PendingState: Equatable {
 }
 
 enum Transcript {
+    /// How much of a transcript's start is read for the first prompt and branch.
+    static let headBytes = 65_536
     static let approvable: Set<String> = ["Bash", "Edit", "Write", "MultiEdit", "NotebookEdit", "Read", "Glob", "Grep", "WebFetch", "WebSearch"]
 
     /// Claude Code names a project directory after the cwd with every non-alphanumeric char replaced by "-".
@@ -38,7 +40,7 @@ enum Transcript {
     }
 
     /// The first `bytes` of the file; when the file is longer, everything after the last newline is dropped.
-    static func head(_ url: URL, bytes: Int = 65_536) -> Data {
+    static func head(_ url: URL, bytes: Int = headBytes) -> Data {
         guard let h = try? FileHandle(forReadingFrom: url) else { return Data() }
         defer { try? h.close() }
         guard let d = try? h.read(upToCount: bytes + 1), !d.isEmpty else { return Data() }
@@ -60,17 +62,28 @@ enum Transcript {
             guard let a = t.range(of: "<\(tag)>"), let b = t.range(of: "</\(tag)>", range: a.upperBound..<t.endIndex) else { return nil }
             return String(t[a.upperBound..<b.lowerBound])
         }
-        if let name = inner("command-name") {
+        if t.hasPrefix("<command-"), let name = inner("command-name") {
             let args = inner("command-args")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             t = args.isEmpty ? "" : "\(name) \(args)"
         }
-        let collapsed = t.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        let collapsed = oneLine(t)
         if collapsed.isEmpty { return nil }
         return collapsed.count > 60 ? String(collapsed.prefix(60)) + "…" : collapsed
     }
 
-    private static func objects(_ data: Data) -> [[String: Any]] {
-        data.split(separator: 0x0A).compactMap { try? JSONSerialization.jsonObject(with: Data($0)) as? [String: Any] }
+    /// Parses lazily, so a scan that stops at its first hit does not parse the rest.
+    private static func objects(_ data: Data, reversed: Bool = false) -> some Sequence<[String: Any]> {
+        let lines = data.split(separator: 0x0A)
+        return (reversed ? AnySequence(lines.reversed()) : AnySequence(lines)).lazy
+            .compactMap { try? JSONSerialization.jsonObject(with: Data($0)) as? [String: Any] }
+    }
+
+    private static func text(of blocks: [[String: Any]]) -> String {
+        blocks.compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }.joined(separator: " ")
+    }
+
+    private static func oneLine(_ s: String) -> String {
+        s.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
     static func firstPrompt(in data: Data) -> String? {
@@ -82,7 +95,7 @@ enum Transcript {
             if let s = content as? String {
                 text = s
             } else if let blocks = content as? [[String: Any]] {
-                text = blocks.compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }.joined(separator: " ")
+                text = Self.text(of: blocks)
             } else { continue }
             if let p = cleanPrompt(text) { return p }
         }
@@ -90,15 +103,14 @@ enum Transcript {
     }
 
     static func lastAITitle(in data: Data) -> String? {
-        for o in objects(data).reversed() where o["type"] as? String == "ai-title" {
+        for o in objects(data, reversed: true) where o["type"] as? String == "ai-title" {
             if let t = o["aiTitle"] as? String, !t.isEmpty { return t }
         }
         return nil
     }
 
     static func gitBranch(in data: Data, last: Bool) -> String? {
-        let all = objects(data)
-        for o in last ? all.reversed() : all {
+        for o in objects(data, reversed: last) {
             if let b = o["gitBranch"] as? String, !b.isEmpty { return b }
         }
         return nil
@@ -111,9 +123,7 @@ enum Transcript {
                   (o["isSidechain"] as? Bool) != true,
                   let content = (o["message"] as? [String: Any])?["content"] as? [[String: Any]]
             else { continue }
-            let text = content.compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }
-                .joined(separator: " ")
-            let collapsed = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            let collapsed = oneLine(text(of: content))
             if !collapsed.isEmpty { return String(collapsed.prefix(300)) }
         }
         return nil

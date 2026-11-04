@@ -98,6 +98,7 @@ private func bash(_ id: String, _ cmd: String = "npm test") -> String {
     #expect(Transcript.cleanPrompt("<local-command-stdout>ok</local-command-stdout>") == nil)
     #expect(Transcript.cleanPrompt("Caveat: The messages below were generated") == nil)
     #expect(Transcript.cleanPrompt("sửa bug\n<system-reminder>x</system-reminder>  đăng nhập") == "sửa bug đăng nhập")
+    #expect(Transcript.cleanPrompt("xem log <command-name>/x</command-name>") == "xem log <command-name>/x</command-name>")
     let long = String(repeating: "a", count: 70)
     #expect(Transcript.cleanPrompt(long) == String(repeating: "a", count: 60) + "…")
 }

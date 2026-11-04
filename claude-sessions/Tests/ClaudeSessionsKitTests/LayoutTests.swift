@@ -51,7 +51,7 @@ private func session(_ id: String, _ status: String, _ text: String?) -> Session
 }
 
 @Test func sizeUsesMeasuredHeight() {
-    let store = Store(dir: makeTempDir(), projects: makeTempDir())
+    let store = makeStore(dir: makeTempDir())
     store.hovering = true
     store.measuredHeight = 200
     #expect(Layout.size(store).height == 200)

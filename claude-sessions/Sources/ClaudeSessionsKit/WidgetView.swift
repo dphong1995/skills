@@ -222,7 +222,7 @@ public struct WidgetView: View {
                     Text(s.subtitle).font(.system(size: 10.5))
                         .foregroundStyle(.white.opacity(0.45)).lineLimit(1)
                     if let todo = s.todo {
-                        Text(todo.current.map { "☑ \(todo.done)/\(todo.total) · \($0)" } ?? "☑ \(todo.done)/\(todo.total)")
+                        Text(todo.label)
                             .font(.system(size: 11)).foregroundStyle(.white.opacity(0.7))
                             .lineLimit(1).truncationMode(.tail)
                     }

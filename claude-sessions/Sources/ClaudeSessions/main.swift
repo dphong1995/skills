@@ -116,14 +116,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         guard !sending.contains(id) else { return NSSound.beep() }
         sending.insert(id)
-        var fromEditor = false
-        var sentText = ""
-        switch a {
-        case .deny(_, _, let reason): fromEditor = true; sentText = reason
-        default: break
-        }
+        let denyReason: String? = { if case .deny(_, _, let r) = a { return r }; return nil }()
         // Close the editor now so a second Enter cannot queue a second send; the draft stays until the send succeeds.
-        if fromEditor { store.editing = nil }
+        if denyReason != nil { store.editing = nil }
         resolveSurface(id) { [weak self] surface in
             guard let self else { return }
             guard let surface else { sending.remove(id); return NSSound.beep() }
@@ -137,7 +132,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self else { return }
                 sending.remove(id)
                 guard ok else { return NSSound.beep() }
-                if fromEditor, store.drafts[id] == sentText { store.drafts[id] = nil }
+                if let denyReason, store.drafts[id] == denyReason { store.drafts[id] = nil }
                 store.markSeen(id)
             }
         }

@@ -176,6 +176,7 @@ private func approvableStore() -> (Store, URL, URL, URL) {
     #expect(!store.stillValid(.approve("a", toolId: "t1")))
     writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
     store.refresh(at: Date())
+    #expect(!store.stillValid(.approve("a", toolId: "t1")))
     #expect(store.stillValid(.jump("zzz")))
 }
 
@@ -226,18 +227,18 @@ private func approvableStore() -> (Store, URL, URL, URL) {
 }
 
 @Test func startHiddenHidesImmediately() {
-    let store = Store(dir: makeTempDir(), projects: makeTempDir(), startHidden: true)
+    let store = makeStore(dir: makeTempDir(), startHidden: true)
     store.refresh(at: Date())
     #expect(store.hidden)
     let dir = makeTempDir()
     writeSession(dir, "a", pid: me, status: "idle", ageSec: 5, name: "a", cwd: frontend)
-    let live = Store(dir: dir, projects: makeTempDir(), startHidden: true)
+    let live = makeStore(dir: dir, startHidden: true)
     live.refresh(at: Date())
     #expect(!live.hidden)
 }
 
 @Test func defaultStartsVisible() {
-    let store = Store(dir: makeTempDir(), projects: makeTempDir(), startHidden: false)
+    let store = makeStore(dir: makeTempDir())
     store.refresh(at: Date())
     #expect(!store.hidden)
 }
@@ -405,4 +406,18 @@ private func approvableStore() -> (Store, URL, URL, URL) {
     try FileManager.default.removeItem(at: tasks.appendingPathComponent("a/1.json"))
     store.refresh(at: Date())
     #expect(store.sessions.first?.todo == nil)
+}
+
+@Test func branchStaysWhileBusyAfterTail() {
+    let dir = makeTempDir(), projects = makeTempDir()
+    let store = makeStore(dir: dir, projects: projects)
+    let t0 = Date()
+    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine("x", branch: "main"), assistantLine("y", branch: "feat")])
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend, updatedAt: t0)
+    store.refresh(at: t0)
+    #expect(store.sessions[0].subtitle.hasSuffix("· feat"))
+
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend, updatedAt: t0.addingTimeInterval(1))
+    store.refresh(at: t0.addingTimeInterval(1))
+    #expect(store.sessions[0].subtitle.hasSuffix("· feat"))
 }
