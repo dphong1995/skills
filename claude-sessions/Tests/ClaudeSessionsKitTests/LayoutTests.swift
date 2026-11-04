@@ -112,3 +112,53 @@ private func session(_ id: String, _ status: String, _ text: String?) -> Session
         #expect(Layout.settledPillOrigin(card: r, screen: scr) == o)
     }
 }
+
+private let ext = NSRect(x: 1512, y: 0, width: 2560, height: 1440)
+
+@Test func clampDragStopsVisibleCardAtEdges() {
+    let size = Layout.canvas
+    let down = Anchor(h: .trailing, up: false)
+    let up = Anchor(h: .trailing, up: true)
+    func pillRect(_ o: CGPoint, _ v: CGSize, _ a: Anchor) -> NSRect { Layout.pill(in: NSRect(origin: o, size: size), size: v, anchor: a) }
+    let c = Layout.collapsed
+    let inside = CGPoint(x: 600, y: 300)
+    // Past maxX: pill maxX is 50 beyond the screen edge.
+    let right = CGPoint(x: scr.maxX + 50 + Layout.margin - size.width, y: inside.y)
+    #expect(pillRect(Layout.clampDrag(windowOrigin: right, windowSize: size, visible: c, anchor: down, screen: scr), c, down).maxX == scr.maxX)
+    let left = CGPoint(x: -50 - (size.width - Layout.margin - c.width), y: inside.y)
+    #expect(pillRect(Layout.clampDrag(windowOrigin: left, windowSize: size, visible: c, anchor: down, screen: scr), c, down).minX == scr.minX)
+    let top = CGPoint(x: inside.x, y: scr.maxY + 50 + Layout.margin - size.height)
+    #expect(pillRect(Layout.clampDrag(windowOrigin: top, windowSize: size, visible: c, anchor: down, screen: scr), c, down).maxY == scr.maxY)
+    let bottom = CGPoint(x: inside.x, y: -50 - Layout.margin)
+    #expect(pillRect(Layout.clampDrag(windowOrigin: bottom, windowSize: size, visible: c, anchor: up, screen: scr), c, up).minY == scr.minY)
+    let card = CGSize(width: 520, height: 400)
+    #expect(pillRect(Layout.clampDrag(windowOrigin: right, windowSize: size, visible: card, anchor: down, screen: scr), card, down).maxX == scr.maxX)
+    #expect(Layout.clampDrag(windowOrigin: inside, windowSize: size, visible: c, anchor: down, screen: scr) == inside)
+}
+
+@Test func relativeOriginKeepsEdgeDistances() {
+    let t = Anchor(h: .trailing, up: false)
+    #expect(Layout.relativeOrigin(CGPoint(x: scr.maxX - 104 - 16, y: scr.maxY - 32 - 10), from: scr, to: ext, anchor: t)
+        == CGPoint(x: ext.maxX - 120, y: ext.maxY - 42))
+    let l = Anchor(h: .leading, up: true)
+    #expect(Layout.relativeOrigin(CGPoint(x: scr.minX + 20, y: scr.minY + 30), from: scr, to: ext, anchor: l)
+        == CGPoint(x: ext.minX + 20, y: ext.minY + 30))
+    let c = Anchor(h: .center, up: false)
+    #expect(Layout.relativeOrigin(CGPoint(x: scr.midX + 40, y: scr.maxY - 50), from: scr, to: ext, anchor: c)
+        == CGPoint(x: ext.midX + 40, y: ext.maxY - 50))
+}
+
+@Test func relativeOriginClampsToTarget() {
+    let o = CGPoint(x: ext.maxX - 2000, y: 100)
+    let r = Layout.relativeOrigin(o, from: ext, to: scr, anchor: Anchor(h: .trailing, up: true))
+    #expect(r == Layout.clamp(pillOrigin: r, to: scr))
+    #expect(r.x >= scr.minX && r.x <= scr.maxX - Layout.collapsed.width)
+}
+
+@Test func offsetRoundTripsAcrossOriginChange() {
+    let o = CGPoint(x: 1512 + 300, y: 900)
+    let off = Layout.offset(of: o, in: ext)
+    #expect(off == [300, 900])
+    #expect(Layout.origin(offset: off, in: NSRect(x: 0, y: 0, width: 2560, height: 1440)) == CGPoint(x: 300, y: 900))
+    #expect(Layout.origin(offset: [1], in: ext) == nil)
+}

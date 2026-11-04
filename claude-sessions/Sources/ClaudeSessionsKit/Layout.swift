@@ -118,4 +118,32 @@ public enum Layout {
         CGPoint(x: min(max(o.x, s.minX), s.maxX - collapsed.width),
                 y: min(max(o.y, s.minY), s.maxY - collapsed.height))
     }
+
+    /// Window origin shifted by the smallest dx, dy that keeps the visible pill or card inside `screen`.
+    public static func clampDrag(windowOrigin: CGPoint, windowSize: CGSize, visible: CGSize, anchor: Anchor, screen: NSRect) -> CGPoint {
+        let r = pill(in: NSRect(origin: windowOrigin, size: windowSize), size: visible, anchor: anchor)
+        let dx = r.minX < screen.minX ? screen.minX - r.minX : r.maxX > screen.maxX ? screen.maxX - r.maxX : 0
+        let dy = r.minY < screen.minY ? screen.minY - r.minY : r.maxY > screen.maxY ? screen.maxY - r.maxY : 0
+        return CGPoint(x: windowOrigin.x + dx, y: windowOrigin.y + dy)
+    }
+
+    /// A collapsed pill origin on screen `a` mapped to screen `b`, keeping the distance to the anchored edges.
+    public static func relativeOrigin(_ o: CGPoint, from a: NSRect, to b: NSRect, anchor: Anchor) -> CGPoint {
+        let x: CGFloat
+        switch anchor.h {
+        case .trailing: x = b.maxX - (a.maxX - o.x)
+        case .leading: x = b.minX + (o.x - a.minX)
+        case .center: x = b.midX + (o.x - a.midX)
+        }
+        let y = anchor.up ? b.minY + (o.y - a.minY) : b.maxY - (a.maxY - o.y)
+        return clamp(pillOrigin: CGPoint(x: x, y: y), to: b)
+    }
+
+    public static func offset(of o: CGPoint, in screen: NSRect) -> [Double] {
+        [o.x - screen.minX, o.y - screen.minY]
+    }
+
+    public static func origin(offset: [Double], in screen: NSRect) -> CGPoint? {
+        offset.count == 2 ? CGPoint(x: screen.minX + offset[0], y: screen.minY + offset[1]) : nil
+    }
 }

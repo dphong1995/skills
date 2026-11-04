@@ -308,6 +308,7 @@ public struct WidgetView: View {
 
 public final class DragHostingView<V: View>: NSHostingView<V> {
     public var onDragEnd: (() -> Void)?
+    public var clampOrigin: ((CGPoint) -> CGPoint)?
     private var replaying = false
     public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     public override func mouseDown(with down: NSEvent) {
@@ -330,7 +331,8 @@ public final class DragHostingView<V: View>: NSHostingView<V> {
             }
             if !moving && Layout.isDrag(from: mouse0, to: NSEvent.mouseLocation) { moving = true }
             if moving {
-                window.setFrameOrigin(Layout.dragOrigin(start: start, mouseDown: mouse0, mouse: NSEvent.mouseLocation))
+                let raw = Layout.dragOrigin(start: start, mouseDown: mouse0, mouse: NSEvent.mouseLocation)
+                window.setFrameOrigin(clampOrigin?(raw) ?? raw)
             }
         }
     }
