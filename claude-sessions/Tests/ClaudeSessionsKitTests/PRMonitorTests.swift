@@ -355,6 +355,38 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         #expect(m.takeSnapshot().events.isEmpty)
     }
 
+    @Test func overrideKeptWhenOnlyStatusesAreRefetched() {
+        let api = fake(open: [prJSON(id: 7571, comments: 1)])
+        api.set("/statuses", json: ["values": [inProgress()]]) // no pipeline: statuses stay polled inside the new-commit window
+        let m = monitor(api)
+        m.update([target([prRef(7571)])], at: t0)
+        api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 1**", at: Self.summaryAt)]])
+        bump(api, comments: 2)
+        m.update([target([prRef(7571)])], at: t0 + 61)
+        _ = m.takeSnapshot()
+        let statuses = api.requests(containing: "/statuses")
+        let comments = api.requests(containing: "/comments")
+        m.update([target([prRef(7571)])], at: t0 + 122)
+        #expect(api.requests(containing: "/statuses") == statuses + 1)
+        #expect(api.requests(containing: "/comments") == comments)
+        #expect(rabbitOf(m) == .reviewed(findings: 1))
+        #expect(m.takeSnapshot().events.isEmpty)
+    }
+
+    @Test func summaryFoundOnOwedFetchAtFirstSightDoesNotChime() {
+        let api = fake(open: [prJSON(id: 7571, comments: 1)])
+        setStatuses(api, inProgress())
+        api.routes["/comments"] = .failure(.transport)
+        let m = monitor(api)
+        m.update([target([prRef(7571)])], at: t0)
+        _ = m.takeSnapshot()
+        api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 1**", at: Self.summaryAt)]])
+        m.update([target([prRef(7571)])], at: t0 + 61)
+        let snap = m.takeSnapshot()
+        #expect(snap.prs["s"]?.first?.rabbit == .reviewed(findings: 1))
+        #expect(snap.events.isEmpty)
+    }
+
     @Test func overrideSurvivesStatusFlippingToSuccessful() {
         let api = fake(open: [prJSON(id: 7571, comments: 1)])
         let m = overriddenMonitor(api)

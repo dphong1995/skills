@@ -315,6 +315,8 @@ public final class PRMonitor {
                     // Re-record only a count filled in for the review already recorded; a new kind must still chime.
                     if owed, rabbitSeen[ref]?.commit == pr.commit, CodeRabbit.kind(prev?.rabbit) == CodeRabbit.kind(pr.rabbit),
                        pr.rabbitSince == prev?.rabbitSince { recordRabbit(ref, pr) }
+                    // First sight whose comments fetch failed: a summary posted before the widget saw the PR stays silent.
+                    if owed, rabbitSeen[ref] == nil { recordRabbit(ref, pr) }
                 }
             }
             if let prev {
