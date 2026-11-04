@@ -33,7 +33,11 @@ public enum Layout {
     static let replyRowHeight: CGFloat = 92
     static let todoHeight: CGFloat = 15
     static let headerHeight: CGFloat = 32
-    static var maxListHeight: CGFloat { maxExpandedHeight - headerHeight - 14 }
+    /// Padding inside the list's scroll content, on the header's side and the far side; `listHeight` is measured with it.
+    static let listPaddingNear: CGFloat = 4
+    static let listPaddingFar: CGFloat = 10
+    static let listPadding = listPaddingNear + listPaddingFar
+    static var maxListHeight: CGFloat { maxExpandedHeight - headerHeight }
     public static let collapsed = CGSize(width: 232, height: headerHeight)
     static let dragThreshold: CGFloat = 4
 
@@ -56,7 +60,7 @@ public enum Layout {
 
     static func expanded(_ sessions: [Session]) -> CGSize {
         let rows = sessions.isEmpty ? rowHeight : sessions.reduce(0) { $0 + height(of: $1) }
-        return CGSize(width: expandedWidth, height: headerHeight + 4 + rows + 10)
+        return CGSize(width: expandedWidth, height: headerHeight + listPadding + rows)
     }
 
     public static func size(_ store: Store) -> CGSize {

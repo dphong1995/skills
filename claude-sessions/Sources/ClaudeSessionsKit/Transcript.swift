@@ -11,7 +11,7 @@ enum PendingState: Equatable {
     case unclear(count: Int)
 }
 
-public struct Link: Equatable {
+public struct SessionLink: Equatable {
     public let label: String
     public let url: URL
 }
@@ -104,33 +104,50 @@ enum Transcript {
     }
 
     /// The links in `text` in order of appearance (markdown links count as their URL), duplicate URLs dropped.
-    static func links(in text: String) -> [Link] {
+    static func links(in text: String) -> [SessionLink] {
         var seen = Set<String>()
         return urlRanges(in: text).compactMap { _, url in
-            seen.insert(url.absoluteString).inserted ? Link(label: label(for: url), url: url) : nil
+            seen.insert(url.absoluteString).inserted ? SessionLink(label: label(for: url), url: url) : nil
         }
     }
+
+    private static let prPatterns = [#"/pull-requests/(\d+)"#, #"/pull/(\d+)"#, #"/merge_requests/(\d+)"#]
+        .map { try! NSRegularExpression(pattern: $0) }
+    private static let jiraPattern = try! NSRegularExpression(pattern: #"/browse/([A-Z][A-Z0-9]+-\d+)"#)
+    private static let issuePattern = try! NSRegularExpression(pattern: #"/issues/(\d+)"#)
 
     /// A short label for a link button or inline URL.
     static func label(for url: URL) -> String {
         let path = url.path
-        func capture(_ pattern: String) -> String? {
-            guard let m = try? NSRegularExpression(pattern: pattern).firstMatch(in: path, range: NSRange(path.startIndex..., in: path)),
+        func capture(_ re: NSRegularExpression) -> String? {
+            guard let m = re.firstMatch(in: path, range: NSRange(path.startIndex..., in: path)),
                   let r = Range(m.range(at: 1), in: path) else { return nil }
             return String(path[r])
         }
-        if let n = capture(#"/pull-requests/(\d+)"#) ?? capture(#"/pull/(\d+)"#) ?? capture(#"/merge_requests/(\d+)"#) { return "PR #\(n)" }
-        if let k = capture(#"/browse/([A-Z][A-Z0-9]+-\d+)"#) { return k }
-        if let n = capture(#"/issues/(\d+)"#) { return "#\(n)" }
+        if let n = prPatterns.lazy.compactMap(capture).first { return "PR #\(n)" }
+        if let k = capture(jiraPattern) { return k }
+        if let n = capture(issuePattern) { return "#\(n)" }
         let host = url.host ?? url.absoluteString
         return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
     }
 
+    /// The first `n` characters of `s`, plus `…` when `s` is longer.
+    private static func cut(_ s: String, _ n: Int) -> String {
+        s.count > n ? String(s.prefix(n)) + "…" : s
+    }
+
     /// Markdown links become their text, bare URLs their label; then cut to `limit` characters plus `…`.
     static func displayText(_ text: String, limit: Int) -> String {
-        var t = markdownLinkPattern.stringByReplacingMatches(in: text, range: NSRange(location: 0, length: (text as NSString).length), withTemplate: "$1")
-        for (range, url) in urlRanges(in: t).reversed() { t.replaceSubrange(range, with: label(for: url)) }
-        return t.count > limit ? String(t.prefix(limit)) + "…" : t
+        let t = markdownLinkPattern.stringByReplacingMatches(in: text, range: NSRange(location: 0, length: (text as NSString).length), withTemplate: "$1")
+        var out = ""
+        var last = t.startIndex
+        for (range, url) in urlRanges(in: t) {
+            out += t[last..<range.lowerBound]
+            out += label(for: url)
+            last = range.upperBound
+        }
+        out += t[last...]
+        return cut(out, limit)
     }
 
     /// Parses lazily, so a scan that stops at its first hit does not parse the rest.
@@ -249,7 +266,7 @@ enum Transcript {
         default:
             s = name
         }
-        return s.count > 120 ? String(s.prefix(120)) + "…" : s
+        return cut(s, 120)
     }
 
     /// The last main-thread tool call in `data`; only lines holding `"tool_use"` are parsed.

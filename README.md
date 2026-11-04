@@ -265,8 +265,8 @@ widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouT
   Security → Automation.
 - Kéo được từ mọi chỗ trên widget; dời từ 4 pt trở xuống vẫn tính là bấm.
 - Session xong/chờ hiện thêm câu trả lời cuối của Claude (tối đa 4 dòng, cắt 600 ký tự, có chữ đậm và code, link hiện thành nhãn ngắn), đọc từ transcript
-- Link trong prompt đầu tiên hoặc câu trả lời cuối của Claude (đọc từ văn bản đầy đủ, không phải bản đã cắt) hiện thành tối đa 3 nút `↗ nhãn` dưới dòng của session: link của prompt trước, link của câu trả lời sau (chỉ khi câu trả lời đang hiện), bỏ trùng. Bấm nút mở trình duyệt mặc định, không nhảy sang cmux.
   `~/.claude/projects/…/<sessionId>.jsonl`.
+- Link trong prompt đầu tiên hoặc câu trả lời cuối của Claude (đọc từ văn bản đầy đủ, không phải bản đã cắt) hiện thành tối đa 3 nút `↗ nhãn` dưới dòng của session: link của prompt trước, link của câu trả lời sau (chỉ khi câu trả lời đang hiện), bỏ trùng. Bấm nút mở trình duyệt mặc định, không nhảy sang cmux.
 - Danh sách cuộn được khi có nhiều session và cao hơn khung widget.
 - Dòng `chờ duyệt` có nút **Cho phép** và **Từ chối…** (bấm Từ chối… để gõ lý do, để trống = chỉ từ chối).
   Lệnh dài phải bấm **Xem đủ** mới hiện nút; lệnh quá dài, subagent, nhiều việc cùng chờ hoặc tool lạ

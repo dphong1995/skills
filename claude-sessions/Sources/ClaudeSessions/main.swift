@@ -73,14 +73,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// `refresh()` clears the chime, so every refresh plays it right away.
+    func refreshAndChime() {
+        store.refresh()
+        playChime()
+    }
+
     func playChime() {
         guard let chime = store.chime, !store.muted else { return }
         NSSound(named: chime == .done ? "Glass" : "Funk")?.play()
     }
 
     func refreshAndSyncVisibility() {
-        store.refresh()
-        playChime()
+        refreshAndChime()
         if store.hidden && panel.isVisible {
             panel.orderOut(nil)
             panel.ignoresMouseEvents = true
@@ -137,8 +142,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             guard let surface else { sending.remove(id); return NSSound.beep() }
             // Validate right before the first keystroke: the lookup above may have taken a while.
-            store.refresh()
-            playChime()
+            refreshAndChime()
             guard store.surfaces[id] == surface, store.stillValid(a) else {
                 sending.remove(id)
                 return NSSound.beep()

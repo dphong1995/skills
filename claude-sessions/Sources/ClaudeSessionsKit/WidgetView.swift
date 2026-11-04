@@ -67,17 +67,23 @@ struct PulseDot: View {
     }
 }
 
+/// Holds the ring layer and lets every click through to the hosting view.
+final class PulseRingView: NSView {
+    let ring = CAShapeLayer()
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
 /// The expanding ring is a Core Animation layer animation, which the render server runs; a SwiftUI animation would cost the app a redraw per frame.
 struct PulseRing: NSViewRepresentable {
     let color: Color
     let pulsing: Bool
     private static let animationKey = "pulse"
 
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView(frame: NSRect(x: 0, y: 0, width: 8, height: 8))
+    func makeNSView(context: Context) -> PulseRingView {
+        let view = PulseRingView(frame: NSRect(x: 0, y: 0, width: 8, height: 8))
         view.wantsLayer = true
         view.layer?.masksToBounds = false
-        let ring = CAShapeLayer()
+        let ring = view.ring
         ring.frame = view.bounds
         ring.path = CGPath(ellipseIn: view.bounds, transform: nil)
         ring.fillColor = nil
@@ -86,8 +92,8 @@ struct PulseRing: NSViewRepresentable {
         return view
     }
 
-    func updateNSView(_ view: NSView, context: Context) {
-        guard let ring = view.layer?.sublayers?.first as? CAShapeLayer else { return }
+    func updateNSView(_ view: PulseRingView, context: Context) {
+        let ring = view.ring
         ring.strokeColor = NSColor(color).cgColor
         if pulsing {
             ring.isHidden = false
@@ -198,12 +204,12 @@ public struct WidgetView: View {
             }
         }
         .padding(.horizontal, 10)
-        .padding(store.anchor.up ? .top : .bottom, 10)
-        .padding(store.anchor.up ? .bottom : .top, 4)
+        .padding(store.anchor.up ? .top : .bottom, Layout.listPaddingFar)
+        .padding(store.anchor.up ? .bottom : .top, Layout.listPaddingNear)
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
             if abs(h - (store.listHeight ?? 0)) > 0.5 { store.listHeight = h }
         }
-        let height = min(store.listHeight ?? (Layout.expanded(store.sessions).height - Layout.headerHeight - 14), Layout.maxListHeight)
+        let height = min(store.listHeight ?? (Layout.expanded(store.sessions).height - Layout.headerHeight), Layout.maxListHeight)
         return Group {
             if snapshotRendering {
                 rows.fixedSize(horizontal: false, vertical: true)
@@ -316,13 +322,13 @@ public struct WidgetView: View {
                             .font(.system(size: 11)).foregroundStyle(.white.opacity(0.7))
                             .lineLimit(1).truncationMode(.tail)
                     }
-                    if s.status == "busy", let a = s.activity {
+                    if let a = s.activity {
                         Text("▸ \(a)")
                             .font(.system(size: 11)).foregroundStyle(.white.opacity(0.6))
                             .lineLimit(1).truncationMode(.tail)
                     }
-                    if s.isFinished, let reply = s.lastReply {
-                        Text(markdown(reply)).font(.system(size: 11)).foregroundStyle(.white.opacity(0.75))
+                    if s.isFinished, let reply = s.replyText {
+                        Text(reply).font(.system(size: 11)).foregroundStyle(.white.opacity(0.75))
                             .lineLimit(4).truncationMode(.tail)
                     }
                 }

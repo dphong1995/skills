@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 @testable import ClaudeSessionsKit
 
@@ -172,8 +173,8 @@ private func bash(_ id: String, _ cmd: String = "npm test") -> String {
 
 @Test func linksInOrderDeduped() {
     let links = Transcript.links(in: "a https://github.com/x/y/pull/1, b [t](https://talosix.atlassian.net/browse/T6IR-1). https://github.com/x/y/pull/1")
-    #expect(links == [Link(label: "PR #1", url: URL(string: "https://github.com/x/y/pull/1")!),
-                      Link(label: "T6IR-1", url: URL(string: "https://talosix.atlassian.net/browse/T6IR-1")!)])
+    #expect(links == [SessionLink(label: "PR #1", url: URL(string: "https://github.com/x/y/pull/1")!),
+                      SessionLink(label: "T6IR-1", url: URL(string: "https://talosix.atlassian.net/browse/T6IR-1")!)])
 }
 
 @Test func linksStripTrailingPunctuation() {
@@ -188,8 +189,9 @@ private func bash(_ id: String, _ cmd: String = "npm test") -> String {
 
 @Test func markdownCodeRunsGetMonospacedFont() {
     let a = markdown("plain **bold** `code`")
-    let withFont = a.runs.filter { $0.font != nil }.map { String(a[$0.range].characters) }
-    #expect(withFont == ["code"])
+    let withFont = a.runs.filter { $0.font != nil }
+    #expect(withFont.map { String(a[$0.range].characters) } == ["code"])
+    #expect(withFont.first?.font == Font.system(size: 11, weight: .regular).monospaced())
 }
 
 @Test func toolSummaryRules() {

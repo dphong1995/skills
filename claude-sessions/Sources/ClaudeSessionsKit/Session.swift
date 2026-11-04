@@ -9,6 +9,8 @@ struct Session: Identifiable, Equatable {
     let waitingFor: String?
     let since: Date?
     var lastReply: String? = nil
+    /// `lastReply` parsed as markdown, once per tail read.
+    var replyText: AttributedString? = nil
     var pending: PendingState? = nil
     var pid: Int32 = 0
     var nameSource: String? = nil
@@ -16,7 +18,7 @@ struct Session: Identifiable, Equatable {
     var firstPrompt: String? = nil
     var branch: String? = nil
     var todo: Todo? = nil
-    var links: [Link] = []
+    var links: [SessionLink] = []
     var activity: String? = nil
 }
 
@@ -86,7 +88,7 @@ public final class Store: ObservableObject {
     private var cache: [String: Cached] = [:]
     private var urls: [String: URL] = [:]
     private var urlTried: [String: Date?] = [:]
-    private var heads: [String: (prompt: String?, fullPrompt: String?, links: [Link], branch: String?, size: Int)] = [:]
+    private var heads: [String: (prompt: String?, links: [SessionLink], branch: String?, size: Int)] = [:]
     private var todos: [String: (key: TaskKey, todo: Todo?)] = [:]
     private var activities: [String: (offset: UInt64, text: String?)] = [:]
     /// File reads done for the running-tool line, for tests.
@@ -104,8 +106,8 @@ public final class Store: ObservableObject {
         var since: Date?
         var size: Int
         var reply: String?
-        var fullReply: String?
-        var links: [Link] = []
+        var replyText: AttributedString?
+        var links: [SessionLink] = []
         var branch: String?
         var aiTitle: String?
         var pending: PendingState?
@@ -158,34 +160,35 @@ public final class Store: ObservableObject {
         heads[id].map { $0.prompt != nil || $0.size > Transcript.headBytes } ?? false
     }
 
-    private func readHead(for s: Session, url: URL?, size: Int) -> (prompt: String?, links: [Link], branch: String?) {
+    private func readHead(for s: Session, url: URL?, size: Int) -> (prompt: String?, links: [SessionLink], branch: String?) {
         guard let url else { return (nil, [], nil) }
         if let h = heads[s.id], headIsFinal(s.id) || h.size == size { return (h.prompt, h.links, h.branch) }
         let d = Transcript.head(url)
         let full = Transcript.firstPrompt(in: d)
-        let h = (prompt: full.map { Transcript.displayText($0, limit: 140) }, fullPrompt: full, links: full.map(Transcript.links) ?? [], branch: Transcript.gitBranch(in: d, last: false), size: size)
+        let h = (prompt: full.map { Transcript.displayText($0, limit: 140) }, links: full.map(Transcript.links) ?? [], branch: Transcript.gitBranch(in: d, last: false), size: size)
         heads[s.id] = h
         return (h.prompt, h.links, h.branch)
     }
 
-    private func readTail(for s: Session, url: URL?, size: Int) -> (reply: String?, links: [Link], pending: PendingState?, branch: String?) {
+    private func readTail(for s: Session, url: URL?, size: Int) -> (reply: String?, replyText: AttributedString?, links: [SessionLink], pending: PendingState?, branch: String?) {
         // A busy row keeps the branch the last tail read saw.
-        guard s.isFinished, let url else { return (nil, [], nil, cache[s.id]?.branch) }
+        guard s.isFinished, let url else { return (nil, nil, [], nil, cache[s.id]?.branch) }
         var c = cache[s.id] ?? Cached(since: s.since, size: -1, reply: nil, branch: nil, pending: nil)
         let prompt = s.isPermissionPrompt
-        if c.size == size && c.since == s.since && c.prompt == prompt { return (c.reply, c.links, c.pending, c.branch) }
+        if c.size == size && c.since == s.since && c.prompt == prompt { return (c.reply, c.replyText, c.links, c.pending, c.branch) }
         c.since = s.since
         c.size = size
         c.prompt = prompt
         let tail = Transcript.tail(url)
-        c.fullReply = Transcript.lastReply(in: tail)
-        c.reply = c.fullReply.map { Transcript.displayText($0, limit: 600) }
-        c.links = c.fullReply.map(Transcript.links) ?? []
+        let full = Transcript.lastReply(in: tail)
+        c.reply = full.map { Transcript.displayText($0, limit: 600) }
+        c.replyText = c.reply.map(markdown)
+        c.links = full.map(Transcript.links) ?? []
         c.branch = Transcript.gitBranch(in: tail, last: true)
         c.pending = prompt ? Transcript.pending(in: tail) : nil
         if let t = Transcript.lastAITitle(in: tail) { c.aiTitle = t }
         cache[s.id] = c
-        return (c.reply, c.links, c.pending, c.branch)
+        return (c.reply, c.replyText, c.links, c.pending, c.branch)
     }
 
     /// The last tool call of a busy session, read from the bytes appended since the last refresh (at most `activityWindow`).
@@ -221,7 +224,7 @@ public final class Store: ObservableObject {
         var text = cached?.text
         if let end = body.lastIndex(of: 0x0A) {
             offset += UInt64(end + 1 - body.startIndex)
-            text = Transcript.lastToolUse(in: Data(body[body.startIndex...end])) ?? text
+            text = Transcript.lastToolUse(in: body[body.startIndex...end]) ?? text
         }
         activities[s.id] = (offset, text)
         return text
@@ -258,10 +261,10 @@ public final class Store: ObservableObject {
             s.aiTitle = cache[s.id]?.aiTitle
             s.branch = t.branch ?? head.branch
             s.lastReply = t.reply
+            s.replyText = t.replyText
             var seen = Set<URL>()
-            s.links = Array((head.links + (s.isFinished ? t.links : [])).filter { seen.insert($0.url).inserted }.prefix(3))
+            s.links = Array((head.links + t.links).filter { seen.insert($0.url).inserted }.prefix(3))
             s.todo = readTodo(for: s)
-            s.activity = readActivity(for: s, url: url, size: size)
             if s.isPermissionPrompt { s.pending = t.pending }
             list.append(s)
         }
@@ -269,6 +272,11 @@ public final class Store: ObservableObject {
         var newest: [String: Session] = [:]
         for s in list where (newest[s.id]?.since ?? .distantPast) <= (s.since ?? .distantPast) { newest[s.id] = s }
         list = list.filter { newest[$0.id]?.pid == $0.pid }
+        // After the dedupe, so two processes sharing a sessionId cannot reset each other's cached activity.
+        for i in list.indices {
+            let url = transcriptURL(for: list[i])
+            list[i].activity = readActivity(for: list[i], url: url, size: url.map(fileSize) ?? 0)
+        }
 
         if list.isEmpty {
             if emptySince == nil { emptySince = now }

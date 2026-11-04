@@ -132,7 +132,7 @@ struct SnapshotTests {
     @Test func renderLongContent() {
         let dir = makeTempDir(), projects = makeTempDir()
         let store = makeStore(dir: dir, projects: projects)
-        let reply = "Đã xong. **bold** và `code iiWW` xem https://talosix.atlassian.net/browse/T6IR-14728 " + String(repeating: "nội dung dài ", count: 70)
+        let reply = "Đã xong. **bold** và `code iiWW` xem https://talosix.atlassian.net/browse/T6IR-14500 " + String(repeating: "nội dung dài ", count: 70)
             + " https://bitbucket.org/t/r/pull-requests/6867 https://github.com/x/y/pull/12"
         _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine("/cook https://talosix.atlassian.net/browse/T6IR-14500 " + String(repeating: "Hãy sửa lỗi đăng nhập ", count: 6)), assistantLine(reply)])
         writeSession(dir, "a", pid: me, status: "idle", ageSec: 30, name: "talo6-dct-frontend-d7", cwd: frontend)

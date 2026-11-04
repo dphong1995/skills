@@ -469,8 +469,30 @@ private func linkStore(status: String) -> Store {
     #expect(linkStore(status: "idle").sessions.first?.links.map(\.label) == ["T6IR-14728", "PR #1", "PR #2"])
 }
 
-@Test func busyRowHasOnlyPromptLinks() {
-    #expect(linkStore(status: "busy").sessions.first?.links.map(\.label) == ["T6IR-14728"])
+@Test func linksFollowStatusFromIdleToBusy() {
+    let dir = makeTempDir(), projects = makeTempDir()
+    let store = makeStore(dir: dir, projects: projects)
+    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [
+        userLine("/cook \(jira)"),
+        assistantLine("PRs https://github.com/a/b/pull/1 https://github.com/a/b/pull/2 https://github.com/a/b/pull/3 and \(jira)")])
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(store.sessions.first?.links.map(\.label) == ["T6IR-14728", "PR #1", "PR #2"])
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(store.sessions.first?.links.map(\.label) == ["T6IR-14728"])
+}
+
+@Test func titleCutInsideUrlShowsLabelAndKeepsLink() {
+    let dir = makeTempDir(), projects = makeTempDir()
+    let store = makeStore(dir: dir, projects: projects)
+    let pr = "https://bitbucket.org/talosix/very-long-repository-name/pull-requests/6867/overview?tab=activity&filter=" + String(repeating: "z", count: 80)
+    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine(String(repeating: "a", count: 120) + " " + pr)])
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    let s = store.sessions.first
+    #expect(s?.title == String(repeating: "a", count: 120) + " PR #6867")
+    #expect(s?.links.map(\.label) == ["PR #6867"])
 }
 
 // Running-tool line
@@ -502,6 +524,26 @@ private func bash(_ c: String) -> String { toolUseLine(id: UUID().uuidString, na
     let r = ActivityRig([userLine("hi"), bash("swift test")])
     r.refresh()
     #expect(r.activity == "Bash: swift test")
+}
+
+// Two processes with one sessionId: the idle one must not clear the busy row's cached activity, whatever order the files are read in.
+@Test(arguments: [("a-busy", "z-idle"), ("z-busy", "a-idle")])
+func activitySurvivesDuplicateSessionIdOrder(busyFile: String, idleFile: String) {
+    let dir = makeTempDir(), projects = makeTempDir()
+    let store = makeStore(dir: dir, projects: projects)
+    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [bash("swift test") + "\n"])
+    func write(_ file: String, pid: Int32, status: String, ageSec: Double) {
+        let o: [String: Any] = ["pid": pid, "sessionId": "a", "name": file, "cwd": frontend, "status": status,
+                                "statusUpdatedAt": (Date().timeIntervalSince1970 - ageSec) * 1000]
+        try! JSONSerialization.data(withJSONObject: o).write(to: dir.appendingPathComponent("\(file).json"))
+    }
+    write(busyFile, pid: me, status: "busy", ageSec: 1)
+    write(idleFile, pid: getppid(), status: "idle", ageSec: 600)
+    for _ in 0..<2 {
+        store.refresh(at: Date())
+        #expect(store.sessions.map(\.name) == [busyFile])
+        #expect(store.sessions.first?.activity == "Bash: swift test")
+    }
 }
 
 @Test func activityNoReadWhenUnchanged() {

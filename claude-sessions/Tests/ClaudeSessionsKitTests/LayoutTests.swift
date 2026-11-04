@@ -42,7 +42,7 @@ private func session(_ id: String, _ status: String, _ text: String?) -> Session
     withActivity.activity = "Bash: ls"
     #expect(Layout.height(of: withActivity) == CGFloat(36 + 15))
     var withLinks = session("a", "idle", "hi")
-    withLinks.links = [Link(label: "PR #1", url: URL(string: "https://x.y/pull/1")!)]
+    withLinks.links = [SessionLink(label: "PR #1", url: URL(string: "https://x.y/pull/1")!)]
     #expect(Layout.height(of: withLinks) == CGFloat(92 + 22))
 }
 
