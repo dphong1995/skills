@@ -237,19 +237,19 @@ struct SnapshotTests {
     @Test func renderCollapsedNew() {
         let store = newMarkStore(makeTempDir(), waiting: 1, idle: 2, busy: 1)
         store.unseen = ["w0", "i1"]
-        render(store, PanelState(), "22-collapsed-new")
+        render(store, PanelState(), "23-collapsed-new")
     }
 
     @Test func renderCollapsedNewTwoDigits() {
         let store = newMarkStore(makeTempDir(), waiting: 3, idle: 12, busy: 1)
         store.unseen = Set((0..<12).map { "i\($0)" })
-        render(store, PanelState(), "23-collapsed-new-two-digits")
+        render(store, PanelState(), "24-collapsed-new-two-digits")
     }
 
     @Test func renderCollapsedNoNew() {
         let store = newMarkStore(makeTempDir(), waiting: 1, idle: 2, busy: 1)
         store.unseen = []
-        render(store, PanelState(), "24-collapsed-no-new")
+        render(store, PanelState(), "25-collapsed-no-new")
     }
 
     @Test func renderExpandedNew() {
@@ -257,7 +257,7 @@ struct SnapshotTests {
         store.unseen = ["i1"]
         let panel = PanelState()
         panel.hovering = true
-        render(store, panel, "25-expanded-new")
+        render(store, panel, "26-expanded-new")
     }
 
     @Test func renderFinishedCollapsed() {

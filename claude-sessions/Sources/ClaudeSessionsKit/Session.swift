@@ -53,7 +53,10 @@ public final class Store: ObservableObject {
     /// Session ids whose cmux surface lookup failed; dropped when the pid changes or the session dies.
     public var surfaceMisses: Set<String> = []
     private var lastFocused: String?
-    var newCount: Int { unseen.filter { id in sessions.contains { $0.id == id } }.count }
+    var newCount: Int {
+        let live = Set(sessions.map(\.id))
+        return unseen.filter(live.contains).count
+    }
     private var pids: [String: Int32] = [:]
     /// The pid of the live session with this id as of the last refresh.
     public func pid(of id: String) -> Int32? { pids[id] }
@@ -249,7 +252,8 @@ public final class Store: ObservableObject {
     /// Called with the focused cmux surface (nil when unknown). Clears the marks of the session shown there once it is seen on two consecutive calls.
     public func noteFocused(_ surface: String?) {
         if let surface, let last = lastFocused, last.caseInsensitiveCompare(surface) == .orderedSame {
-            for id in unseen where surfaces[id]?.caseInsensitiveCompare(surface) == .orderedSame { markSeen(id) }
+            let matches = unseen.filter { surfaces[$0]?.caseInsensitiveCompare(surface) == .orderedSame }
+            if !matches.isEmpty { unseen.subtract(matches) }
         }
         lastFocused = surface
     }
@@ -312,9 +316,9 @@ public final class Store: ObservableObject {
 
         var newUnseen = unseen
         for s in list {
-            if lastStatus[s.id] == "busy" && s.isFinished { newUnseen.insert(s.id) }
             if let last = lastStatus[s.id], last != "busy", s.status == "busy" { newUnseen.remove(s.id) }
             if lastStatus[s.id] == "busy" && s.isFinished {
+                newUnseen.insert(s.id)
                 peekUntil = now.addingTimeInterval(5)
                 if s.status == "waiting" { chime = .needsYou } else if chime == nil { chime = .done }
             }

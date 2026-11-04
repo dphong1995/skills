@@ -8,10 +8,14 @@ public enum CmuxJump {
         return String(out[r].dropFirst("surface=".count))
     }
 
+    private static var cliPath: String? {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)?
+            .appendingPathComponent("Contents/Resources/bin/cmux").path
+    }
+
     /// Blocking: call off the main thread. Nil when cmux is missing or the output has no surface.
     public static func surface(sessionId: String) -> String? {
-        guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return nil }
-        let cmux = app.appendingPathComponent("Contents/Resources/bin/cmux").path
+        guard let cmux = cliPath else { return nil }
         guard let out = runProcess(cmux, ["sessions", "--session", sessionId, "--agent", "claude"], timeout: 2, requireSuccess: false)
         else { return nil }
         return surface(fromSessionsOutput: out)
@@ -27,8 +31,7 @@ public enum CmuxJump {
 
     /// Blocking: call off the main thread. The focused terminal surface of cmux, nil when cmux is missing or the focus is not a terminal.
     public static func focusedSurface() -> String? {
-        guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return nil }
-        let cmux = app.appendingPathComponent("Contents/Resources/bin/cmux").path
+        guard let cmux = cliPath else { return nil }
         guard let out = runProcess(cmux, ["--id-format", "uuids", "identify", "--no-caller"], timeout: 2)
         else { return nil }
         return focusedSurface(fromIdentify: Data(out.utf8))

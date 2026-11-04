@@ -879,6 +879,18 @@ private func prWithReviewer(id: Int, approved: Bool, comments: Int = 0) -> [Stri
     #expect(store.unseen == ["a", "b"])
 }
 
+@Test func prEventMarksBusySession() {
+    let api = fake(open: [prWithReviewer(id: 7571, approved: false)])
+    let (store, dir, _) = prStore(api, reply: prReply([7571]))
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: prT0)
+    #expect(store.unseen.isEmpty)
+    api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prWithReviewer(id: 7571, approved: false, comments: 1)]])
+    api.set("/comments", json: ["values": [comment("{tin}", "Tin Tran", "2026-11-04T10:00:00.000000+00:00")]])
+    store.refresh(at: prT0 + 61)
+    #expect(store.unseen == ["a"])
+}
+
 @Test func prMarkSurvivesSwitchToBusy() {
     let api = fake(open: [prWithReviewer(id: 7571, approved: false)])
     let (store, dir, _) = prStore(api, reply: prReply([7571]))

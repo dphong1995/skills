@@ -26,6 +26,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var lookingUp: Set<String> = []
     var tick = 0
     var checkingFocus = false
+    /// Bumped whenever the marks' focus streak is reset, so a slow query started before it is ignored.
+    var focusGen = 0
     var cancellables: Set<AnyCancellable> = []
 
     func displayUUID(_ s: NSScreen) -> String? {
@@ -69,7 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         state.$editing.sink { [weak self, weak window] e in
             guard let window else { return }
             // @Published fires before the value is stored, so defer until canBecomeKey sees it.
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak self] in
                 guard let store = self?.store else { return }
                 if e != nil {
                     if !store.hidden { window.makeKey() }
@@ -165,9 +167,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if SMAppService.mainApp.status != .enabled { try? SMAppService.mainApp.register() }
         refreshAndSyncVisibility()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-            self?.refreshAndSyncVisibility()
-            self?.trackMouse()
             guard let self else { return }
+            refreshAndSyncVisibility()
+            trackMouse()
             tick += 1
             if tick.isMultiple(of: 2) { checkFocusedPane() }
         }
@@ -228,21 +230,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func checkFocusedPane() {
         guard !store.unseen.isEmpty,
               NSWorkspace.shared.frontmostApplication?.bundleIdentifier == CmuxJump.bundleID
-        else { return store.noteFocused(nil) }
+        else { return clearFocus() }
         for id in store.unseen where store.surfaces[id] == nil && !store.surfaceMisses.contains(id) && !lookingUp.contains(id) {
             resolveSurface(id) { _ in }
         }
-        guard store.unseen.contains(where: { store.surfaces[$0] != nil }) else { return store.noteFocused(nil) }
+        guard store.unseen.contains(where: { store.surfaces[$0] != nil }) else { return clearFocus() }
         guard !checkingFocus else { return }
         checkingFocus = true
-        DispatchQueue.global(qos: .utility).async {
+        let gen = focusGen
+        DispatchQueue.global(qos: .utility).async { [weak self] in
             let surface = CmuxJump.focusedSurface()
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 checkingFocus = false
-                store.noteFocused(surface)
+                if focusGen == gen { store.noteFocused(surface) }
             }
         }
+    }
+
+    private func clearFocus() {
+        focusGen += 1
+        store.noteFocused(nil)
     }
 
     func handle(_ a: WidgetAction) {

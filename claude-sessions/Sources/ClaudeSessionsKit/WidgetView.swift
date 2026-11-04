@@ -275,11 +275,12 @@ public struct WidgetView: View {
 
     private func groups(expanded: Bool, dot: CGFloat, gap: CGFloat) -> some View {
         let counts = Dictionary(grouping: store.sessions, by: \.status).mapValues(\.count)
+        let newCount = store.newCount
         return HStack(spacing: gap) {
-            if store.newCount > 0 {
+            if newCount > 0 {
                 HStack(spacing: dot) {
                     Text("✦").font(.system(size: 11, weight: .bold)).fixedSize()
-                    Text("\(store.newCount)").font(.system(size: 12, weight: .semibold).monospacedDigit()).fixedSize()
+                    Text("\(newCount)").font(.system(size: 12, weight: .semibold).monospacedDigit()).fixedSize()
                 }
                 .foregroundStyle(.yellow)
             }
