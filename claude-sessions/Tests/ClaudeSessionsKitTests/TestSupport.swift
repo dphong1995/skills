@@ -155,3 +155,28 @@ func rabbitComment(_ raw: String, at: String) -> [String: Any] {
     ["user": ["uuid": "{tin}", "display_name": "Tin Tran"], "created_on": at, "updated_on": at, "deleted": false,
      "content": ["raw": "[coderabbit-html-comment-v1-0]: https://coderabbit.ai/#html-comment-v1:abc\n\(raw)"]]
 }
+
+final class FakeJira: JiraAPI {
+    /// `(host, keys)` per `bulkFetch` call.
+    var calls: [(host: String, keys: [String])] = []
+    var issues: [String: (title: String, status: String?)] = [:]
+    var fail: JiraError?
+    var myselfResult = Data("{}".utf8)
+
+    func bulkFetch(host: String, keys: [String]) throws -> Data {
+        calls.append((host, keys))
+        if let fail { throw fail }
+        let found: [[String: Any]] = keys.compactMap { k in
+            guard let i = issues[k] else { return nil }
+            var fields: [String: Any] = ["summary": i.title]
+            if let s = i.status { fields["status"] = ["name": s] }
+            return ["key": k, "fields": fields]
+        }
+        return try JSONSerialization.data(withJSONObject: ["issues": found])
+    }
+
+    func myself(host: String) throws -> Data {
+        if let fail { throw fail }
+        return myselfResult
+    }
+}

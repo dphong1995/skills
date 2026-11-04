@@ -26,11 +26,19 @@ public enum ConnectionState: Equatable {
     /// The state after one call; `error` is nil on success. Errors that say nothing about the connection keep `previous`.
     public static func after(_ error: Error?, previous: ConnectionState) -> ConnectionState {
         guard let error else { return .ok }
-        guard let e = error as? BitbucketError else { return .unreachable }
-        switch e {
-        case .transport: return .unreachable
-        case .http(401): return .rejected
-        case .http(let code): return code == 429 || code >= 500 ? .unreachable : previous
+        let code: Int?
+        switch error {
+        case let e as BitbucketError:
+            if case .http(let c) = e { code = c } else { return .unreachable }
+        case let e as JiraError:
+            if case .http(let c) = e { code = c } else { return .unreachable }
+        default:
+            return .unreachable
+        }
+        switch code {
+        case 401: return .rejected
+        case let c? where c == 429 || c >= 500: return .unreachable
+        default: return previous
         }
     }
 }
