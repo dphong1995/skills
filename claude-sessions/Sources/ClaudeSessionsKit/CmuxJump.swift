@@ -17,6 +17,23 @@ public enum CmuxJump {
         return surface(fromSessionsOutput: out)
     }
 
+    static func focusedSurface(fromIdentify data: Data) -> String? {
+        guard let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let focused = o["focused"] as? [String: Any],
+              focused["surface_type"] as? String == "terminal"
+        else { return nil }
+        return focused["surface_id"] as? String
+    }
+
+    /// Blocking: call off the main thread. The focused terminal surface of cmux, nil when cmux is missing or the focus is not a terminal.
+    public static func focusedSurface() -> String? {
+        guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return nil }
+        let cmux = app.appendingPathComponent("Contents/Resources/bin/cmux").path
+        guard let out = runProcess(cmux, ["--id-format", "uuids", "identify", "--no-caller"], timeout: 2)
+        else { return nil }
+        return focusedSurface(fromIdentify: Data(out.utf8))
+    }
+
     /// Main thread. Runs the AppleScript body under a timeout; nil on any error.
     static func run(_ body: String, timeout: Int) -> NSAppleEventDescriptor? {
         var err: NSDictionary?

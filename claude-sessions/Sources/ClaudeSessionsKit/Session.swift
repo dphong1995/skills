@@ -48,6 +48,12 @@ public final class Store: ObservableObject {
     @Published var sessions: [Session] = []
     /// Session id -> cmux surface UUID, filled by the app. Pruned to live ids and dropped when the session's pid changes.
     public var surfaces: [String: String] = [:]
+    /// Session ids with a NEW mark. In memory only.
+    @Published public var unseen: Set<String> = []
+    /// Session ids whose cmux surface lookup failed; dropped when the pid changes or the session dies.
+    public var surfaceMisses: Set<String> = []
+    private var lastFocused: String?
+    var newCount: Int { unseen.filter { id in sessions.contains { $0.id == id } }.count }
     private var pids: [String: Int32] = [:]
     /// The pid of the live session with this id as of the last refresh.
     public func pid(of id: String) -> Int32? { pids[id] }
@@ -236,6 +242,18 @@ public final class Store: ObservableObject {
         return text
     }
 
+    public func markSeen(_ id: String) {
+        if unseen.contains(id) { unseen.remove(id) }
+    }
+
+    /// Called with the focused cmux surface (nil when unknown). Clears the marks of the session shown there once it is seen on two consecutive calls.
+    public func noteFocused(_ surface: String?) {
+        if let surface, let last = lastFocused, last.caseInsensitiveCompare(surface) == .orderedSame {
+            for id in unseen where surfaces[id]?.caseInsensitiveCompare(surface) == .orderedSame { markSeen(id) }
+        }
+        lastFocused = surface
+    }
+
     public func refresh(at date: Date = Date()) {
         now = date
         chime = nil
@@ -292,7 +310,10 @@ public final class Store: ObservableObject {
             emptySince = nil
         }
 
+        var newUnseen = unseen
         for s in list {
+            if lastStatus[s.id] == "busy" && s.isFinished { newUnseen.insert(s.id) }
+            if let last = lastStatus[s.id], last != "busy", s.status == "busy" { newUnseen.remove(s.id) }
             if lastStatus[s.id] == "busy" && s.isFinished {
                 peekUntil = now.addingTimeInterval(5)
                 if s.status == "waiting" { chime = .needsYou } else if chime == nil { chime = .done }
@@ -304,7 +325,9 @@ public final class Store: ObservableObject {
             prMonitor.update(targets, at: now)
             let snap = prMonitor.takeSnapshot()
             for i in list.indices {
-                list[i].prs = Array((snap.prs[list[i].id] ?? []).prefix(3))
+                let all = snap.prs[list[i].id] ?? []
+                if all.contains(where: { snap.eventRefs.contains($0.ref) }) { newUnseen.insert(list[i].id) }
+                list[i].prs = Array(all.prefix(3))
                 let shown = Set(list[i].prs.map(\.ref))
                 if !shown.isEmpty {
                     list[i].links = list[i].links.filter { link in
@@ -328,7 +351,11 @@ public final class Store: ObservableObject {
         activities = activities.filter { live.contains($0.key) }
         for s in list where pids[s.id] != nil && pids[s.id] != s.pid {
             surfaces[s.id] = nil
+            surfaceMisses.remove(s.id)
         }
+        surfaceMisses.formIntersection(live)
+        newUnseen.formIntersection(live)
+        if newUnseen != unseen { unseen = newUnseen }
         pids = Dictionary(list.map { ($0.id, $0.pid) }, uniquingKeysWith: { $1 })
         surfaces = surfaces.filter { live.contains($0.key) }
         let liveDrafts = drafts.filter { live.contains($0.key) }

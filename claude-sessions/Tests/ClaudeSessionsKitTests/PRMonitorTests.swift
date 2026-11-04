@@ -153,6 +153,22 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         #expect(m.takeSnapshot().events == [.comment])
     }
 
+    @Test func eventRefsMatchEvents() {
+        let api = fake(open: [prJSON(id: 7571, comments: 2)])
+        api.set("/comments", json: ["values": [comment("{tin}", "Tin Tran", "2026-11-04T10:00:00.000000+00:00")]])
+        let m = monitor(api)
+        let url = transcript([link(7571)])
+        m.update([target(url)], at: t0)
+        #expect(m.takeSnapshot().eventRefs.isEmpty)
+        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7571, comments: 3)]])
+        api.set("/comments", json: ["values": [comment("{tin}", "Tin Tran", "2026-11-04T11:00:00.000000+00:00")]])
+        m.update([target(url)], at: t0 + 61)
+        #expect(m.takeSnapshot().eventRefs == [PRRef(workspace: "t6engineering", repo: "talo6-dct-backend", id: 7571)])
+        #expect(m.takeSnapshot().eventRefs.isEmpty)
+        m.update([target(url)], at: t0 + 122)
+        #expect(m.takeSnapshot().eventRefs.isEmpty)
+    }
+
     @Test func failedCycleKeepsStatuses() {
         let api = fake(open: [prJSON(id: 7571, reviewers: 2)])
         let m = monitor(api)

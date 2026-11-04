@@ -16,9 +16,11 @@ struct PRSnapshot: Equatable {
     /// Shown PRs per session in display order: link refs by first appearance, then branch refs. Not capped.
     var prs: [String: [PRStatus]]
     var events: [PREvent]
+    /// The PRs that produced `events` since the last `takeSnapshot`.
+    var eventRefs: Set<PRRef>
     var lastSuccess: Date?
-    init(prs: [String: [PRStatus]] = [:], events: [PREvent] = [], lastSuccess: Date? = nil) {
-        self.prs = prs; self.events = events; self.lastSuccess = lastSuccess
+    init(prs: [String: [PRStatus]] = [:], events: [PREvent] = [], eventRefs: Set<PRRef> = [], lastSuccess: Date? = nil) {
+        self.prs = prs; self.events = events; self.eventRefs = eventRefs; self.lastSuccess = lastSuccess
     }
 }
 
@@ -99,6 +101,7 @@ public final class PRMonitor {
         lock.lock(); defer { lock.unlock() }
         let s = snapshot
         snapshot.events = []
+        snapshot.eventRefs = []
         return s
     }
 
@@ -130,10 +133,11 @@ public final class PRMonitor {
         closed.formIntersection(used)
 
         var events: [PREvent] = []
+        var eventRefs = Set<PRRef>()
         var succeeded = false
         if needCycle {
             lastCycle = now
-            (events, succeeded) = cycle(targets)
+            (events, eventRefs, succeeded) = cycle(targets)
         }
         var prs: [String: [PRStatus]] = [:]
         for (id, s) in sessions {
@@ -143,6 +147,7 @@ public final class PRMonitor {
         lock.lock()
         snapshot.prs = prs
         snapshot.events += events
+        snapshot.eventRefs.formUnion(eventRefs)
         if succeeded { snapshot.lastSuccess = now }
         lock.unlock()
     }
@@ -191,10 +196,10 @@ public final class PRMonitor {
         return out
     }
 
-    private func cycle(_ targets: [PRTarget]) -> (events: [PREvent], succeeded: Bool) {
+    private func cycle(_ targets: [PRTarget]) -> (events: [PREvent], refs: Set<PRRef>, succeeded: Bool) {
         var workspaces = Set(sessions.values.flatMap(\.refs).map(\.workspace))
         for t in targets { if let repo = remotes[t.cwd]?.repo { workspaces.insert(repo.workspace) } }
-        guard !workspaces.isEmpty else { return ([], false) }
+        guard !workspaces.isEmpty else { return ([], [], false) }
 
         var open: [PRRef: PRStatus] = [:]
         var listed = 0
@@ -212,9 +217,9 @@ public final class PRMonitor {
                 }
             }
         } catch {
-            return ([], false)
+            return ([], [], false)
         }
-        guard listed > 0 else { return ([], false) }
+        guard listed > 0 else { return ([], [], false) }
         let me = self.me!
 
         for t in targets {
@@ -233,6 +238,7 @@ public final class PRMonitor {
         let refs = sessions.keys.sorted().flatMap { sessions[$0]!.refs }.filter { seenRefs.insert($0).inserted }
 
         var events: [PREvent] = []
+        var eventRefs = Set<PRRef>()
         for ref in refs where !hidden.contains(ref) && !closed.contains(ref) {
             let prev = statuses[ref]
             let path = "/2.0/repositories/\(ref.workspace)/\(ref.repo)/pullrequests/\(ref.id)"
@@ -277,9 +283,13 @@ public final class PRMonitor {
                     if let c = PullRequests.lastOther(fromComments: d, me: me) { pr.lastOther = c }
                 }
             }
-            if let prev { events += PullRequests.events(old: prev, new: pr) }
+            if let prev {
+                let found = PullRequests.events(old: prev, new: pr)
+                if !found.isEmpty { eventRefs.insert(ref) }
+                events += found
+            }
             statuses[ref] = pr
         }
-        return (events, true)
+        return (events, eventRefs, true)
     }
 }

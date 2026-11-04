@@ -57,3 +57,19 @@ private let line = "claude 7d0fcbef-0908-41eb-9779-ea86d5bf838a  workspace=4E6B8
 @Test func askClaudeKeys() {
     #expect(CmuxJump.keys(for: .askClaude("s", prompt: "Fix PR")) == [CmuxJump.clearInput, .paste("Fix PR"), .raw("\\r")])
 }
+
+private let identify = #"{"focused": {"surface_id": "6E39B188-F067-48FA-852D-3CE78A94EF92", "surface_type": "terminal", "pane_id": "P"}, "caller": null}"#
+
+@Test func focusedSurfaceFromIdentify() {
+    #expect(CmuxJump.focusedSurface(fromIdentify: Data(identify.utf8)) == "6E39B188-F067-48FA-852D-3CE78A94EF92")
+}
+
+@Test func focusedSurfaceIgnoresBrowser() {
+    let browser = identify.replacingOccurrences(of: "terminal", with: "browser")
+    #expect(CmuxJump.focusedSurface(fromIdentify: Data(browser.utf8)) == nil)
+}
+
+@Test func focusedSurfaceBadJSON() {
+    #expect(CmuxJump.focusedSurface(fromIdentify: Data("nope".utf8)) == nil)
+    #expect(CmuxJump.focusedSurface(fromIdentify: Data("{}".utf8)) == nil)
+}

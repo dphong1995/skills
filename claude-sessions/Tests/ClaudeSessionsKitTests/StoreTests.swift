@@ -660,6 +660,103 @@ func activitySurvivesDuplicateSessionIdOrder(busyFile: String, idleFile: String)
     #expect(Layout.bgOpacities == [0, 0.25, 0.5, 0.75, 0.92])
 }
 
+// MARK: - Unseen marks
+
+private func markedStore() -> (Store, URL, Date) {
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
+    let t0 = Date()
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 5, name: "a", cwd: frontend)
+    store.refresh(at: t0)
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: t0.addingTimeInterval(1))
+    return (store, dir, t0)
+}
+
+@Test func unseenOnBusyToIdleAndWaiting() {
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
+    let t0 = Date()
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 5, name: "a", cwd: frontend)
+    writeSession(dir, "b", pid: me, status: "busy", ageSec: 5, name: "b", cwd: backend)
+    writeSession(dir, "c", pid: me, status: "idle", ageSec: 5, name: "c", cwd: backend)
+    store.refresh(at: t0)
+    #expect(store.unseen.isEmpty)
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    writeSession(dir, "b", pid: me, status: "waiting", waitingFor: "permission prompt", ageSec: 0, name: "b", cwd: backend)
+    store.refresh(at: t0.addingTimeInterval(1))
+    #expect(store.unseen == ["a", "b"])
+}
+
+@Test func unseenKeptAcrossRefreshes() {
+    let (store, _, t0) = markedStore()
+    for i in 1...3 { store.refresh(at: t0.addingTimeInterval(1 + Double(i) * 30)) }
+    #expect(store.unseen == ["a"])
+}
+
+@Test func unseenClearedOnSwitchToBusy() {
+    let (store, dir, t0) = markedStore()
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: t0.addingTimeInterval(2))
+    #expect(store.unseen.isEmpty)
+}
+
+@Test func unseenDroppedWhenSessionDies() {
+    let (store, dir, t0) = markedStore()
+    writeSession(dir, "a", pid: 999_999, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: t0.addingTimeInterval(2))
+    #expect(!store.unseen.contains("a"))
+}
+
+@Test func markSeenClears() {
+    let (store, _, _) = markedStore()
+    store.markSeen("zzz")
+    #expect(store.unseen == ["a"])
+    store.markSeen("a")
+    #expect(store.unseen.isEmpty)
+}
+
+@Test func newCountCountsLiveOnly() {
+    let (store, _, _) = markedStore()
+    store.unseen.insert("dead")
+    #expect(store.newCount == 1)
+}
+
+@Test func noteFocusedNeedsTwoConsecutive() {
+    let (store, _, _) = markedStore()
+    store.surfaces["a"] = "S1"
+    store.noteFocused("S1")
+    #expect(store.unseen == ["a"])
+    store.noteFocused("s1")
+    #expect(store.unseen.isEmpty)
+}
+
+@Test func noteFocusedNilResets() {
+    let (store, _, _) = markedStore()
+    store.surfaces["a"] = "S1"
+    store.noteFocused("S1")
+    store.noteFocused(nil)
+    store.noteFocused("S1")
+    #expect(store.unseen == ["a"])
+}
+
+@Test func surfaceMissDroppedWhenPidChanges() {
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    store.surfaceMisses.insert("a")
+    store.refresh(at: Date())
+    #expect(store.surfaceMisses == ["a"])
+    writeSession(dir, "a", pid: getppid(), status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(store.surfaceMisses.isEmpty)
+    store.surfaceMisses.insert("a")
+    writeSession(dir, "a", pid: 999_999, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(store.surfaceMisses.isEmpty)
+}
+
 // MARK: - Pull requests
 
 private let prRepo = "t6engineering/talo6-dct-backend"
@@ -756,4 +853,42 @@ private func prWithReviewer(id: Int, approved: Bool, comments: Int = 0) -> [Stri
     store.refresh(at: prT0 + 301)
     #expect(store.prStale)
     #expect(store.prLastSuccess == prT0)
+}
+
+@Test func prEventMarksSession() {
+    let api = fake(open: [prWithReviewer(id: 7571, approved: false)])
+    let (store, _, _) = prStore(api, reply: prReply([7571]))
+    store.refresh(at: prT0)
+    #expect(store.unseen.isEmpty)
+    api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prWithReviewer(id: 7571, approved: false, comments: 1)]])
+    api.set("/comments", json: ["values": [comment("{tin}", "Tin Tran", "2026-11-04T10:00:00.000000+00:00")]])
+    store.refresh(at: prT0 + 61)
+    #expect(store.unseen == ["a"])
+}
+
+@Test func prEventMarksEverySessionWithThePR() {
+    let api = fake(open: [prWithReviewer(id: 7571, approved: false)])
+    let (store, dir, projects) = prStore(api, reply: prReply([7571]))
+    _ = writeTranscript(projects, cwd: backend, id: "b", lines: [prReply([7571]), ""])
+    writeSession(dir, "b", pid: me, status: "idle", ageSec: 0, name: "b", cwd: backend)
+    store.refresh(at: prT0)
+    #expect(store.unseen.isEmpty)
+    api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prWithReviewer(id: 7571, approved: false, comments: 1)]])
+    api.set("/comments", json: ["values": [comment("{tin}", "Tin Tran", "2026-11-04T10:00:00.000000+00:00")]])
+    store.refresh(at: prT0 + 61)
+    #expect(store.unseen == ["a", "b"])
+}
+
+@Test func prMarkSurvivesSwitchToBusy() {
+    let api = fake(open: [prWithReviewer(id: 7571, approved: false)])
+    let (store, dir, _) = prStore(api, reply: prReply([7571]))
+    store.refresh(at: prT0)
+    store.markSeen("a")
+    api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prWithReviewer(id: 7571, approved: false, comments: 1)]])
+    api.set("/comments", json: ["values": [comment("{tin}", "Tin Tran", "2026-11-04T10:00:00.000000+00:00")]])
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: prT0 + 61)
+    #expect(store.unseen == ["a"])
+    store.refresh(at: prT0 + 62)
+    #expect(store.unseen == ["a"])
 }

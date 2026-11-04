@@ -23,6 +23,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var timer: Timer?
     var monitors: [Any] = []
     var sending: Set<String> = []
+    var lookingUp: Set<String> = []
+    var tick = 0
+    var checkingFocus = false
     var cancellables: Set<AnyCancellable> = []
 
     func displayUUID(_ s: NSScreen) -> String? {
@@ -164,6 +167,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             self?.refreshAndSyncVisibility()
             self?.trackMouse()
+            guard let self else { return }
+            tick += 1
+            if tick.isMultiple(of: 2) { checkFocusedPane() }
         }
     }
 
@@ -198,15 +204,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func resolveSurface(_ id: String, then: @escaping (String?) -> Void) {
         if let surface = store.surfaces[id] { return then(surface) }
         let pid = store.pid(of: id)
+        lookingUp.insert(id)
         DispatchQueue.global().async {
             let surface = CmuxJump.surface(sessionId: id)
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
+                lookingUp.remove(id)
                 // The session's process changed while the lookup ran: the result may belong to the old one.
                 if store.pid(of: id) == pid {
-                    if let surface { store.surfaces[id] = surface }
+                    if let surface {
+                        store.surfaces[id] = surface
+                        store.surfaceMisses.remove(id)
+                    } else {
+                        store.surfaceMisses.insert(id)
+                    }
                 }
                 then(surface)
+            }
+        }
+    }
+
+    /// Every 2 s: clears the marks of the session whose pane cmux shows. Starts nothing unless a mark exists and cmux is frontmost.
+    func checkFocusedPane() {
+        guard !store.unseen.isEmpty,
+              NSWorkspace.shared.frontmostApplication?.bundleIdentifier == CmuxJump.bundleID
+        else { return store.noteFocused(nil) }
+        for id in store.unseen where store.surfaces[id] == nil && !store.surfaceMisses.contains(id) && !lookingUp.contains(id) {
+            resolveSurface(id) { _ in }
+        }
+        guard store.unseen.contains(where: { store.surfaces[$0] != nil }) else { return store.noteFocused(nil) }
+        guard !checkingFocus else { return }
+        checkingFocus = true
+        DispatchQueue.global(qos: .utility).async {
+            let surface = CmuxJump.focusedSurface()
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                checkingFocus = false
+                store.noteFocused(surface)
             }
         }
     }
@@ -214,10 +248,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func handle(_ a: WidgetAction) {
         let id = a.sessionId
         if case .openLink(_, let url) = a {
+            store.markSeen(id)
             NSWorkspace.shared.open(url)
             return
         }
         if case .jump = a {
+            store.markSeen(id)
             resolveSurface(id) { surface in
                 guard let surface, CmuxJump.jump(surface: surface) else { return NSSound.beep() }
             }
@@ -243,6 +279,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard let self else { return }
                 sending.remove(id)
                 guard ok else { return NSSound.beep() }
+                store.markSeen(id)
                 if let denyReason, store.drafts[id] == denyReason { store.drafts[id] = nil }
             }
         }
