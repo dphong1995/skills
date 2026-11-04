@@ -57,12 +57,13 @@ extension EnvironmentValues {
 struct PulseDot: View {
     let color: Color
     let pulsing: Bool
+    var size: CGFloat = 8
     @Environment(\.snapshotRendering) private var snapshotRendering
 
     var body: some View {
-        Circle().fill(color).frame(width: 8, height: 8)
+        Circle().fill(color).frame(width: size, height: size)
             .overlay {
-                if !snapshotRendering { PulseRing(color: color, pulsing: pulsing) }
+                if !snapshotRendering { PulseRing(color: color, pulsing: pulsing, size: size) }
             }
     }
 }
@@ -77,10 +78,11 @@ final class PulseRingView: NSView {
 struct PulseRing: NSViewRepresentable {
     let color: Color
     let pulsing: Bool
+    let size: CGFloat
     private static let animationKey = "pulse"
 
     func makeNSView(context: Context) -> PulseRingView {
-        let view = PulseRingView(frame: NSRect(x: 0, y: 0, width: 8, height: 8))
+        let view = PulseRingView(frame: NSRect(x: 0, y: 0, width: size, height: size))
         view.wantsLayer = true
         view.layer?.masksToBounds = false
         let ring = view.ring
@@ -235,23 +237,33 @@ public struct WidgetView: View {
         return (.gray, false)
     }
 
+    private var urgentStatus: String? {
+        let st = Set(store.sessions.map(\.status))
+        return ["waiting", "busy", "idle"].first(where: st.contains)
+    }
+
     private func header(expanded: Bool) -> some View {
         let counts = Dictionary(grouping: store.sessions, by: \.status).mapValues(\.count)
         let u = urgent
         let glow = Color.black.opacity(0.6)
         return HStack(spacing: expanded ? 7 : 6) {
-            PulseDot(color: u.color, pulsing: u.pulsing)
             if expanded {
+                PulseDot(color: u.color, pulsing: u.pulsing)
                 Text("Claude").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(.white)
                 Spacer(minLength: 6)
             }
             if store.sessions.isEmpty {
+                if !expanded { Circle().fill(.gray).frame(width: 6, height: 6) }
                 Text("–").font(.system(size: 12)).foregroundStyle(.white.opacity(0.5))
             }
             ForEach(["waiting", "idle", "busy"], id: \.self) { st in
                 if let n = counts[st] {
                     HStack(spacing: 3) {
-                        Circle().fill(color(st)).frame(width: 6, height: 6)
+                        if expanded {
+                            Circle().fill(color(st)).frame(width: 6, height: 6)
+                        } else {
+                            PulseDot(color: color(st), pulsing: u.pulsing && st == urgentStatus, size: 6)
+                        }
                         Text("\(n)").font(.system(size: 12, weight: .semibold).monospacedDigit()).foregroundStyle(.white).fixedSize()
                     }
                 }
