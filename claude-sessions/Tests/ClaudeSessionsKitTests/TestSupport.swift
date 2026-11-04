@@ -103,3 +103,22 @@ func prJSON(id: Int, repo: String = "t6engineering/talo6-dct-backend", branch: S
             "links": ["html": ["href": "https://bitbucket.org/\(repo)/pull-requests/\(id)"]],
             "participants": participants]
 }
+
+/// Canned Bitbucket. A route matches when the requested path contains its key; the longest matching key wins.
+/// Every request is recorded; `failAll` makes every call throw.
+final class FakeBitbucket: BitbucketAPI {
+    var routes: [String: Result<Data, BitbucketError>] = [:]
+    var failAll: BitbucketError?
+    private(set) var requests: [String] = []
+
+    func set(_ key: String, json: Any) { routes[key] = .success(try! JSONSerialization.data(withJSONObject: json)) }
+
+    func requests(containing s: String) -> Int { requests.filter { $0.contains(s) }.count }
+
+    func get(_ path: String) throws -> Data {
+        requests.append(path)
+        if let failAll { throw failAll }
+        guard let key = routes.keys.filter({ path.contains($0) }).max(by: { $0.count < $1.count }) else { throw BitbucketError.http(404) }
+        return try routes[key]!.get()
+    }
+}
