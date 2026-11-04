@@ -62,31 +62,6 @@ enum PullRequests {
         return ["<bash-stdout>", "<bash-stderr>", "<local-command-stdout>", "<local-command-stderr>"].contains { t.hasPrefix($0) }
     }
 
-    static func refs(inTranscript data: Data) -> [PRRef] {
-        // No trailing slash: JSON may escape "/" as "\/", which would hide the marker.
-        let marker = Data("pull-requests".utf8)
-        var out: [PRRef] = []
-        for line in data.split(separator: 0x0A) {
-            let bytes = Data(line)
-            guard bytes.range(of: marker) != nil,
-                  let o = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any],
-                  (o["isSidechain"] as? Bool) != true, (o["isMeta"] as? Bool) != true,
-                  let type = o["type"] as? String,
-                  let content = (o["message"] as? [String: Any])?["content"]
-            else { continue }
-            let text: String
-            if let s = content as? String, type == "user" {
-                if isShellOutput(s) { continue }
-                text = s
-            } else if let blocks = content as? [[String: Any]], type == "user" || type == "assistant" {
-                let kept = type == "user" ? blocks.filter { !isShellOutput($0["text"] as? String ?? "") } : blocks
-                text = Transcript.text(of: kept)
-            } else { continue }
-            out += refs(in: text)
-        }
-        return out
-    }
-
     private static let remoteRegex = try! NSRegularExpression(
         pattern: #"^(?:git@bitbucket\.org:|https://(?:[^@/]+@)?bitbucket\.org/)([\w.-]+)/([\w.-]+?)(?:\.git)?/?$"#)
 

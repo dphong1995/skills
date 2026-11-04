@@ -6,21 +6,17 @@ private let be = "t6engineering/talo6-dct-backend"
 private let fe = "t6engineering/talo6-dct-frontend"
 private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
 
-private func link(_ id: Int, repo: String = be) -> String {
-    assistantLine("see https://bitbucket.org/\(repo)/pull-requests/\(id)")
+private func prRef(_ id: Int, repo: String = be) -> PRRef {
+    let parts = repo.split(separator: "/")
+    return PRRef(workspace: String(parts[0]), repo: String(parts[1]), id: id)
 }
 
-private func target(_ transcript: URL? = nil, branch: String? = nil, cwd: String = "/x") -> PRTarget {
-    let size = transcript.flatMap { try? FileManager.default.attributesOfItem(atPath: $0.path)[.size] as? UInt64 }
-    return PRTarget(sessionId: "s", transcript: transcript, size: size, cwd: cwd, branch: branch)
+private func target(_ linkRefs: [PRRef] = [], branch: String? = nil, cwd: String = "/x") -> PRTarget {
+    PRTarget(sessionId: "s", linkRefs: linkRefs, cwd: cwd, branch: branch)
 }
 
 private func monitor(_ api: FakeBitbucket, remote: String? = nil) -> PRMonitor {
     PRMonitor(api: api, queue: nil, remote: { _ in remote })
-}
-
-private func transcript(_ lines: [String]) -> URL {
-    writeTranscript(makeTempDir(), cwd: "/x", id: "s", lines: lines + [""])
 }
 
 private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
@@ -35,7 +31,7 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
     @Test func linkRefsShownAfterFirstCycle() {
         let api = fake(open: [prJSON(id: 7571, reviewers: 3)])
         let m = monitor(api)
-        m.update([target(transcript([link(7571)]))], at: t0)
+        m.update([target([prRef(7571)])], at: t0)
         let snap = m.takeSnapshot()
         let prs = snap.prs["s"] ?? []
         #expect(prs.map(\.ref.id) == [7571])
@@ -47,31 +43,14 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         #expect(snap.events.isEmpty)
     }
 
-    @Test func scanFindsRefAfterLineCompletes() throws {
-        let api = fake(open: [prJSON(id: 7571)])
+    @Test func newLinkRefTriggersCycle() {
+        let api = fake(open: [prJSON(id: 7571), prJSON(id: 6874, repo: fe)])
         let m = monitor(api)
-        let line = link(7571) + "\n"
-        let cut = line.index(line.startIndex, offsetBy: line.count / 2)
-        let url = writeTranscript(makeTempDir(), cwd: "/x", id: "s", lines: [String(line[..<cut])])
-        m.update([target(url)], at: t0)
-        #expect((m.takeSnapshot().prs["s"] ?? []).isEmpty)
-        let h = try FileHandle(forWritingTo: url)
-        try h.seekToEnd()
-        try h.write(contentsOf: Data(line[cut...].utf8))
-        try h.close()
-        m.update([target(url)], at: t0 + 1)
-        #expect(m.takeSnapshot().prs["s"]?.map(\.ref.id) == [7571])
-    }
-
-    @Test func firstScanReadsLargeFileInChunks() {
-        let api = fake(open: [prJSON(id: 7571), prJSON(id: 7572)])
-        let filler = assistantLine(String(repeating: "x", count: 1000))
-        let lines = [link(7571)] + Array(repeating: filler, count: 1500) + [link(7572)]
-        let url = transcript(lines)
-        #expect((try! FileManager.default.attributesOfItem(atPath: url.path)[.size] as! UInt64) > 1 << 20)
-        let m = monitor(api)
-        m.update([target(url)], at: t0)
-        #expect(m.takeSnapshot().prs["s"]?.map(\.ref.id) == [7571, 7572])
+        m.update([target([prRef(7571)])], at: t0)
+        #expect(api.requests(containing: "/pullrequests/6874") == 0)
+        m.update([target([prRef(7571), prRef(6874, repo: fe)])], at: t0 + 5)
+        #expect(api.requests(containing: "/pullrequests/6874") > 0)
+        #expect(m.takeSnapshot().prs["s"]?.map(\.ref.id) == [7571, 6874])
     }
 
     @Test func branchMatchUsesCwdRemote() {
@@ -105,9 +84,9 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
     @Test func foreignWorkspaceRefAskedOnce() {
         let api = fake(open: [prJSON(id: 7571)])
         let m = monitor(api)
-        let url = transcript([link(7571), link(1, repo: "acme/app")])
-        m.update([target(url)], at: t0)
-        m.update([target(url)], at: t0 + 61)
+        let refs = [prRef(7571), prRef(1, repo: "acme/app")]
+        m.update([target(refs)], at: t0)
+        m.update([target(refs)], at: t0 + 61)
         #expect(api.requests(containing: "repositories/acme/app/pullrequests/1") == 1)
         #expect(m.takeSnapshot().prs["s"]?.map(\.ref.id) == [7571])
     }
@@ -116,23 +95,23 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         let api = fake()
         api.set("/talo6-dct-backend/pullrequests/7567?", json: prJSON(id: 7567, state: "MERGED"))
         let m = monitor(api)
-        let url = transcript([link(7567)])
-        m.update([target(url)], at: t0)
+        let refs = [prRef(7567)]
+        m.update([target(refs)], at: t0)
         #expect((m.takeSnapshot().prs["s"] ?? []).isEmpty)
-        m.update([target(url)], at: t0 + 120)
+        m.update([target(refs)], at: t0 + 120)
         #expect(api.requests(containing: "pullrequests/7567") == 1)
     }
 
     @Test func statusesOnlyWhenNeeded() {
         let api = fake(open: [prJSON(id: 7571)])
         let m = monitor(api)
-        let url = transcript([link(7571)])
-        m.update([target(url)], at: t0)
+        let refs = [prRef(7571)]
+        m.update([target(refs)], at: t0)
         #expect(api.requests(containing: "/statuses") == 1)
-        m.update([target(url)], at: t0 + 61)
+        m.update([target(refs)], at: t0 + 61)
         #expect(api.requests(containing: "/statuses") == 1)
         api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [withCommit(prJSON(id: 7571), "def456")]])
-        m.update([target(url)], at: t0 + 122)
+        m.update([target(refs)], at: t0 + 122)
         #expect(api.requests(containing: "/statuses") == 2)
     }
 
@@ -140,15 +119,15 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         let api = fake(open: [prJSON(id: 7571, comments: 2)])
         api.set("/comments", json: ["values": [comment("{tin}", "Tin Tran", "2026-11-04T10:00:00.000000+00:00")]])
         let m = monitor(api)
-        let url = transcript([link(7571)])
-        m.update([target(url)], at: t0)
+        let refs = [prRef(7571)]
+        m.update([target(refs)], at: t0)
         #expect(api.requests(containing: "/comments") == 1)
         #expect(m.takeSnapshot().events.isEmpty)
-        m.update([target(url)], at: t0 + 61)
+        m.update([target(refs)], at: t0 + 61)
         #expect(api.requests(containing: "/comments") == 1)
         api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7571, comments: 3)]])
         api.set("/comments", json: ["values": [comment("{tin}", "Tin Tran", "2026-11-04T11:00:00.000000+00:00")]])
-        m.update([target(url)], at: t0 + 122)
+        m.update([target(refs)], at: t0 + 122)
         #expect(api.requests(containing: "/comments") == 2)
         #expect(m.takeSnapshot().events == [.comment])
     }
@@ -157,60 +136,56 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         let api = fake(open: [prJSON(id: 7571, comments: 2)])
         api.set("/comments", json: ["values": [comment("{tin}", "Tin Tran", "2026-11-04T10:00:00.000000+00:00")]])
         let m = monitor(api)
-        let url = transcript([link(7571)])
-        m.update([target(url)], at: t0)
+        let refs = [prRef(7571)]
+        m.update([target(refs)], at: t0)
         #expect(m.takeSnapshot().eventRefs.isEmpty)
         api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7571, comments: 3)]])
         api.set("/comments", json: ["values": [comment("{tin}", "Tin Tran", "2026-11-04T11:00:00.000000+00:00")]])
-        m.update([target(url)], at: t0 + 61)
+        m.update([target(refs)], at: t0 + 61)
         #expect(m.takeSnapshot().eventRefs == [PRRef(workspace: "t6engineering", repo: "talo6-dct-backend", id: 7571)])
         #expect(m.takeSnapshot().eventRefs.isEmpty)
-        m.update([target(url)], at: t0 + 122)
+        m.update([target(refs)], at: t0 + 122)
         #expect(m.takeSnapshot().eventRefs.isEmpty)
     }
 
     @Test func failedCycleKeepsStatuses() {
         let api = fake(open: [prJSON(id: 7571, reviewers: 2)])
         let m = monitor(api)
-        let url = transcript([link(7571)])
-        m.update([target(url)], at: t0)
+        let refs = [prRef(7571)]
+        m.update([target(refs)], at: t0)
         let good = m.takeSnapshot()
         api.failAll = .http(403)
-        m.update([target(url)], at: t0 + 61)
+        m.update([target(refs)], at: t0 + 61)
         let after = m.takeSnapshot()
         #expect(after.prs == good.prs)
         #expect(after.lastSuccess == t0)
         #expect(after.events.isEmpty)
     }
 
-    @Test func cycleWaitsForInterval() throws {
+    @Test func cycleWaitsForInterval() {
         let api = fake(open: [prJSON(id: 7571), prJSON(id: 7572)])
         let m = monitor(api)
-        let url = transcript([link(7571)])
-        m.update([target(url)], at: t0)
+        let refs = [prRef(7571)]
+        m.update([target(refs)], at: t0)
         let first = api.requests.count
         #expect(first > 0)
-        let h = try FileHandle(forWritingTo: url)
-        try h.seekToEnd()
-        try h.write(contentsOf: Data((link(7572) + "\n").utf8))
-        try h.close()
-        m.update([target(url)], at: t0 + 5)
+        m.update([target([prRef(7571), prRef(7572)])], at: t0 + 5)
         let second = api.requests.count
         #expect(second > first)
-        m.update([target(url)], at: t0 + 30)
+        m.update([target(refs)], at: t0 + 30)
         #expect(api.requests.count == second)
-        m.update([target(url)], at: t0 + 70)
+        m.update([target(refs)], at: t0 + 70)
         #expect(api.requests.count > second)
     }
 
     @Test func takeSnapshotDrainsEvents() {
         let api = fake(open: [prJSON(id: 7571, reviewers: 1)])
         let m = monitor(api)
-        let url = transcript([link(7571)])
-        m.update([target(url)], at: t0)
+        let refs = [prRef(7571)]
+        m.update([target(refs)], at: t0)
         #expect(m.takeSnapshot().events.isEmpty)
         api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7571, reviewers: 2)]])
-        m.update([target(url)], at: t0 + 61)
+        m.update([target(refs)], at: t0 + 61)
         #expect(m.takeSnapshot().events == [.approved])
         #expect(m.takeSnapshot().events.isEmpty)
     }
@@ -218,7 +193,7 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
     @Test func droppedSessionForgotten() {
         let api = fake(open: [prJSON(id: 7571)])
         let m = monitor(api)
-        m.update([target(transcript([link(7571)]))], at: t0)
+        m.update([target([prRef(7571)])], at: t0)
         #expect(m.takeSnapshot().prs["s"] != nil)
         m.update([], at: t0 + 1)
         m.update([], at: t0 + 32)
@@ -228,21 +203,21 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
     @Test func briefAbsenceKeepsState() {
         let api = fake(open: [prJSON(id: 7571)])
         let m = monitor(api)
-        let url = transcript([link(7571)])
-        m.update([target(url)], at: t0)
+        let refs = [prRef(7571)]
+        m.update([target(refs)], at: t0)
         api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": []])
         api.set("/talo6-dct-backend/pullrequests/7571?", json: prJSON(id: 7571, state: "MERGED"))
         m.update([], at: t0 + 1)
-        m.update([target(url)], at: t0 + 2)
-        m.update([target(url)], at: t0 + 61)
+        m.update([target(refs)], at: t0 + 2)
+        m.update([target(refs)], at: t0 + 61)
         #expect(m.takeSnapshot().prs["s"]?.map(\.state) == ["MERGED"])
     }
 
     @Test func foreignWorkspaceOpenListFailureSkipsOnlyThatWorkspace() {
         let api = fake(open: [prJSON(id: 7571)])
         let m = monitor(api)
-        let url = transcript([link(7571), link(1, repo: "acme/app")])
-        m.update([target(url)], at: t0)
+        let refs = [prRef(7571), prRef(1, repo: "acme/app")]
+        m.update([target(refs)], at: t0)
         let snap = m.takeSnapshot()
         #expect(snap.prs["s"]?.map(\.ref.id) == [7571])
         #expect(snap.lastSuccess == t0)
@@ -251,11 +226,11 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
     @Test func everyOpenListForbiddenFailsCycle() {
         let api = fake(open: [prJSON(id: 7571)])
         let m = monitor(api)
-        let url = transcript([link(7571), link(1, repo: "acme/app")])
-        m.update([target(url)], at: t0)
+        let refs = [prRef(7571), prRef(1, repo: "acme/app")]
+        m.update([target(refs)], at: t0)
         let good = m.takeSnapshot()
         api.routes["/2.0/workspaces/t6engineering/pullrequests/"] = .failure(.http(403))
-        m.update([target(url)], at: t0 + 61)
+        m.update([target(refs)], at: t0 + 61)
         let after = m.takeSnapshot()
         #expect(after.prs == good.prs)
         #expect(after.lastSuccess == t0)
@@ -264,16 +239,16 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
     @Test func failedStatusesAfterPushKeepsOldStatusThenRetries() {
         let api = fake(open: [prJSON(id: 7571)])
         let m = monitor(api)
-        let url = transcript([link(7571)])
-        m.update([target(url)], at: t0)
+        let refs = [prRef(7571)]
+        m.update([target(refs)], at: t0)
         let good = m.takeSnapshot()
         api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [withCommit(prJSON(id: 7571), "def456")]])
         api.routes["/statuses"] = .failure(.http(500))
-        m.update([target(url)], at: t0 + 61)
+        m.update([target(refs)], at: t0 + 61)
         #expect(m.takeSnapshot().prs == good.prs)
         api.set("/statuses", json: ["values": [["state": "FAILED"]]])
         let before = api.requests(containing: "/statuses")
-        m.update([target(url)], at: t0 + 122)
+        m.update([target(refs)], at: t0 + 122)
         #expect(api.requests(containing: "/statuses") == before + 1)
         let p = m.takeSnapshot().prs["s"]?.first
         #expect(p?.pipeline == .failed && p?.commit == "def456")

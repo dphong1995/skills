@@ -335,7 +335,7 @@ public final class Store: ObservableObject {
             list[i].links = Store.buttons(scans[list[i].id] ?? ScanResult(), projects: jiraProjects, branch: list[i].branch)
         }
         if let prMonitor {
-            let targets = list.map { PRTarget(sessionId: $0.id, transcript: transcriptURL(for: $0), size: sizes[$0.id], cwd: $0.cwd, branch: $0.branch) }
+            let targets = list.map { PRTarget(sessionId: $0.id, linkRefs: scans[$0.id]?.prRefs ?? [], cwd: $0.cwd, branch: $0.branch) }
             prMonitor.update(targets, at: now)
             let snap = prMonitor.takeSnapshot()
             for i in list.indices {

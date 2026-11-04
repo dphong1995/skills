@@ -15,34 +15,6 @@ private func data(_ o: [String: Any]) -> Data { try! JSONSerialization.data(with
         #expect(PullRequests.refs(in: "https://github.com/a/b/pull/3").isEmpty)
     }
 
-    @Test func refsIgnoreToolResultsMetaAndSidechains() {
-        let lines = [
-            userLine("plain \(link("a", 1))"),
-            toolResultTextLine("listing \(link("b", 2))"),
-            userLine("meta \(link("c", 3))", isMeta: true),
-            assistantLine("side \(link("d", 4))", sidechain: true),
-            assistantLine("main \(link("e", 5))"),
-        ]
-        let found = PullRequests.refs(inTranscript: Data(lines.joined(separator: "\n").utf8))
-        #expect(found == [ref("a", 1), ref("e", 5)])
-    }
-
-    @Test func refsIgnoreBashModeOutput() {
-        let lines = [
-            userLine("<bash-stdout>\(link("a", 1))</bash-stdout>"),
-            userLine("<bash-stderr>\(link("b", 2))</bash-stderr>"),
-            userLine("  <local-command-stdout>\(link("c", 3))</local-command-stdout>"),
-            userLine("<local-command-stderr>\(link("e", 5))</local-command-stderr>"),
-            userLine("real \(link("d", 4))"),
-        ]
-        #expect(PullRequests.refs(inTranscript: Data(lines.joined(separator: "\n").utf8)) == [ref("d", 4)])
-    }
-
-    @Test func refsSkipLinesWithoutMarker() {
-        let lines = ["{not json pull-requests/", userLine("ok \(link("a", 9))")]
-        #expect(PullRequests.refs(inTranscript: Data(lines.joined(separator: "\n").utf8)) == [ref("a", 9)])
-    }
-
     @Test func remoteParsing() {
         let a = PullRequests.repo(fromRemote: "git@bitbucket.org:t6engineering/talo6-dct-backend.git\n")
         #expect(a?.workspace == ws && a?.repo == "talo6-dct-backend")

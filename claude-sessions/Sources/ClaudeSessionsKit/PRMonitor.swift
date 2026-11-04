@@ -2,14 +2,10 @@ import Foundation
 
 struct PRTarget: Equatable {
     let sessionId: String
-    let transcript: URL?
-    /// Size of `transcript` in bytes as measured by the caller; nil when there is no readable transcript.
-    let size: UInt64?
+    /// PR refs found in the transcript by `TranscriptScanner`, first appearance order.
+    let linkRefs: [PRRef]
     let cwd: String
     let branch: String?
-    init(sessionId: String, transcript: URL?, size: UInt64?, cwd: String, branch: String?) {
-        self.sessionId = sessionId; self.transcript = transcript; self.size = size; self.cwd = cwd; self.branch = branch
-    }
 }
 
 struct PRSnapshot: Equatable {
@@ -28,9 +24,6 @@ public final class PRMonitor {
     private struct Repo: Equatable { let workspace: String; let name: String }
 
     private struct SessionState {
-        var url: URL?
-        var offset: UInt64 = 0
-        var carry = Data()
         var linkRefs: [PRRef] = []
         var branchRefs: [PRRef] = []
         var branch: String?
@@ -42,7 +35,6 @@ public final class PRMonitor {
         }
     }
 
-    private static let chunkBytes: UInt64 = 1 << 20
     private static let maxPages = 20
     private static let forgetAfter: TimeInterval = 30
     private static let remoteRetry: TimeInterval = 300
@@ -121,7 +113,10 @@ public final class PRMonitor {
             var s = existing ?? SessionState()
             if existing == nil ? t.branch != nil : s.branch != t.branch { needCycle = true }
             s.branch = t.branch
-            if scan(&s, t.transcript, size: t.size) { needCycle = true }
+            for r in t.linkRefs where !s.linkRefs.contains(r) {
+                s.linkRefs.append(r)
+                needCycle = true
+            }
             sessions[t.sessionId] = s
             if let known = remotes[t.cwd], known.repo != nil || now.timeIntervalSince(known.at) < Self.remoteRetry { continue }
             let repo = remote(t.cwd).flatMap(PullRequests.repo(fromRemote:)).map { Repo(workspace: $0.workspace, name: $0.repo) }
@@ -150,32 +145,6 @@ public final class PRMonitor {
         snapshot.eventRefs.formUnion(eventRefs)
         if succeeded { snapshot.lastSuccess = now }
         lock.unlock()
-    }
-
-    /// Reads the transcript bytes appended since the last scan, whole lines only. True when a new ref was found.
-    private func scan(_ s: inout SessionState, _ url: URL?, size: UInt64?) -> Bool {
-        guard let url, let size else { return false }
-        if s.url != url { s.url = url; s.offset = 0; s.carry = Data() }
-        if size < s.offset { s.offset = 0; s.carry = Data() }
-        var gained = false
-        while s.offset < size {
-            let to = min(size, s.offset + Self.chunkBytes)
-            let chunk = Transcript.read(url, from: s.offset, to: to)
-            if chunk.isEmpty { break }
-            var buf = s.carry
-            buf.append(chunk)
-            s.offset += UInt64(chunk.count)
-            if let nl = buf.lastIndex(of: 0x0A) {
-                s.carry = Data(buf[(nl + 1)...])
-                for r in PullRequests.refs(inTranscript: Data(buf[...nl])) where !s.linkRefs.contains(r) {
-                    s.linkRefs.append(r)
-                    gained = true
-                }
-            } else {
-                s.carry = buf
-            }
-        }
-        return gained
     }
 
     private func decode(_ d: Data) -> [String: Any]? {
