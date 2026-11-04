@@ -162,17 +162,10 @@ public struct WidgetView: View {
         .transition(.opacity)
     }
 
-    private var urgentColor: Color {
-        let st = Set(store.sessions.map(\.status))
-        return color(["waiting", "busy", "idle"].first(where: st.contains) ?? "")
-    }
-
     private func header(expanded: Bool) -> some View {
         Group {
             if expanded {
                 HStack(spacing: 7) {
-                    Circle().fill(urgentColor).frame(width: 8, height: 8)
-                    Text("Claude").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(.white)
                     Spacer(minLength: 6)
                     groups(expanded: true, dot: 3, gap: 7)
                 }
