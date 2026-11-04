@@ -100,7 +100,7 @@ private func link(_ repo: String, _ id: Int) -> String { "https://bitbucket.org/
         #expect(r.prLinks.map(\.absoluteString) == [link("a", 12), "https://github.com/x/y/pull/1", link("a", 1)])
     }
 
-    @Test func sessionPublishedBeforeLargerOneFinishes() {
+    @Test func sessionPublishedBeforeLargerOneFinishes() throws {
         let dir = makeTempDir()
         let small = writeTranscript(dir, cwd: frontend, id: "small", lines: [userLine("T6IR-1"), ""])
         let filler = userLine(String(repeating: "word ", count: 200))
@@ -117,10 +117,11 @@ private func link(_ repo: String, _ id: Int) -> String { "https://bitbucket.org/
         }
         s.update([ScanTarget(sessionId: "small", transcript: small, size: size(small)),
                   ScanTarget(sessionId: "big", transcript: big, size: size(big))], at: Date())
-        published.wait()
+        let gotPublished = published.wait(timeout: .now() + 10)
         let early = s.takeSnapshot()
         release.signal()
         q.sync {}
+        try #require(gotPublished == .success)
         #expect(early["small"]?.tickets.keys.sorted() == ["T6IR-1"])
         #expect(early["big"] == nil)
     }

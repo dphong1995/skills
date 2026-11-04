@@ -400,6 +400,39 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         #expect(snap.events.isEmpty)
     }
 
+    @Test func statusAppearingAfterWindowIsPickedUpByTheSlowPoll() {
+        let api = fake(open: [prJSON(id: 7571, comments: 1)])
+        api.set("/statuses", json: ["values": []])
+        let m = monitor(api)
+        let refs = [prRef(7571)]
+        m.update([target(refs)], at: t0)
+        m.update([target(refs)], at: t0 + 599)
+        let n = api.requests(containing: "/statuses")
+        api.set("/statuses", json: ["values": [Self.pipelinePass]])
+        m.update([target(refs)], at: t0 + 660)
+        m.update([target(refs)], at: t0 + 800)
+        #expect(api.requests(containing: "/statuses") == n)
+        m.update([target(refs)], at: t0 + 900)
+        #expect(api.requests(containing: "/statuses") == n + 1)
+        #expect(m.takeSnapshot().prs["s"]?.first?.pipeline == .passed)
+    }
+
+    @Test func statusesFailingThroughTheWindowAreFetchedAfterIt() {
+        let api = fake(open: [prJSON(id: 7571, comments: 1)])
+        api.routes["/statuses"] = .failure(.transport)
+        let m = monitor(api)
+        let refs = [prRef(7571)]
+        m.update([target(refs)], at: t0)
+        m.update([target(refs)], at: t0 + 599)
+        setStatuses(api, nil)
+        let n = api.requests(containing: "/statuses")
+        m.update([target(refs)], at: t0 + 660)
+        #expect(api.requests(containing: "/statuses") == n + 1)
+        #expect(m.takeSnapshot().prs["s"]?.first?.pipeline == .passed)
+        m.update([target(refs)], at: t0 + 721)
+        #expect(api.requests(containing: "/statuses") == n + 1)
+    }
+
     @Test func statusesNotPolledForeverWithoutAnyStatuses() {
         let api = fake(open: [prJSON(id: 7571, comments: 1)])
         api.set("/statuses", json: ["values": []])
@@ -408,11 +441,14 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         m.update([target([prRef(7571)])], at: t0 + 61)
         let n = api.requests(containing: "/statuses")
         m.update([target([prRef(7571)])], at: t0 + 660 + 61)
-        #expect(api.requests(containing: "/statuses") == n)
+        #expect(api.requests(containing: "/statuses") == n + 1)
+        m.update([target([prRef(7571)])], at: t0 + 660 + 122)
+        m.update([target([prRef(7571)])], at: t0 + 660 + 183)
+        #expect(api.requests(containing: "/statuses") == n + 1)
 
         api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [withCommit(prJSON(id: 7571, comments: 1), "def456")]])
-        m.update([target([prRef(7571)])], at: t0 + 660 + 122)
-        #expect(api.requests(containing: "/statuses") == n + 1)
+        m.update([target([prRef(7571)])], at: t0 + 660 + 244)
+        #expect(api.requests(containing: "/statuses") == n + 2)
     }
 
     @Test func newFinalKindOnSameCommitChimesAfterCommentsOwed() {
@@ -428,6 +464,24 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         setStatuses(api, rabbitStatus(description: "Review completed", created: Self.later))
         api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 2**", at: Self.later)]])
         m.update([target([prRef(7571)])], at: t0 + 61)
+        #expect(m.takeSnapshot().events == [.rabbitNeedsYou])
+    }
+
+    @Test func newReviewOnSameCommitAfterUnsavedReviewingCycleStillChimes() {
+        let api = fake(open: [prJSON(id: 7571, comments: 1)])
+        setStatuses(api, rabbitStatus(description: "Review completed", created: Self.started))
+        api.routes["/comments"] = .failure(.transport)
+        let m = monitor(api)
+        m.update([target([prRef(7571)])], at: t0)
+        _ = m.takeSnapshot()
+
+        // A re-review starts and finishes between two saved cycles: the in-progress cycle fails on comments and is not saved.
+        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7571, comments: 2)]])
+        setStatuses(api, rabbitStatus(state: "INPROGRESS", description: "Review in progress", created: Self.later))
+        m.update([target([prRef(7571)])], at: t0 + 61)
+        setStatuses(api, rabbitStatus(description: "Review completed", created: "2026-11-03T04:00:00.000000+00:00"))
+        api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 2**", at: "2026-11-03T04:05:00.000000+00:00")]])
+        m.update([target([prRef(7571)])], at: t0 + 122)
         #expect(m.takeSnapshot().events == [.rabbitNeedsYou])
     }
 
@@ -455,9 +509,10 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         m.update([target([prRef(7571)])], at: t0 + 61)
         #expect(api.requests(containing: "/statuses") == 2)
         m.update([target([prRef(7571)])], at: t0 + 660 + 61)
-        #expect(api.requests(containing: "/statuses") == 2)
+        #expect(api.requests(containing: "/statuses") == 3)
         m.update([target([prRef(7571)])], at: t0 + 660 + 122)
-        #expect(api.requests(containing: "/statuses") == 2)
+        m.update([target([prRef(7571)])], at: t0 + 660 + 183)
+        #expect(api.requests(containing: "/statuses") == 3)
     }
 
     @Test func rabbitCommentDoesNotChime() {

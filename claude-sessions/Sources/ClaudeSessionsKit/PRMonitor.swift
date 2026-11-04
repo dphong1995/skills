@@ -40,6 +40,7 @@ public final class PRMonitor {
     private static let remoteRetry: TimeInterval = 300
     /// How long a PR head without a CodeRabbit status keeps asking for one.
     private static let rabbitWait: TimeInterval = 600
+    private static let statusesSlowPoll: TimeInterval = 300
     private static let singleFields = "id,title,state,comment_count,updated_on,source.branch.name,source.repository.full_name,source.commit.hash,participants.approved,participants.state,participants.role,participants.user.uuid,links.html.href"
     private static let openFields = singleFields.split(separator: ",").map { "values.\($0)" }.joined(separator: ",") + ",next"
     private static let statusFields = "values.state,values.commit.hash,values.key,values.name,values.description,values.created_on,values.updated_on"
@@ -63,6 +64,8 @@ public final class PRMonitor {
     private var rabbitSeen: [PRRef: (commit: String?, label: String)] = [:]
     /// PRs whose `/statuses` was fetched successfully at least once.
     private var statusesFetched = Set<PRRef>()
+    /// When each PR's `/statuses` was last fetched successfully (paces the slow poll after the window).
+    private var statusesAt: [PRRef: Date] = [:]
     /// PRs whose first `/comments` fetch failed and is still owed.
     private var commentsOwed = Set<PRRef>()
     private var headSeen: [PRRef: (commit: String?, at: Date)] = [:]
@@ -135,6 +138,7 @@ public final class PRMonitor {
         statuses = statuses.filter { used.contains($0.key) }
         rabbitSeen = rabbitSeen.filter { used.contains($0.key) }
         headSeen = headSeen.filter { used.contains($0.key) }
+        statusesAt = statusesAt.filter { used.contains($0.key) }
         statusesFetched.formIntersection(used)
         commentsOwed.formIntersection(used)
         hidden.formIntersection(used)
@@ -259,10 +263,14 @@ public final class PRMonitor {
                 if headSeen[ref].map({ $0.commit != pr.commit }) ?? true { headSeen[ref] = (pr.commit, now) }
                 let inWindow = now.timeIntervalSince(headSeen[ref]!.at) < Self.rabbitWait
                 let rabbitPending = prev?.rabbit == .reviewing || (prev?.rabbit == nil && inWindow)
+                // After the window a missing pipeline or CodeRabbit status is still looked for, at a slow rate.
+                let slowPoll = !inWindow && (pr.pipeline == nil || prev?.rabbit == nil)
+                    && statusesAt[ref].map { now.timeIntervalSince($0) >= Self.statusesSlowPoll } ?? true
                 if prev == nil || prev?.commit != pr.commit || (pr.pipeline == nil && inWindow) || pr.pipeline == .running
-                    || rabbitPending || prev?.comments != pr.comments {
+                    || rabbitPending || prev?.comments != pr.comments || !statusesFetched.contains(ref) || slowPoll {
                     if let d = try? api.get("\(path)/statuses?fields=\(Self.statusFields)&pagelen=50&sort=-created_on") {
                         firstStatuses = !statusesFetched.contains(ref)
+                        statusesAt[ref] = now
                         pr.pipeline = PullRequests.pipeline(fromStatuses: d, commit: pr.commit)
                         let fresh = CodeRabbit.state(fromStatuses: d, commit: pr.commit)
                         let sameCommit = prev?.commit == pr.commit
@@ -300,7 +308,8 @@ public final class PRMonitor {
                         }
                     }
                     // Re-record only a count filled in for the review already recorded; a new kind must still chime.
-                    if owed, rabbitSeen[ref]?.commit == pr.commit, CodeRabbit.kind(prev?.rabbit) == CodeRabbit.kind(pr.rabbit) { recordRabbit(ref, pr) }
+                    if owed, rabbitSeen[ref]?.commit == pr.commit, CodeRabbit.kind(prev?.rabbit) == CodeRabbit.kind(pr.rabbit),
+                       pr.rabbitSince == prev?.rabbitSince { recordRabbit(ref, pr) }
                 }
             }
             if let prev {
