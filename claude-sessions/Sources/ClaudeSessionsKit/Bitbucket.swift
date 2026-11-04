@@ -7,76 +7,41 @@ public protocol BitbucketAPI: AnyObject {
     func get(_ path: String) throws -> Data
 }
 
-public final class BitbucketClient: BitbucketAPI {
+/// Something that can drop its cached credentials and read the Keychain again.
+public protocol CredentialReloading: AnyObject {
+    func reload()
+}
+
+public final class BitbucketClient: BitbucketAPI, CredentialReloading {
     static let base = "https://api.bitbucket.org"
 
-    private let lock = NSLock()
-    private var auth: String?
-    private let session: URLSession = {
-        let c = URLSessionConfiguration.ephemeral
-        c.timeoutIntervalForRequest = 15
-        c.timeoutIntervalForResource = 15
-        return URLSession(configuration: c)
-    }()
+    private let http: BasicAuthHTTP
 
     /// Nil when the Keychain item or its account is missing.
     public init?() {
-        guard let a = Self.readAuth() else { return nil }
-        auth = a
+        guard let h = BasicAuthHTTP(service: .bitbucket) else { return nil }
+        http = h
     }
 
     /// Uses the given credentials until `reload()`; no Keychain read.
     public init(account: String, token: String) {
-        auth = Self.header(account: account, token: token)
+        http = BasicAuthHTTP(service: .bitbucket, account: account, token: token)
     }
 
     /// Re-reads the Keychain now, replacing any cached or explicit credentials.
-    public func reload() {
-        let a = Self.readAuth()
-        lock.lock(); auth = a; lock.unlock()
-    }
-
-    private static func header(account: String, token: String) -> String {
-        "Basic " + Data("\(account):\(token)".utf8).base64EncodedString()
-    }
-
-    private static func readAuth() -> String? {
-        Credentials.read(.bitbucket).map { header(account: $0.account, token: $0.token) }
-    }
-
-    private func currentAuth() -> String? {
-        lock.lock(); defer { lock.unlock() }
-        if auth == nil { auth = Self.readAuth() }
-        return auth
-    }
-
-    private final class Box: @unchecked Sendable {
-        var data: Data?
-        var response: URLResponse?
-    }
+    public func reload() { http.reload() }
 
     public func get(_ path: String) throws -> Data {
-        guard let header = currentAuth(), let url = URL(string: Self.base + path) else { throw BitbucketError.transport }
+        guard let header = http.currentAuth(), let url = URL(string: Self.base + path) else { throw BitbucketError.transport }
         var req = URLRequest(url: url, timeoutInterval: 15)
         req.setValue(header, forHTTPHeaderField: "Authorization")
         req.setValue("application/json", forHTTPHeaderField: "Accept")
-        let box = Box()
-        let sem = DispatchSemaphore(value: 0)
-        let task = session.dataTask(with: req) { data, response, _ in
-            box.data = data
-            box.response = response
-            sem.signal()
-        }
-        task.resume()
-        if sem.wait(timeout: .now() + 20) == .timedOut {
-            task.cancel()
+        do {
+            return try http.send(req)
+        } catch BasicAuthHTTP.Failure.http(let code) {
+            throw BitbucketError.http(code)
+        } catch {
             throw BitbucketError.transport
         }
-        guard let http = box.response as? HTTPURLResponse, let data = box.data else { throw BitbucketError.transport }
-        if http.statusCode == 401 {
-            lock.lock(); auth = nil; lock.unlock()
-        }
-        guard (200..<300).contains(http.statusCode) else { throw BitbucketError.http(http.statusCode) }
-        return data
     }
 }

@@ -13,11 +13,11 @@ func runProcess(_ path: String, _ args: [String], timeout: TimeInterval, require
     let stdin = input == nil ? nil : Pipe()
     if let stdin { p.standardInput = stdin }
     guard (try? p.run()) != nil else { return nil }
+    DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { if p.isRunning { p.terminate() } }
     if let stdin, let input {
-        stdin.fileHandleForWriting.write(input)
+        try? stdin.fileHandleForWriting.write(contentsOf: input)
         try? stdin.fileHandleForWriting.close()
     }
-    DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { if p.isRunning { p.terminate() } }
     let data = pipe.fileHandleForReading.readDataToEndOfFile()
     p.waitUntilExit()
     if requireSuccess, p.terminationStatus != 0 { return nil }

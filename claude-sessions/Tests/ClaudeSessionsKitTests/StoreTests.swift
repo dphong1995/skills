@@ -1016,9 +1016,6 @@ private func section(_ s: Session?, _ title: String) -> [String]? { s?.menu.firs
     #expect(bare.jiraMonitor == nil)
     #expect(bare.sessions.first?.menuNeedsJira == true)
 
-    let none = makeStore(dir: makeTempDir())
-    none.refresh(at: prT0)
-    #expect(none.sessions.isEmpty)
     let (noTickets, _, _) = prStore(fake(open: [prJSON(id: 7571)]), reply: prReply([7571]))
     noTickets.refresh(at: prT0)
     #expect(noTickets.sessions.first?.menuNeedsJira == false)
@@ -1049,6 +1046,19 @@ private func section(_ s: Session?, _ title: String) -> [String]? { s?.menu.firs
     #expect(!jira.calls.isEmpty)
     #expect(jira.calls.allSatisfy { $0.host == jiraHost })
     #expect(jira.calls.flatMap(\.keys).allSatisfy { !$0.hasPrefix("X9") })
+}
+
+@Test func jiraTargetsSkipForeignHosts() {
+    let jira = FakeJira()
+    let dir = makeTempDir(), projects = makeTempDir()
+    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine("T6IR-2"), ""])
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    let store = makeStore(dir: dir, projects: projects, jira: JiraMonitor(api: jira, queue: nil))
+    store.jiraProjects = ["T6IR": "evil.example"]
+    store.accounts[.jira] = "pluu@talosix.com"
+    store.refresh(at: prT0)
+    #expect(jira.calls.isEmpty)
+    #expect(store.connectionText(.jira) == "Jira: ✗ chưa biết site Jira")
 }
 
 @Test func ticketButtonHelp() {

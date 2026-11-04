@@ -5,13 +5,22 @@ import Foundation
 @Suite struct CredentialsTests {
     @Test func addScriptQuotesValues() {
         #expect(Credentials.addScript(service: "jira-api-token", account: "a@b.com", token: "AbC_12-=")
-            == "add-generic-password -s \"jira-api-token\" -a \"a@b.com\" -w \"AbC_12-=\"\n")
+            == "add-generic-password -U -s \"jira-api-token\" -a \"a@b.com\" -w \"AbC_12-=\"\n")
     }
 
     @Test func addScriptRejectsUnsafeInput() {
         #expect(Credentials.addScript(service: "s", account: "a\"b", token: "t") == nil)
         #expect(Credentials.addScript(service: "s", account: "a", token: "t\\u") == nil)
         #expect(Credentials.addScript(service: "s", account: "a", token: "t\nu") == nil)
+    }
+
+    @Test func isSafeRefusesQuoteBackslashNewline() {
+        #expect(Credentials.isSafe("a@b.com"))
+        #expect(Credentials.isSafe("AbC_12-= ?"))
+        #expect(!Credentials.isSafe("a\"b"))
+        #expect(!Credentials.isSafe("a\\b"))
+        #expect(!Credentials.isSafe("a\nb"))
+        #expect(!Credentials.isSafe("a\r\nb"))
     }
 
     @Test func connectionMapping() {

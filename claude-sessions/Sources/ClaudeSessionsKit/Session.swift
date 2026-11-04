@@ -171,6 +171,8 @@ public final class Store: ObservableObject {
     private let scanner: TranscriptScanner
     /// Jira project prefix -> host, learned from `/browse/` and `selectedIssue=` links; persisted by the app.
     @Published public var jiraProjects: [String: String] = [:]
+    /// The Jira site to check a token against: the first learned `*.atlassian.net` host.
+    public var jiraHost: String? { jiraProjects.values.filter(Jira.isAtlassianHost).sorted().first }
     @Published public private(set) var prLastSuccess: Date?
     /// No successful open-list call for 300 s while the feature is live.
     var prStale: Bool { prLastSuccess.map { now.timeIntervalSince($0) > 300 } ?? false }
@@ -378,8 +380,8 @@ public final class Store: ObservableObject {
         var issues: [String: JiraIssue] = [:]
         var jiraState: ConnectionState?
         if let jiraMonitor {
-            var seen = Set<JiraTarget>()
-            let targets = list.flatMap { entries[$0.id] ?? [] }.compactMap(\.target).filter { seen.insert($0).inserted }
+            // Only `*.atlassian.net` hosts get the token; the monitor drops duplicates.
+            let targets = list.flatMap { entries[$0.id] ?? [] }.compactMap(\.target).filter { Jira.isAtlassianHost($0.host) }
             jiraMonitor.update(targets, at: now)
             let snap = jiraMonitor.takeSnapshot()
             issues = snap.issues
@@ -422,11 +424,11 @@ public final class Store: ObservableObject {
         for i in list.indices {
             let id = list[i].id
             list[i].menu = Store.menu(entries[id] ?? [], issues: issues, prs: prMonitor == nil ? nil : allPRs[id] ?? [])
-            list[i].menuNeedsJira = jiraState != .ok && list[i].menu.contains { $0.title != "PR" }
+            list[i].menuNeedsJira = jiraState != .ok && (entries[id] ?? []).contains { $0.target.map { Jira.isAtlassianHost($0.host) } ?? false }
         }
         let lines: [Service: ConnectionLine] = [
             .bitbucket: Store.line(present: prMonitor != nil, account: accounts[.bitbucket], state: prState ?? .checking),
-            .jira: jiraProjects.isEmpty ? .noSite : Store.line(present: jiraMonitor != nil, account: accounts[.jira], state: jiraState ?? .checking),
+            .jira: jiraHost == nil ? .noSite : Store.line(present: jiraMonitor != nil, account: accounts[.jira], state: jiraState ?? .checking),
         ]
         if lines != connections { connections = lines }
         let live = Set(list.map(\.id))

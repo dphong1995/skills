@@ -145,12 +145,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // The Keychain read spawns `security`; keep it off the main thread.
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            let bitbucket = BitbucketClient()
-            let jira = JiraClient()
-            let accounts = Service.allCases.compactMap { s in Credentials.account(s).map { (s, $0) } }
+            let creds = Dictionary(uniqueKeysWithValues: Service.allCases.compactMap { s in Credentials.read(s).map { (s, $0) } })
+            let bitbucket = creds[.bitbucket].map { BitbucketClient(account: $0.account, token: $0.token) }
+            let jira = creds[.jira].map { JiraClient(account: $0.account, token: $0.token) }
+            let accounts = creds.mapValues(\.account)
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                store.accounts = Dictionary(uniqueKeysWithValues: accounts)
+                store.accounts = accounts
                 if let bitbucket {
                     bitbucketClient = bitbucket
                     store.prMonitor = PRMonitor(api: bitbucket)
@@ -272,29 +273,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         store.noteFocused(nil)
     }
 
+    /// Entry of the connect dialog: one dialog at a time. The dialog re-shows itself through `showDialog`, keeping `connecting` set.
+    func connect(_ service: Service) {
+        if service == .jira && store.jiraHost == nil { return NSSound.beep() }
+        guard !connecting else { return NSSound.beep() }
+        connecting = true
+        showDialog(service, notice: nil, email: nil)
+    }
+
     /// Asks for an email and token, checks them against the service, stores them in the Keychain and starts the monitor.
     /// `notice` is the error of the previous attempt, shown above the instructions.
-    func connect(_ service: Service, notice: String? = nil, email: String? = nil) {
+    private func showDialog(_ service: Service, notice: String?, email: String?) {
         let name = service.displayName
-        let host = store.jiraProjects.values.sorted().first
-        if service == .jira && host == nil { return NSSound.beep() }
-        guard !connecting || notice != nil else { return NSSound.beep() }
-        connecting = true
+        let host = store.jiraHost
         let how: String
         switch service {
         case .bitbucket:
-            how = "Tạo token with scopes: app Bitbucket, scope read:user, read:repository, read:pullrequest."
+            how = "Tạo token bằng nút \"Create API token with scopes\": app Bitbucket, quyền read:user, read:repository, read:pullrequest."
         case .jira:
-            how = "Tạo bằng Create API token (loại classic) cho site \(host ?? "")."
+            how = "Tạo token bằng nút \"Create API token\" (loại classic) cho site \(host ?? "")."
         }
         let alert = NSAlert()
         alert.messageText = "Kết nối \(name)"
         alert.informativeText = (notice.map { $0 + "\n\n" } ?? "") + how
         let emailField = NSTextField(frame: NSRect(x: 0, y: 30, width: 320, height: 24))
         emailField.placeholderString = "Email Atlassian"
-        emailField.stringValue = email ?? Credentials.account(service) ?? ""
+        emailField.stringValue = email ?? store.accounts[service] ?? ""
         let tokenField = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
         tokenField.placeholderString = "API token"
+        emailField.nextKeyView = tokenField
         let box = NSView(frame: NSRect(x: 0, y: 0, width: 320, height: 54))
         box.addSubview(emailField)
         box.addSubview(tokenField)
@@ -310,19 +317,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch response {
         case .alertThirdButtonReturn:
             NSWorkspace.shared.open(Service.tokenPage)
-            connect(service, notice: notice, email: account)
+            showDialog(service, notice: notice, email: account)
         case .alertFirstButtonReturn:
             guard !account.isEmpty, !token.isEmpty else {
-                return connect(service, notice: "✗ Nhập cả email và token", email: account)
+                return showDialog(service, notice: "✗ Nhập cả email và token", email: account)
             }
-            let existing: AnyObject? = service == .bitbucket ? bitbucketClient : jiraClient
+            guard Credentials.isSafe(account), Credentials.isSafe(token) else {
+                return showDialog(service, notice: "✗ Email hoặc token có ký tự không hợp lệ", email: account)
+            }
+            let existing: CredentialReloading? = service == .bitbucket ? bitbucketClient : jiraClient
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 let failure = Self.validate(service, account: account, token: token, host: host)
                     ?? (Credentials.write(service, account: account, token: token) ? nil : "✗ Không lưu được vào Keychain")
-                if failure == nil { (existing as? BitbucketClient)?.reload(); (existing as? JiraClient)?.reload() }
+                if failure == nil { existing?.reload() }
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
-                    if let failure { return connect(service, notice: failure, email: account) }
+                    if let failure { return showDialog(service, notice: failure, email: account) }
                     connecting = false
                     store.accounts[service] = account
                     guard existing == nil else { return }
@@ -354,13 +364,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return nil
         } catch {
-            let code: Int?
-            switch error {
-            case let e as BitbucketError: if case .http(let c) = e { code = c } else { code = nil }
-            case let e as JiraError: if case .http(let c) = e { code = c } else { code = nil }
-            default: code = nil
-            }
-            guard let code else { return "✗ Không kết nối được tới \(site)" }
+            guard let code = ConnectionState.httpCode(of: error) else { return "✗ Không kết nối được tới \(site)" }
             return code == 401 ? "✗ \(name) trả về 401: email hoặc token sai" : "✗ Lỗi HTTP \(code)"
         }
     }

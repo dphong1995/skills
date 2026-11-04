@@ -429,16 +429,18 @@ public struct WidgetView: View {
             .contentShape(Rectangle())
             .onTapGesture { onAction(.jump(s.id)) }
             if !s.menu.isEmpty {
-                ViewThatFits(in: .horizontal) {
-                    ForEach(Array(stride(from: min(s.links.count, 5), through: 1, by: -1)), id: \.self) { k in
-                        HStack(spacing: 6) {
-                            ForEach(s.links.prefix(k), id: \.url) { link in
-                                PillButton(title: "↗ \(link.label)") { onAction(.openLink(s.id, link.url)) }
-                                    .help(link.help ?? "")
+                HStack(spacing: 6) {
+                    ViewThatFits(in: .horizontal) {
+                        ForEach(Array(stride(from: min(s.links.count, 5), through: 1, by: -1)), id: \.self) { k in
+                            HStack(spacing: 6) {
+                                ForEach(s.links.prefix(k), id: \.url) { link in
+                                    PillButton(title: "↗ \(link.label)") { onAction(.openLink(s.id, link.url)) }
+                                        .help(link.help ?? "")
+                                }
                             }
-                            menuButton(s)
+                            .fixedSize(horizontal: true, vertical: false)
                         }
-                        .fixedSize(horizontal: true, vertical: false)
+                        EmptyView()
                     }
                     menuButton(s)
                 }

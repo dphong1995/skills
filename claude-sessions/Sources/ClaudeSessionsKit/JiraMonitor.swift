@@ -63,12 +63,14 @@ public final class JiraMonitor {
 
     func tick(_ targets: [JiraTarget], at now: Date) {
         let live = Set(targets)
-        for t in known.union(cache.keys) where !live.contains(t) {
+        for t in known where !live.contains(t) {
             if absentSince[t] == nil { absentSince[t] = now }
         }
         for t in live { absentSince[t] = nil }
+        var changed = false
         for (t, since) in absentSince where now.timeIntervalSince(since) > Self.forgetAfter {
             known.remove(t); cache[t] = nil; retryAt[t] = nil; absentSince[t] = nil
+            changed = true
         }
         known.formUnion(live)
 
@@ -78,18 +80,24 @@ public final class JiraMonitor {
         if refreshDue {
             due = Array(live)
         } else if gapOpen {
-            due = live.filter { cache[$0] == nil && retryAt[$0].map { now >= $0 } ?? true }
+            due = live.filter { (cache[$0] == nil || retryAt[$0] != nil) && retryAt[$0].map { now >= $0 } ?? true }
         }
         if !due.isEmpty {
             lastRequest = now
             if refreshDue || lastRefresh == nil { lastRefresh = now }
             fetch(due.sorted { ($0.host, $0.key) < ($1.host, $1.key) }, at: now)
+            changed = true
         }
 
-        lock.lock()
-        snapshot.issues = Dictionary(cache.map { ($0.key.key, $0.value) }, uniquingKeysWith: { a, _ in a })
-        snapshot.connection = connection
-        lock.unlock()
+        if changed {
+            // Sorted by host so a key shared by two hosts always resolves to the same one.
+            let issues = Dictionary(cache.sorted { ($0.key.host, $0.key.key) < ($1.key.host, $1.key.key) }.map { ($0.key.key, $0.value) },
+                                    uniquingKeysWith: { a, _ in a })
+            lock.lock()
+            snapshot.issues = issues
+            snapshot.connection = connection
+            lock.unlock()
+        }
     }
 
     private func fetch(_ due: [JiraTarget], at now: Date) {

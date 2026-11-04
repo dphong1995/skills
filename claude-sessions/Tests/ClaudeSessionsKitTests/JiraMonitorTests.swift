@@ -96,6 +96,24 @@ private func targets(_ keys: [String], host: String = host) -> [JiraTarget] {
         #expect(s.issues["A-1"]?.title == "one")
     }
 
+    @Test func refreshFailureRetriesAfter60s() {
+        let api = FakeJira()
+        api.issues = ["A-1": ("one", "Open")]
+        let m = JiraMonitor(api: api, queue: nil)
+        m.update(targets(["A-1"]), at: t0)
+        #expect(m.takeSnapshot().connection == .ok)
+        api.fail = .http(401)
+        m.update(targets(["A-1"]), at: t0.addingTimeInterval(900))
+        #expect(m.takeSnapshot().connection == .rejected)
+        #expect(api.calls.count == 2)
+        api.fail = nil
+        m.update(targets(["A-1"]), at: t0.addingTimeInterval(930))
+        #expect(api.calls.count == 2)
+        m.update(targets(["A-1"]), at: t0.addingTimeInterval(960))
+        #expect(api.calls.count == 3)
+        #expect(m.takeSnapshot().connection == .ok)
+    }
+
     @Test func droppedAfterSessionGone() {
         let api = FakeJira()
         api.issues = ["A-1": ("one", "Open"), "A-2": ("two", "Open")]

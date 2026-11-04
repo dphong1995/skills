@@ -25,6 +25,12 @@ import Foundation
         #expect(body?["fields"] as? [String] == ["summary", "status"])
     }
 
+    @Test func requestRefusesForeignHosts() {
+        #expect(JiraClient.request(host: "evil.example", keys: ["T6IR-1"], auth: "x") == nil)
+        #expect(JiraClient.request(host: "atlassian.net.evil.example", keys: ["T6IR-1"], auth: "x") == nil)
+        #expect(JiraClient.request(host: "Talosix.Atlassian.NET", keys: ["T6IR-1"], auth: "x") != nil)
+    }
+
     @Test func connectionMapsJiraErrors() {
         #expect(ConnectionState.after(JiraError.http(401), previous: .ok) == .rejected)
         #expect(ConnectionState.after(JiraError.transport, previous: .ok) == .unreachable)
