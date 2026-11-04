@@ -132,6 +132,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         migrateLegacyPillOrigin()
         syncPanels()
+        NSApp.mainMenu = editMainMenu()
+
         // The Keychain read spawns `security`; keep it off the main thread.
         DispatchQueue.global(qos: .utility).async { [store] in
             guard let client = BitbucketClient() else { return }

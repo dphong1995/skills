@@ -211,3 +211,12 @@ private func prStatus(id: Int, state: String = "OPEN", reviewers: Int = 0, appro
     s.prs = [prStatus(id: 1, state: "MERGED"), prStatus(id: 2)]
     #expect(Layout.height(of: s) == base + 40)
 }
+
+@Test func editMenuHandlesClipboardShortcuts() {
+    let menu = editMainMenu()
+    for key in ["x", "c", "v", "a", "z"] {
+        let e = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0, windowNumber: 0,
+                                 context: nil, characters: key, charactersIgnoringModifiers: key, isARepeat: false, keyCode: 0)!
+        #expect(menu.performKeyEquivalent(with: e), "Cmd-\(key)")
+    }
+}

@@ -125,6 +125,24 @@ func editPrompt(_ store: Store) {
     }
 }
 
+/// Main menu with only a standard Edit menu. An accessory app shows no menu bar, but AppKit still
+/// routes Cmd-X/C/V/A/Z in text views through the main menu's key equivalents; without it they do nothing.
+public func editMainMenu() -> NSMenu {
+    let edit = NSMenu(title: "Edit")
+    edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+    edit.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "Z")
+    edit.addItem(.separator())
+    edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+    edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+    edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+    edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+    let item = NSMenuItem()
+    item.submenu = edit
+    let main = NSMenu()
+    main.addItem(item)
+    return main
+}
+
 public enum WidgetAction: Equatable {
     case jump(String)
     case approve(String, toolId: String)
