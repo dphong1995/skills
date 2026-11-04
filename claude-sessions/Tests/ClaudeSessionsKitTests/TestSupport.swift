@@ -12,10 +12,11 @@ func makeTempDir() -> URL {
     return dir
 }
 
-func writeSession(_ dir: URL, _ file: String, pid: Int32, status: String, waitingFor: String? = nil, ageSec: Double, name: String, cwd: String, updatedAt: Date? = nil) {
+func writeSession(_ dir: URL, _ file: String, pid: Int32, status: String, waitingFor: String? = nil, ageSec: Double, name: String, cwd: String, updatedAt: Date? = nil, nameSource: String? = nil) {
     var o: [String: Any] = ["pid": pid, "sessionId": file, "name": name, "cwd": cwd, "status": status,
                             "statusUpdatedAt": (updatedAt?.timeIntervalSince1970 ?? Date().timeIntervalSince1970 - ageSec) * 1000]
     if let waitingFor { o["waitingFor"] = waitingFor }
+    if let nameSource { o["nameSource"] = nameSource }
     try! JSONSerialization.data(withJSONObject: o).write(to: dir.appendingPathComponent("\(file).json"))
 }
 
@@ -27,10 +28,11 @@ func makeStore(dir: URL, projects: URL = makeTempDir()) -> Store {
     Store(dir: dir, projects: projects)
 }
 
-func assistantLine(_ text: String?, sidechain: Bool = false) -> String {
+func assistantLine(_ text: String?, sidechain: Bool = false, branch: String? = nil) -> String {
     var content: [[String: Any]] = [["type": "tool_use", "name": "Bash"]]
     if let text { content.insert(["type": "text", "text": text], at: 0) }
-    let o: [String: Any] = ["type": "assistant", "isSidechain": sidechain, "message": ["content": content]]
+    var o: [String: Any] = ["type": "assistant", "isSidechain": sidechain, "message": ["content": content]]
+    if let branch { o["gitBranch"] = branch }
     return String(data: try! JSONSerialization.data(withJSONObject: o), encoding: .utf8)!
 }
 
@@ -51,4 +53,18 @@ func toolUseLine(id: String, name: String, input: [String: Any], sidechain: Bool
 func toolResultLine(id: String) -> String {
     let o: [String: Any] = ["type": "user", "message": ["content": [["type": "tool_result", "tool_use_id": id]]]]
     return String(data: try! JSONSerialization.data(withJSONObject: o), encoding: .utf8)!
+}
+
+func userLine(_ text: String, branch: String? = nil) -> String {
+    var o: [String: Any] = ["type": "user", "message": ["content": text]]
+    if let branch { o["gitBranch"] = branch }
+    return String(data: try! JSONSerialization.data(withJSONObject: o), encoding: .utf8)!
+}
+
+func commandLine(_ name: String, args: String) -> String {
+    userLine("<command-name>\(name)</command-name>\n<command-message>\(name.dropFirst())</command-message>\n<command-args>\(args)</command-args>")
+}
+
+func aiTitleLine(_ title: String) -> String {
+    String(data: try! JSONSerialization.data(withJSONObject: ["type": "ai-title", "aiTitle": title]), encoding: .utf8)!
 }

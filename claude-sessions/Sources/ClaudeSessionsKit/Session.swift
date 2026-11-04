@@ -11,9 +11,16 @@ struct Session: Identifiable, Equatable {
     var lastReply: String? = nil
     var pending: PendingState? = nil
     var pid: Int32 = 0
+    var nameSource: String? = nil
+    var aiTitle: String? = nil
+    var firstPrompt: String? = nil
+    var branch: String? = nil
 }
 
 extension Session {
+    var title: String { nameSource == "user" ? name : (aiTitle ?? firstPrompt ?? name) }
+    var folder: String { (cwd as NSString).lastPathComponent }
+    var subtitle: String { branch.map { "\(folder) · \($0)" } ?? folder }
     var isFinished: Bool { status == "idle" || status == "waiting" }
     var isPermissionPrompt: Bool { status == "waiting" && waitingFor == "permission prompt" }
     var approvable: Pending? {
@@ -67,12 +74,16 @@ public final class Store: ObservableObject {
     private let dir: URL
     private let projects: URL
     private var cache: [String: Cached] = [:]
+    private var urls: [String: URL] = [:]
+    private var urlTried: [String: Date?] = [:]
+    private var heads: [String: (prompt: String?, branch: String?, size: Int)] = [:]
+    private var aiTitles: [String: String] = [:]
 
     private struct Cached {
         var since: Date?
-        var url: URL?
         var size: Int
         var reply: String?
+        var branch: String?
         var pending: PendingState?
         var prompt = false
     }
@@ -88,29 +99,45 @@ public final class Store: ObservableObject {
     public private(set) var emptySince: Date?
     public var hidden: Bool { emptySince.map { now.timeIntervalSince($0) >= 30 } ?? false }
 
-    private func readTail(for s: Session) -> (reply: String?, pending: PendingState?) {
-        guard s.isFinished else { return (nil, nil) }
-        var c: Cached
-        if let cached = cache[s.id], cached.url != nil || cached.since == s.since {
-            c = cached
-        } else {
-            c = Cached(since: s.since, url: Transcript.find(sessionId: s.id, cwd: s.cwd, projects: projects), size: -1, reply: nil, pending: nil)
-        }
-        guard let url = c.url else {
-            cache[s.id] = c
-            return (nil, nil)
-        }
-        let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+    private func transcriptURL(for s: Session) -> URL? {
+        if let u = urls[s.id] { return u }
+        if let tried = urlTried[s.id], tried == s.since { return nil }
+        urlTried[s.id] = s.since
+        let u = Transcript.find(sessionId: s.id, cwd: s.cwd, projects: projects)
+        urls[s.id] = u
+        return u
+    }
+
+    private func fileSize(_ url: URL) -> Int {
+        (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+    }
+
+    private func readHead(for s: Session, url: URL?) -> (prompt: String?, branch: String?) {
+        guard let url else { return (nil, nil) }
+        let size = fileSize(url)
+        if let h = heads[s.id], h.prompt != nil || h.size == size { return (h.prompt, h.branch) }
+        let d = Transcript.head(url)
+        let h = (prompt: Transcript.firstPrompt(in: d), branch: Transcript.gitBranch(in: d, last: false), size: size)
+        heads[s.id] = h
+        return (h.prompt, h.branch)
+    }
+
+    private func readTail(for s: Session, url: URL?) -> (reply: String?, pending: PendingState?, branch: String?) {
+        guard s.isFinished, let url else { return (nil, nil, nil) }
+        var c = cache[s.id] ?? Cached(since: s.since, size: -1, reply: nil, branch: nil, pending: nil)
+        let size = fileSize(url)
         let prompt = s.isPermissionPrompt
-        if c.size == size && c.since == s.since && c.prompt == prompt { return (c.reply, c.pending) }
+        if c.size == size && c.since == s.since && c.prompt == prompt { return (c.reply, c.pending, c.branch) }
         c.since = s.since
         c.size = size
         c.prompt = prompt
         let tail = Transcript.tail(url)
         c.reply = Transcript.lastReply(in: tail)
+        c.branch = Transcript.gitBranch(in: tail, last: true)
         c.pending = prompt ? Transcript.pending(in: tail) : nil
+        if let t = Transcript.lastAITitle(in: tail) { aiTitles[s.id] = t }
         cache[s.id] = c
-        return (c.reply, c.pending)
+        return (c.reply, c.pending, c.branch)
     }
 
     public func refresh(at date: Date = Date()) {
@@ -134,7 +161,13 @@ public final class Store: ObservableObject {
                 since: ms.map { Date(timeIntervalSince1970: $0 / 1000) },
                 pid: pid
             )
-            let t = readTail(for: s)
+            s.nameSource = o["nameSource"] as? String
+            let url = transcriptURL(for: s)
+            let t = readTail(for: s, url: url)
+            let head = readHead(for: s, url: url)
+            s.firstPrompt = head.prompt
+            s.aiTitle = aiTitles[s.id]
+            s.branch = t.branch ?? head.branch
             s.lastReply = t.reply
             if s.isPermissionPrompt { s.pending = t.pending }
             list.append(s)
@@ -161,6 +194,10 @@ public final class Store: ObservableObject {
         }
         let live = Set(list.map(\.id))
         cache = cache.filter { live.contains($0.key) }
+        urls = urls.filter { live.contains($0.key) }
+        urlTried = urlTried.filter { live.contains($0.key) }
+        heads = heads.filter { live.contains($0.key) }
+        aiTitles = aiTitles.filter { live.contains($0.key) }
         for s in list where pids[s.id] != nil && pids[s.id] != s.pid {
             surfaces[s.id] = nil
             surfaceMisses.remove(s.id)
@@ -181,7 +218,7 @@ public final class Store: ObservableObject {
         if let e = editing {
             if list.first(where: { $0.id == e.id })?.allows(e.kind, toolId: e.toolId) != true { editing = nil }
         }
-        list.sort { (rank($0), $0.name) < (rank($1), $1.name) }
+        list.sort { (rank($0), $0.title) < (rank($1), $1.title) }
         if list != sessions { sessions = list }
     }
 

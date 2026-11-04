@@ -218,8 +218,8 @@ public struct WidgetView: View {
             HStack(spacing: 10) {
                 Circle().fill(color(s.status)).frame(width: 8, height: 8)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(s.name).font(.system(size: 12.5, weight: hot ? .bold : .medium)).foregroundStyle(.white).lineLimit(1)
-                    Text((s.cwd as NSString).lastPathComponent).font(.system(size: 10.5))
+                    Text(s.title).font(.system(size: 12.5, weight: hot ? .bold : .medium)).foregroundStyle(.white).lineLimit(1)
+                    Text(s.subtitle).font(.system(size: 10.5))
                         .foregroundStyle(.white.opacity(0.45)).lineLimit(1)
                     if s.isFinished, let reply = s.lastReply {
                         Text(reply).font(.system(size: 11)).foregroundStyle(.white.opacity(0.75))

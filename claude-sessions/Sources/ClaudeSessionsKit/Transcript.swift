@@ -37,6 +37,73 @@ enum Transcript {
         return (try? h.readToEnd()) ?? Data()
     }
 
+    /// The first `bytes` of the file; when the file is longer, everything after the last newline is dropped.
+    static func head(_ url: URL, bytes: Int = 65_536) -> Data {
+        guard let h = try? FileHandle(forReadingFrom: url) else { return Data() }
+        defer { try? h.close() }
+        guard let d = try? h.read(upToCount: bytes + 1), !d.isEmpty else { return Data() }
+        guard d.count > bytes else { return d }
+        let cut = d.prefix(bytes)
+        guard let nl = cut.lastIndex(of: 0x0A) else { return Data() }
+        return Data(cut[cut.startIndex...nl])
+    }
+
+    /// A one-line prompt for a row title, or nil when the text is not something the user typed.
+    static func cleanPrompt(_ text: String) -> String? {
+        var t = text
+        while let a = t.range(of: "<system-reminder>"), let b = t.range(of: "</system-reminder>", range: a.upperBound..<t.endIndex) {
+            t.removeSubrange(a.lowerBound..<b.upperBound)
+        }
+        t = t.trimmingCharacters(in: .whitespacesAndNewlines)
+        if t.hasPrefix("<local-command") || t.hasPrefix("Caveat:") { return nil }
+        func inner(_ tag: String) -> String? {
+            guard let a = t.range(of: "<\(tag)>"), let b = t.range(of: "</\(tag)>", range: a.upperBound..<t.endIndex) else { return nil }
+            return String(t[a.upperBound..<b.lowerBound])
+        }
+        if let name = inner("command-name") {
+            let args = inner("command-args")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            t = args.isEmpty ? "" : "\(name) \(args)"
+        }
+        let collapsed = t.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        if collapsed.isEmpty { return nil }
+        return collapsed.count > 60 ? String(collapsed.prefix(60)) + "…" : collapsed
+    }
+
+    private static func objects(_ data: Data) -> [[String: Any]] {
+        data.split(separator: 0x0A).compactMap { try? JSONSerialization.jsonObject(with: Data($0)) as? [String: Any] }
+    }
+
+    static func firstPrompt(in data: Data) -> String? {
+        for o in objects(data) {
+            guard o["type"] as? String == "user", (o["isMeta"] as? Bool) != true, (o["isSidechain"] as? Bool) != true,
+                  let content = (o["message"] as? [String: Any])?["content"]
+            else { continue }
+            let text: String
+            if let s = content as? String {
+                text = s
+            } else if let blocks = content as? [[String: Any]] {
+                text = blocks.compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }.joined(separator: " ")
+            } else { continue }
+            if let p = cleanPrompt(text) { return p }
+        }
+        return nil
+    }
+
+    static func lastAITitle(in data: Data) -> String? {
+        for o in objects(data).reversed() where o["type"] as? String == "ai-title" {
+            if let t = o["aiTitle"] as? String, !t.isEmpty { return t }
+        }
+        return nil
+    }
+
+    static func gitBranch(in data: Data, last: Bool) -> String? {
+        let all = objects(data)
+        for o in last ? all.reversed() : all {
+            if let b = o["gitBranch"] as? String, !b.isEmpty { return b }
+        }
+        return nil
+    }
+
     static func lastReply(in data: Data) -> String? {
         for line in data.split(separator: 0x0A).reversed() {
             guard let o = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],

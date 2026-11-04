@@ -298,3 +298,77 @@ private func approvableStore() -> (Store, URL, URL, URL) {
     store.refresh(at: Date())
     #expect(store.surfaces["a"] == "S")
 }
+
+@Test func titleOrderUserBeatsAITitleBeatsPrompt() {
+    let dir = makeTempDir(), projects = makeTempDir()
+    let store = makeStore(dir: dir, projects: projects)
+    let t0 = Date()
+    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine("sửa widget")])
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "front-d7", cwd: frontend, updatedAt: t0)
+    store.refresh(at: t0)
+    #expect(store.sessions.first?.title == "sửa widget")
+
+    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine("sửa widget"), aiTitleLine("widget-fix")])
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "front-d7", cwd: frontend, updatedAt: t0.addingTimeInterval(1))
+    store.refresh(at: t0.addingTimeInterval(1))
+    #expect(store.sessions.first?.title == "widget-fix")
+
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "tên tôi", cwd: frontend, updatedAt: t0.addingTimeInterval(1), nameSource: "user")
+    store.refresh(at: t0.addingTimeInterval(2))
+    #expect(store.sessions.first?.title == "tên tôi")
+}
+
+@Test func aiTitleStaysAfterLeavingTail() {
+    let dir = makeTempDir(), projects = makeTempDir()
+    let store = makeStore(dir: dir, projects: projects)
+    let t0 = Date()
+    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [aiTitleLine("t1"), assistantLine("x")])
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "front-d7", cwd: frontend, updatedAt: t0)
+    store.refresh(at: t0)
+    #expect(store.sessions.first?.title == "t1")
+
+    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [assistantLine("x"), assistantLine("a longer reply")])
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "front-d7", cwd: frontend, updatedAt: t0.addingTimeInterval(1))
+    store.refresh(at: t0.addingTimeInterval(1))
+    #expect(store.sessions.first?.title == "t1")
+}
+
+@Test func busySessionHasPromptTitleAndHeadBranch() {
+    let dir = makeTempDir(), projects = makeTempDir()
+    let store = makeStore(dir: dir, projects: projects)
+    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine("chạy test", branch: "main")])
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 5, name: "front-d7", cwd: frontend)
+    store.refresh(at: Date())
+    let s = store.sessions[0]
+    #expect(s.title == "chạy test")
+    #expect(s.subtitle == "talo6-dct-frontend · main")
+    #expect(s.lastReply == nil)
+}
+
+@Test func titleAppearsAfterTranscriptCreated() {
+    let dir = makeTempDir(), projects = makeTempDir()
+    let store = makeStore(dir: dir, projects: projects)
+    let t0 = Date()
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "front-d7", cwd: frontend, updatedAt: t0)
+    store.refresh(at: t0)
+    #expect(store.sessions[0].title == "front-d7")
+
+    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine("chạy test")])
+    store.refresh(at: t0)
+    #expect(store.sessions[0].title == "front-d7")
+
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "front-d7", cwd: frontend, updatedAt: t0.addingTimeInterval(1))
+    store.refresh(at: t0.addingTimeInterval(1))
+    #expect(store.sessions[0].title == "chạy test")
+}
+
+@Test func sortsByTitle() {
+    let dir = makeTempDir(), projects = makeTempDir()
+    let store = makeStore(dir: dir, projects: projects)
+    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine("zzz")])
+    _ = writeTranscript(projects, cwd: backend, id: "b", lines: [userLine("aaa")])
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 5, name: "a", cwd: frontend)
+    writeSession(dir, "b", pid: me, status: "idle", ageSec: 5, name: "b", cwd: backend)
+    store.refresh(at: Date())
+    #expect(store.sessions.map(\.id) == ["b", "a"])
+}

@@ -246,9 +246,11 @@ widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouT
   (đang chạy), `waiting` (`waitingFor`: `permission prompt` → chờ duyệt, còn lại → chờ trả lời) hoặc
   `idle` (xong, chờ bạn). Bỏ qua tiến trình đã chết. Không cần hook hay mod.
 - Thu gọn: viên đen gồm chấm trạng thái + số session theo màu (đỏ chờ, cam xong, xanh đang chạy).
-- Rê chuột vào thì mở danh sách (tên, thư mục, trạng thái, thời gian). Session vừa chuyển từ đang chạy
+- Rê chuột vào thì mở danh sách (tiêu đề, `thư mục · nhánh`, trạng thái, thời gian). Session vừa chuyển từ đang chạy
   sang xong/chờ thì widget tự mở 5 giây. Dấu chưa xem (viền cam, tên đậm, "N mới" ở header) giữ tới khi
   bạn bấm vào session, nó chạy lại, hoặc pane của nó đang mở trong cmux.
+- Tên dòng lấy theo thứ tự: tên đặt bằng `/rename` → tiêu đề AI → prompt đầu (bỏ `/clear`, lệnh không đối số,
+  thẻ hệ thống; cắt 60 ký tự) → tên mặc định. Mẹo: gõ `/rename` để Claude tự đặt tên.
 - Dòng `chờ duyệt` hiện lệnh hoặc file đang xin duyệt (đọc từ transcript); nhiều tool cùng chờ hoặc tool
   lạ thì hiện "Cần duyệt trong cmux".
 - Kéo để đổi vị trí (nhớ vị trí). Hướng mở theo vị trí: nửa trên mở xuống, nửa dưới mở lên; phần ba

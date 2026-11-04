@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import ClaudeSessionsKit
 
-private let userLine = #"{"type":"user","message":{"content":"hi"}}"#
+private let plainUser = #"{"type":"user","message":{"content":"hi"}}"#
 private func data(_ lines: [String]) -> Data { Data(lines.joined(separator: "\n").utf8) }
 
 @Test func projectDirName() {
@@ -15,7 +15,7 @@ private func data(_ lines: [String]) -> Data { Data(lines.joined(separator: "\n"
 
 @Test func lastReplySkipsToolOnlyEntries() {
     let toolOnly = #"{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash"}]}}"#
-    #expect(Transcript.lastReply(in: data([assistantLine("the text"), toolOnly, userLine])) == "the text")
+    #expect(Transcript.lastReply(in: data([assistantLine("the text"), toolOnly, plainUser])) == "the text")
 }
 
 @Test func lastReplyIgnoresCutFirstLine() {
@@ -34,7 +34,7 @@ private func data(_ lines: [String]) -> Data { Data(lines.joined(separator: "\n"
 }
 
 @Test func lastReplyNone() {
-    #expect(Transcript.lastReply(in: data([userLine, assistantLine(nil)])) == nil)
+    #expect(Transcript.lastReply(in: data([plainUser, assistantLine(nil)])) == nil)
 }
 
 @Test func findFallsBackToScan() throws {
@@ -90,4 +90,49 @@ private func bash(_ id: String, _ cmd: String = "npm test") -> String {
     #expect(text("WebFetch", ["url": "https://x.dev"]) == "https://x.dev")
     #expect(text("WebSearch", ["query": "swift testing"]) == "swift testing")
     #expect(text("Grep", ["pattern": "foo.*"]) == "foo.*")
+}
+
+@Test func cleanPromptRules() {
+    #expect(Transcript.cleanPrompt("<command-name>/cook</command-name><command-message>cook</command-message><command-args>plans/x/plan.md</command-args>") == "/cook plans/x/plan.md")
+    #expect(Transcript.cleanPrompt("<command-name>/clear</command-name>\n<command-message>clear</command-message>\n<command-args></command-args>") == nil)
+    #expect(Transcript.cleanPrompt("<local-command-stdout>ok</local-command-stdout>") == nil)
+    #expect(Transcript.cleanPrompt("Caveat: The messages below were generated") == nil)
+    #expect(Transcript.cleanPrompt("sửa bug\n<system-reminder>x</system-reminder>  đăng nhập") == "sửa bug đăng nhập")
+    let long = String(repeating: "a", count: 70)
+    #expect(Transcript.cleanPrompt(long) == String(repeating: "a", count: 60) + "…")
+}
+
+@Test func firstPromptSkipsClearAndLocalCommand() {
+    let meta = #"{"type":"user","isMeta":true,"message":{"content":"meta text"}}"#
+    let local = userLine("<local-command-stdout>ok</local-command-stdout>")
+    let lines = [commandLine("/clear", args: ""), local, meta, toolResultLine(id: "t"), userLine("sửa widget"), userLine("câu sau")]
+    #expect(Transcript.firstPrompt(in: data(lines)) == "sửa widget")
+}
+
+@Test func firstPromptArrayContent() {
+    let l = #"{"type":"user","message":{"content":[{"type":"text","text":"xin chào"}]}}"#
+    #expect(Transcript.firstPrompt(in: data([l])) == "xin chào")
+}
+
+@Test func firstPromptNone() {
+    #expect(Transcript.firstPrompt(in: data([commandLine("/clear", args: ""), assistantLine("x")])) == nil)
+}
+
+@Test func lastAITitleAndBranch() {
+    let empty = #"{"type":"assistant","gitBranch":"","message":{"content":[]}}"#
+    let d = data([aiTitleLine("old"), userLine("a", branch: "main"), aiTitleLine("new"), assistantLine("b", branch: "feat-x"), empty])
+    #expect(Transcript.lastAITitle(in: d) == "new")
+    #expect(Transcript.gitBranch(in: d, last: true) == "feat-x")
+    #expect(Transcript.gitBranch(in: d, last: false) == "main")
+}
+
+@Test func headDropsPartialLine() {
+    let dir = makeTempDir()
+    let f = dir.appendingPathComponent("h.jsonl")
+    let l1 = userLine("one"), l2 = userLine("two is a longer line"), l3 = userLine("three")
+    try! Data([l1, l2, l3].joined(separator: "\n").utf8).write(to: f)
+    let bytes = l1.utf8.count + 1 + 10
+    let h = Transcript.head(f, bytes: bytes)
+    #expect(Transcript.firstPrompt(in: h) == "one")
+    #expect(h.last != nil && String(decoding: h, as: UTF8.self) == l1 + "\n")
 }

@@ -79,6 +79,21 @@ struct SnapshotTests {
         render(store, "09-bottom-left-collapsed")
     }
 
+    @Test func renderTitles() {
+        let dir = makeTempDir(), projects = makeTempDir()
+        let store = makeStore(dir: dir, projects: projects)
+        _ = writeTranscript(projects, cwd: frontend, id: "b", lines: [
+            commandLine("/clear", args: ""),
+            userLine("sửa lỗi đăng nhập khi token hết hạn và thêm test cho trường hợp refresh thất bại", branch: "T6IR-14737"),
+        ])
+        writeSession(dir, "a", pid: me, status: "idle", ageSec: 30, name: "widget", cwd: backend, nameSource: "user")
+        writeSession(dir, "b", pid: me, status: "busy", ageSec: 90, name: "talo6-dct-frontend-d7", cwd: frontend)
+        writeSession(dir, "c", pid: me, status: "busy", ageSec: 3700, name: "talo-v2-9c", cwd: "/Users/phong/talos-v2")
+        store.refresh(at: Date())
+        store.hovering = true
+        render(store, "15-titles-branch")
+    }
+
     @Test func renderLastReply() {
         let dir = makeTempDir(), projects = makeTempDir()
         let store = makeStore(dir: dir, projects: projects)
