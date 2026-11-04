@@ -68,8 +68,9 @@ func toolResultLine(id: String) -> String {
     return jsonLine(o)
 }
 
-func userLine(_ text: String, branch: String? = nil) -> String {
+func userLine(_ text: String, branch: String? = nil, isMeta: Bool = false) -> String {
     var o: [String: Any] = ["type": "user", "message": ["content": text]]
+    if isMeta { o["isMeta"] = true }
     if let branch { o["gitBranch"] = branch }
     return jsonLine(o)
 }
@@ -80,4 +81,25 @@ func commandLine(_ name: String, args: String) -> String {
 
 func aiTitleLine(_ title: String) -> String {
     jsonLine(["type": "ai-title", "aiTitle": title])
+}
+
+/// A `type: "user"` line whose content is a `tool_result` block carrying `text`.
+func toolResultTextLine(_ text: String) -> String {
+    jsonLine(["type": "user", "message": ["content": [["type": "tool_result", "tool_use_id": "t1", "content": [["type": "text", "text": text]], "text": text]]]])
+}
+
+/// Bitbucket PR object shaped like an open-list value. `repo` is `workspace/name`; the first reviewer requests changes, the second approves.
+func prJSON(id: Int, repo: String = "t6engineering/talo6-dct-backend", branch: String = "bugfix/T6IR-14744", state: String = "OPEN", comments: Int = 0, reviewers: Int = 0) -> [String: Any] {
+    var participants: [[String: Any]] = []
+    for i in 0..<reviewers {
+        var reviewerState: Any = NSNull()
+        if i == 0 { reviewerState = "changes_requested" } else if i == 1 { reviewerState = "approved" }
+        let user: [String: Any] = ["uuid": "{r\(i)}", "display_name": "Reviewer \(i)"]
+        participants.append(["role": "REVIEWER", "approved": i == 1, "state": reviewerState, "user": user])
+    }
+    participants.append(["role": "PARTICIPANT", "approved": false, "state": NSNull(), "user": ["uuid": "{author}", "display_name": "Author"]])
+    return ["id": id, "title": "t", "state": state, "comment_count": comments,
+            "source": ["branch": ["name": branch], "repository": ["full_name": repo], "commit": ["hash": "abc123"]],
+            "links": ["html": ["href": "https://bitbucket.org/\(repo)/pull-requests/\(id)"]],
+            "participants": participants]
 }
