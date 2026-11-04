@@ -10,7 +10,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var monitors: [Any] = []
     var lookingUp: Set<String> = []
     var sending: Set<String> = []
-    var tick = 0
     var cancellables: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -68,8 +67,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             self?.refreshAndSyncVisibility()
             self?.trackMouse()
-            self?.tick += 1
-            if self?.tick.isMultiple(of: 2) == true { self?.checkFocusedPane() }
         }
     }
 
@@ -95,7 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Calls `then` on main with the session's cmux surface: the cached one, else the result of a `cmux sessions` lookup.
-    /// Hits are cached in the store; misses are recorded there too, but only the background check consults them.
+    /// Hits are cached in the store.
     func resolveSurface(_ id: String, then: @escaping (String?) -> Void) {
         if let surface = store.surfaces[id] { return then(surface) }
         lookingUp.insert(id)
@@ -107,12 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 lookingUp.remove(id)
                 // The session's process changed while the lookup ran: the result may belong to the old one.
                 if store.pid(of: id) == pid {
-                    if let surface {
-                        store.surfaces[id] = surface
-                        store.surfaceMisses.remove(id)
-                    } else {
-                        store.surfaceMisses.insert(id)
-                    }
+                    if let surface { store.surfaces[id] = surface }
                 }
                 then(surface)
             }
@@ -123,11 +115,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let id = a.sessionId
         if case .openLink(_, let url) = a {
             NSWorkspace.shared.open(url)
-            store.markSeen(id)
             return
         }
         if case .jump = a {
-            store.markSeen(id)
             resolveSurface(id) { surface in
                 guard let surface, CmuxJump.jump(surface: surface) else { return NSSound.beep() }
             }
@@ -152,20 +142,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 sending.remove(id)
                 guard ok else { return NSSound.beep() }
                 if let denyReason, store.drafts[id] == denyReason { store.drafts[id] = nil }
-                store.markSeen(id)
             }
         }
-    }
-
-    /// Marks an unseen session as seen when its cmux pane is the focused one.
-    func checkFocusedPane() {
-        guard !store.unseen.isEmpty,
-              NSWorkspace.shared.frontmostApplication?.bundleIdentifier == CmuxJump.bundleID else { return }
-        for id in store.unseen where store.surfaces[id] == nil && !store.surfaceMisses.contains(id) && !lookingUp.contains(id) {
-            resolveSurface(id) { _ in }
-        }
-        guard store.unseen.contains(where: { store.surfaces[$0] != nil }), let focused = CmuxJump.focusedSurface() else { return }
-        for id in store.unseen where store.surfaces[id]?.caseInsensitiveCompare(focused) == .orderedSame { store.markSeen(id) }
     }
 
     func place(pillOrigin raw: CGPoint) {

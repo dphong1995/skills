@@ -247,8 +247,7 @@ widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouT
   `idle` (xong, chờ bạn). Bỏ qua tiến trình đã chết. Không cần hook hay mod.
 - Thu gọn: viên đen gồm chấm trạng thái + số session theo màu (đỏ chờ, cam xong, xanh đang chạy).
 - Rê chuột vào thì mở danh sách rộng 520 pt (tiêu đề, `thư mục · nhánh`, trạng thái, thời gian). Session vừa chuyển từ đang chạy
-  sang xong/chờ thì widget tự mở 5 giây. Dấu chưa xem (viền cam, tên đậm, "N mới" ở header) giữ tới khi
-  bạn bấm vào session, nó chạy lại, hoặc pane của nó đang mở trong cmux.
+  sang xong/chờ thì widget tự mở 5 giây.
 - Tên dòng lấy theo thứ tự: tên đặt bằng `/rename` → tiêu đề AI → prompt đầu (bỏ `/clear`, lệnh không đối số,
   thẻ hệ thống; cắt 140 ký tự, hiện tối đa 2 dòng) → tên mặc định. Mẹo: gõ `/rename` để Claude tự đặt tên.
 - Session có task (TaskCreate/TaskUpdate, `~/.claude/tasks/<sessionId>/`) thì hiện thêm dòng `☑ đã xong/tổng · việc đang làm`;
@@ -266,7 +265,7 @@ widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouT
 - Kéo được từ mọi chỗ trên widget; dời từ 4 pt trở xuống vẫn tính là bấm.
 - Session xong/chờ hiện thêm câu trả lời cuối của Claude (tối đa 4 dòng, cắt 600 ký tự, có chữ đậm và code, link hiện thành nhãn ngắn), đọc từ transcript
   `~/.claude/projects/…/<sessionId>.jsonl`.
-- Link trong prompt đầu tiên hoặc câu trả lời cuối của Claude (đọc từ văn bản đầy đủ, không phải bản đã cắt) hiện thành tối đa 3 nút `↗ nhãn` dưới dòng của session: link của prompt trước, link của câu trả lời sau (chỉ khi câu trả lời đang hiện), bỏ trùng. Bấm nút mở trình duyệt mặc định, không nhảy sang cmux, và đánh dấu session đã xem.
+- Link trong prompt đầu tiên hoặc câu trả lời cuối của Claude (đọc từ văn bản đầy đủ, không phải bản đã cắt) hiện thành tối đa 3 nút `↗ nhãn` dưới dòng của session: link của prompt trước, link của câu trả lời sau (chỉ khi câu trả lời đang hiện), bỏ trùng. Bấm nút mở trình duyệt mặc định, không nhảy sang cmux.
 - Danh sách cuộn được khi cao hơn khung widget; danh sách ngắn giữ nguyên chiều cao.
 - Dòng `chờ duyệt` có nút **Cho phép** và **Từ chối…** (bấm Từ chối… để gõ lý do, để trống = chỉ từ chối).
   Lệnh dài phải bấm **Xem đủ** mới hiện nút; lệnh quá dài, subagent, nhiều việc cùng chờ hoặc tool lạ

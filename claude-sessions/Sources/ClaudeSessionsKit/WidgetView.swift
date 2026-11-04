@@ -163,7 +163,6 @@ public struct WidgetView: View {
     public var body: some View {
         let expanded = store.expanded
         let radius: CGFloat = expanded ? 20 : Layout.headerHeight / 2
-        let hot = !store.unseen.isEmpty
 
         VStack(spacing: 0) {
             if expanded && store.anchor.up { list }
@@ -181,7 +180,7 @@ public struct WidgetView: View {
         .fixedSize(horizontal: false, vertical: expanded)
         .background(RoundedRectangle(cornerRadius: radius, style: .continuous).fill(Color.black.opacity(0.92)))
         .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous)
-            .stroke(hot ? Color.orange : Color.white.opacity(0.14), lineWidth: hot ? 2 : 1))
+            .stroke(Color.white.opacity(0.14), lineWidth: 1))
         .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
         .shadow(color: .black.opacity(0.4), radius: expanded ? 12 : 6, y: 3)
         .contextMenu {
@@ -224,7 +223,6 @@ public struct WidgetView: View {
     private var urgent: (color: Color, pulsing: Bool) {
         let st = Set(store.sessions.map(\.status))
         if st.contains("waiting") { return (color("waiting"), true) }
-        if !store.unseen.isEmpty { return (color("idle"), true) }
         if st.contains("busy") { return (color("busy"), true) }
         if st.contains("idle") { return (color("idle"), false) }
         return (.gray, false)
@@ -236,9 +234,6 @@ public struct WidgetView: View {
         return HStack(spacing: 7) {
             PulseDot(color: u.color, pulsing: u.pulsing)
             Text("Claude").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(.white)
-            if !store.unseen.isEmpty {
-                Text("\(store.unseen.count) mới").font(.system(size: 11)).foregroundStyle(.orange)
-            }
             Spacer(minLength: 6)
             if store.sessions.isEmpty {
                 Text("–").font(.system(size: 12)).foregroundStyle(.white.opacity(0.5))
@@ -308,13 +303,12 @@ public struct WidgetView: View {
     }
 
     private func row(_ s: Session) -> some View {
-        let hot = store.unseen.contains(s.id)
         let editing = store.editing?.id == s.id
         return VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 10) {
                 Circle().fill(color(s.status)).frame(width: 8, height: 8)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(s.title).font(.system(size: 12.5, weight: hot ? .bold : .medium)).foregroundStyle(.white).lineLimit(2)
+                    Text(s.title).font(.system(size: 12.5, weight: .medium)).foregroundStyle(.white).lineLimit(2)
                     Text(s.subtitle).font(.system(size: 10.5))
                         .foregroundStyle(.white.opacity(0.45)).lineLimit(1)
                     if let todo = s.todo {
@@ -357,7 +351,6 @@ public struct WidgetView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
         .frame(minHeight: Layout.rowHeight)
-        .background(RoundedRectangle(cornerRadius: 9).fill(hot ? color(s.status).opacity(0.18) : .clear))
     }
 }
 

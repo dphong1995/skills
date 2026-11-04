@@ -168,7 +168,7 @@ struct SnapshotTests {
         render(store, "19-scroll")
     }
 
-    @Test func renderUnseenPending() {
+    @Test func renderPendingHover() {
         let dir = makeTempDir(), projects = makeTempDir()
         let store = makeStore(dir: dir, projects: projects)
         let t0 = Date()
@@ -186,10 +186,10 @@ struct SnapshotTests {
         writeSession(dir, "d", pid: me, status: "waiting", waitingFor: "permission prompt", ageSec: 12, name: "talo-v2-9c", cwd: "/Users/phong/talos-v2")
         store.refresh(at: t0.addingTimeInterval(1))
         store.hovering = true
-        render(store, "11-unseen-pending-hover")
+        render(store, "11-pending-hover")
     }
 
-    @Test func renderUnseenCollapsed() {
+    @Test func renderFinishedCollapsed() {
         let dir = makeTempDir()
         let store = makeStore(dir: dir)
         let t0 = Date()
@@ -201,8 +201,8 @@ struct SnapshotTests {
         writeSession(dir, "b", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 0, name: "talo6-dct-backend-3f", cwd: backend)
         store.refresh(at: t0.addingTimeInterval(1))
         store.refresh(at: t0.addingTimeInterval(10))
-        #expect(store.unseen.count == 2 && !store.expanded)
-        render(store, "14-unseen-collapsed")
+        #expect(!store.expanded)
+        render(store, "14-finished-collapsed")
     }
 
     @Test func renderActions() {

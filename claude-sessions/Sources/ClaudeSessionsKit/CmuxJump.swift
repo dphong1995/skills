@@ -8,8 +8,6 @@ public enum CmuxJump {
         return String(out[r].dropFirst("surface=".count))
     }
 
-    static let focusedSurfaceScript = "tell application id \"\(bundleID)\" to get id of focused terminal of selected tab of front window"
-
     /// Blocking: call off the main thread. Nil when cmux is missing or the output has no surface.
     public static func surface(sessionId: String) -> String? {
         guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else { return nil }
@@ -35,11 +33,6 @@ public enum CmuxJump {
 
     static func target(_ surface: String) -> String {
         "(first terminal whose id is \(quote(surface)))"
-    }
-
-    /// Main thread. Nil on any AppleScript error.
-    public static func focusedSurface() -> String? {
-        run(focusedSurfaceScript, timeout: 2)?.stringValue
     }
 
     /// Main thread. Activates cmux and focuses the terminal; false on any AppleScript error.

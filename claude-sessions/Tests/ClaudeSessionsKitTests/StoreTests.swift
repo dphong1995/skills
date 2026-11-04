@@ -16,10 +16,10 @@ import Testing
     writeSession(dir, "dead", pid: 999_999, status: "idle", ageSec: 10, name: "dead", cwd: "/tmp")
     store.refresh(at: Date())
     #expect(store.sessions.count == 2)
-    #expect(store.unseen.isEmpty && !store.expanded)
+    #expect(!store.expanded)
 }
 
-@Test func busyToIdleMarksUnseenUntilSeen() {
+@Test func busyToIdlePeeks() {
     let dir = makeTempDir()
     let store = makeStore(dir: dir)
     let t0 = Date()
@@ -29,18 +29,12 @@ import Testing
 
     writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "talo6-dct-frontend-d7", cwd: frontend)
     store.refresh(at: t0.addingTimeInterval(1))
-    #expect(store.unseen == ["a"])
     #expect(store.expanded)
+    #expect(store.chime == .done)
     #expect(store.sessions.first?.id == "a")
 
     store.refresh(at: t0.addingTimeInterval(7))
     #expect(!store.expanded)
-    #expect(store.unseen == ["a"])
-
-    store.refresh(at: t0.addingTimeInterval(30))
-    #expect(store.unseen == ["a"])
-    store.markSeen("a")
-    #expect(store.unseen.isEmpty)
 }
 
 @Test func waitingOrderingAndLabels() {
@@ -57,7 +51,6 @@ import Testing
     writeSession(dir, "c", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 75, name: "ocr-service-a1", cwd: "/Users/phong/ocr-service")
     writeSession(dir, "d", pid: me, status: "busy", ageSec: 3700, name: "talo-v2-9c", cwd: "/Users/phong/talos-v2")
     store.refresh(at: t0.addingTimeInterval(8))
-    #expect(store.unseen == ["a", "b"])
     #expect(store.sessions.map(\.id) == ["c", "b", "a", "d"])
     #expect(store.sessions.first { $0.id == "b" }.map(label) == "chờ duyệt")
     #expect(store.sessions.first { $0.id == "c" }.map(label) == "chờ trả lời")
@@ -78,14 +71,13 @@ import Testing
     writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "talo6-dct-frontend-d7", cwd: frontend)
     store.refresh(at: t0.addingTimeInterval(1))
     store.refresh(at: t0.addingTimeInterval(30))
-    store.markSeen("a")
-    #expect(store.unseen.isEmpty && !store.expanded)
+    #expect(!store.expanded)
 
     writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "talo6-dct-frontend-d7", cwd: frontend)
     store.refresh(at: t0.addingTimeInterval(31))
     writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "talo6-dct-frontend-d7", cwd: frontend)
     store.refresh(at: t0.addingTimeInterval(32))
-    #expect(store.unseen == ["a"] && store.expanded)
+    #expect(store.expanded)
 }
 
 @Test func lastReplyOnIdle() {
@@ -120,20 +112,6 @@ import Testing
     try! Data([assistantLine("first"), assistantLine("a longer final text")].joined(separator: "\n").utf8).write(to: f)
     store.refresh(at: Date())
     #expect(store.sessions.first?.lastReply == "a longer final text")
-}
-
-@Test func unseenClearedOnBusy() {
-    let dir = makeTempDir()
-    let store = makeStore(dir: dir)
-    let t0 = Date()
-    writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
-    store.refresh(at: t0)
-    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
-    store.refresh(at: t0.addingTimeInterval(1))
-    #expect(store.unseen == ["a"])
-    writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
-    store.refresh(at: t0.addingTimeInterval(2))
-    #expect(store.unseen.isEmpty)
 }
 
 @Test func pendingOnlyForPermissionPrompt() {
@@ -249,15 +227,14 @@ private func approvableStore() -> (Store, URL, URL, URL) {
     writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
     store.refresh(at: Date())
     store.surfaces["a"] = "S"
-    store.surfaceMisses.insert("a")
     store.refresh(at: Date())
-    #expect(store.surfaces["a"] == "S" && store.surfaceMisses.contains("a"))
+    #expect(store.surfaces["a"] == "S")
     #expect(store.sessions.map(\.id) == ["a"])
     let other = getppid()
     writeSession(dir, "a", pid: other, status: "idle", ageSec: 0, name: "a", cwd: frontend)
     store.refresh(at: Date())
     #expect(store.sessions.map(\.id) == ["a"])
-    #expect(store.surfaces["a"] == nil && store.surfaceMisses.isEmpty)
+    #expect(store.surfaces["a"] == nil)
 }
 
 @Test func statusFlipWithUnchangedFileSizeIsSeen() {

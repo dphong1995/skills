@@ -45,14 +45,11 @@ public enum Chime: Equatable { case done, needsYou }
 
 public final class Store: ObservableObject {
     @Published var sessions: [Session] = []
-    @Published public var unseen: Set<String> = []
     @Published public var measuredHeight: CGFloat?
     /// Height of the session rows alone, so the list can scroll when the panel is full.
     @Published public var listHeight: CGFloat?
     /// Session id -> cmux surface UUID, filled by the app. Pruned to live ids and dropped when the session's pid changes.
     public var surfaces: [String: String] = [:]
-    /// Session ids whose cmux lookup found nothing. Same pruning as `surfaces`.
-    public var surfaceMisses: Set<String> = []
     private var pids: [String: Int32] = [:]
     /// The pid of the live session with this id as of the last refresh.
     public func pid(of id: String) -> Int32? { pids[id] }
@@ -284,14 +281,11 @@ public final class Store: ObservableObject {
             emptySince = nil
         }
 
-        var newUnseen = unseen
         for s in list {
             if lastStatus[s.id] == "busy" && s.isFinished {
-                newUnseen.insert(s.id)
                 peekUntil = now.addingTimeInterval(5)
                 if s.status == "waiting" { chime = .needsYou } else if chime == nil { chime = .done }
             }
-            if s.status == "busy" { newUnseen.remove(s.id) }
             lastStatus[s.id] = s.status
         }
         let live = Set(list.map(\.id))
@@ -303,17 +297,13 @@ public final class Store: ObservableObject {
         activities = activities.filter { live.contains($0.key) }
         for s in list where pids[s.id] != nil && pids[s.id] != s.pid {
             surfaces[s.id] = nil
-            surfaceMisses.remove(s.id)
         }
         pids = Dictionary(list.map { ($0.id, $0.pid) }, uniquingKeysWith: { $1 })
         surfaces = surfaces.filter { live.contains($0.key) }
-        surfaceMisses.formIntersection(live)
         let liveDrafts = drafts.filter { live.contains($0.key) }
         if liveDrafts.count != drafts.count { drafts = liveDrafts }
         let openTools = Set(list.compactMap { $0.approvable?.toolId })
         if !shownCommands.isSubset(of: openTools) { shownCommands.formIntersection(openTools) }
-        newUnseen.formIntersection(live)
-        if newUnseen != unseen { unseen = newUnseen }
 
         func rank(_ s: Session) -> Int {
             switch s.status { case "waiting": 0; case "idle": 1; case "busy": 2; default: 3 }
@@ -331,9 +321,5 @@ public final class Store: ObservableObject {
         case .jump, .openLink: return true
         case .approve(_, let toolId), .deny(_, let toolId, _): return live?.allows(.deny, toolId: toolId) == true
         }
-    }
-
-    public func markSeen(_ id: String) {
-        if unseen.contains(id) { unseen.remove(id) }
     }
 }
