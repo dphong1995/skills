@@ -37,7 +37,7 @@ import Testing
     #expect(!store.peeking)
 }
 
-@Test func waitingOrderingAndLabels() {
+@Test func waitingOrdering() {
     let dir = makeTempDir()
     let store = makeStore(dir: dir)
     let t0 = Date()
@@ -52,8 +52,6 @@ import Testing
     writeSession(dir, "d", pid: me, status: "busy", ageSec: 3700, name: "talo-v2-9c", cwd: "/Users/phong/talos-v2")
     store.refresh(at: t0.addingTimeInterval(8))
     #expect(store.sessions.map(\.id) == ["c", "b", "a", "d"])
-    #expect(store.sessions.first { $0.id == "b" }.map(label) == "chờ duyệt")
-    #expect(store.sessions.first { $0.id == "c" }.map(label) == "chờ trả lời")
 }
 
 @Test func hoverExpands() {

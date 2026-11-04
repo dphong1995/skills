@@ -70,15 +70,6 @@ private func prAttributed(_ pr: PRStatus, now: Date, stale: Date?) -> Attributed
     return out
 }
 
-func label(_ s: Session) -> String {
-    switch s.status {
-    case "waiting": s.waitingFor == "permission prompt" ? "chờ duyệt" : "chờ trả lời"
-    case "idle": "xong"
-    case "busy": "đang chạy"
-    default: s.status.isEmpty ? "?" : s.status
-    }
-}
-
 struct SnapshotRenderingKey: EnvironmentKey {
     static let defaultValue = false
 }
@@ -385,7 +376,6 @@ public struct WidgetView: View {
                         .padding(.horizontal, 5).padding(.vertical, 1)
                         .background(Capsule().fill(.yellow))
                 }
-                Text(label(s)).font(.system(size: 11.5, weight: .semibold)).foregroundStyle(color(s.status))
                 Text(elapsed(s.since, store.now)).font(.system(size: 11.5).monospacedDigit())
                     .foregroundStyle(.white.opacity(0.55)).frame(minWidth: 36, alignment: .trailing)
             }
