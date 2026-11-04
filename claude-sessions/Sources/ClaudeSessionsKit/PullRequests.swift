@@ -56,6 +56,12 @@ enum PullRequests {
         return out
     }
 
+    /// `!` bash-mode and local-command output, which Claude Code stores as plain user lines.
+    private static func isShellOutput(_ s: String) -> Bool {
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        return ["<bash-stdout>", "<bash-stderr>", "<local-command-stdout>"].contains { t.hasPrefix($0) }
+    }
+
     static func refs(inTranscript data: Data) -> [PRRef] {
         // No trailing slash: JSON may escape "/" as "\/", which would hide the marker.
         let marker = Data("pull-requests".utf8)
@@ -71,9 +77,11 @@ enum PullRequests {
             else { continue }
             let text: String
             if let s = content as? String, type == "user" {
+                if isShellOutput(s) { continue }
                 text = s
             } else if let blocks = content as? [[String: Any]], type == "user" || type == "assistant" {
-                text = blocks.compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }.joined(separator: " ")
+                text = blocks.compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }
+                    .filter { type != "user" || !isShellOutput($0) }.joined(separator: " ")
             } else { continue }
             for r in refs(in: text) where seen.insert(r).inserted { out.append(r) }
         }
@@ -113,9 +121,16 @@ enum PullRequests {
         return (values, o["next"] as? String)
     }
 
-    static func pipeline(fromStatuses data: Data) -> Pipeline? {
+    /// Only statuses of `commit` count; statuses or a PR without a commit hash are kept.
+    static func pipeline(fromStatuses data: Data, commit: String? = nil) -> Pipeline? {
         guard let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let values = o["values"] as? [[String: Any]] else { return nil }
+              var values = o["values"] as? [[String: Any]] else { return nil }
+        if let commit {
+            values = values.filter {
+                guard let hash = ($0["commit"] as? [String: Any])?["hash"] as? String else { return true }
+                return hash.hasPrefix(commit)
+            }
+        }
         let states = Set(values.compactMap { $0["state"] as? String })
         if states.contains("FAILED") { return .failed }
         if states.contains("INPROGRESS") { return .running }

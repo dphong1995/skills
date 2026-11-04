@@ -34,6 +34,8 @@ public final class PRMonitor {
 
     private static let chunkBytes: UInt64 = 1 << 20
     private static let maxPages = 20
+    private static let forgetAfter: TimeInterval = 30
+    private static let remoteRetry: TimeInterval = 300
     private static let openFields = "values.id,values.title,values.state,values.comment_count,values.updated_on,values.source.branch.name,values.source.repository.full_name,values.source.commit.hash,values.participants.approved,values.participants.state,values.participants.role,values.participants.user.uuid,values.links.html.href,next"
     private static let singleFields = "id,title,state,comment_count,updated_on,source.branch.name,source.repository.full_name,source.commit.hash,participants.approved,participants.state,participants.role,participants.user.uuid,links.html.href"
     private static let commentFields = "values.user.uuid,values.user.display_name,values.created_on,values.deleted"
@@ -50,7 +52,8 @@ public final class PRMonitor {
 
     // Touched only by `tick` (the monitor queue, or inline when `queue` is nil).
     private var sessions: [String: SessionState] = [:]
-    private var remotes: [String: Repo?] = [:]
+    private var remotes: [String: (repo: Repo?, at: Date)] = [:]
+    private var absentSince: [String: Date] = [:]
     private var statuses: [PRRef: PRStatus] = [:]
     private var hidden = Set<PRRef>()
     private var closed = Set<PRRef>()
@@ -93,7 +96,14 @@ public final class PRMonitor {
 
     func tick(_ targets: [PRTarget], at now: Date) {
         let live = Set(targets.map(\.sessionId))
-        sessions = sessions.filter { live.contains($0.key) }
+        for id in sessions.keys where !live.contains(id) {
+            if absentSince[id] == nil { absentSince[id] = now }
+        }
+        for id in live { absentSince[id] = nil }
+        for (id, since) in absentSince where now.timeIntervalSince(since) > Self.forgetAfter {
+            sessions[id] = nil
+            absentSince[id] = nil
+        }
         var needCycle = lastCycle.map { now.timeIntervalSince($0) >= interval } ?? true
         for t in targets {
             let existing = sessions[t.sessionId]
@@ -102,9 +112,9 @@ public final class PRMonitor {
             s.branch = t.branch
             if scan(&s, t.transcript) { needCycle = true }
             sessions[t.sessionId] = s
-            if !remotes.keys.contains(t.cwd) {
-                remotes[t.cwd] = remote(t.cwd).flatMap(PullRequests.repo(fromRemote:)).map { Repo(workspace: $0.workspace, name: $0.repo) }
-            }
+            if let known = remotes[t.cwd], known.repo != nil || now.timeIntervalSince(known.at) < Self.remoteRetry { continue }
+            let repo = remote(t.cwd).flatMap(PullRequests.repo(fromRemote:)).map { Repo(workspace: $0.workspace, name: $0.repo) }
+            remotes[t.cwd] = (repo, now)
         }
         let used = Set(sessions.values.flatMap { $0.linkRefs + $0.branchRefs })
         statuses = statuses.filter { used.contains($0.key) }
@@ -139,9 +149,11 @@ public final class PRMonitor {
         var gained = false
         while s.offset < size {
             let to = min(size, s.offset + Self.chunkBytes)
+            let chunk = Transcript.read(url, from: s.offset, to: to)
+            if chunk.isEmpty { break }
             var buf = s.carry
-            buf.append(Transcript.read(url, from: s.offset, to: to))
-            s.offset = to
+            buf.append(chunk)
+            s.offset += UInt64(chunk.count)
             if let nl = buf.lastIndex(of: 0x0A) {
                 s.carry = Data(buf[(nl + 1)...])
                 for r in PullRequests.refs(inTranscript: Data(buf[...nl])) where !s.linkRefs.contains(r) {
@@ -175,25 +187,32 @@ public final class PRMonitor {
 
     private func cycle(_ targets: [PRTarget]) -> (events: [PREvent], succeeded: Bool) {
         var workspaces = Set(sessions.values.flatMap { $0.linkRefs + $0.branchRefs }.map(\.workspace))
-        for t in targets { if let repo = remotes[t.cwd] ?? nil { workspaces.insert(repo.workspace) } }
+        for t in targets { if let repo = remotes[t.cwd]?.repo { workspaces.insert(repo.workspace) } }
         guard !workspaces.isEmpty else { return ([], false) }
 
         var open: [PRRef: PRStatus] = [:]
+        var listed = 0
         do {
             if me == nil {
                 guard let uuid = decode(try api.get("/2.0/user?fields=uuid"))?["uuid"] as? String else { throw BitbucketError.transport }
                 me = uuid
             }
             for ws in workspaces.sorted() {
-                for pr in try openList(ws, me: me!) { open[pr.ref] = pr }
+                do {
+                    for pr in try openList(ws, me: me!) { open[pr.ref] = pr }
+                    listed += 1
+                } catch BitbucketError.http(let code) where code == 403 || code == 404 {
+                    continue // foreign or unknown workspace: its refs go through the single-PR path
+                }
             }
         } catch {
             return ([], false)
         }
+        guard listed > 0 else { return ([], false) }
         let me = self.me!
 
         for t in targets {
-            guard let branch = t.branch, let repo = remotes[t.cwd] ?? nil else { continue }
+            guard let branch = t.branch, let repo = remotes[t.cwd]?.repo else { continue }
             let full = "\(repo.workspace)/\(repo.name)"
             for pr in open.values.sorted(by: { $0.ref.id < $1.ref.id }) where pr.sourceRepo == full && pr.branch == branch {
                 var s = sessions[t.sessionId]!
@@ -229,9 +248,14 @@ public final class PRMonitor {
             pr.lastOther = prev?.lastOther
             if pr.isOpen {
                 let path = "/2.0/repositories/\(ref.workspace)/\(ref.repo)/pullrequests/\(ref.id)"
-                if prev == nil || prev?.commit != pr.commit || pr.pipeline == nil || pr.pipeline == .running,
-                   let d = try? api.get("\(path)/statuses?fields=values.state") {
-                    pr.pipeline = PullRequests.pipeline(fromStatuses: d)
+                if prev == nil || prev?.commit != pr.commit || pr.pipeline == nil || pr.pipeline == .running {
+                    if let d = try? api.get("\(path)/statuses?fields=values.state,values.commit.hash") {
+                        pr.pipeline = PullRequests.pipeline(fromStatuses: d, commit: pr.commit)
+                    } else if prev != nil {
+                        continue
+                    } else {
+                        pr.pipeline = nil
+                    }
                 }
                 if prev == nil || prev?.comments != pr.comments {
                     guard let d = try? api.get("\(path)/comments?sort=-created_on&pagelen=20&fields=\(Self.commentFields)") else {

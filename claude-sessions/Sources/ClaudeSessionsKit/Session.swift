@@ -125,7 +125,7 @@ public final class Store: ObservableObject {
         emptySince = startHidden ? .distantPast : nil
     }
 
-    private let prMonitor: PRMonitor?
+    public var prMonitor: PRMonitor?
     @Published public private(set) var prLastSuccess: Date?
     /// No successful open-list call for 300 s while the feature is live.
     var prStale: Bool { prLastSuccess.map { now.timeIntervalSince($0) > 300 } ?? false }

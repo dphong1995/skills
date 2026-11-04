@@ -208,7 +208,73 @@ private func comment(_ uuid: String, _ name: String, _ at: String) -> [String: A
         m.update([target(transcript([link(7571)]))], at: t0)
         #expect(m.takeSnapshot().prs["s"] != nil)
         m.update([], at: t0 + 1)
+        m.update([], at: t0 + 32)
         #expect(m.takeSnapshot().prs["s"] == nil)
+    }
+
+    @Test func briefAbsenceKeepsState() {
+        let api = fake(open: [prJSON(id: 7571)])
+        let m = monitor(api)
+        let url = transcript([link(7571)])
+        m.update([target(url)], at: t0)
+        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": []])
+        api.set("/talo6-dct-backend/pullrequests/7571?", json: prJSON(id: 7571, state: "MERGED"))
+        m.update([], at: t0 + 1)
+        m.update([target(url)], at: t0 + 2)
+        m.update([target(url)], at: t0 + 61)
+        #expect(m.takeSnapshot().prs["s"]?.map(\.state) == ["MERGED"])
+    }
+
+    @Test func foreignWorkspaceOpenListFailureSkipsOnlyThatWorkspace() {
+        let api = fake(open: [prJSON(id: 7571)])
+        let m = monitor(api)
+        let url = transcript([link(7571), link(1, repo: "acme/app")])
+        m.update([target(url)], at: t0)
+        let snap = m.takeSnapshot()
+        #expect(snap.prs["s"]?.map(\.ref.id) == [7571])
+        #expect(snap.lastSuccess == t0)
+    }
+
+    @Test func everyOpenListForbiddenFailsCycle() {
+        let api = fake(open: [prJSON(id: 7571)])
+        let m = monitor(api)
+        let url = transcript([link(7571), link(1, repo: "acme/app")])
+        m.update([target(url)], at: t0)
+        let good = m.takeSnapshot()
+        api.routes["/2.0/workspaces/t6engineering/pullrequests/"] = .failure(.http(403))
+        m.update([target(url)], at: t0 + 61)
+        let after = m.takeSnapshot()
+        #expect(after.prs == good.prs)
+        #expect(after.lastSuccess == t0)
+    }
+
+    @Test func failedStatusesAfterPushKeepsOldStatusThenRetries() {
+        let api = fake(open: [prJSON(id: 7571)])
+        let m = monitor(api)
+        let url = transcript([link(7571)])
+        m.update([target(url)], at: t0)
+        let good = m.takeSnapshot()
+        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [withCommit(prJSON(id: 7571), "def456")]])
+        api.routes["/statuses"] = .failure(.http(500))
+        m.update([target(url)], at: t0 + 61)
+        #expect(m.takeSnapshot().prs == good.prs)
+        api.set("/statuses", json: ["values": [["state": "FAILED"]]])
+        let before = api.requests(containing: "/statuses")
+        m.update([target(url)], at: t0 + 122)
+        #expect(api.requests(containing: "/statuses") == before + 1)
+        let p = m.takeSnapshot().prs["s"]?.first
+        #expect(p?.pipeline == .failed && p?.commit == "def456")
+    }
+
+    @Test func nilRemoteRetriedAfterFiveMinutes() {
+        final class Counter { var n = 0 }
+        let c = Counter()
+        let m = PRMonitor(api: fake(), queue: nil, remote: { _ in c.n += 1; return nil })
+        m.update([target()], at: t0)
+        m.update([target()], at: t0 + 100)
+        #expect(c.n == 1)
+        m.update([target()], at: t0 + 301)
+        #expect(c.n == 2)
     }
 
     @Test func accountParsedFromKeychainAttributes() {

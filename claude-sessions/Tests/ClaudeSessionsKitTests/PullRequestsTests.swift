@@ -27,6 +27,16 @@ private func data(_ o: [String: Any]) -> Data { try! JSONSerialization.data(with
         #expect(found == [ref("a", 1), ref("e", 5)])
     }
 
+    @Test func refsIgnoreBashModeOutput() {
+        let lines = [
+            userLine("<bash-stdout>\(link("a", 1))</bash-stdout>"),
+            userLine("<bash-stderr>\(link("b", 2))</bash-stderr>"),
+            userLine("  <local-command-stdout>\(link("c", 3))</local-command-stdout>"),
+            userLine("real \(link("d", 4))"),
+        ]
+        #expect(PullRequests.refs(inTranscript: Data(lines.joined(separator: "\n").utf8)) == [ref("d", 4)])
+    }
+
     @Test func refsSkipLinesWithoutMarker() {
         let lines = ["{not json pull-requests/", userLine("ok \(link("a", 9))")]
         #expect(PullRequests.refs(inTranscript: Data(lines.joined(separator: "\n").utf8)) == [ref("a", 9)])
@@ -67,6 +77,15 @@ private func data(_ o: [String: Any]) -> Data { try! JSONSerialization.data(with
         #expect(p(["INPROGRESS", "SUCCESSFUL"]) == .running)
         #expect(p(["SUCCESSFUL"]) == .passed)
         #expect(p([]) == nil)
+    }
+
+    @Test func pipelineIgnoresOldCommits() {
+        let d = data(["values": [
+            ["state": "FAILED", "commit": ["hash": "old111" + String(repeating: "0", count: 34)]],
+            ["state": "SUCCESSFUL", "commit": ["hash": "abc123" + String(repeating: "0", count: 34)]],
+        ]])
+        #expect(PullRequests.pipeline(fromStatuses: d, commit: "abc123") == .passed)
+        #expect(PullRequests.pipeline(fromStatuses: d, commit: nil) == .failed)
     }
 
     @Test func lastOtherSkipsMeAndDeleted() {

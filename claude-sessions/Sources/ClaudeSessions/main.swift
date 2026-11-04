@@ -18,7 +18,7 @@ final class Panel {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    let store = Store(startHidden: true, prs: BitbucketClient().map { PRMonitor(api: $0) })
+    let store = Store(startHidden: true)
     var panels: [String: Panel] = [:]
     var timer: Timer?
     var monitors: [Any] = []
@@ -132,6 +132,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         migrateLegacyPillOrigin()
         syncPanels()
+        // The Keychain read spawns `security`; keep it off the main thread.
+        DispatchQueue.global(qos: .utility).async { [store] in
+            guard let client = BitbucketClient() else { return }
+            DispatchQueue.main.async { store.prMonitor = PRMonitor(api: client) }
+        }
 
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
             self?.syncPanels()

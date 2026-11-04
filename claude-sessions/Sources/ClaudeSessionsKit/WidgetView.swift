@@ -100,8 +100,12 @@ func editPrompt(_ store: Store) {
     scroll.borderType = .bezelBorder
     let text = NSTextView(frame: scroll.bounds)
     text.isRichText = false
+    text.minSize = scroll.contentSize
+    text.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
     text.isVerticallyResizable = true
+    text.isHorizontallyResizable = false
     text.autoresizingMask = [.width]
+    text.textContainer?.containerSize = NSSize(width: scroll.contentSize.width, height: CGFloat.greatestFiniteMagnitude)
     text.textContainer?.widthTracksTextView = true
     text.string = store.prPrompt
     scroll.documentView = text

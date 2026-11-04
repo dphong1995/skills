@@ -29,7 +29,12 @@ public final class BitbucketClient: BitbucketAPI {
 
     private let lock = NSLock()
     private var auth: String?
-    private let session = URLSession(configuration: .ephemeral)
+    private let session: URLSession = {
+        let c = URLSessionConfiguration.ephemeral
+        c.timeoutIntervalForRequest = 15
+        c.timeoutIntervalForResource = 15
+        return URLSession(configuration: c)
+    }()
 
     /// Nil when the Keychain item or its account is missing.
     public init?() {
@@ -75,12 +80,16 @@ public final class BitbucketClient: BitbucketAPI {
         req.setValue("application/json", forHTTPHeaderField: "Accept")
         let box = Box()
         let sem = DispatchSemaphore(value: 0)
-        session.dataTask(with: req) { data, response, _ in
+        let task = session.dataTask(with: req) { data, response, _ in
             box.data = data
             box.response = response
             sem.signal()
-        }.resume()
-        sem.wait()
+        }
+        task.resume()
+        if sem.wait(timeout: .now() + 20) == .timedOut {
+            task.cancel()
+            throw BitbucketError.transport
+        }
         guard let http = box.response as? HTTPURLResponse, let data = box.data else { throw BitbucketError.transport }
         if http.statusCode == 401 {
             lock.lock(); auth = nil; lock.unlock()

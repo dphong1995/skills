@@ -207,5 +207,7 @@ private func prStatus(id: Int, state: String = "OPEN", reviewers: Int = 0, appro
     var s = session("a", "idle", "hi")
     let base = Layout.height(of: s)
     s.prs = [prStatus(id: 1), prStatus(id: 2)]
-    #expect(Layout.height(of: s) == base + 36)
+    #expect(Layout.height(of: s) == base + 44)
+    s.prs = [prStatus(id: 1, state: "MERGED"), prStatus(id: 2)]
+    #expect(Layout.height(of: s) == base + 40)
 }
