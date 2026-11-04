@@ -24,7 +24,8 @@ enum CodeRabbit {
             return hash.hasPrefix(commit)
         }.max { (stamp($0, "updated_on") ?? .distantPast) < (stamp($1, "updated_on") ?? .distantPast) }
         guard let s = newest, let state = s["state"] as? String else { return nil }
-        let since = stamp(s, "created_on") ?? stamp(s, "updated_on") ?? .distantPast
+        // CodeRabbit's INPROGRESS status lingers after its summary is posted, so its start is its last update.
+        let since = (state == "INPROGRESS" ? stamp(s, "updated_on") : nil) ?? stamp(s, "created_on") ?? stamp(s, "updated_on") ?? .distantPast
         let text = (s["description"] as? String ?? "").lowercased()
         func has(_ words: [String]) -> Bool { words.contains { text.contains($0) } }
         switch state {
@@ -45,8 +46,9 @@ enum CodeRabbit {
     enum Findings: Equatable { case notFound, stale, count(Int) }
 
     /// Count from the newest summary comment (marked, with a count line); `.stale` when it predates `since`,
-    /// `.notFound` when this page of comments holds no summary.
-    static func findings(fromComments data: Data, since: Date) -> Findings {
+    /// `.notFound` when this page of comments holds no summary. `createdOnly` ignores `updated_on`, which CodeRabbit
+    /// bumps when it edits an old summary.
+    static func findings(fromComments data: Data, since: Date, createdOnly: Bool = false) -> Findings {
         guard let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let values = o["values"] as? [[String: Any]] else { return .notFound }
         for v in values where (v["deleted"] as? Bool) != true && isComment(v) {
@@ -61,7 +63,7 @@ enum CodeRabbit {
             } else {
                 continue
             }
-            let dates = ["created_on", "updated_on"].compactMap { (v[$0] as? String).flatMap(PullRequests.date) }
+            let dates = (createdOnly ? ["created_on"] : ["created_on", "updated_on"]).compactMap { (v[$0] as? String).flatMap(PullRequests.date) }
             return dates.contains { $0 >= since } ? .count(count) : .stale
         }
         return .notFound

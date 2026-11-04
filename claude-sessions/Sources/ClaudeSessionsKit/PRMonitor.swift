@@ -275,6 +275,8 @@ public final class PRMonitor {
                         let fresh = CodeRabbit.state(fromStatuses: d, commit: pr.commit)
                         let sameCommit = prev?.commit == pr.commit
                         if var r = fresh?.rabbit {
+                            // A summary already ended this review while the status still says INPROGRESS: keep it.
+                            if r == .reviewing, sameCommit, case .reviewed? = prev?.rabbit, fresh?.since == prev?.rabbitSince { r = prev!.rabbit! }
                             if case .reviewed = r, sameCommit, case .reviewed(let f)? = prev?.rabbit { r = .reviewed(findings: f) }
                             rabbitFinished = CodeRabbit.isFinal(r) && !(sameCommit && CodeRabbit.kind(prev?.rabbit) == CodeRabbit.kind(r))
                             pr.rabbit = r
@@ -300,7 +302,10 @@ public final class PRMonitor {
                     }
                     commentsOwed.remove(ref)
                     if let c = PullRequests.lastOther(fromComments: d, me: me) { pr.lastOther = c }
-                    if case .reviewed? = pr.rabbit, let since = pr.rabbitSince {
+                    if pr.rabbit == .reviewing, let since = pr.rabbitSince,
+                       case .count(let n) = CodeRabbit.findings(fromComments: d, since: since, createdOnly: true) {
+                        pr.rabbit = .reviewed(findings: n) // the summary is out; the status lags behind it
+                    } else if case .reviewed? = pr.rabbit, let since = pr.rabbitSince {
                         switch CodeRabbit.findings(fromComments: d, since: since) {
                         case .count(let n): pr.rabbit = .reviewed(findings: n)
                         case .stale: pr.rabbit = .reviewed(findings: nil)

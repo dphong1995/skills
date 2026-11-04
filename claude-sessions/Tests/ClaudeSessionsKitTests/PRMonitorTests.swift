@@ -314,6 +314,98 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         #expect(rabbitOf(m) == .reviewed(findings: 2))
     }
 
+    private static let start = "2026-11-04T10:00:00.000000+00:00"
+    private static let summaryAt = "2026-11-04T10:12:00.000000+00:00"
+
+    private func inProgress(updated: String = start) -> [String: Any] {
+        rabbitStatus(state: "INPROGRESS", description: "Review in progress", created: Self.start, updated: updated)
+    }
+
+    private func bump(_ api: FakeBitbucket, comments: Int) {
+        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7571, comments: comments)]])
+    }
+
+    /// INPROGRESS status, then a summary posted after its start and one more comment.
+    private func overriddenMonitor(_ api: FakeBitbucket, summary: String = "**Actionable comments posted: 1**") -> PRMonitor {
+        setStatuses(api, inProgress())
+        let m = monitor(api)
+        m.update([target([prRef(7571)])], at: t0)
+        _ = m.takeSnapshot()
+        api.set("/comments", json: ["values": [rabbitComment(summary, at: Self.summaryAt)]])
+        bump(api, comments: 2)
+        m.update([target([prRef(7571)])], at: t0 + 61)
+        return m
+    }
+
+    @Test func summaryEndsInProgressReview() {
+        let m = overriddenMonitor(fake(open: [prJSON(id: 7571, comments: 1)]))
+        let snap = m.takeSnapshot()
+        #expect(rabbitOf(m) == .reviewed(findings: 1))
+        #expect(CodeRabbit.label(.reviewed(findings: 1)) == "🐰 1 góp ý")
+        #expect(snap.events == [.rabbitNeedsYou])
+    }
+
+    @Test func overrideKeptWhileStatusStaysInProgress() {
+        let api = fake(open: [prJSON(id: 7571, comments: 1)])
+        let m = overriddenMonitor(api)
+        _ = m.takeSnapshot()
+        bump(api, comments: 3)
+        m.update([target([prRef(7571)])], at: t0 + 122)
+        #expect(rabbitOf(m) == .reviewed(findings: 1))
+        #expect(m.takeSnapshot().events.isEmpty)
+    }
+
+    @Test func overrideSurvivesStatusFlippingToSuccessful() {
+        let api = fake(open: [prJSON(id: 7571, comments: 1)])
+        let m = overriddenMonitor(api)
+        _ = m.takeSnapshot()
+        setStatuses(api, rabbitStatus(description: "Review completed", created: Self.start, updated: "2026-11-04T10:30:00.000000+00:00"))
+        bump(api, comments: 3)
+        m.update([target([prRef(7571)])], at: t0 + 122)
+        #expect(rabbitOf(m) == .reviewed(findings: 1))
+        #expect(m.takeSnapshot().events.isEmpty)
+    }
+
+    @Test func summaryBeforeInProgressStartDoesNotEndReview() {
+        let api = fake(open: [prJSON(id: 7571, comments: 1)])
+        setStatuses(api, inProgress())
+        api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 1**", at: "2026-11-04T09:00:00.000000+00:00")]])
+        let m = monitor(api)
+        m.update([target([prRef(7571)])], at: t0)
+        _ = m.takeSnapshot()
+        bump(api, comments: 2)
+        m.update([target([prRef(7571)])], at: t0 + 61)
+        #expect(rabbitOf(m) == .reviewing)
+        #expect(m.takeSnapshot().events.isEmpty)
+    }
+
+    @Test func newerInProgressStartRestartsReview() {
+        let api = fake(open: [prJSON(id: 7571, comments: 1)])
+        let m = overriddenMonitor(api)
+        _ = m.takeSnapshot()
+        setStatuses(api, inProgress(updated: "2026-11-04T10:40:00.000000+00:00"))
+        bump(api, comments: 3)
+        m.update([target([prRef(7571)])], at: t0 + 122)
+        #expect(rabbitOf(m) == .reviewing)
+    }
+
+    @Test func noActionableSummaryEndsInProgressReview() {
+        let m = overriddenMonitor(fake(open: [prJSON(id: 7571, comments: 1)]), summary: "No actionable comments were generated.")
+        let snap = m.takeSnapshot()
+        #expect(rabbitOf(m) == .reviewed(findings: 0))
+        #expect(snap.events == [.rabbitDone])
+    }
+
+    @Test func firstSightOfReviewedPRWithInProgressStatusDoesNotChime() {
+        let api = fake(open: [prJSON(id: 7571, comments: 1)])
+        setStatuses(api, inProgress())
+        api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 1**", at: Self.summaryAt)]])
+        let m = monitor(api)
+        m.update([target([prRef(7571)])], at: t0)
+        #expect(rabbitOf(m) == .reviewed(findings: 1))
+        #expect(m.takeSnapshot().events.isEmpty)
+    }
+
     @Test func rabbitChimesOncePerReview() {
         let api = fake(open: [prJSON(id: 7571, comments: 1)])
         setStatuses(api, rabbitStatus(description: "Review completed", created: Self.started))

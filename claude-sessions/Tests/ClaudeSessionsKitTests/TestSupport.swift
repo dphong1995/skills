@@ -145,9 +145,9 @@ func comment(_ uuid: String, _ name: String, _ at: String) -> [String: Any] {
 }
 
 /// A CodeRabbit build status as Bitbucket returns it.
-func rabbitStatus(state: String = "SUCCESSFUL", description: String, commit: String = "abc123", created: String = "2026-11-03T03:33:15.111541+00:00") -> [String: Any] {
+func rabbitStatus(state: String = "SUCCESSFUL", description: String, commit: String = "abc123", created: String = "2026-11-03T03:33:15.111541+00:00", updated: String? = nil) -> [String: Any] {
     ["key": "coderabbitai/6867", "name": "CodeRabbit", "state": state, "description": description,
-     "created_on": created, "updated_on": created, "commit": ["hash": commit]]
+     "created_on": created, "updated_on": updated ?? created, "commit": ["hash": commit]]
 }
 
 /// A comment carrying CodeRabbit's marker, posted by a human account like the real ones.

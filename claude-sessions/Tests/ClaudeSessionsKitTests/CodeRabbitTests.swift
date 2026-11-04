@@ -34,6 +34,22 @@ private func rabbit(_ state: String, _ description: String) -> Rabbit? {
         #expect(s?.since == Date(timeIntervalSince1970: 1_793_678_400))
     }
 
+    @Test func inProgressSinceIsUpdatedOn() {
+        let s = rabbitStatus(state: "INPROGRESS", description: "Review in progress", created: "2026-11-03T03:00:00.000000+00:00",
+                             updated: "2026-11-03T04:00:00.000000+00:00")
+        #expect(CodeRabbit.state(fromStatuses: data([s]), commit: "abc123")?.since == Date(timeIntervalSince1970: 1_793_678_400))
+    }
+
+    @Test func createdOnlyIgnoresEditedSummary() {
+        let since = Date(timeIntervalSince1970: 1_793_678_400)
+        var edited = rabbitComment("**Actionable comments posted: 2**", at: "2026-11-03T03:00:00.000000+00:00")
+        edited["updated_on"] = "2026-11-03T04:05:00.000000+00:00"
+        #expect(CodeRabbit.findings(fromComments: data([edited]), since: since) == .count(2))
+        #expect(CodeRabbit.findings(fromComments: data([edited]), since: since, createdOnly: true) == .stale)
+        let fresh = rabbitComment("**Actionable comments posted: 2**", at: "2026-11-03T04:05:00.000000+00:00")
+        #expect(CodeRabbit.findings(fromComments: data([fresh]), since: since, createdOnly: true) == .count(2))
+    }
+
     @Test func findingsFromSummary() {
         let since = Date(timeIntervalSince1970: 1_793_678_400) // 2026-11-03T04:00:00Z
         let summary = rabbitComment("**Actionable comments posted: 2**", at: "2026-11-03T04:05:00.000000+00:00")
