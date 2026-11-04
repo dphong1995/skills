@@ -246,7 +246,7 @@ widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouT
   (đang chạy), `waiting` (`waitingFor`: `permission prompt` → chờ duyệt, còn lại → chờ trả lời) hoặc
   `idle` (xong, chờ bạn). Bỏ qua tiến trình đã chết. Không cần hook hay mod.
 - Thu gọn: viên nhỏ rộng 104 pt, không có chữ "Claude", chỉ có chấm trạng thái + số session theo màu (đỏ chờ, cam xong, xanh đang chạy).
-- Rê chuột vào thì mở danh sách rộng 520 pt (tiêu đề, `thư mục · nhánh`, trạng thái, thời gian). Session vừa chuyển từ đang chạy
+- Rê chuột vào thì mở danh sách rộng 520 pt (header chỉ có các nhóm `● n` bên phải; mỗi dòng có tiêu đề, `thư mục · nhánh`, trạng thái, thời gian). Session vừa chuyển từ đang chạy
   sang xong/chờ thì widget tự mở 5 giây.
 - Tên dòng lấy theo thứ tự: tên đặt bằng `/rename` → tiêu đề AI → prompt đầu (bỏ `/clear`, lệnh không đối số,
   thẻ hệ thống; cắt 140 ký tự, hiện tối đa 2 dòng) → tên mặc định. Mẹo: gõ `/rename` để Claude tự đặt tên.
