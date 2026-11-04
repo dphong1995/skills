@@ -252,7 +252,7 @@ widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouT
 - Tên dòng lấy theo thứ tự: tên đặt bằng `/rename` → tiêu đề AI → prompt đầu (bỏ `/clear`, lệnh không đối số,
   thẻ hệ thống; cắt 60 ký tự) → tên mặc định. Mẹo: gõ `/rename` để Claude tự đặt tên.
 - Session có task (TaskCreate/TaskUpdate, `~/.claude/tasks/<sessionId>/`) thì hiện thêm dòng `☑ đã xong/tổng · việc đang làm`;
-  xong hết thì ẩn.
+  xong hết thì ẩn. Có task đang làm thì hiện chữ của nó (không có chữ thì chỉ hiện số), không thì hiện task chờ đầu tiên.
 - Dòng `chờ duyệt` hiện lệnh hoặc file đang xin duyệt (đọc từ transcript); nhiều tool cùng chờ hoặc tool
   lạ thì hiện "Cần duyệt trong cmux".
 - Kéo để đổi vị trí (nhớ vị trí). Hướng mở theo vị trí: nửa trên mở xuống, nửa dưới mở lên; phần ba
