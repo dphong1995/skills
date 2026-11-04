@@ -49,6 +49,8 @@ public final class TranscriptScanner {
     private var parsed = 0
     /// Only touched inside `tick`, which runs one at a time.
     private var states: [String: State] = [:]
+    /// Called on the scan queue after each session's result is published, for tests.
+    var onPublish: ((String) -> Void)?
 
     /// JSON parses done, for tests.
     var parsedLines: Int {
@@ -94,6 +96,7 @@ public final class TranscriptScanner {
             snapshot[t.sessionId] = s.result
             parsed += n
             lock.unlock()
+            onPublish?(t.sessionId)
         }
         let live = Set(targets.map(\.sessionId))
         states = states.filter { live.contains($0.key) || now.timeIntervalSince($0.value.lastSeen) <= Self.forgetAfter }

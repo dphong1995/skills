@@ -108,17 +108,21 @@ private func link(_ repo: String, _ id: Int) -> String { "https://bitbucket.org/
         func size(_ u: URL) -> UInt64 { (try! FileManager.default.attributesOfItem(atPath: u.path)[.size] as! NSNumber).uint64Value }
         let q = DispatchQueue(label: "test-scanner")
         let s = TranscriptScanner(queue: q)
+        let published = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        s.onPublish = { id in
+            guard id == "small" else { return }
+            published.signal()
+            release.wait()
+        }
         s.update([ScanTarget(sessionId: "small", transcript: small, size: size(small)),
                   ScanTarget(sessionId: "big", transcript: big, size: size(big))], at: Date())
-        var early: [String: ScanResult]?
-        let deadline = Date().addingTimeInterval(30)
-        while Date() < deadline {
-            let snap = s.takeSnapshot()
-            if snap["small"] != nil { early = snap; break }
-        }
+        published.wait()
+        let early = s.takeSnapshot()
+        release.signal()
         q.sync {}
-        #expect(early?["small"]?.tickets.keys.sorted() == ["T6IR-1"])
-        #expect(early?["big"] == nil)
+        #expect(early["small"]?.tickets.keys.sorted() == ["T6IR-1"])
+        #expect(early["big"] == nil)
     }
 
     @Test func rewrittenFileRescanned() {

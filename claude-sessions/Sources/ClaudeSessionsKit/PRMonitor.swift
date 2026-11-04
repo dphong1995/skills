@@ -257,12 +257,12 @@ public final class PRMonitor {
             var firstStatuses = false
             if pr.isOpen {
                 if headSeen[ref].map({ $0.commit != pr.commit }) ?? true { headSeen[ref] = (pr.commit, now) }
-                let rabbitPending = prev?.rabbit == .reviewing
-                    || (prev?.rabbit == nil && now.timeIntervalSince(headSeen[ref]!.at) < Self.rabbitWait)
-                if prev == nil || prev?.commit != pr.commit || pr.pipeline == nil || pr.pipeline == .running
+                let inWindow = now.timeIntervalSince(headSeen[ref]!.at) < Self.rabbitWait
+                let rabbitPending = prev?.rabbit == .reviewing || (prev?.rabbit == nil && inWindow)
+                if prev == nil || prev?.commit != pr.commit || (pr.pipeline == nil && inWindow) || pr.pipeline == .running
                     || rabbitPending || prev?.comments != pr.comments {
                     if let d = try? api.get("\(path)/statuses?fields=\(Self.statusFields)&pagelen=50&sort=-created_on") {
-                        firstStatuses = statusesFetched.insert(ref).inserted
+                        firstStatuses = !statusesFetched.contains(ref)
                         pr.pipeline = PullRequests.pipeline(fromStatuses: d, commit: pr.commit)
                         let fresh = CodeRabbit.state(fromStatuses: d, commit: pr.commit)
                         let sameCommit = prev?.commit == pr.commit
@@ -286,6 +286,7 @@ public final class PRMonitor {
                         if prev != nil { continue }
                         commentsOwed.insert(ref)
                         recordRabbit(ref, pr)
+                        if firstStatuses { statusesFetched.insert(ref) }
                         statuses[ref] = pr
                         continue
                     }
@@ -298,7 +299,8 @@ public final class PRMonitor {
                         case .notFound: break // the summary is beyond this page: keep the known count
                         }
                     }
-                    if owed, rabbitSeen[ref]?.commit == pr.commit { recordRabbit(ref, pr) }
+                    // Re-record only a count filled in for the review already recorded; a new kind must still chime.
+                    if owed, rabbitSeen[ref]?.commit == pr.commit, CodeRabbit.kind(prev?.rabbit) == CodeRabbit.kind(pr.rabbit) { recordRabbit(ref, pr) }
                 }
             }
             if let prev {
@@ -318,6 +320,7 @@ public final class PRMonitor {
             } else {
                 recordRabbit(ref, pr)
             }
+            if firstStatuses { statusesFetched.insert(ref) }
             statuses[ref] = pr
         }
         return (events, eventRefs, true)
