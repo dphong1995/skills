@@ -7,6 +7,7 @@ final class Panel {
     let uuid: String
     let window: WidgetPanel
     let state: PanelState
+    var screen: NSRect = .zero
     var cancellables: Set<AnyCancellable> = []
 
     init(uuid: String, window: WidgetPanel, state: PanelState) {
@@ -37,12 +38,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return keyed
     }
 
-    func frame(of uuid: String) -> NSRect? {
-        keyedScreens().first { $0.uuid == uuid }?.screen.frame
-    }
-
     func makePanel(uuid: String) -> Panel {
         let window = WidgetPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
         window.isOpaque = false
         window.backgroundColor = .clear
         window.hasShadow = false
@@ -60,8 +58,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             settleAfterDrop(p)
         }
         host.clampOrigin = { [weak self, weak p] origin in
-            guard let self, let p, let screen = frame(of: p.uuid) else { return origin }
-            return Layout.clampDrag(windowOrigin: origin, windowSize: p.window.frame.size, visible: Layout.size(store, p.state), anchor: p.state.anchor, screen: screen)
+            guard let self, let p else { return origin }
+            return Layout.clampDrag(windowOrigin: origin, windowSize: p.window.frame.size, visible: Layout.size(store, p.state), anchor: p.state.anchor, screen: p.screen)
         }
         window.contentView = host
 
@@ -79,9 +77,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }.store(in: &p.cancellables)
-        NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main) { [weak state] _ in
-            state?.editing = nil
-        }
+        NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification, object: window)
+            .sink { [weak state] _ in state?.editing = nil }
+            .store(in: &p.cancellables)
         if !store.hidden { window.orderFrontRegardless() }
         return p
     }
@@ -89,54 +87,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func syncPanels() {
         let keyed = keyedScreens()
         for (uuid, p) in panels where !keyed.contains(where: { $0.uuid == uuid }) {
-            p.window.orderOut(nil)
             p.window.close()
             panels[uuid] = nil
         }
 
-        let d = UserDefaults.standard
-        if d.object(forKey: "pillX") != nil {
-            if d.object(forKey: "pillOrigins") == nil, let first = keyed.first {
-                var x = d.double(forKey: "pillX")
-                let y = d.double(forKey: "pillY")
-                let legacyPillWidth: Double = 232 // builds before the 124 pt pill wrote no pillWidth
-                let w = d.object(forKey: "pillWidth") as? Double ?? legacyPillWidth
-                let centre = CGPoint(x: x + w / 2, y: y + Layout.collapsed.height / 2)
-                let target = keyed.first { $0.screen.frame.contains(centre) } ?? first
-                let f = target.screen.frame
-                if w != Layout.collapsed.width {
-                    x = Layout.migrate(pillX: x, from: w, to: Layout.collapsed.width, anchor: Anchor.near(centre, in: f))
-                }
-                let o = Layout.clamp(pillOrigin: CGPoint(x: x, y: y), to: f)
-                d.set([target.uuid: Layout.offset(of: o, in: f)], forKey: "pillOrigins")
-            }
-            if d.object(forKey: "pillOrigins") != nil {
-                for k in ["pillX", "pillY", "pillWidth"] { d.removeObject(forKey: k) }
-            }
-        }
-
-        func saved(_ uuid: String) -> [Double]? {
-            (d.dictionary(forKey: "pillOrigins") as? [String: [Double]])?[uuid]
-        }
+        var origins = UserDefaults.standard.dictionary(forKey: "pillOrigins") as? [String: [Double]] ?? [:]
         for (uuid, screen) in keyed {
             let p = panels[uuid] ?? makePanel(uuid: uuid)
             panels[uuid] = p
             let s = screen.frame
-            if let o = saved(uuid).flatMap({ Layout.origin(offset: $0, in: s) }) {
+            p.screen = s
+            if let o = origins[uuid].flatMap({ Layout.origin(offset: $0, in: s) }) {
                 place(p, pillOrigin: o, save: false)
-            } else if let ref = keyed.first(where: { saved($0.uuid) != nil }),
-                      let refOrigin = saved(ref.uuid).flatMap({ Layout.origin(offset: $0, in: ref.screen.frame) }) {
+            } else if let ref = keyed.first(where: { origins[$0.uuid] != nil }),
+                      let refOrigin = origins[ref.uuid].flatMap({ Layout.origin(offset: $0, in: ref.screen.frame) }) {
                 let rf = ref.screen.frame
-                let centre = CGPoint(x: refOrigin.x + Layout.collapsed.width / 2, y: refOrigin.y + Layout.collapsed.height / 2)
-                place(p, pillOrigin: Layout.relativeOrigin(refOrigin, from: rf, to: s, anchor: Anchor.near(centre, in: rf)), save: true)
+                let anchor = Anchor.near(Layout.pillCentre(refOrigin), in: rf)
+                origins[uuid] = place(p, pillOrigin: Layout.relativeOrigin(refOrigin, from: rf, to: s, anchor: anchor), save: true)
             } else {
                 let v = screen.visibleFrame
-                place(p, pillOrigin: CGPoint(x: v.maxX - Layout.collapsed.width - 16, y: v.maxY - Layout.collapsed.height - 10), save: true)
+                origins[uuid] = place(p, pillOrigin: CGPoint(x: v.maxX - Layout.collapsed.width - 16, y: v.maxY - Layout.collapsed.height - 10), save: true)
             }
         }
     }
 
+    /// Moves the pre-`pillOrigins` keys (`pillX`, `pillY`, `pillWidth`) into `pillOrigins` once.
+    func migrateLegacyPillOrigin() {
+        let d = UserDefaults.standard
+        guard d.object(forKey: "pillX") != nil else { return }
+        if d.object(forKey: "pillOrigins") == nil {
+            let keyed = keyedScreens()
+            let legacyPillWidth: Double = 232 // builds before the 124 pt pill wrote no pillWidth
+            let width = d.object(forKey: "pillWidth") as? Double ?? legacyPillWidth
+            if let legacy = Layout.legacyOffset(x: d.double(forKey: "pillX"), y: d.double(forKey: "pillY"), width: width,
+                                                screens: keyed.map { $0.screen.frame }) {
+                d.set([keyed[legacy.index].uuid: legacy.offset], forKey: "pillOrigins")
+            }
+        }
+        if d.object(forKey: "pillOrigins") != nil {
+            for k in ["pillX", "pillY", "pillWidth"] { d.removeObject(forKey: k) }
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        migrateLegacyPillOrigin()
         syncPanels()
 
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
@@ -245,36 +239,39 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    func place(_ p: Panel, pillOrigin raw: CGPoint, save: Bool) {
-        guard let s = frame(of: p.uuid) else { return }
+    @discardableResult
+    func place(_ p: Panel, pillOrigin raw: CGPoint, save: Bool) -> [Double] {
+        let s = p.screen
         let o = Layout.clamp(pillOrigin: raw, to: s)
-        p.state.anchor = Anchor.near(CGPoint(x: o.x + Layout.collapsed.width / 2, y: o.y + Layout.collapsed.height / 2), in: s)
+        let offset = Layout.offset(of: o, in: s)
+        p.state.anchor = Anchor.near(Layout.pillCentre(o), in: s)
         p.window.setFrame(Layout.canvasFrame(pillOrigin: o, anchor: p.state.anchor), display: true)
         if save {
             var all = UserDefaults.standard.dictionary(forKey: "pillOrigins") as? [String: [Double]] ?? [:]
-            all[p.uuid] = Layout.offset(of: o, in: s)
+            all[p.uuid] = offset
             UserDefaults.standard.set(all, forKey: "pillOrigins")
         }
+        return offset
     }
 
     /// After a drop the card stays where it was dropped and the pill moves to its corner.
     func settleAfterDrop(_ p: Panel) {
         let card = Layout.pill(in: p.window.frame, size: Layout.size(store, p.state), anchor: p.state.anchor)
-        guard let s = frame(of: p.uuid) else { return }
-        place(p, pillOrigin: Layout.settledPillOrigin(card: card, screen: s), save: true)
+        place(p, pillOrigin: Layout.settledPillOrigin(card: card, screen: p.screen), save: true)
         trackMouse()
     }
 
     func trackMouse() {
         if store.hidden { return }
+        let mouse = NSEvent.mouseLocation
         for p in panels.values {
-            let inside = Layout.pill(in: p.window.frame, size: Layout.size(store, p.state), anchor: p.state.anchor).contains(NSEvent.mouseLocation)
+            let inside = Layout.pill(in: p.window.frame, size: Layout.size(store, p.state), anchor: p.state.anchor).contains(mouse)
             if p.state.editing == nil && inside != p.state.hovering {
                 p.state.hovering = inside
                 if inside { store.peekUntil = nil }
             }
             // While editing, clicks outside the card must reach the app beneath (and make the panel resign key).
-            p.window.ignoresMouseEvents = !inside
+            if p.window.ignoresMouseEvents == inside { p.window.ignoresMouseEvents = !inside }
         }
     }
 }

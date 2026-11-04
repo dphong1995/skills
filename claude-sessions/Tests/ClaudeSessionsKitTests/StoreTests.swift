@@ -16,7 +16,7 @@ import Testing
     writeSession(dir, "dead", pid: 999_999, status: "idle", ageSec: 10, name: "dead", cwd: "/tmp")
     store.refresh(at: Date())
     #expect(store.sessions.count == 2)
-    #expect(!PanelState().expanded(store))
+    #expect(!store.peeking)
 }
 
 @Test func busyToIdlePeeks() {
@@ -34,7 +34,7 @@ import Testing
     #expect(store.sessions.first?.id == "a")
 
     store.refresh(at: t0.addingTimeInterval(7))
-    #expect(!PanelState().expanded(store))
+    #expect(!store.peeking)
 }
 
 @Test func waitingOrderingAndLabels() {
@@ -72,13 +72,13 @@ import Testing
     writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "talo6-dct-frontend-d7", cwd: frontend)
     store.refresh(at: t0.addingTimeInterval(1))
     store.refresh(at: t0.addingTimeInterval(30))
-    #expect(!PanelState().expanded(store))
+    #expect(!store.peeking)
 
     writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "talo6-dct-frontend-d7", cwd: frontend)
     store.refresh(at: t0.addingTimeInterval(31))
     writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "talo6-dct-frontend-d7", cwd: frontend)
     store.refresh(at: t0.addingTimeInterval(32))
-    #expect(PanelState().expanded(store))
+    #expect(store.peeking)
 }
 
 @Test func lastReplyOnIdle() {

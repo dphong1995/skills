@@ -313,10 +313,9 @@ public final class Store: ObservableObject {
     }
 
     public func stillValid(_ a: WidgetAction) -> Bool {
-        let live = sessions.first { $0.id == a.sessionId }
         switch a {
         case .jump, .openLink: return true
-        case .approve(_, let toolId), .deny(_, let toolId, _): return live?.allows(.deny, toolId: toolId) == true
+        case .approve(_, let toolId), .deny(_, let toolId, _): return allows(Editing(id: a.sessionId, kind: .deny, toolId: toolId))
         }
     }
 }

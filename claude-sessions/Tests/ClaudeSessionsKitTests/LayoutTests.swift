@@ -153,6 +153,26 @@ private let ext = NSRect(x: 1512, y: 0, width: 2560, height: 1440)
     let r = Layout.relativeOrigin(o, from: ext, to: scr, anchor: Anchor(h: .trailing, up: true))
     #expect(r == Layout.clamp(pillOrigin: r, to: scr))
     #expect(r.x >= scr.minX && r.x <= scr.maxX - Layout.collapsed.width)
+    #expect(r.y >= scr.minY && r.y <= scr.maxY - Layout.collapsed.height)
+}
+
+@Test func legacyOffsetPicksScreenContainingCentre() {
+    let r = Layout.legacyOffset(x: 1512 + 300, y: 200, width: Layout.collapsed.width, screens: [scr, ext])
+    #expect(r?.index == 1)
+    #expect(r?.offset == [300, 200])
+}
+
+@Test func legacyOffsetFallsBackToFirstScreenAndClamps() {
+    let r = Layout.legacyOffset(x: 9000, y: 9000, width: Layout.collapsed.width, screens: [scr, ext])
+    #expect(r?.index == 0)
+    #expect(r?.offset == [Double(scr.maxX - Layout.collapsed.width), Double(scr.maxY - Layout.collapsed.height)])
+    #expect(Layout.legacyOffset(x: 0, y: 0, width: 104, screens: []) == nil)
+}
+
+@Test func legacyOffsetShiftsLegacyWidth() {
+    let x: CGFloat = scr.maxX - 232 - 14
+    let r = Layout.legacyOffset(x: x, y: 800, width: 232, screens: [scr])
+    #expect(r?.offset == [Double(x + 232 - Layout.collapsed.width), 800])
 }
 
 @Test func offsetRoundTripsAcrossOriginChange() {

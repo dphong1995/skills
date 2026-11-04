@@ -139,6 +139,24 @@ public enum Layout {
         return clamp(pillOrigin: CGPoint(x: x, y: y), to: b)
     }
 
+    public static func pillCentre(_ o: CGPoint) -> CGPoint {
+        CGPoint(x: o.x + collapsed.width / 2, y: o.y + collapsed.height / 2)
+    }
+
+    /// A pill origin saved by the old single-pill keys, as the screen (index into `screens`) holding it and its offset there.
+    /// A pill saved at another width is shifted to the current one; a pill on no screen goes to the first.
+    public static func legacyOffset(x: CGFloat, y: CGFloat, width: CGFloat, screens: [NSRect]) -> (index: Int, offset: [Double])? {
+        guard !screens.isEmpty else { return nil }
+        let centre = CGPoint(x: x + width / 2, y: y + collapsed.height / 2)
+        let index = screens.firstIndex { $0.contains(centre) } ?? 0
+        let f = screens[index]
+        var x = x
+        if width != collapsed.width {
+            x = migrate(pillX: x, from: width, to: collapsed.width, anchor: Anchor.near(centre, in: f))
+        }
+        return (index, offset(of: clamp(pillOrigin: CGPoint(x: x, y: y), to: f), in: f))
+    }
+
     public static func offset(of o: CGPoint, in screen: NSRect) -> [Double] {
         [o.x - screen.minX, o.y - screen.minY]
     }
