@@ -313,6 +313,11 @@ public struct WidgetView: View {
                             .font(.system(size: 11)).foregroundStyle(.white.opacity(0.7))
                             .lineLimit(1).truncationMode(.tail)
                     }
+                    if s.status == "busy", let a = s.activity {
+                        Text("▸ \(a)")
+                            .font(.system(size: 11)).foregroundStyle(.white.opacity(0.6))
+                            .lineLimit(1).truncationMode(.tail)
+                    }
                     if s.isFinished, let reply = s.lastReply {
                         Text(markdown(reply)).font(.system(size: 11)).foregroundStyle(.white.opacity(0.75))
                             .lineLimit(4).truncationMode(.tail)

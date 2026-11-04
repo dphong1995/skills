@@ -19,6 +19,8 @@ public struct Link: Equatable {
 enum Transcript {
     /// How much of a transcript's start is read for the first prompt and branch.
     static let headBytes = 65_536
+    /// The most a refresh reads of a busy session's transcript for the running-tool line.
+    static let activityWindow: UInt64 = 262_144
     static let approvable: Set<String> = ["Bash", "Edit", "Write", "MultiEdit", "NotebookEdit", "Read", "Glob", "Grep", "WebFetch", "WebSearch"]
 
     /// Claude Code names a project directory after the cwd with every non-alphanumeric char replaced by "-".
@@ -42,6 +44,14 @@ enum Transcript {
         guard let end = try? h.seekToEnd() else { return Data() }
         try? h.seek(toOffset: end > UInt64(bytes) ? end - UInt64(bytes) : 0)
         return (try? h.readToEnd()) ?? Data()
+    }
+
+    /// The bytes `[from, to)` of the file.
+    static func read(_ url: URL, from: UInt64, to: UInt64) -> Data {
+        guard to > from, let h = try? FileHandle(forReadingFrom: url) else { return Data() }
+        defer { try? h.close() }
+        guard (try? h.seek(toOffset: from)) != nil else { return Data() }
+        return (try? h.read(upToCount: Int(to - from))) ?? Data()
     }
 
     /// The first `bytes` of the file; when the file is longer, everything after the last newline is dropped.
@@ -203,15 +213,58 @@ enum Transcript {
         }
         guard let first = open.first else { return nil }
         guard open.count == 1, approvable.contains(first.name) else { return .unclear(count: open.count) }
-        let key: String
-        switch first.name {
-        case "Bash": key = "command"
-        case "WebFetch": key = "url"
-        case "WebSearch": key = "query"
-        case "Glob", "Grep": key = "pattern"
-        default: key = "file_path"
-        }
-        guard let text = first.input[key] as? String, !text.isEmpty else { return .unclear(count: 1) }
+        guard let text = first.input[inputKey(for: first.name)] as? String, !text.isEmpty else { return .unclear(count: 1) }
         return .one(Pending(toolId: first.id, tool: first.name, text: text))
+    }
+
+    /// The input field that says what a tool call acts on.
+    static func inputKey(for tool: String) -> String {
+        switch tool {
+        case "Bash": "command"
+        case "WebFetch": "url"
+        case "WebSearch": "query"
+        case "Glob", "Grep": "pattern"
+        default: "file_path"
+        }
+    }
+
+    /// One line for a tool call, cut at 120 characters plus `…`.
+    static func toolSummary(name: String, input: [String: Any]) -> String {
+        func field(_ key: String) -> String? {
+            (input[key] as? String).map(oneLine).flatMap { $0.isEmpty ? nil : $0 }
+        }
+        let s: String
+        switch name {
+        case "Bash", "Glob", "Grep", "WebFetch", "WebSearch":
+            s = field(inputKey(for: name)).map { "\(name): \($0)" } ?? name
+        case "Read", "Edit", "Write", "MultiEdit", "NotebookEdit":
+            s = field("file_path").map { "\(name) \(($0 as NSString).lastPathComponent)" } ?? name
+        case "Agent", "Task":
+            s = field("description").map { "Agent: \($0)" } ?? name
+        case "Skill":
+            s = field("skill").map { "Skill: \($0)" } ?? name
+        case _ where name.hasPrefix("mcp__"):
+            let parts = name.components(separatedBy: "__")
+            s = parts.count > 2 ? parts.dropFirst(2).joined(separator: "__") : name
+        default:
+            s = name
+        }
+        return s.count > 120 ? String(s.prefix(120)) + "…" : s
+    }
+
+    /// The last main-thread tool call in `data`; only lines holding `"tool_use"` are parsed.
+    static func lastToolUse(in data: Data) -> String? {
+        let marker = Data("\"tool_use\"".utf8)
+        for line in data.split(separator: 0x0A).reversed() where line.range(of: marker) != nil {
+            guard let o = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
+                  o["type"] as? String == "assistant",
+                  (o["isSidechain"] as? Bool) != true,
+                  let content = (o["message"] as? [String: Any])?["content"] as? [[String: Any]],
+                  let use = content.last(where: { $0["type"] as? String == "tool_use" }),
+                  let name = use["name"] as? String
+            else { continue }
+            return toolSummary(name: name, input: use["input"] as? [String: Any] ?? [:])
+        }
+        return nil
     }
 }

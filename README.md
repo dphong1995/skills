@@ -253,6 +253,7 @@ widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouT
   thẻ hệ thống; cắt 140 ký tự, hiện tối đa 2 dòng) → tên mặc định. Mẹo: gõ `/rename` để Claude tự đặt tên.
 - Session có task (TaskCreate/TaskUpdate, `~/.claude/tasks/<sessionId>/`) thì hiện thêm dòng `☑ đã xong/tổng · việc đang làm`;
   xong hết thì ẩn. Có task đang làm thì hiện chữ của nó (không có chữ thì chỉ hiện số), không thì hiện task chờ đầu tiên.
+- Session đang chạy hiện thêm dòng `▸ Bash: …` là tool Claude vừa gọi gần nhất (chỉ đọc phần transcript mới được ghi từ giây trước, tối đa 256 KB, không đọc cả file); hết chạy thì dòng này biến mất.
 - Dòng `chờ duyệt` hiện lệnh hoặc file đang xin duyệt (đọc từ transcript); nhiều tool cùng chờ hoặc tool
   lạ thì hiện "Cần duyệt trong cmux".
 - Kéo để đổi vị trí (nhớ vị trí). Hướng mở theo vị trí: nửa trên mở xuống, nửa dưới mở lên; phần ba

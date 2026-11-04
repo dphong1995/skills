@@ -191,3 +191,48 @@ private func bash(_ id: String, _ cmd: String = "npm test") -> String {
     let withFont = a.runs.filter { $0.font != nil }.map { String(a[$0.range].characters) }
     #expect(withFont == ["code"])
 }
+
+@Test func toolSummaryRules() {
+    func s(_ name: String, _ input: [String: Any] = [:]) -> String { Transcript.toolSummary(name: name, input: input) }
+    #expect(s("Bash", ["command": "swift test"]) == "Bash: swift test")
+    #expect(s("Edit", ["file_path": "/a/b/Session.swift"]) == "Edit Session.swift")
+    #expect(s("Read", ["file_path": "/a/b/c.md"]) == "Read c.md")
+    #expect(s("Write", ["file_path": "/a/b/c.md"]) == "Write c.md")
+    #expect(s("MultiEdit", ["file_path": "/a/b/c.md"]) == "MultiEdit c.md")
+    #expect(s("NotebookEdit", ["file_path": "/a/b/c.ipynb"]) == "NotebookEdit c.ipynb")
+    #expect(s("Glob", ["pattern": "**/*.swift"]) == "Glob: **/*.swift")
+    #expect(s("Grep", ["pattern": "foo"]) == "Grep: foo")
+    #expect(s("WebFetch", ["url": "https://x.y"]) == "WebFetch: https://x.y")
+    #expect(s("WebSearch", ["query": "swift"]) == "WebSearch: swift")
+    #expect(s("Agent", ["description": "find it"]) == "Agent: find it")
+    #expect(s("Task", ["description": "find it"]) == "Agent: find it")
+    #expect(s("Skill", ["skill": "cook"]) == "Skill: cook")
+    #expect(s("mcp__cmux-cua__click") == "click")
+    #expect(s("TodoWrite", ["todos": []]) == "TodoWrite")
+    #expect(s("Bash") == "Bash")
+    #expect(s("Bash", ["command": "a\n  b"]) == "Bash: a b")
+    let long = s("Bash", ["command": String(repeating: "x", count: 200)])
+    #expect(long == String("Bash: ".appending(String(repeating: "x", count: 200)).prefix(120)) + "…")
+}
+
+@Test func lastToolUsePicksLast() {
+    let d = data([toolUseLine(id: "1", name: "Bash", input: ["command": "one"]),
+                  toolUseLine(id: "2", name: "Edit", input: ["file_path": "/a/two.swift"]), toolResultLine(id: "2")])
+    #expect(Transcript.lastToolUse(in: d) == "Edit two.swift")
+}
+
+@Test func lastToolUseSkipsSidechain() {
+    let d = data([toolUseLine(id: "1", name: "Bash", input: ["command": "main"]),
+                  toolUseLine(id: "2", name: "Read", input: ["file_path": "/a/b"], sidechain: true)])
+    #expect(Transcript.lastToolUse(in: d) == "Bash: main")
+}
+
+@Test func lastToolUseBeforeLongLine() {
+    let long = userLine(String(repeating: "x", count: 300_000))
+    #expect(Transcript.lastToolUse(in: data([toolUseLine(id: "1", name: "Bash", input: ["command": "go"]), long])) == "Bash: go")
+}
+
+@Test func lastToolUseNone() {
+    let text = jsonLine(["type": "assistant", "message": ["content": [["type": "text", "text": "hello"]]]])
+    #expect(Transcript.lastToolUse(in: data([text, text])) == nil)
+}

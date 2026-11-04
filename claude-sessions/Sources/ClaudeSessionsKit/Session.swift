@@ -17,6 +17,7 @@ struct Session: Identifiable, Equatable {
     var branch: String? = nil
     var todo: Todo? = nil
     var links: [Link] = []
+    var activity: String? = nil
 }
 
 extension Session {
@@ -83,6 +84,9 @@ public final class Store: ObservableObject {
     private var urlTried: [String: Date?] = [:]
     private var heads: [String: (prompt: String?, fullPrompt: String?, links: [Link], branch: String?, size: Int)] = [:]
     private var todos: [String: (key: TaskKey, todo: Todo?)] = [:]
+    private var activities: [String: (offset: UInt64, text: String?)] = [:]
+    /// File reads done for the running-tool line, for tests.
+    private(set) var activityReads = 0
 
     /// Changes whenever a task file is added, removed or rewritten; sizes cover writes within one timestamp tick.
     private struct TaskKey: Equatable {
@@ -180,6 +184,45 @@ public final class Store: ObservableObject {
         return (c.reply, c.links, c.pending, c.branch)
     }
 
+    /// The last tool call of a busy session, read from the bytes appended since the last refresh (at most `activityWindow`).
+    private func readActivity(for s: Session, url: URL?, size: Int) -> String? {
+        let cached = activities[s.id]
+        guard s.status == "busy", let url else {
+            if let cached { activities[s.id] = (cached.offset, nil) }
+            return nil
+        }
+        let size = UInt64(size)
+        let window = Transcript.activityWindow
+        let tailStart = size > window ? size - window : 0
+        let from: UInt64
+        if let cached, size >= cached.offset {
+            if size == cached.offset { return cached.text }
+            from = max(cached.offset, tailStart)
+        } else {
+            from = tailStart
+        }
+        let atLineStart = from == 0 || from == cached?.offset
+        activityReads += 1
+        let d = Transcript.read(url, from: from, to: size)
+        var body = d[...]
+        var offset = from
+        if !atLineStart {
+            guard let nl = d.firstIndex(of: 0x0A) else {
+                activities[s.id] = (size, cached?.text)
+                return cached?.text
+            }
+            body = d[(nl + 1)...]
+            offset = from + UInt64(nl + 1)
+        }
+        var text = cached?.text
+        if let end = body.lastIndex(of: 0x0A) {
+            offset += UInt64(end + 1 - body.startIndex)
+            text = Transcript.lastToolUse(in: Data(body[body.startIndex...end])) ?? text
+        }
+        activities[s.id] = (offset, text)
+        return text
+    }
+
     public func refresh(at date: Date = Date()) {
         now = date
         let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
@@ -203,8 +246,7 @@ public final class Store: ObservableObject {
             )
             s.nameSource = o["nameSource"] as? String
             let url = transcriptURL(for: s)
-            // Busy rows with a final head need no stat: neither read looks at the size.
-            let size = url.flatMap { s.isFinished || !headIsFinal(s.id) ? fileSize($0) : nil } ?? 0
+            let size = url.map(fileSize) ?? 0
             let t = readTail(for: s, url: url, size: size)
             let head = readHead(for: s, url: url, size: size)
             s.firstPrompt = head.prompt
@@ -214,6 +256,7 @@ public final class Store: ObservableObject {
             var seen = Set<URL>()
             s.links = Array((head.links + (s.isFinished ? t.links : [])).filter { seen.insert($0.url).inserted }.prefix(3))
             s.todo = readTodo(for: s)
+            s.activity = readActivity(for: s, url: url, size: size)
             if s.isPermissionPrompt { s.pending = t.pending }
             list.append(s)
         }
@@ -243,6 +286,7 @@ public final class Store: ObservableObject {
         urlTried = urlTried.filter { live.contains($0.key) }
         heads = heads.filter { live.contains($0.key) }
         todos = todos.filter { live.contains($0.key) }
+        activities = activities.filter { live.contains($0.key) }
         for s in list where pids[s.id] != nil && pids[s.id] != s.pid {
             surfaces[s.id] = nil
             surfaceMisses.remove(s.id)

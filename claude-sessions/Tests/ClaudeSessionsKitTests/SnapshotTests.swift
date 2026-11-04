@@ -142,6 +142,20 @@ struct SnapshotTests {
         render(store, "17-long-content")
     }
 
+    @Test func renderActivity() {
+        let dir = makeTempDir(), projects = makeTempDir(), tasks = makeTempDir()
+        let store = makeStore(dir: dir, projects: projects, tasks: tasks)
+        _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [toolUseLine(id: "t1", name: "Bash", input: ["command": "swift test --filter StoreTests"]), ""])
+        _ = writeTranscript(projects, cwd: backend, id: "b", lines: [toolUseLine(id: "t2", name: "Bash", input: ["command": String(repeating: "echo long-command ", count: 12)]), ""])
+        writeSession(dir, "a", pid: me, status: "busy", ageSec: 90, name: "talo6-dct-frontend-d7", cwd: frontend)
+        writeSession(dir, "b", pid: me, status: "busy", ageSec: 40, name: "talo6-dct-backend-3f", cwd: backend)
+        writeSession(dir, "c", pid: me, status: "idle", ageSec: 30, name: "ocr-service-a1", cwd: "/Users/phong/ocr-service")
+        writeTask(tasks, session: "a", id: 1, status: "in_progress", subject: "Phase 4", activeForm: "Implementing phase 4")
+        store.refresh(at: Date())
+        store.hovering = true
+        render(store, "18-activity")
+    }
+
     @Test func renderScroll() {
         let dir = makeTempDir(), projects = makeTempDir()
         let store = makeStore(dir: dir, projects: projects)

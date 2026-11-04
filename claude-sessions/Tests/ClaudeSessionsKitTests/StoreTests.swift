@@ -472,3 +472,95 @@ private func linkStore(status: String) -> Store {
 @Test func busyRowHasOnlyPromptLinks() {
     #expect(linkStore(status: "busy").sessions.first?.links.map(\.label) == ["T6IR-14728"])
 }
+
+// Running-tool line
+
+private struct ActivityRig {
+    let dir = makeTempDir(), projects = makeTempDir()
+    let store: Store
+    let file: URL
+    init(_ lines: [String]) {
+        store = makeStore(dir: dir, projects: projects)
+        file = writeTranscript(projects, cwd: frontend, id: "a", lines: lines.map { $0 + "\n" })
+        busy()
+    }
+    func busy() { writeSession(dir, "a", pid: me, status: "busy", ageSec: 5, name: "n", cwd: frontend) }
+    func idle() { writeSession(dir, "a", pid: me, status: "idle", ageSec: 5, name: "n", cwd: frontend) }
+    func refresh() { store.refresh(at: Date()) }
+    var activity: String? { store.sessions.first?.activity }
+    func append(_ s: String) {
+        let h = try! FileHandle(forWritingTo: file)
+        try! h.seekToEnd()
+        try! h.write(contentsOf: Data(s.utf8))
+        try! h.close()
+    }
+}
+
+private func bash(_ c: String) -> String { toolUseLine(id: UUID().uuidString, name: "Bash", input: ["command": c]) }
+
+@Test func activityFromExistingTranscript() {
+    let r = ActivityRig([userLine("hi"), bash("swift test")])
+    r.refresh()
+    #expect(r.activity == "Bash: swift test")
+}
+
+@Test func activityNoReadWhenUnchanged() {
+    let r = ActivityRig([bash("swift test")])
+    r.refresh()
+    let reads = r.store.activityReads
+    #expect(reads == 1)
+    r.refresh()
+    #expect(r.store.activityReads == reads)
+    #expect(r.activity == "Bash: swift test")
+}
+
+@Test func activityUpdatesOnAppend() {
+    let r = ActivityRig([bash("swift test")])
+    r.refresh()
+    let reads = r.store.activityReads
+    r.append(toolUseLine(id: "e", name: "Edit", input: ["file_path": "/a/File.swift"]) + "\n")
+    r.refresh()
+    #expect(r.activity == "Edit File.swift")
+    #expect(r.store.activityReads == reads + 1)
+}
+
+@Test func activityWaitsForCompleteLine() {
+    let r = ActivityRig([bash("swift test")])
+    r.refresh()
+    let line = toolUseLine(id: "e", name: "Edit", input: ["file_path": "/a/File.swift"])
+    let half = line.index(line.startIndex, offsetBy: line.count / 2)
+    r.append(String(line[..<half]))
+    r.refresh()
+    #expect(r.activity == "Bash: swift test")
+    r.append(String(line[half...]) + "\n")
+    r.refresh()
+    #expect(r.activity == "Edit File.swift")
+}
+
+@Test func activityResetsWhenFileShrinks() {
+    let r = ActivityRig([bash(String(repeating: "x", count: 100)), bash("swift test")])
+    r.refresh()
+    try! Data((toolUseLine(id: "g", name: "Grep", input: ["pattern": "foo"]) + "\n").utf8).write(to: r.file)
+    r.refresh()
+    #expect(r.activity == "Grep: foo")
+}
+
+@Test func activityClearedWhenNotBusy() {
+    let r = ActivityRig([bash("swift test")])
+    r.refresh()
+    #expect(r.activity == "Bash: swift test")
+    r.idle()
+    r.refresh()
+    #expect(r.activity == nil)
+    r.busy()
+    r.refresh()
+    #expect(r.activity == nil)
+}
+
+@Test func activityReadsAtMostWindow() {
+    let filler = userLine(String(repeating: "x", count: 1_000))
+    let r = ActivityRig([bash("old")] + Array(repeating: filler, count: 400))
+    r.refresh()
+    #expect(r.activity == nil)
+    #expect(r.store.activityReads == 1)
+}
