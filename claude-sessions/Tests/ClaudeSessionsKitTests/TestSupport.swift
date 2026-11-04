@@ -136,3 +136,15 @@ func fake(open: [[String: Any]] = []) -> FakeBitbucket {
 func comment(_ uuid: String, _ name: String, _ at: String) -> [String: Any] {
     ["user": ["uuid": uuid, "display_name": name], "created_on": at, "deleted": false]
 }
+
+/// A CodeRabbit build status as Bitbucket returns it.
+func rabbitStatus(state: String = "SUCCESSFUL", description: String, commit: String = "abc123", created: String = "2026-11-03T03:33:15.111541+00:00") -> [String: Any] {
+    ["key": "coderabbitai/6867", "name": "CodeRabbit", "state": state, "description": description,
+     "created_on": created, "updated_on": created, "commit": ["hash": commit]]
+}
+
+/// A comment carrying CodeRabbit's marker, posted by a human account like the real ones.
+func rabbitComment(_ raw: String, at: String) -> [String: Any] {
+    ["user": ["uuid": "{tin}", "display_name": "Tin Tran"], "created_on": at, "updated_on": at, "deleted": false,
+     "content": ["raw": "[coderabbit-html-comment-v1-0]: https://coderabbit.ai/#html-comment-v1:abc\n\(raw)"]]
+}

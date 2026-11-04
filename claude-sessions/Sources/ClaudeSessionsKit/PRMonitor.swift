@@ -40,7 +40,8 @@ public final class PRMonitor {
     private static let remoteRetry: TimeInterval = 300
     private static let singleFields = "id,title,state,comment_count,updated_on,source.branch.name,source.repository.full_name,source.commit.hash,participants.approved,participants.state,participants.role,participants.user.uuid,links.html.href"
     private static let openFields = singleFields.split(separator: ",").map { "values.\($0)" }.joined(separator: ",") + ",next"
-    private static let commentFields = "values.user.uuid,values.user.display_name,values.created_on,values.deleted"
+    private static let statusFields = "values.state,values.commit.hash,values.key,values.name,values.description,values.created_on,values.updated_on"
+    private static let commentFields = "values.user.uuid,values.user.display_name,values.created_on,values.updated_on,values.deleted,values.content.raw"
 
     private let api: BitbucketAPI
     private let queue: DispatchQueue?
@@ -57,6 +58,7 @@ public final class PRMonitor {
     private var remotes: [String: (repo: Repo?, at: Date)] = [:]
     private var absentSince: [String: Date] = [:]
     private var statuses: [PRRef: PRStatus] = [:]
+    private var rabbitSeen: [PRRef: (commit: String?, label: String)] = [:]
     private var hidden = Set<PRRef>()
     private var closed = Set<PRRef>()
     private var me: String?
@@ -124,6 +126,7 @@ public final class PRMonitor {
         }
         let used = Set(sessions.values.flatMap(\.refs))
         statuses = statuses.filter { used.contains($0.key) }
+        rabbitSeen = rabbitSeen.filter { used.contains($0.key) }
         hidden.formIntersection(used)
         closed.formIntersection(used)
 
@@ -145,6 +148,11 @@ public final class PRMonitor {
         snapshot.eventRefs.formUnion(eventRefs)
         if succeeded { snapshot.lastSuccess = now }
         lock.unlock()
+    }
+
+    /// Remembers the `(commit, label)` of a finished review so only a new one chimes.
+    private func recordRabbit(_ ref: PRRef, _ pr: PRStatus) {
+        if let r = pr.rabbit, CodeRabbit.isFinal(r) { rabbitSeen[ref] = (pr.commit, CodeRabbit.label(r)) }
     }
 
     private func decode(_ d: Data) -> [String: Any]? {
@@ -233,29 +241,58 @@ public final class PRMonitor {
             }
             pr.pipeline = prev?.pipeline
             pr.lastOther = prev?.lastOther
+            pr.rabbit = prev?.rabbit
+            pr.rabbitSince = prev?.rabbitSince
+            var rabbitFinished = false
             if pr.isOpen {
-                if prev == nil || prev?.commit != pr.commit || pr.pipeline == nil || pr.pipeline == .running {
-                    if let d = try? api.get("\(path)/statuses?fields=values.state,values.commit.hash&pagelen=50&sort=-created_on") {
+                let rabbitPending = prev?.rabbit == nil || prev?.rabbit == .reviewing
+                if prev == nil || prev?.commit != pr.commit || pr.pipeline == nil || pr.pipeline == .running
+                    || rabbitPending || prev?.comments != pr.comments {
+                    if let d = try? api.get("\(path)/statuses?fields=\(Self.statusFields)&pagelen=50&sort=-created_on") {
                         pr.pipeline = PullRequests.pipeline(fromStatuses: d, commit: pr.commit)
+                        let fresh = CodeRabbit.state(fromStatuses: d, commit: pr.commit)
+                        let sameCommit = prev?.commit == pr.commit
+                        if var r = fresh?.rabbit {
+                            if case .reviewed = r, sameCommit, case .reviewed(let f)? = prev?.rabbit { r = .reviewed(findings: f) }
+                            rabbitFinished = CodeRabbit.isFinal(r) && !(sameCommit && CodeRabbit.kind(prev?.rabbit) == CodeRabbit.kind(r))
+                            pr.rabbit = r
+                        } else {
+                            pr.rabbit = nil
+                        }
+                        pr.rabbitSince = fresh?.since
                     } else if prev != nil {
                         continue
                     } else {
                         pr.pipeline = nil
                     }
                 }
-                if prev == nil || prev?.comments != pr.comments {
+                if prev == nil || prev?.comments != pr.comments || rabbitFinished {
                     guard let d = try? api.get("\(path)/comments?sort=-created_on&pagelen=20&fields=\(Self.commentFields)") else {
                         if prev != nil { continue }
+                        recordRabbit(ref, pr)
                         statuses[ref] = pr
                         continue
                     }
                     if let c = PullRequests.lastOther(fromComments: d, me: me) { pr.lastOther = c }
+                    if case .reviewed? = pr.rabbit, let since = pr.rabbitSince {
+                        pr.rabbit = .reviewed(findings: CodeRabbit.findings(fromComments: d, since: since))
+                    }
                 }
             }
             if let prev {
-                let found = PullRequests.events(old: prev, new: pr)
+                var found = PullRequests.events(old: prev, new: pr)
+                if pr.isOpen, let r = pr.rabbit, CodeRabbit.isFinal(r), rabbitSeen[ref].map({ $0 != (pr.commit, CodeRabbit.label(r)) }) ?? true {
+                    switch r {
+                    case .reviewed(let n?) where n > 0: found.append(.rabbitNeedsYou)
+                    case .failed: found.append(.rabbitNeedsYou)
+                    default: found.append(.rabbitDone)
+                    }
+                    recordRabbit(ref, pr)
+                }
                 if !found.isEmpty { eventRefs.insert(ref) }
                 events += found
+            } else {
+                recordRabbit(ref, pr)
             }
             statuses[ref] = pr
         }

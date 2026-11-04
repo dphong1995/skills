@@ -32,11 +32,13 @@ public struct PRStatus: Equatable {
     public let branch: String?
     public var pipeline: Pipeline?
     public var lastOther: PRComment?
+    public var rabbit: Rabbit?
+    public var rabbitSince: Date?
 
     public var isOpen: Bool { state == "OPEN" }
 }
 
-public enum PREvent: Equatable { case comment, approved, changesRequested, merged, declined }
+public enum PREvent: Equatable { case comment, approved, changesRequested, merged, declined, rabbitNeedsYou, rabbitDone }
 
 enum PullRequests {
     static let defaultPrompt = "Đọc các bình luận chưa xử lý và kết quả pipeline của PR {url}, sửa code theo đó, push, rồi trả lời từng bình luận."
@@ -100,6 +102,7 @@ enum PullRequests {
     static func pipeline(fromStatuses data: Data, commit: String? = nil) -> Pipeline? {
         guard let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               var values = o["values"] as? [[String: Any]] else { return nil }
+        values = values.filter { !CodeRabbit.isStatus($0) }
         if let commit {
             values = values.filter {
                 guard let hash = ($0["commit"] as? [String: Any])?["hash"] as? String else { return true }
@@ -116,7 +119,7 @@ enum PullRequests {
     static func lastOther(fromComments data: Data, me: String) -> PRComment? {
         guard let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let values = o["values"] as? [[String: Any]] else { return nil }
-        for v in values where (v["deleted"] as? Bool) != true {
+        for v in values where (v["deleted"] as? Bool) != true && !CodeRabbit.isComment(v) {
             let user = v["user"] as? [String: Any]
             guard user?["uuid"] as? String != me else { continue }
             guard let name = user?["display_name"] as? String, let s = v["created_on"] as? String,
@@ -133,7 +136,7 @@ enum PullRequests {
     }()
     private static let plainDate = ISO8601DateFormatter()
 
-    private static func date(_ s: String) -> Date? {
+    static func date(_ s: String) -> Date? {
         fractionalDate.date(from: s) ?? plainDate.date(from: s)
     }
 
@@ -148,8 +151,8 @@ enum PullRequests {
     }
 
     static func chime(for events: [PREvent]) -> Chime? {
-        if events.contains(where: { $0 == .comment || $0 == .changesRequested || $0 == .declined }) { return .needsYou }
-        if events.contains(where: { $0 == .approved || $0 == .merged }) { return .done }
+        if events.contains(where: { $0 == .comment || $0 == .changesRequested || $0 == .declined || $0 == .rabbitNeedsYou }) { return .needsYou }
+        if events.contains(where: { $0 == .approved || $0 == .merged || $0 == .rabbitDone }) { return .done }
         return nil
     }
 

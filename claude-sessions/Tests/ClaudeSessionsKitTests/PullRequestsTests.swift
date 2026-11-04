@@ -108,6 +108,27 @@ private func data(_ o: [String: Any]) -> Data { try! JSONSerialization.data(with
         #expect(PullRequests.chime(for: []) == nil)
     }
 
+    @Test func pipelineIgnoresCodeRabbit() {
+        func d(_ v: [[String: Any]]) -> Data { data(["values": v]) }
+        let pass: [String: Any] = ["state": "SUCCESSFUL"]
+        #expect(PullRequests.pipeline(fromStatuses: d([rabbitStatus(state: "INPROGRESS", description: "Review in progress"), pass])) == .passed)
+        #expect(PullRequests.pipeline(fromStatuses: d([rabbitStatus(state: "FAILED", description: "Review failed"), pass])) == .passed)
+        #expect(PullRequests.pipeline(fromStatuses: d([rabbitStatus(description: "Review completed")])) == nil)
+    }
+
+    @Test func lastOtherSkipsCodeRabbit() {
+        let bot = rabbitComment("**Actionable comments posted: 1**", at: "2026-11-03T05:00:00.000000+00:00")
+        let human = comment("{p}", "Phong Luu", "2026-11-03T04:00:00.000000+00:00")
+        let c = PullRequests.lastOther(fromComments: data(["values": [bot, human]]), me: "{me}")
+        #expect(c?.name == "Phong Luu")
+    }
+
+    @Test func chimeRabbitEvents() {
+        #expect(PullRequests.chime(for: [.rabbitDone]) == .done)
+        #expect(PullRequests.chime(for: [.rabbitNeedsYou]) == .needsYou)
+        #expect(PullRequests.chime(for: [.rabbitDone, .rabbitNeedsYou]) == .needsYou)
+    }
+
     @Test func promptTemplate() {
         let url = URL(string: link("talo6-dct-backend", 7571))!
         #expect(PullRequests.prompt("Fix {url} (#{id})\nnow", url: url, id: 7571) == "Fix \(url.absoluteString) (#7571) now")
