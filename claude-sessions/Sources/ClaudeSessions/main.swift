@@ -119,7 +119,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         var fromEditor = false
         var sentText = ""
         switch a {
-        case .reply(_, let text, let e): fromEditor = e; sentText = text
         case .deny(_, _, let reason): fromEditor = true; sentText = reason
         default: break
         }

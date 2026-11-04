@@ -174,10 +174,8 @@ private func approvableStore() -> (Store, URL, URL, URL) {
     writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
     store.refresh(at: Date())
     #expect(!store.stillValid(.approve("a", toolId: "t1")))
-    #expect(!store.stillValid(.reply("a", text: "x")))
     writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
     store.refresh(at: Date())
-    #expect(store.stillValid(.reply("a", text: "x")))
     #expect(store.stillValid(.jump("zzz")))
 }
 
@@ -186,29 +184,16 @@ private func approvableStore() -> (Store, URL, URL, URL) {
     let store = makeStore(dir: dir)
     writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
     store.refresh(at: Date())
-    store.editing = Store.Editing(id: "a", kind: .reply)
+    store.editing = Store.Editing(id: "a", kind: .deny, toolId: "t1")
     try! FileManager.default.removeItem(at: dir.appendingPathComponent("a.json"))
     store.refresh(at: Date())
     #expect(store.editing == nil && !store.expanded)
 }
 
-@Test func editingClearedWhenReplyNotAllowed() {
-    let dir = makeTempDir()
-    let store = makeStore(dir: dir)
-    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
-    store.refresh(at: Date())
-    store.editing = Store.Editing(id: "a", kind: .reply)
-    store.refresh(at: Date())
-    #expect(store.editing != nil)
-    writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
-    store.refresh(at: Date())
-    #expect(store.editing == nil)
-}
-
 @Test func editingKeepsExpanded() {
     let store = makeStore(dir: makeTempDir())
     store.hovering = false
-    store.editing = Store.Editing(id: "a", kind: .reply)
+    store.editing = Store.Editing(id: "a", kind: .deny, toolId: "t1")
     #expect(store.expanded)
 }
 

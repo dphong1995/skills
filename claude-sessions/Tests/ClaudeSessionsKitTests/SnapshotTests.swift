@@ -149,8 +149,6 @@ struct SnapshotTests {
         writeSession(dir, "e", pid: me, status: "idle", ageSec: 40, name: "api-5e", cwd: "/Users/phong/api")
         store.refresh(at: Date())
         store.hovering = true
-        store.editing = Store.Editing(id: "e", kind: .reply)
-        store.drafts["e"] = "có, chạy luôn"
         render(store, "12-actions-hover")
 
         store.editing = Store.Editing(id: "b", kind: .deny, toolId: "t1")

@@ -44,12 +44,10 @@ public enum WidgetAction: Equatable {
     case jump(String)
     case approve(String, toolId: String)
     case deny(String, toolId: String, reason: String)
-    /// `fromEditor`: sent by the reply editor's Enter (a quick reply leaves the editor and its draft alone).
-    case reply(String, text: String, fromEditor: Bool = false)
 
     public var sessionId: String {
         switch self {
-        case .jump(let id), .approve(let id, _), .deny(let id, _, _), .reply(let id, _, _): id
+        case .jump(let id), .approve(let id, _), .deny(let id, _, _): id
         }
     }
 }
@@ -196,9 +194,9 @@ public struct WidgetView: View {
             .onTapGesture { onAction(.jump(s.id)) }
     }
 
-    private func editor(_ s: Session, _ kind: Store.Editing.Kind) -> some View {
+    private func editor(_ s: Session) -> some View {
         let draft = Binding(get: { store.drafts[s.id, default: ""] }, set: { store.drafts[s.id] = $0 })
-        return TextField(kind == .reply ? "Trả lời… (Enter gửi)" : "Lý do (để trống = chỉ từ chối)", text: draft, axis: .vertical)
+        return TextField("Lý do (để trống = chỉ từ chối)", text: draft, axis: .vertical)
             .textFieldStyle(.plain)
             .font(.system(size: 11.5))
             .lineLimit(1...4)
@@ -208,19 +206,14 @@ public struct WidgetView: View {
             .onAppear { focused = true }
             .onSubmit {
                 let text = draft.wrappedValue
-                switch kind {
-                case .reply:
-                    if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { onAction(.reply(s.id, text: text, fromEditor: true)) }
-                case .deny:
-                    onAction(.deny(s.id, toolId: s.approvable?.toolId ?? "", reason: text))
-                }
+                onAction(.deny(s.id, toolId: s.approvable?.toolId ?? "", reason: text))
             }
             .onExitCommand { store.editing = nil }
     }
 
     private func row(_ s: Session) -> some View {
         let hot = store.unseen.contains(s.id)
-        let editingKind = store.editing?.id == s.id ? store.editing?.kind : nil
+        let editing = store.editing?.id == s.id
         return VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 10) {
                 Circle().fill(color(s.status)).frame(width: 8, height: 8)
@@ -243,16 +236,8 @@ public struct WidgetView: View {
             if let pending = s.pending {
                 approvalBlock(s, pending).padding(.leading, 18)
             }
-            if s.canReply {
-                HStack(spacing: 6) {
-                    PillButton(title: "tiếp tục") { onAction(.reply(s.id, text: "tiếp tục")) }
-                    PillButton(title: "ok, làm đi") { onAction(.reply(s.id, text: "ok, làm đi")) }
-                    PillButton(title: "Trả lời…") { store.editing = Store.Editing(id: s.id, kind: .reply) }
-                }
-                .padding(.leading, 18)
-            }
-            if let kind = editingKind {
-                editor(s, kind).padding(.leading, 18)
+            if editing {
+                editor(s).padding(.leading, 18)
             }
         }
         .padding(.horizontal, 8)

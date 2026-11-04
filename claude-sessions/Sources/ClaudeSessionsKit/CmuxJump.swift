@@ -53,7 +53,7 @@ public enum CmuxJump {
         case pause(TimeInterval)
     }
 
-    /// Empties Claude's input so a half-typed draft is not sent with the reply: Ctrl-E, then Ctrl-U + Backspace
+    /// Empties Claude's input so a half-typed draft is not sent with a deny reason: Ctrl-E, then Ctrl-U + Backspace
     /// for up to 20 lines (Ctrl-U alone stops at the line start). Ctrl-Y in Claude brings the draft back.
     static let clearInput = Key.raw("\\x05" + String(repeating: "\\x15\\x7f", count: 20))
 
@@ -64,7 +64,6 @@ public enum CmuxJump {
         case .deny(_, _, let reason):
             let r = reason.trimmingCharacters(in: .whitespacesAndNewlines)
             return r.isEmpty ? [.raw("\\x1b")] : [.raw("\\x1b"), .pause(0.3), clearInput, .paste(r), .raw("\\r")]
-        case .reply(_, let text, _): return [clearInput, .paste(text), .raw("\\r")]
         }
     }
 

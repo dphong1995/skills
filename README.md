@@ -255,7 +255,7 @@ widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouT
   trái/phải mở sang phải/trái. Chuột phải → Thoát.
 - Bấm một dòng → cmux lên trước, đúng pane của session đó. Session không chạy trong cmux thì chỉ kêu beep.
 - Lần đầu macOS hỏi quyền "ClaudeSessions điều khiển cmux" (có thể hỏi lại sau mỗi lần build). Quyền Automation
-  cho cmux này cần cho cả nhảy pane, duyệt và trả lời. Lỡ từ chối thì bật lại ở System Settings → Privacy &
+  cho cmux này cần cho cả nhảy pane và duyệt. Lỡ từ chối thì bật lại ở System Settings → Privacy &
   Security → Automation.
 - Kéo được từ mọi chỗ trên widget; dời từ 4 pt trở xuống vẫn tính là bấm.
 - Session xong/chờ hiện thêm câu trả lời cuối của Claude (tối đa 2 dòng), đọc từ transcript
@@ -263,9 +263,7 @@ widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouT
 - Dòng `chờ duyệt` có nút **Cho phép** và **Từ chối…** (bấm Từ chối… để gõ lý do, để trống = chỉ từ chối).
   Lệnh dài phải bấm **Xem đủ** mới hiện nút; lệnh quá dài, subagent, nhiều việc cùng chờ hoặc tool lạ
   (MCP…) thì chỉ nhảy tới cmux để duyệt.
-- Dòng `xong` có nút trả lời nhanh (`tiếp tục`, `ok, làm đi`) và ô **Trả lời…** (Enter gửi, Esc đóng).
-- Cơ chế: widget gõ phím hộ vào terminal cmux qua AppleScript (`1` = Yes, Esc = từ chối, trả lời = dán
-  chữ rồi Enter), chỉ cho session chạy trong cmux (session ngoài cmux: bấm Cho phép/Từ chối/Trả lời chỉ kêu beep), và kiểm lại trạng thái ngay trước khi gõ (đổi rồi thì
+- Cơ chế: widget gõ phím hộ vào terminal cmux qua AppleScript (`1` = Yes, Esc = từ chối, lý do từ chối = dán chữ sau Esc rồi Enter), chỉ cho session chạy trong cmux (session ngoài cmux: bấm Cho phép/Từ chối chỉ kêu beep), và kiểm lại trạng thái ngay trước khi gõ (đổi rồi thì
   chỉ kêu beep, không gõ gì).
 - Không còn session 30 giây thì widget ẩn, có session thì hiện lại; mở app lúc chưa có session nào thì widget ẩn ngay.
 

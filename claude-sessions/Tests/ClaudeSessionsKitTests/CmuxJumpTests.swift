@@ -35,11 +35,7 @@ private let line = "claude 7d0fcbef-0908-41eb-9779-ea86d5bf838a  workspace=4E6B8
         == [.raw("\\x1b"), .pause(0.3), CmuxJump.clearInput, .paste("chỉ chạy make clean"), .raw("\\r")])
 }
 
-@Test func replyKeys() {
-    #expect(CmuxJump.keys(for: .reply("s", text: "ok, làm đi")) == [CmuxJump.clearInput, .paste("ok, làm đi"), .raw("\\r")])
-}
-
-// A half-typed draft in Claude's input must not be sent with the reply: Ctrl-E, then Ctrl-U + Backspace per line.
+// A half-typed draft in Claude's input must not be sent with the deny reason: Ctrl-E, then Ctrl-U + Backspace per line.
 @Test func clearInputEmptiesMultiLineDraft() {
     #expect(CmuxJump.clearInput == .raw("\\x05" + String(repeating: "\\x15\\x7f", count: 20)))
 }
