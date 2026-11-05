@@ -3,7 +3,7 @@ import Foundation
 /// The branch checked out in a directory, read from `.git/HEAD` without spawning git.
 enum GitBranch {
     /// Walks up from `cwd` to the first `.git`; nil for a detached HEAD, no repo or an unreadable file.
-    static func current(in cwd: String) -> String? {
+    static func current(in cwd: String, onHeadRead: () -> Void = {}) -> String? {
         guard cwd.hasPrefix("/") else { return nil }
         let fm = FileManager.default
         var dir = URL(fileURLWithPath: cwd, isDirectory: true)
@@ -17,6 +17,7 @@ enum GitBranch {
                     let path = text.dropFirst("gitdir:".count).trimmingCharacters(in: .whitespacesAndNewlines)
                     head = URL(fileURLWithPath: path, relativeTo: dir)
                 }
+                onHeadRead()
                 guard let content = try? String(contentsOf: head.appendingPathComponent("HEAD"), encoding: .utf8) else { return nil }
                 let line = content.trimmingCharacters(in: .whitespacesAndNewlines)
                 let prefix = "ref: refs/heads/"
@@ -27,5 +28,16 @@ enum GitBranch {
             if parent.path == dir.path { return nil }
             dir = parent
         }
+    }
+}
+
+/// Reads branches for a `Store`; counts `HEAD` file reads for tests.
+final class GitBranchReader {
+    private(set) var headReads = 0
+
+    init() {}
+
+    func current(in cwd: String) -> String? {
+        GitBranch.current(in: cwd, onHeadRead: { headReads += 1 })
     }
 }

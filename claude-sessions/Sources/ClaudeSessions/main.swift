@@ -18,7 +18,12 @@ final class Panel {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    let store = Store(startHidden: true)
+    /// Absolute dir holding `sessions/`, `projects/` and `tasks/`; set by `perf.sh` to run on a fixture.
+    static let root = ProcessInfo.processInfo.environment["CLAUDE_SESSIONS_ROOT"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+    let store = AppDelegate.root.map {
+        Store(dir: $0.appendingPathComponent("sessions"), projects: $0.appendingPathComponent("projects"),
+              tasks: $0.appendingPathComponent("tasks"), startHidden: true)
+    } ?? Store(startHidden: true)
     var panels: [String: Panel] = [:]
     var timer: Timer?
     var monitors: [Any] = []
@@ -145,6 +150,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // The Keychain read spawns `security`; keep it off the main thread.
         DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard AppDelegate.root == nil else { return }
             let creds = Dictionary(uniqueKeysWithValues: Service.allCases.compactMap { s in Credentials.read(s).map { (s, $0) } })
             let bitbucket = creds[.bitbucket].map { BitbucketClient(account: $0.account, token: $0.token) }
             let jira = creds[.jira].map { JiraClient(account: $0.account, token: $0.token) }
@@ -184,7 +190,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let j = d.dictionary(forKey: "jiraProjects") as? [String: String] { store.jiraProjects = j }
         store.$jiraProjects.dropFirst().sink { UserDefaults.standard.set($0, forKey: "jiraProjects") }.store(in: &cancellables)
 
-        if SMAppService.mainApp.status != .enabled { try? SMAppService.mainApp.register() }
+        if AppDelegate.root == nil, SMAppService.mainApp.status != .enabled { try? SMAppService.mainApp.register() }
         refreshAndSyncVisibility()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             guard let self else { return }

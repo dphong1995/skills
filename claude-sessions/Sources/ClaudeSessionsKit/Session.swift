@@ -153,6 +153,20 @@ public final class Store: ObservableObject {
     private var activities: [String: (offset: UInt64, text: String?)] = [:]
     /// File reads done for the running-tool line, for tests.
     private(set) var activityReads = 0
+    /// Transcript bytes read by the head, tail and activity reads, for tests.
+    private(set) var transcriptBytesRead = 0
+    /// Session `.json` files read and parsed, for tests.
+    private(set) var sessionParses = 0
+    /// Task directory listings, for tests.
+    private(set) var taskListings = 0
+    /// `HEAD` file reads of the store's own branch reader; 0 when a custom reader was injected.
+    var headReads: Int { gitReader?.headReads ?? 0 }
+    /// Entry count of every per-session cache, by property name, for tests.
+    var cacheCounts: [String: Int] {
+        ["cache": cache.count, "buttonCache": buttonCache.count, "urls": urls.count, "urlTried": urlTried.count,
+         "heads": heads.count, "todos": todos.count, "activities": activities.count,
+         "pids": pids.count, "surfaces": surfaces.count]
+    }
 
     /// Changes whenever a task file is added, removed or rewritten; sizes cover writes within one timestamp tick.
     private struct TaskKey: Equatable {
@@ -180,7 +194,14 @@ public final class Store: ObservableObject {
                 jira: JiraMonitor? = nil,
                 scanner: TranscriptScanner = TranscriptScanner(),
                 branch: ((String) -> String?)? = nil) {
-        self.branchReader = branch ?? GitBranch.current(in:)
+        if let branch {
+            self.gitReader = nil
+            self.branchReader = branch
+        } else {
+            let reader = GitBranchReader()
+            self.gitReader = reader
+            self.branchReader = reader.current(in:)
+        }
         self.prMonitor = prs
         self.jiraMonitor = jira
         self.scanner = scanner
@@ -192,6 +213,7 @@ public final class Store: ObservableObject {
 
     /// The branch checked out in a cwd, read every refresh.
     private let branchReader: (String) -> String?
+    private let gitReader: GitBranchReader?
     public var prMonitor: PRMonitor?
     public var jiraMonitor: JiraMonitor?
     /// Decoded issue type icons by URL, kept for the run.
@@ -229,6 +251,7 @@ public final class Store: ObservableObject {
     private func readTodo(for s: Session) -> Todo? {
         let d = tasks.appendingPathComponent(s.id, isDirectory: true)
         let keys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey]
+        taskListings += 1
         let files = Tasks.files(in: d)
         let values = files.map { try? $0.resourceValues(forKeys: Set(keys)) }
         let key = TaskKey(dirDate: (try? d.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
@@ -250,6 +273,7 @@ public final class Store: ObservableObject {
         guard let url else { return nil }
         if let h = heads[s.id], headIsFinal(s.id) || h.size == size { return h.prompt }
         let d = Transcript.head(url)
+        transcriptBytesRead += d.count
         let full = Transcript.firstPrompt(in: d)
         let h = (prompt: full.map { Transcript.displayText($0, limit: 200) }, size: size)
         heads[s.id] = h
@@ -265,6 +289,7 @@ public final class Store: ObservableObject {
         c.size = size
         c.prompt = prompt
         let tail = Transcript.tail(url)
+        transcriptBytesRead += tail.count
         let full = Transcript.lastReply(in: tail)
         c.reply = full.map { Transcript.displayText($0, limit: 600) }
         c.replyText = c.reply.map(markdown)
@@ -294,6 +319,7 @@ public final class Store: ObservableObject {
         let atLineStart = from == 0 || from == cached?.offset
         activityReads += 1
         let d = Transcript.read(url, from: from, to: size)
+        transcriptBytesRead += d.count
         var body = d[...]
         var offset = from
         if !atLineStart {
@@ -333,6 +359,7 @@ public final class Store: ObservableObject {
         var list: [Session] = []
         var sizes: [String: UInt64] = [:]
         for file in files where file.pathExtension == "json" {
+            sessionParses += 1
             guard let data = try? Data(contentsOf: file),
                   let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let pid = (o["pid"] as? NSNumber)?.int32Value,
