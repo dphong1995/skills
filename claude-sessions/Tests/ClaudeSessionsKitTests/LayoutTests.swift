@@ -24,6 +24,17 @@ func canvasPillRoundTrip(a: Anchor) {
     #expect(scr.contains(open))
 }
 
+@Test func centredCanvasAtInnerEdgeOfMiddleThirdStaysOnScreen() {
+    let s = NSRect(x: 0, y: 0, width: 1280, height: 800)
+    let centre = CGPoint(x: s.minX + s.width / 3 + 1, y: 400)
+    let a = Anchor.near(centre, in: s)
+    #expect(a.h == .center)
+    let origin = CGPoint(x: centre.x - Layout.collapsed.width / 2, y: centre.y)
+    let f = Layout.canvasFrame(pillOrigin: origin, anchor: a)
+    #expect(f.minX >= s.minX)
+    #expect(Layout.pill(in: f, size: CGSize(width: Layout.expandedWidth, height: 400), anchor: a).minX >= s.minX)
+}
+
 @Test func migrateShiftsByAnchor() {
     #expect(Layout.migrate(pillX: 1280, from: 232, to: 124, anchor: Anchor(h: .trailing)) == 1388)
     #expect(Layout.migrate(pillX: 600, from: 232, to: 124, anchor: Anchor(h: .center)) == 654)
