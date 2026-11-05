@@ -149,22 +149,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.mainMenu = editMainMenu()
 
         // The Keychain read spawns `security`; keep it off the main thread.
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            guard AppDelegate.root == nil else { return }
-            let creds = Dictionary(uniqueKeysWithValues: Service.allCases.compactMap { s in Credentials.read(s).map { (s, $0) } })
-            let bitbucket = creds[.bitbucket].map { BitbucketClient(account: $0.account, token: $0.token) }
-            let jira = creds[.jira].map { JiraClient(account: $0.account, token: $0.token) }
-            let accounts = creds.mapValues(\.account)
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                store.accounts = accounts
-                if let bitbucket {
-                    bitbucketClient = bitbucket
-                    store.prMonitor = PRMonitor(api: bitbucket)
-                }
-                if let jira {
-                    jiraClient = jira
-                    store.jiraMonitor = JiraMonitor(api: jira)
+        if AppDelegate.root == nil {
+            DispatchQueue.global(qos: .utility).async { [weak self] in
+                let creds = Dictionary(uniqueKeysWithValues: Service.allCases.compactMap { s in Credentials.read(s).map { (s, $0) } })
+                let bitbucket = creds[.bitbucket].map { BitbucketClient(account: $0.account, token: $0.token) }
+                let jira = creds[.jira].map { JiraClient(account: $0.account, token: $0.token) }
+                let accounts = creds.mapValues(\.account)
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    store.accounts = accounts
+                    if let bitbucket {
+                        bitbucketClient = bitbucket
+                        store.prMonitor = PRMonitor(api: bitbucket)
+                    }
+                    if let jira {
+                        jiraClient = jira
+                        store.jiraMonitor = JiraMonitor(api: jira)
+                    }
                 }
             }
         }
@@ -445,10 +446,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func trackMouse() {
         if store.hidden { return }
         let mouse = NSEvent.mouseLocation
-        // Idle mouse: outside every panel frame (the pill and card lie inside it) and no panel in a state the loop would change.
-        if panels.values.allSatisfy({ !$0.window.frame.contains(mouse) && !$0.state.hovering && $0.state.hoveredRow == nil && $0.window.ignoresMouseEvents }) { return }
         for p in panels.values {
-            let inside = Layout.pill(in: p.window.frame, size: Layout.size(store, p.state), anchor: p.state.anchor).contains(mouse)
+            // The pill lies inside the fixed canvas frame, so most mouse moves skip the layout computation.
+            let inside = p.window.frame.contains(mouse) && Layout.pill(in: p.window.frame, size: Layout.size(store, p.state), anchor: p.state.anchor).contains(mouse)
             if p.state.editing == nil && inside != p.state.hovering {
                 p.state.hovering = inside
                 if inside { store.peekUntil = nil }

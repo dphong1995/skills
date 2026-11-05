@@ -22,7 +22,7 @@ enum Tasks {
 
     /// The task files in `dir` (`~/.claude/tasks/<sessionId>`), sorted by name; dot-files are bookkeeping.
     static func files(in dir: URL) -> [URL] {
-        ((try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey])) ?? [])
+        ((try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? [])
             .filter { $0.pathExtension == "json" && !$0.lastPathComponent.hasPrefix(".") }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
     }

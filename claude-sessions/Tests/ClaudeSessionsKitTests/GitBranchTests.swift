@@ -2,17 +2,6 @@ import Foundation
 import Testing
 @testable import ClaudeSessionsKit
 
-private func write(_ url: URL, _ text: String) {
-    try! FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-    try! text.write(to: url, atomically: true, encoding: .utf8)
-}
-
-private func repo(_ head: String) -> URL {
-    let d = makeTempDir()
-    write(d.appendingPathComponent(".git/HEAD"), head)
-    return d
-}
-
 @Test func gitBranchPlainRepo() {
     #expect(GitBranch.current(in: repo("ref: refs/heads/bugfix/T6IR-31\n").path) == "bugfix/T6IR-31")
 }

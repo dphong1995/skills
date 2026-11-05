@@ -26,8 +26,7 @@ enum GitBranch {
     }
 
     /// The branch named by a `HEAD` file; nil for a detached HEAD or an unreadable file.
-    static func branch(inHead head: URL, onHeadRead: () -> Void = {}) -> String? {
-        onHeadRead()
+    static func branch(inHead head: URL) -> String? {
         guard let content = try? String(contentsOf: head, encoding: .utf8) else { return nil }
         let line = content.trimmingCharacters(in: .whitespacesAndNewlines)
         let prefix = "ref: refs/heads/"
@@ -36,8 +35,8 @@ enum GitBranch {
     }
 
     /// Branch of the repo containing `cwd`; nil for a detached HEAD, no repo or an unreadable file.
-    static func current(in cwd: String, onHeadRead: () -> Void = {}) -> String? {
-        headFile(in: cwd).flatMap { branch(inHead: $0, onHeadRead: onHeadRead) }
+    static func current(in cwd: String) -> String? {
+        headFile(in: cwd).flatMap { branch(inHead: $0) }
     }
 }
 
@@ -51,11 +50,13 @@ final class GitBranchReader {
     init() {}
 
     func current(in cwd: String) -> String? {
+        // A nearer `.git` created under a cached repo is not seen while the cached HEAD still exists (accepted trade-off).
         if let c = cache[cwd], let stamp = FileStamp(c.head.path), stamp == c.stamp { return c.branch }
         cache[cwd] = nil
         guard let head = GitBranch.headFile(in: cwd) else { return nil }
         let stamp = FileStamp(head.path)
-        let branch = GitBranch.branch(inHead: head, onHeadRead: { headReads += 1 })
+        headReads += 1
+        let branch = GitBranch.branch(inHead: head)
         if let stamp { cache[cwd] = (head, stamp, branch) }
         return branch
     }

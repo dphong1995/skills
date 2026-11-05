@@ -12,6 +12,17 @@ func makeTempDir() -> URL {
     return dir
 }
 
+func write(_ url: URL, _ text: String) {
+    try! FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try! text.write(to: url, atomically: true, encoding: .utf8)
+}
+
+func repo(_ head: String) -> URL {
+    let d = makeTempDir()
+    write(d.appendingPathComponent(".git/HEAD"), head)
+    return d
+}
+
 func writeSession(_ dir: URL, _ file: String, pid: Int32, status: String, waitingFor: String? = nil, ageSec: Double, name: String, cwd: String, updatedAt: Date? = nil, nameSource: String? = nil) {
     var o: [String: Any] = ["pid": pid, "sessionId": file, "name": name, "cwd": cwd, "status": status,
                             "statusUpdatedAt": (updatedAt?.timeIntervalSince1970 ?? Date().timeIntervalSince1970 - ageSec) * 1000]

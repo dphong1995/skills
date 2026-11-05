@@ -11,6 +11,14 @@ private final class Fixture {
     let store: Store
     private(set) var ids: [String] = []
     private var created = 0
+    private var transcripts: [String: URL] = [:]
+    private var largest = 0
+    /// Every temp dir the fixture made; removed when the fixture goes away.
+    private var temps: [URL] = []
+
+    deinit {
+        for d in [dir, projects, tasks] + temps { try? FileManager.default.removeItem(at: d) }
+    }
 
     init() {
         store = Store(dir: dir, projects: projects, tasks: tasks, startHidden: false, prs: nil, jira: nil, scanner: scanner, branch: nil)
@@ -38,22 +46,25 @@ private final class Fixture {
     func add(status: String, waitingFor: String? = nil, transcriptBytes: Int, fillerMB: Int = 0, worktree: Bool = false, pendingTool: Bool = false, taskFiles: Int = 5) -> String {
         let id = "perf-\(created)"
         created += 1
-        let cwd = makeTempDir()
-        let fm = FileManager.default
+        let cwd: URL
         if worktree {
-            let gitdir = makeTempDir().appendingPathComponent("wt", isDirectory: true)
-            try! fm.createDirectory(at: gitdir, withIntermediateDirectories: true)
-            try! "ref: refs/heads/feature/wt\n".write(to: gitdir.appendingPathComponent("HEAD"), atomically: true, encoding: .utf8)
-            try! "gitdir: \(gitdir.path)\n".write(to: cwd.appendingPathComponent(".git"), atomically: true, encoding: .utf8)
+            cwd = makeTempDir()
+            let gitdirRoot = makeTempDir()
+            temps.append(gitdirRoot)
+            let gitdir = gitdirRoot.appendingPathComponent("wt", isDirectory: true)
+            write(gitdir.appendingPathComponent("HEAD"), "ref: refs/heads/feature/wt\n")
+            write(cwd.appendingPathComponent(".git"), "gitdir: \(gitdir.path)\n")
         } else {
-            try! fm.createDirectory(at: cwd.appendingPathComponent(".git"), withIntermediateDirectories: true)
-            try! "ref: refs/heads/main\n".write(to: cwd.appendingPathComponent(".git/HEAD"), atomically: true, encoding: .utf8)
+            cwd = repo("ref: refs/heads/main\n")
         }
+        temps.append(cwd)
         let file = writeTranscript(projects, cwd: cwd.path, id: id, lines: [])
+        transcripts[id] = file
+        largest = max(largest, transcriptBytes + fillerMB << 20)
         append(file, Fixture.real(bytes: transcriptBytes))
         for _ in 0..<fillerMB { append(file, Fixture.fillerMB) }
         if pendingTool { append(file, toolUseLine(id: "toolu_perm", name: "Bash", input: ["command": "rm -rf build"]) + "\n") }
-        for t in 1...max(1, taskFiles) where taskFiles > 0 {
+        for t in stride(from: 1, through: taskFiles, by: 1) {
             writeTask(tasks, session: id, id: t, status: t == 1 ? "in_progress" : "pending", subject: "Task \(t)", activeForm: "Doing task \(t)")
         }
         writeSession(dir, id, pid: me, status: status, waitingFor: waitingFor, ageSec: 60, name: id, cwd: cwd.path)
@@ -66,10 +77,7 @@ private final class Fixture {
         ids.removeAll { $0 == id }
     }
 
-    func transcript(_ id: String) -> URL {
-        let cwd = (try! JSONSerialization.jsonObject(with: Data(contentsOf: dir.appendingPathComponent("\(id).json"))) as! [String: Any])["cwd"] as! String
-        return projects.appendingPathComponent(Transcript.projectDirName(cwd)).appendingPathComponent("\(id).jsonl")
-    }
+    func transcript(_ id: String) -> URL { transcripts[id]! }
 
     /// 10 sessions: 3 busy, 4 idle, 3 waiting (one on a permission prompt); ~2 MB transcripts, the first one 64 MB.
     static func standard() -> Fixture {
@@ -84,16 +92,17 @@ private final class Fixture {
     }
 
     /// Refreshes until the scanner has parsed everything: `parsedLines` flat for 3 refreshes, after at least as many
-    /// refreshes as the 64 MB transcript has 1 MB chunks (the filler part parses nothing, so it looks flat too).
+    /// refreshes as the largest transcript has chunks (the filler part parses nothing, so it looks flat too).
     func warmUp() {
         var flat = 0
         var last = -1
+        let floor = largest / Int(TranscriptScanner.chunkBytes) + 3
         for n in 1...200 {
             store.refresh()
             let parsed = scanner.parsedLines
             flat = parsed == last ? flat + 1 : 0
             last = parsed
-            if flat >= 3 && n >= 70 { return }
+            if flat >= 3 && n >= floor { return }
         }
     }
 
@@ -121,14 +130,10 @@ private final class Fixture {
         return d
     }
 
-    @Test func steadyRefreshReadsNoTranscriptBytes() {
+    @Test func steadyRefreshReadsNothing() {
         let d = steadyDeltas()
         #expect(d.bytes == 0)
         #expect(d.parsed == 0)
-    }
-
-    @Test func steadyRefreshReadsNothing() {
-        let d = steadyDeltas()
         #expect(d.parses == 0)
         #expect(d.heads == 0)
         #expect(d.listings == 0)
@@ -166,11 +171,10 @@ private final class Fixture {
 
     @Test func appendReadsOnlyNewBytes() {
         let longest = toolUseLine(id: "toolu_a99999", name: "Bash", input: ["command": "echo 99999"]).utf8.count + 1
-        for r in appendRounds() { #expect(r.delta.bytes <= r.appended + 3 * longest) }
-    }
-
-    @Test func appendDoesNotReparseSessions() {
-        for r in appendRounds() { #expect(r.delta.parses == 0) }
+        for r in appendRounds() {
+            #expect(r.delta.bytes <= r.appended + 3 * longest)
+            #expect(r.delta.parses == 0)
+        }
     }
 
     @Test func refreshMedianUnder10ms() {
@@ -202,6 +206,7 @@ private final class Fixture {
                 worst = max(worst, count - live)
                 #expect(count <= live, "\(name) holds \(count) entries for \(live) live sessions")
             }
+            // "branches" is per cwd; each fixture session has its own cwd, so it is bounded by `live` and 0 at the end too.
         }
         print("caches: worst excess over live sessions = \(worst)")
         for id in f.ids { f.remove(id) }

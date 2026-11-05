@@ -2,23 +2,6 @@ import Foundation
 import Combine
 import AppKit
 
-/// What identifies a file's content between two refreshes: inode (rename-based writes), size and nanosecond mtime.
-struct FileStamp: Equatable {
-    let inode: UInt64
-    let size: Int
-    let sec: Int
-    let nsec: Int
-
-    init?(_ path: String) {
-        var st = stat()
-        guard stat(path, &st) == 0 else { return nil }
-        inode = UInt64(st.st_ino)
-        size = Int(st.st_size)
-        sec = Int(st.st_mtimespec.tv_sec)
-        nsec = Int(st.st_mtimespec.tv_nsec)
-    }
-}
-
 enum ItemTone: Equatable {
     case todo, doing, done, open, merged, closed
 
@@ -167,20 +150,8 @@ public final class Store: ObservableObject {
     private var urlTried: [String: Date?] = [:]
     private var heads: [String: (prompt: String?, size: Int)] = [:]
     private var todos: [String: (key: TaskKey, files: [URL], todo: Todo?)] = [:]
-    /// The fields of a session `.json` that `refresh` uses.
-    private struct ParsedSession {
-        let pid: Int32
-        let id: String?
-        let name: String?
-        let cwd: String?
-        let status: String?
-        let waitingFor: String?
-        let statusUpdatedAt: Double?
-        let nameSource: String?
-        let spare: Bool
-    }
-    /// Parsed session files by URL, valid while the file's `FileStamp` is unchanged.
-    private var sessionJSON: [URL: (stamp: FileStamp, parsed: ParsedSession)] = [:]
+    /// Parsed session files by URL, valid while the file's `FileStamp` is unchanged: the `Session` with the fields the file gives, and its `spare` flag.
+    private var sessionJSON: [URL: (stamp: FileStamp, base: Session, spare: Bool)] = [:]
     private var activities: [String: (offset: UInt64, text: String?)] = [:]
     /// File reads done for the running-tool line, for tests.
     private(set) var activityReads = 0
@@ -196,13 +167,13 @@ public final class Store: ObservableObject {
     var cacheCounts: [String: Int] {
         ["cache": cache.count, "buttonCache": buttonCache.count, "urls": urls.count, "urlTried": urlTried.count,
          "heads": heads.count, "todos": todos.count, "activities": activities.count,
-         "pids": pids.count, "surfaces": surfaces.count, "sessionJSON": sessionJSON.count]
+         "pids": pids.count, "surfaces": surfaces.count, "sessionJSON": sessionJSON.count,
+         "branches": gitReader?.cachedCwds ?? 0]
     }
 
-    /// Changes whenever a task file is added, removed or rewritten; sizes cover writes within one timestamp tick.
+    /// Changes whenever a task file is added, removed or rewritten; each `FileStamp` (inode, size, ns mtime) covers an in-place rewrite.
     private struct TaskKey: Equatable {
         var dir: FileStamp?
-        var files: [String]
         var stamps: [FileStamp?]
     }
 
@@ -286,7 +257,7 @@ public final class Store: ObservableObject {
             taskListings += 1
             files = Tasks.files(in: d)
         }
-        let key = TaskKey(dir: dirStamp, files: files.map(\.lastPathComponent), stamps: files.map { FileStamp($0.path) })
+        let key = TaskKey(dir: dirStamp, stamps: files.map { FileStamp($0.path) })
         if let cached, cached.key == key { return cached.todo }
         let todo = Tasks.read(files)
         todos[s.id] = (key, files, todo)
@@ -391,33 +362,34 @@ public final class Store: ObservableObject {
         for file in files where file.pathExtension == "json" {
             seenFiles.insert(file)
             guard let stamp = FileStamp(file.path) else { continue }
-            let p: ParsedSession
+            let base: Session
+            let spare: Bool
             if let c = sessionJSON[file], c.stamp == stamp {
-                p = c.parsed
+                base = c.base
+                spare = c.spare
             } else {
                 sessionParses += 1
                 guard let data = try? Data(contentsOf: file),
                       let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                       let pid = (o["pid"] as? NSNumber)?.int32Value
                 else { continue }
-                p = ParsedSession(pid: pid, id: o["sessionId"] as? String, name: o["name"] as? String, cwd: o["cwd"] as? String,
-                                  status: o["status"] as? String, waitingFor: o["waitingFor"] as? String,
-                                  statusUpdatedAt: (o["statusUpdatedAt"] as? NSNumber)?.doubleValue,
-                                  nameSource: o["nameSource"] as? String, spare: (o["spare"] as? Bool) == true)
-                sessionJSON[file] = (stamp, p)
+                var parsed = Session(
+                    id: (o["sessionId"] as? String) ?? String(pid),
+                    name: (o["name"] as? String) ?? "pid \(pid)",
+                    cwd: (o["cwd"] as? String) ?? "",
+                    status: (o["status"] as? String) ?? "",
+                    waitingFor: o["waitingFor"] as? String,
+                    since: (o["statusUpdatedAt"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue / 1000) },
+                    pid: pid
+                )
+                parsed.nameSource = o["nameSource"] as? String
+                base = parsed
+                spare = (o["spare"] as? Bool) == true
+                sessionJSON[file] = (stamp, base, spare)
             }
             // Liveness is checked every refresh: a dead pid drops the row even when the file is unchanged.
-            guard kill(p.pid, 0) == 0 || errno == EPERM, !p.spare else { continue }
-            var s = Session(
-                id: p.id ?? String(p.pid),
-                name: p.name ?? "pid \(p.pid)",
-                cwd: p.cwd ?? "",
-                status: p.status ?? "",
-                waitingFor: p.waitingFor,
-                since: p.statusUpdatedAt.map { Date(timeIntervalSince1970: $0 / 1000) },
-                pid: p.pid
-            )
-            s.nameSource = p.nameSource
+            guard kill(base.pid, 0) == 0 || errno == EPERM, !spare else { continue }
+            var s = base
             let url = transcriptURL(for: s)
             let size = url.flatMap { FileStamp($0.path)?.size } ?? 0
             if url != nil { sizes[s.id] = UInt64(size) }

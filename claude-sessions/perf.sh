@@ -25,8 +25,19 @@ SLEEP_PIDS=()
 
 cleanup() {
     trap - EXIT INT TERM
-    [ -n "$WRITER_PID" ] && { pkill -P "$WRITER_PID" 2>/dev/null; kill "$WRITER_PID" 2>/dev/null; }
-    [ -n "$APP_PID" ] && kill "$APP_PID" 2>/dev/null
+    if [ -n "$WRITER_PID" ]; then
+        # Collect the writer's `sleep` first: once the writer is dead its child is reparented and pkill -P cannot find it.
+        local kids
+        kids=$(pgrep -P "$WRITER_PID")
+        kill "$WRITER_PID" 2>/dev/null
+        [ -n "$kids" ] && kill $kids 2>/dev/null
+    fi
+    if [ -n "$APP_PID" ]; then
+        kill "$APP_PID" 2>/dev/null
+        # `wait` below must not block forever on an app that ignores TERM.
+        for _ in $(seq 30); do kill -0 "$APP_PID" 2>/dev/null || break; sleep 0.1; done
+        kill -9 "$APP_PID" 2>/dev/null
+    fi
     [ ${#SLEEP_PIDS[@]} -gt 0 ] && kill "${SLEEP_PIDS[@]}" 2>/dev/null
     wait 2>/dev/null
 }
@@ -35,7 +46,7 @@ trap 'exit 130' INT TERM
 
 echo "== build"
 swift build -c release --product ClaudeSessions 2>&1 | grep -v "ld: warning" | tail -2
-[ -x "$BIN" ] || { echo "build failed"; exit 1; }
+[ "${PIPESTATUS[0]}" -eq 0 ] && [ -x "$BIN" ] || { echo "build failed"; exit 1; }
 
 load=$(sysctl -n vm.loadavg | awk '{print $2}')
 cores=$(sysctl -n hw.ncpu)
@@ -54,7 +65,7 @@ UNIT="$ROOT/unit.jsonl"
 if [ ! -s "$UNIT" ]; then
     # 1 unit ~1 MB: 100 realistic turns, then lines the scanner skips without a JSON parse.
     FILLER='{"type":"progress","data":"'$(head -c 900 /dev/zero | tr '\0' 'x')'"}'
-    { for _ in $(seq 100); do echo "$REAL"; done; for _ in $(seq 1000); do echo "$FILLER"; done; } > "$UNIT"
+    { for _ in $(seq 100); do echo "$REAL"; done; for _ in $(seq 1000); do echo "$FILLER"; done; } > "$UNIT.tmp" && mv "$UNIT.tmp" "$UNIT"
 fi
 UNIT_SIZE=$(stat -f %z "$UNIT")
 
@@ -93,29 +104,56 @@ done
 
 # ---- readings ------------------------------------------------------------------------------------------------------
 cpu_seconds() { ps -o cputime= -p "$APP_PID" | tr -d ' ' | awk -F: '{ s = 0; for (i = 1; i <= NF; i++) s = s * 60 + $i; printf "%.2f", s }'; }
+is_num() { [[ $1 =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; }
+app_alive() { kill -0 "$APP_PID" 2>/dev/null; }
 footprint_mb() { footprint -f bytes "$APP_PID" 2>/dev/null | awk '{ for (i = 1; i < NF; i++) if ($i == "Footprint:") { printf "%.1f", $(i + 1) / 1048576; exit } }'; }
-idle_wakeups() { top -l 1 -pid "$APP_PID" -stats pid,idlew 2>/dev/null | tail -1 | awk '{ gsub(/[^0-9]/, "", $2); print $2 + 0 }'; }
+# top's IDLEW column is cumulative since the process started, so the phase rate is the difference of two `-l 1` readings.
+# Prints nothing when the app is gone (the last line is then the header, not a number).
+idle_wakeups() { top -l 1 -pid "$APP_PID" -stats pid,idlew 2>/dev/null | tail -1 | awk '$1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]/ { gsub(/[^0-9]/, "", $2); print $2 }'; }
 
 RESULTS=()
 FAILED=0
-# $1 metric, $2 measured, $3 threshold, $4 comparison direction text ("<")
+# $1 metric, $2 measured, $3 threshold; a measured value that is not a number (app gone, failed reading) is a FAIL.
 record() {
     local verdict=FAIL
-    awk -v a="$2" -v t="$3" 'BEGIN{exit !(a<t)}' && verdict=PASS
+    is_num "$2" && awk -v a="$2" -v t="$3" 'BEGIN{exit !(a<t)}' && verdict=PASS
     [ "$verdict" = FAIL ] && FAILED=1
     RESULTS+=("$(printf '%-34s | %10s | < %-8s | %s' "$1" "$2" "$3" "$verdict")")
 }
 
+# $1 a, $2 b, $3 scale, $4 printf format: (b - a) * scale, or n/a when a reading is missing.
+delta_of() { is_num "$1" && is_num "$2" && awk -v a="$1" -v b="$2" -v k="$3" "BEGIN{printf \"$4\", (b - a) * k}" || echo n/a; }
+
+# $1 = event text; FAILs and returns 1 when the app is gone.
+check_alive() {
+    app_alive && return 0
+    FAILED=1
+    RESULTS+=("$(printf '%-34s | %10s | %-10s | FAIL' "app exited ($1)" "-" "-")")
+    return 1
+}
+
 # $1 = phase name, $2 = CPU threshold, $3 = "wakeups" to also check idle wakeups
 measure_phase() {
-    local name=$1 cpu_max=$2 cpu0 cpu1 fp0 fp1 w0 w1
+    local name=$1 cpu_max=$2 cpu0 cpu1 fp0 fp1 w0 w1 a b t0=$SECONDS
+    check_alive "$name start" || return
+    # Wait for the footprint to stop moving (two readings within 1 MB, cap 30 s) so growth is measured from a settled value.
+    a=$(footprint_mb)
+    while [ $((SECONDS - t0)) -lt 30 ] && app_alive; do
+        sleep 1
+        b=$(footprint_mb)
+        is_num "$a" && is_num "$b" && awk -v a="$a" -v b="$b" 'BEGIN{d = b - a; exit !(d < 1 && d > -1)}' && break
+        a=$b
+    done
     cpu0=$(cpu_seconds); fp0=$(footprint_mb); w0=$(idle_wakeups)
-    sleep "$PHASE"
+    # Background sleep + wait so a signal is handled at once instead of after the sleep.
+    sleep "$PHASE" & SLEEP_PIDS+=($!)
+    wait $!
     cpu1=$(cpu_seconds); fp1=$(footprint_mb); w1=$(idle_wakeups)
+    check_alive "$name end"
     record "$name footprint end (MB)" "$fp1" "$FOOTPRINT_MAX_MB"
-    record "$name footprint growth (MB)" "$(awk -v a="$fp0" -v b="$fp1" 'BEGIN{printf "%.1f", b - a}')" "$GROWTH_MAX_MB"
-    record "$name CPU (%)" "$(awk -v a="$cpu0" -v b="$cpu1" -v s="$PHASE" 'BEGIN{printf "%.2f", (b - a) / s * 100}')" "$cpu_max"
-    [ "$3" = wakeups ] && record "$name idle wakeups (/s)" "$(awk -v a="$w0" -v b="$w1" -v s="$PHASE" 'BEGIN{printf "%.2f", (b - a) / s}')" "$WAKEUPS_MAX"
+    record "$name footprint growth (MB)" "$(delta_of "$fp0" "$fp1" 1 %.1f)" "$GROWTH_MAX_MB"
+    record "$name CPU (%)" "$(delta_of "$cpu0" "$cpu1" "$(awk -v s="$PHASE" 'BEGIN{print 100 / s}')" %.2f)" "$cpu_max"
+    [ "$3" = wakeups ] && record "$name idle wakeups (/s)" "$(delta_of "$w0" "$w1" "$(awk -v s="$PHASE" 'BEGIN{print 1 / s}')" %.2f)" "$WAKEUPS_MAX"
 }
 
 # ---- run -----------------------------------------------------------------------------------------------------------
@@ -130,11 +168,13 @@ quiet=0
 prev=$(cpu_seconds)
 while [ "$quiet" -lt 5 ] && [ $((SECONDS - settle_start)) -lt "$SETTLE_CAP" ]; do
     sleep 1
+    app_alive || break
     cur=$(cpu_seconds)
-    if awk -v a="$prev" -v b="$cur" 'BEGIN{exit !(b - a < 0.05)}'; then quiet=$((quiet + 1)); else quiet=0; fi
+    if is_num "$prev" && is_num "$cur" && awk -v a="$prev" -v b="$cur" 'BEGIN{exit !(b - a < 0.05)}'; then quiet=$((quiet + 1)); else quiet=0; fi
     prev=$cur
 done
 settle=$((SECONDS - settle_start))
+check_alive settle
 if [ "$quiet" -lt 5 ]; then
     FAILED=1
     RESULTS+=("$(printf '%-34s | %10s | < %-8s | FAIL (not stable)' "settle (s)" "$settle" "$SETTLE_CAP")")
@@ -144,6 +184,7 @@ echo "== idle phase (${PHASE} s)"
 measure_phase idle "$CPU_IDLE_MAX" wakeups
 
 echo "== load phase (${PHASE} s)"
+# The writer appends to transcripts 0-2, so their size no longer matches and the next run regenerates them.
 for i in 0 1 2; do write_session "$i" busy; done
 (
     while true; do
