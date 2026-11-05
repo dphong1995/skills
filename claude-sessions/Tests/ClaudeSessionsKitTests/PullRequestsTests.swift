@@ -115,4 +115,10 @@ private func data(_ o: [String: Any]) -> Data { try! JSONSerialization.data(with
         o["title"] = nil
         #expect(PullRequests.status(from: o)?.title == nil)
     }
+
+    @Test func approversFromParticipants() {
+        let pr = PullRequests.status(from: prJSON(id: 1, reviewers: 2, rabbitApproved: true))
+        #expect(pr?.approvers == ["{r1}", "{tin}"])
+        #expect(PullRequests.status(from: prJSON(id: 1, reviewers: 2, rabbitApproved: false))?.approvers == ["{r1}"])
+    }
 }

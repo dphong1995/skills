@@ -100,13 +100,16 @@ func toolResultTextLine(_ text: String) -> String {
 }
 
 /// Bitbucket PR object shaped like an open-list value. `repo` is `workspace/name`; the first reviewer requests changes, the second approves.
-func prJSON(id: Int, repo: String = "t6engineering/talo6-dct-backend", branch: String = "bugfix/T6IR-14744", state: String = "OPEN", comments: Int = 0, reviewers: Int = 0) -> [String: Any] {
+func prJSON(id: Int, repo: String = "t6engineering/talo6-dct-backend", branch: String = "bugfix/T6IR-14744", state: String = "OPEN", comments: Int = 0, reviewers: Int = 0, rabbitApproved: Bool? = nil) -> [String: Any] {
     var participants: [[String: Any]] = []
     for i in 0..<reviewers {
         var reviewerState: Any = NSNull()
         if i == 0 { reviewerState = "changes_requested" } else if i == 1 { reviewerState = "approved" }
         let user: [String: Any] = ["uuid": "{r\(i)}", "display_name": "Reviewer \(i)"]
         participants.append(["role": "REVIEWER", "approved": i == 1, "state": reviewerState, "user": user])
+    }
+    if let rabbitApproved {
+        participants.append(["role": "REVIEWER", "approved": rabbitApproved, "state": rabbitApproved ? "approved" : NSNull(), "user": ["uuid": "{tin}", "display_name": "Tin Tran"]])
     }
     participants.append(["role": "PARTICIPANT", "approved": false, "state": NSNull(), "user": ["uuid": "{author}", "display_name": "Author"]])
     return ["id": id, "title": "t", "state": state, "comment_count": comments,
@@ -158,6 +161,24 @@ func rabbitStatus(state: String = "SUCCESSFUL", description: String, commit: Str
 func rabbitComment(_ raw: String, at: String) -> [String: Any] {
     ["user": ["uuid": "{tin}", "display_name": "Tin Tran"], "created_on": at, "updated_on": at, "deleted": false,
      "content": ["raw": "[coderabbit-html-comment-v1-0]: https://coderabbit.ai/#html-comment-v1:abc\n\(raw)"]]
+}
+
+/// An inline CodeRabbit comment: a finding, or a reply when `parent` is given.
+func rabbitInline(id: Int, _ raw: String, at: String, parent: Int? = nil) -> [String: Any] {
+    var c = rabbitComment(raw, at: at)
+    c["id"] = id
+    c["inline"] = ["path": "a.ts"]
+    if let parent { c["parent"] = ["id": parent] }
+    return c
+}
+
+/// A comment without the CodeRabbit marker, e.g. a human reply to a finding.
+func humanReply(id: Int, parent: Int?, uuid: String = "{me}", _ raw: String, at: String, inline: Bool = true) -> [String: Any] {
+    var c: [String: Any] = ["id": id, "user": ["uuid": uuid, "display_name": "Human"], "created_on": at, "updated_on": at, "deleted": false,
+                            "content": ["raw": raw]]
+    if inline { c["inline"] = ["path": "a.ts"] }
+    if let parent { c["parent"] = ["id": parent] }
+    return c
 }
 
 final class FakeJira: JiraAPI {

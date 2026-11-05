@@ -1,6 +1,15 @@
 import Foundation
 
-public enum Rabbit: Equatable { case reviewing, reviewed(findings: Int?), approved, skipped, failed }
+public enum Rabbit: Equatable { case reviewing, reviewed(findings: Int?), approved, skipped, failed, awaitingApproval, nudged }
+
+struct RabbitFacts: Equatable {
+    /// uuid of the author of the newest marked comment.
+    var rabbitUser: String?
+    /// Every top-level inline CodeRabbit finding has been answered.
+    var allAnswered: Bool
+    /// The newest approve command is newer than every top-level CodeRabbit comment.
+    var nudgePending: Bool
+}
 
 enum CodeRabbit {
     static let marker = "coderabbit.ai/#html-comment"
@@ -33,6 +42,9 @@ enum CodeRabbit {
         case "FAILED": return (.failed, since)
         case "STOPPED": return (.skipped, since)
         case "SUCCESSFUL":
+            if text.hasPrefix("approve command performed") {
+                return (has(["approval completed", "already approved"]) ? .approved : .reviewed(findings: nil), since)
+            }
             if has(["failed", "could not", "incomplete", "not published", "error"]) { return (.failed, since) }
             if has(["skipped", "paused", "no files", "too many files", "rate limited", "no reviewable"]) { return (.skipped, since) }
             if text.contains("approv") { return (.approved, since) }
@@ -77,13 +89,64 @@ enum CodeRabbit {
         case .approved: return "🐰 đã duyệt"
         case .skipped: return "🐰 bỏ qua"
         case .failed: return "🐰 lỗi"
+        case .awaitingApproval: return "🐰 chờ duyệt"
+        case .nudged: return "🐰 đang nhắc"
         }
     }
 
     static func isFinal(_ r: Rabbit) -> Bool {
         switch r {
-        case .reviewed, .approved, .failed: return true
-        case .reviewing, .skipped: return false
+        case .reviewed, .approved, .failed, .awaitingApproval: return true
+        case .reviewing, .skipped, .nudged: return false
+        }
+    }
+
+    private static let nudgeCommand = try! NSRegularExpression(pattern: #"@coderabbit(ai)?\s+approve"#, options: .caseInsensitive)
+
+    /// What the full comment list says about the CodeRabbit account, its inline threads and a pending approve command.
+    static func facts(from values: [[String: Any]]) -> RabbitFacts {
+        let live = values.filter { ($0["deleted"] as? Bool) != true }
+        func created(_ v: [String: Any]) -> Date { (v["created_on"] as? String).flatMap(PullRequests.date) ?? .distantPast }
+        func parent(_ v: [String: Any]) -> Int? { (v["parent"] as? [String: Any])?["id"] as? Int }
+        func raw(_ v: [String: Any]) -> String { (v["content"] as? [String: Any])?["raw"] as? String ?? "" }
+        let marked = live.filter(isComment)
+        let rabbitUser = marked.max { created($0) < created($1) }
+            .flatMap { ($0["user"] as? [String: Any])?["uuid"] as? String }
+
+        var children: [Int: [[String: Any]]] = [:]
+        for v in live { if let p = parent(v) { children[p, default: []].append(v) } }
+        let allAnswered = marked.filter { $0["inline"] != nil && parent($0) == nil }.allSatisfy { root in
+            var thread = [root]
+            var i = 0
+            while i < thread.count {
+                if let id = thread[i]["id"] as? Int { thread += children[id] ?? [] }
+                i += 1
+            }
+            guard thread.contains(where: { !isComment($0) }), let newest = thread.max(by: { created($0) < created($1) }) else { return false }
+            return isComment(newest)
+        }
+
+        let command = live.filter { v in
+            let r = raw(v)
+            return !isComment(v) && nudgeCommand.firstMatch(in: r, range: NSRange(location: 0, length: (r as NSString).length)) != nil
+        }.map(created).max()
+        let topLevel = marked.filter { parent($0) == nil && $0["inline"] == nil }.map(created).max()
+        let nudgePending = command.map { c in topLevel.map { c > $0 } ?? true } ?? false
+        return RabbitFacts(rabbitUser: rabbitUser, allAnswered: allAnswered, nudgePending: nudgePending)
+    }
+
+    /// The displayed state from the raw status, the PR's approvers and the comment facts.
+    static func resolve(_ status: Rabbit?, approvers: Set<String>, facts: RabbitFacts?) -> Rabbit? {
+        if status == .reviewing { return .reviewing }
+        if let u = facts?.rabbitUser, approvers.contains(u) { return .approved }
+        switch status {
+        case .failed?, .skipped?: return status
+        case .reviewed?, .approved?:
+            guard let facts, facts.rabbitUser != nil else { return status }
+            if facts.allAnswered { return facts.nudgePending ? .nudged : .awaitingApproval }
+            if case .approved? = status { return .reviewed(findings: nil) }
+            return status
+        default: return status
         }
     }
 

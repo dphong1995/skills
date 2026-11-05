@@ -18,6 +18,8 @@ private func rabbit(_ state: String, _ description: String) -> Rabbit? {
         #expect(rabbit("SUCCESSFUL", "No reviewable changes") == .skipped)
         #expect(rabbit("STOPPED", "Stopped") == .skipped)
         #expect(rabbit("SUCCESSFUL", "Approve command performed: Comments resolved. Approval completed") == .approved)
+        #expect(rabbit("SUCCESSFUL", "Approve command performed: Approval skipped: already approved") == .approved)
+        #expect(rabbit("SUCCESSFUL", "Approve command performed: Approval skipped: durable Cloud recovery is unavailable") == .reviewed(findings: nil))
         #expect(rabbit("SUCCESSFUL", "Review completed") == .reviewed(findings: nil))
 
         let other: [String: Any] = ["key": "pipelines", "name": "Pipeline", "state": "SUCCESSFUL", "commit": ["hash": "abc123"]]
@@ -73,7 +75,87 @@ private func rabbit(_ state: String, _ description: String) -> Rabbit? {
         #expect(CodeRabbit.label(.approved) == "🐰 đã duyệt")
         #expect(CodeRabbit.label(.skipped) == "🐰 bỏ qua")
         #expect(CodeRabbit.label(.failed) == "🐰 lỗi")
+        #expect(CodeRabbit.label(.awaitingApproval) == "🐰 chờ duyệt")
+        #expect(CodeRabbit.label(.nudged) == "🐰 đang nhắc")
+        #expect(CodeRabbit.isFinal(.awaitingApproval) && !CodeRabbit.isFinal(.nudged))
         #expect(CodeRabbit.isFinal(.reviewed(findings: nil)) && CodeRabbit.isFinal(.approved) && CodeRabbit.isFinal(.failed))
         #expect(!CodeRabbit.isFinal(.reviewing) && !CodeRabbit.isFinal(.skipped))
+    }
+
+    private static let t1 = "2026-11-04T10:00:00.000000+00:00"
+    private static let t2 = "2026-11-04T10:01:00.000000+00:00"
+    private static let t3 = "2026-11-04T10:02:00.000000+00:00"
+    private static let t4 = "2026-11-04T10:03:00.000000+00:00"
+
+    private var answered: [[String: Any]] {
+        [rabbitInline(id: 1, "nit", at: Self.t1),
+         humanReply(id: 2, parent: 1, "won't fix", at: Self.t2),
+         rabbitInline(id: 3, "ok, withdrawn", at: Self.t3, parent: 1)]
+    }
+
+    private func command(_ raw: String = "@coderabbitai approve", at: String) -> [String: Any] {
+        humanReply(id: 10, parent: nil, raw, at: at, inline: false)
+    }
+
+    @Test func factsWithdrawnThreadIsAnswered() {
+        let f = CodeRabbit.facts(from: answered)
+        #expect(f.allAnswered && f.rabbitUser == "{tin}" && !f.nudgePending)
+    }
+
+    @Test func factsUnansweredThread() {
+        #expect(!CodeRabbit.facts(from: [rabbitInline(id: 1, "nit", at: Self.t1)]).allAnswered)
+        let f = CodeRabbit.facts(from: [rabbitInline(id: 1, "nit", at: Self.t1), humanReply(id: 2, parent: 1, "why?", at: Self.t2)])
+        #expect(!f.allAnswered)
+    }
+
+    @Test func factsNoFindings() {
+        let f = CodeRabbit.facts(from: [rabbitComment("**Actionable comments posted: 0**", at: Self.t1)])
+        #expect(f.allAnswered && f.rabbitUser == "{tin}")
+    }
+
+    @Test func factsNudgePending() {
+        let base = answered + [rabbitComment("summary", at: Self.t1)]
+        #expect(CodeRabbit.facts(from: base + [command(at: Self.t4)]).nudgePending)
+        #expect(CodeRabbit.facts(from: base + [command("@CodeRabbit  Approve", at: Self.t4)]).nudgePending)
+        #expect(!CodeRabbit.facts(from: base + [command(at: Self.t1)]).nudgePending)
+        #expect(!CodeRabbit.facts(from: base).nudgePending)
+    }
+
+    @Test func nudgeSurvivesInlineReply() {
+        let reply = rabbitInline(id: 4, "still fine", at: "2026-11-04T10:04:00.000000+00:00", parent: 1)
+        let f = CodeRabbit.facts(from: answered + [rabbitComment("summary", at: Self.t1), command(at: Self.t4), reply])
+        #expect(f.nudgePending && f.allAnswered)
+    }
+
+    @Test func nudgeEndsOnActionPerformed() {
+        let done = rabbitComment("Action performed", at: "2026-11-04T10:05:00.000000+00:00")
+        #expect(!CodeRabbit.facts(from: answered + [command(at: Self.t4), done]).nudgePending)
+    }
+
+    @Test func factsIgnoresDeleted() {
+        var gone = rabbitInline(id: 9, "nit", at: Self.t1)
+        gone["deleted"] = true
+        #expect(CodeRabbit.facts(from: answered + [gone]).allAnswered)
+    }
+
+    @Test func resolveOrder() {
+        let known = RabbitFacts(rabbitUser: "{tin}", allAnswered: false, nudgePending: false)
+        var answeredFacts = known; answeredFacts.allAnswered = true
+        var nudgedFacts = answeredFacts; nudgedFacts.nudgePending = true
+        let tin: Set<String> = ["{tin}"]
+        #expect(CodeRabbit.resolve(.reviewing, approvers: tin, facts: known) == .reviewing)
+        #expect(CodeRabbit.resolve(.failed, approvers: tin, facts: known) == .approved)
+        #expect(CodeRabbit.resolve(.skipped, approvers: tin, facts: known) == .approved)
+        #expect(CodeRabbit.resolve(.failed, approvers: [], facts: known) == .failed)
+        #expect(CodeRabbit.resolve(.skipped, approvers: [], facts: answeredFacts) == .skipped)
+        let unknown = RabbitFacts(rabbitUser: nil, allAnswered: true, nudgePending: false)
+        #expect(CodeRabbit.resolve(.reviewed(findings: 2), approvers: [], facts: unknown) == .reviewed(findings: 2))
+        #expect(CodeRabbit.resolve(.approved, approvers: [], facts: nil) == .approved)
+        #expect(CodeRabbit.resolve(.reviewed(findings: 2), approvers: [], facts: answeredFacts) == .awaitingApproval)
+        #expect(CodeRabbit.resolve(.reviewed(findings: 2), approvers: [], facts: nudgedFacts) == .nudged)
+        #expect(CodeRabbit.resolve(.reviewed(findings: 2), approvers: [], facts: known) == .reviewed(findings: 2))
+        #expect(CodeRabbit.resolve(.approved, approvers: [], facts: known) == .reviewed(findings: nil))
+        #expect(CodeRabbit.resolve(nil, approvers: tin, facts: known) == .approved)
+        #expect(CodeRabbit.resolve(nil, approvers: [], facts: known) == nil)
     }
 }

@@ -30,7 +30,12 @@ public struct PRStatus: Equatable {
     public let branch: String?
     public var title: String?
     public var lastOther: PRComment?
+    /// uuids of REVIEWER participants with `approved == true`.
+    public var approvers: Set<String> = []
+    /// The displayed CodeRabbit state: `rabbitStatus` resolved against approvers and comments.
     public var rabbit: Rabbit?
+    /// The raw state from `/statuses` plus the findings count.
+    public var rabbitStatus: Rabbit?
     public var rabbitSince: Date?
 
     public var isOpen: Bool { state == "OPEN" }
@@ -81,7 +86,7 @@ enum PullRequests {
         else { return nil }
         let reviewers = (o["participants"] as? [[String: Any]] ?? []).filter { $0["role"] as? String == "REVIEWER" }
         let source = o["source"] as? [String: Any]
-        return PRStatus(
+        var pr = PRStatus(
             ref: ref, url: url, state: o["state"] as? String ?? "",
             reviewers: reviewers.count,
             approved: reviewers.filter { $0["approved"] as? Bool == true }.count,
@@ -91,6 +96,9 @@ enum PullRequests {
             sourceRepo: (source?["repository"] as? [String: Any])?["full_name"] as? String,
             branch: (source?["branch"] as? [String: Any])?["name"] as? String,
             title: o["title"] as? String)
+        pr.approvers = Set(reviewers.filter { $0["approved"] as? Bool == true }
+            .compactMap { ($0["user"] as? [String: Any])?["uuid"] as? String })
+        return pr
     }
 
     static func page(_ data: Data) -> (values: [PRStatus], next: String?)? {

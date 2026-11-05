@@ -45,7 +45,7 @@ public final class PRMonitor {
     private static let singleFields = "id,title,state,comment_count,updated_on,source.branch.name,source.repository.full_name,source.commit.hash,participants.approved,participants.state,participants.role,participants.user.uuid,links.html.href"
     private static let openFields = singleFields.split(separator: ",").map { "values.\($0)" }.joined(separator: ",") + ",next"
     private static let statusFields = "values.state,values.commit.hash,values.key,values.name,values.description,values.created_on,values.updated_on"
-    private static let commentFields = "values.user.uuid,values.user.display_name,values.created_on,values.updated_on,values.deleted,values.content.raw"
+    private static let commentFields = "values.user.uuid,values.user.display_name,values.created_on,values.updated_on,values.deleted,values.content.raw,values.id,values.parent.id,values.inline.path,next"
 
     private let api: BitbucketAPI
     private let queue: DispatchQueue?
@@ -65,6 +65,8 @@ public final class PRMonitor {
     private var rabbitSeen: [PRRef: (commit: String?, label: String)] = [:]
     /// PRs whose `/statuses` was fetched successfully at least once.
     private var statusesFetched = Set<PRRef>()
+    /// Facts of each PR's last successful full `/comments` fetch.
+    private var rabbitFacts: [PRRef: RabbitFacts] = [:]
     /// When each PR's `/statuses` was last fetched successfully (paces the slow poll after the window).
     private var statusesAt: [PRRef: Date] = [:]
     /// PRs whose first `/comments` fetch failed and is still owed.
@@ -139,6 +141,7 @@ public final class PRMonitor {
         let used = Set(sessions.values.flatMap(\.refs))
         statuses = statuses.filter { used.contains($0.key) }
         rabbitSeen = rabbitSeen.filter { used.contains($0.key) }
+        rabbitFacts = rabbitFacts.filter { used.contains($0.key) }
         headSeen = headSeen.filter { used.contains($0.key) }
         statusesAt = statusesAt.filter { used.contains($0.key) }
         statusesFetched.formIntersection(used)
@@ -200,6 +203,20 @@ public final class PRMonitor {
             pages += 1
         }
         return out
+    }
+
+    /// Every page of `/comments`, merged into one `{"values": [...]}` document.
+    private func fetchComments(_ path: String) throws -> Data {
+        var next: String? = "\(path)/comments?sort=-created_on&pagelen=100&fields=\(Self.commentFields)"
+        var values: [[String: Any]] = []
+        var pages = 0
+        while let p = next, pages < Self.maxPages {
+            guard let o = decode(try fetch(p)) else { throw BitbucketError.transport }
+            values += o["values"] as? [[String: Any]] ?? []
+            next = (o["next"] as? String).map { $0.hasPrefix(BitbucketClient.base) ? String($0.dropFirst(BitbucketClient.base.count)) : $0 }
+            pages += 1
+        }
+        return try JSONSerialization.data(withJSONObject: ["values": values])
     }
 
     private func cycle(_ targets: [PRTarget], at now: Date) -> (events: [PREvent], refs: Set<PRRef>, succeeded: Bool) {
@@ -269,19 +286,19 @@ public final class PRMonitor {
                 }
             }
             pr.lastOther = prev?.lastOther
-            pr.rabbit = prev?.rabbit
+            pr.rabbitStatus = prev?.rabbitStatus
             pr.rabbitSince = prev?.rabbitSince
             var rabbitFinished = false
             var firstStatuses = false
             if pr.isOpen {
                 if headSeen[ref].map({ $0.commit != pr.commit }) ?? true { headSeen[ref] = (pr.commit, now) }
                 let inWindow = now.timeIntervalSince(headSeen[ref]!.at) < Self.rabbitWait
-                let rabbitPending = prev?.rabbit == .reviewing || (prev?.rabbit == nil && inWindow)
+                let rabbitPending = prev?.rabbitStatus == .reviewing || (prev?.rabbitStatus == nil && inWindow)
                 // A missing CodeRabbit status (after the window) and a finished review (a later approval or
                 // failure) are still looked for, at a slow rate.
                 var reviewed = false
-                if case .reviewed? = prev?.rabbit { reviewed = true }
-                let slowPoll = (reviewed || (!inWindow && prev?.rabbit == nil))
+                if case .reviewed? = prev?.rabbitStatus { reviewed = true }
+                let slowPoll = (reviewed || (!inWindow && prev?.rabbitStatus == nil))
                     && statusesAt[ref].map { now.timeIntervalSince($0) >= Self.statusesSlowPoll } ?? true
                 if prev == nil || prev?.commit != pr.commit
                     || rabbitPending || prev?.comments != pr.comments || !statusesFetched.contains(ref) || slowPoll {
@@ -292,12 +309,12 @@ public final class PRMonitor {
                         let sameCommit = prev?.commit == pr.commit
                         if var r = fresh?.rabbit {
                             // A summary already ended this review while the status still says INPROGRESS: keep it.
-                            if r == .reviewing, sameCommit, case .reviewed? = prev?.rabbit, fresh?.since == prev?.rabbitSince { r = prev!.rabbit! }
-                            if case .reviewed = r, sameCommit, case .reviewed(let f)? = prev?.rabbit { r = .reviewed(findings: f) }
-                            rabbitFinished = CodeRabbit.isFinal(r) && !(sameCommit && CodeRabbit.kind(prev?.rabbit) == CodeRabbit.kind(r))
-                            pr.rabbit = r
+                            if r == .reviewing, sameCommit, case .reviewed? = prev?.rabbitStatus, fresh?.since == prev?.rabbitSince { r = prev!.rabbitStatus! }
+                            if case .reviewed = r, sameCommit, case .reviewed(let f)? = prev?.rabbitStatus { r = .reviewed(findings: f) }
+                            rabbitFinished = CodeRabbit.isFinal(r) && !(sameCommit && CodeRabbit.kind(prev?.rabbitStatus) == CodeRabbit.kind(r))
+                            pr.rabbitStatus = r
                         } else {
-                            pr.rabbit = nil
+                            pr.rabbitStatus = nil
                         }
                         pr.rabbitSince = fresh?.since
                     } else if prev != nil {
@@ -306,9 +323,10 @@ public final class PRMonitor {
                 }
                 let owed = commentsOwed.contains(ref)
                 if prev == nil || prev?.comments != pr.comments || rabbitFinished || owed {
-                    guard let d = try? fetch("\(path)/comments?sort=-created_on&pagelen=20&fields=\(Self.commentFields)") else {
+                    guard let d = try? fetchComments(path) else {
                         if prev != nil { continue }
                         commentsOwed.insert(ref)
+                        pr.rabbit = CodeRabbit.resolve(pr.rabbitStatus, approvers: pr.approvers, facts: rabbitFacts[ref])
                         recordRabbit(ref, pr)
                         if firstStatuses { statusesFetched.insert(ref) }
                         statuses[ref] = pr
@@ -316,16 +334,18 @@ public final class PRMonitor {
                     }
                     commentsOwed.remove(ref)
                     if let c = PullRequests.lastOther(fromComments: d, me: me) { pr.lastOther = c }
-                    if pr.rabbit == .reviewing, let since = pr.rabbitSince,
+                    if let values = decode(d)?["values"] as? [[String: Any]] { rabbitFacts[ref] = CodeRabbit.facts(from: values) }
+                    if pr.rabbitStatus == .reviewing, let since = pr.rabbitSince,
                        case .count(let n) = CodeRabbit.findings(fromComments: d, since: since, createdOnly: true) {
-                        pr.rabbit = .reviewed(findings: n) // the summary is out; the status lags behind it
-                    } else if case .reviewed? = pr.rabbit, let since = pr.rabbitSince {
+                        pr.rabbitStatus = .reviewed(findings: n) // the summary is out; the status lags behind it
+                    } else if case .reviewed? = pr.rabbitStatus, let since = pr.rabbitSince {
                         switch CodeRabbit.findings(fromComments: d, since: since) {
-                        case .count(let n): pr.rabbit = .reviewed(findings: n)
-                        case .stale: pr.rabbit = .reviewed(findings: nil)
+                        case .count(let n): pr.rabbitStatus = .reviewed(findings: n)
+                        case .stale: pr.rabbitStatus = .reviewed(findings: nil)
                         case .notFound: break // the summary is beyond this page: keep the known count
                         }
                     }
+                    pr.rabbit = CodeRabbit.resolve(pr.rabbitStatus, approvers: pr.approvers, facts: rabbitFacts[ref])
                     // Re-record only a count filled in for the review already recorded; a new kind must still chime.
                     if owed, rabbitSeen[ref]?.commit == pr.commit, CodeRabbit.kind(prev?.rabbit) == CodeRabbit.kind(pr.rabbit),
                        pr.rabbitSince == prev?.rabbitSince { recordRabbit(ref, pr) }
@@ -333,6 +353,7 @@ public final class PRMonitor {
                     if owed, rabbitSeen[ref] == nil { recordRabbit(ref, pr) }
                 }
             }
+            pr.rabbit = CodeRabbit.resolve(pr.rabbitStatus, approvers: pr.approvers, facts: rabbitFacts[ref])
             if let prev {
                 var found = PullRequests.events(old: prev, new: pr)
                 if firstStatuses {
