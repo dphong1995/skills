@@ -83,11 +83,11 @@ struct SnapshotTests {
 
     @Test func renderTitles() {
         let dir = makeTempDir(), projects = makeTempDir()
-        let store = makeStore(dir: dir, projects: projects)
+        let store = makeStore(dir: dir, projects: projects, branch: { $0 == frontend ? "T6IR-14737" : nil })
         let panel = PanelState()
         _ = writeTranscript(projects, cwd: frontend, id: "b", lines: [
             commandLine("/clear", args: ""),
-            userLine("sửa lỗi đăng nhập khi token hết hạn và thêm test cho trường hợp refresh thất bại", branch: "T6IR-14737"),
+            userLine("sửa lỗi đăng nhập khi token hết hạn và thêm test cho trường hợp refresh thất bại"),
         ])
         writeSession(dir, "a", pid: me, status: "idle", ageSec: 30, name: "widget", cwd: backend, nameSource: "user")
         writeSession(dir, "b", pid: me, status: "busy", ageSec: 90, name: "talo6-dct-frontend-d7", cwd: frontend)

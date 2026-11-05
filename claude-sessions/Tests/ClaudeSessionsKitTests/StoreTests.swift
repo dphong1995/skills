@@ -325,10 +325,10 @@ private func approvableStore() -> (Store, URL, URL, URL) {
     #expect(store.sessions.first?.title == "t1")
 }
 
-@Test func busySessionHasPromptTitleAndHeadBranch() {
+@Test func busySessionHasPromptTitleAndBranch() {
     let dir = makeTempDir(), projects = makeTempDir()
-    let store = makeStore(dir: dir, projects: projects)
-    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine("chạy test", branch: "main")])
+    let store = makeStore(dir: dir, projects: projects, branch: { $0 == frontend ? "main" : nil })
+    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine("chạy test")])
     writeSession(dir, "a", pid: me, status: "busy", ageSec: 5, name: "front-d7", cwd: frontend)
     store.refresh(at: Date())
     let s = store.sessions[0]
@@ -399,18 +399,43 @@ private func approvableStore() -> (Store, URL, URL, URL) {
     #expect(store.sessions.first?.todo == nil)
 }
 
-@Test func branchStaysWhileBusyAfterTail() {
+@Test func branchFollowsCheckoutWhileBusy() {
     let dir = makeTempDir(), projects = makeTempDir()
-    let store = makeStore(dir: dir, projects: projects)
+    var heads = [frontend: "main"]
+    let store = makeStore(dir: dir, projects: projects, branch: { heads[$0] })
     let t0 = Date()
-    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine("x", branch: "main"), assistantLine("y", branch: "feat")])
+    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine("x"), assistantLine("y")])
     writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend, updatedAt: t0)
     store.refresh(at: t0)
-    #expect(store.sessions[0].subtitle.hasSuffix("· feat"))
+    #expect(store.sessions[0].subtitle.hasSuffix("· main"))
 
+    heads[frontend] = "feat"
     writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend, updatedAt: t0.addingTimeInterval(1))
     store.refresh(at: t0.addingTimeInterval(1))
     #expect(store.sessions[0].subtitle.hasSuffix("· feat"))
+}
+
+@Test func branchComesFromCwdNotTranscript() {
+    let dir = makeTempDir(), projects = makeTempDir()
+    let store = makeStore(dir: dir, projects: projects, branch: { $0 == frontend ? "master" : nil })
+    store.jiraProjects = ["T6IR": jiraHost]
+    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [jsonLine(["type": "user", "gitBranch": "bugfix/T6IR-30", "message": ["content": "hello"]]), ""])
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    store.refresh(at: Date())
+    #expect(store.sessions[0].subtitle == "talo6-dct-frontend · master")
+    #expect(labels(store) == [])
+}
+
+@Test func branchTicketNotAButton() {
+    let dir = makeTempDir(), projects = makeTempDir()
+    let store = makeStore(dir: dir, projects: projects, branch: { _ in "bugfix/T6IR-30" })
+    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine("https://\(jiraHost)/browse/T6IR-10"), ""])
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    store.refresh(at: Date())
+    #expect(labels(store) == ["T6IR-10"])
+    #expect(store.sessions[0].menu.map(\.title).contains("Nhánh") == false)
 }
 
 @Test func titleCutAt200() {
@@ -450,11 +475,11 @@ private func labels(_ store: Store) -> [String]? { store.sessions.first?.links.m
 
 @Test func ticketButtonOrder() {
     let (store, _) = scanStore([
-        userLine("https://\(jiraHost)/browse/T6IR-10", branch: "bugfix/T6IR-30"),
+        userLine("https://\(jiraHost)/browse/T6IR-10"),
         userLine("T6IR-11"),
         assistantLine("T6IR-20"),
         assistantLine("T6IR-21")])
-    #expect(labels(store) == ["T6IR-30", "T6IR-10", "T6IR-11", "T6IR-21", "T6IR-20"])
+    #expect(labels(store) == ["T6IR-10", "T6IR-11", "T6IR-21", "T6IR-20"])
 }
 
 @Test func onlyJiraAndPRButtons() {
@@ -477,7 +502,7 @@ private func labels(_ store: Store) -> [String]? { store.sessions.first?.links.m
 @Test func ticketButtonCacheInvalidates() {
     let dir = makeTempDir(), projects = makeTempDir()
     let store = makeStore(dir: dir, projects: projects)
-    let a = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine("T6IR-5", branch: "main"), ""])
+    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine("T6IR-5"), ""])
     writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
     func links(_ id: String) -> [String]? { store.sessions.first { $0.id == id }?.links.map(\.label) }
     store.refresh(at: Date())
@@ -490,10 +515,6 @@ private func labels(_ store: Store) -> [String]? { store.sessions.first?.links.m
     store.refresh(at: Date())
     #expect(links("a") == ["T6IR-5"])
     #expect(links("b") == ["T6IR-1"])
-    // A new branch puts its ticket first.
-    append(a, userLine("x", branch: "bugfix/T6IR-30") + "\n")
-    store.refresh(at: Date())
-    #expect(links("a") == ["T6IR-30", "T6IR-5"])
 }
 
 @Test func ticketButtonsSurviveBusy() {
@@ -936,14 +957,14 @@ private func menuPR(_ id: Int, _ title: String) -> [String: Any] {
     return o
 }
 
-/// One idle session `a` on branch feature/T6IR-1: the user mentions T6IR-2 then T6IR-3, Claude T6IR-4 and four PRs.
+/// One idle session `a` the user mentions T6IR-2 then T6IR-3, Claude T6IR-4 and four PRs.
 private func menuStore(extra: [String] = [], jira: FakeJira? = nil, prs: Bool = true) -> (Store, FakeJira, FakeBitbucket) {
     let fakeJira = jira ?? FakeJira()
     if jira == nil { fakeJira.issues["T6IR-2"] = (menuTitle, "To Do") }
     let api = fake(open: [menuPR(7571, "Fix site scope filter"), menuPR(6874, "Second"), menuPR(1, "Third"), menuPR(2, "Fourth")])
     let dir = makeTempDir(), projects = makeTempDir()
     _ = writeTranscript(projects, cwd: frontend, id: "a",
-                        lines: [userLine("T6IR-2", branch: "feature/T6IR-1"), userLine("T6IR-3"), assistantLine("T6IR-4"),
+                        lines: [userLine("T6IR-2"), userLine("T6IR-3"), assistantLine("T6IR-4"),
                                 prReply([7571, 6874, 1, 2])] + extra + [""])
     writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
     let store = makeStore(dir: dir, projects: projects,
@@ -959,8 +980,8 @@ private func section(_ s: Session?, _ title: String) -> [String]? { s?.menu.firs
 @Test func menuSectionsInOrder() {
     let (store, _, _) = menuStore()
     let s = store.sessions.first
-    #expect(s?.menu.map(\.title) == ["Nhánh", "Bạn nhắc", "Claude nhắc", "PR"])
-    #expect(s?.menu.dropLast().map { $0.items.map(\.url.lastPathComponent) } == [["T6IR-1"], ["T6IR-2", "T6IR-3"], ["T6IR-4"]])
+    #expect(s?.menu.map(\.title) == ["Bạn nhắc", "Claude nhắc", "PR"])
+    #expect(s?.menu.dropLast().map { $0.items.map(\.url.lastPathComponent) } == [["T6IR-2", "T6IR-3"], ["T6IR-4"]])
     #expect(section(s, "Bạn nhắc") == ["T6IR-2  \(menuTitle)  ·  To Do", "T6IR-3"])
 }
 
@@ -1109,7 +1130,7 @@ private func typedJira() -> FakeJira {
     }())
     let s = store.sessions.first
     #expect(s?.menuNeedsJira == true)
-    #expect(s?.menuCount == 1 + 2 + 1 + 4)
+    #expect(s?.menuCount == 2 + 1 + 4)
 }
 
 @Test func menuRowForPROnlySession() {

@@ -141,7 +141,6 @@ public final class Store: ObservableObject {
     private struct ButtonKey: Equatable {
         let version: Int
         let projectsGeneration: Int
-        let branch: String?
     }
     /// Buttons per session with the PR refs each link points at, rebuilt only when their `ButtonKey` changes.
     private var buttonCache: [String: (key: ButtonKey, buttons: [ButtonEntry])] = [:]
@@ -149,7 +148,7 @@ public final class Store: ObservableObject {
     private var projectsGeneration = 0
     private var urls: [String: URL] = [:]
     private var urlTried: [String: Date?] = [:]
-    private var heads: [String: (prompt: String?, branch: String?, size: Int)] = [:]
+    private var heads: [String: (prompt: String?, size: Int)] = [:]
     private var todos: [String: (key: TaskKey, todo: Todo?)] = [:]
     private var activities: [String: (offset: UInt64, text: String?)] = [:]
     /// File reads done for the running-tool line, for tests.
@@ -168,7 +167,6 @@ public final class Store: ObservableObject {
         var size: Int
         var reply: String?
         var replyText: AttributedString?
-        var branch: String?
         var aiTitle: String?
         var pending: PendingState?
         var prompt = false
@@ -180,7 +178,9 @@ public final class Store: ObservableObject {
                 startHidden: Bool = false,
                 prs: PRMonitor? = nil,
                 jira: JiraMonitor? = nil,
-                scanner: TranscriptScanner = TranscriptScanner()) {
+                scanner: TranscriptScanner = TranscriptScanner(),
+                branch: @escaping (String) -> String? = GitBranch.current(in:)) {
+        self.branchReader = branch
         self.prMonitor = prs
         self.jiraMonitor = jira
         self.scanner = scanner
@@ -190,6 +190,8 @@ public final class Store: ObservableObject {
         emptySince = startHidden ? .distantPast : nil
     }
 
+    /// The branch checked out in a cwd, read every refresh.
+    private let branchReader: (String) -> String?
     public var prMonitor: PRMonitor?
     public var jiraMonitor: JiraMonitor?
     /// Decoded issue type icons by URL, kept for the run.
@@ -244,22 +246,21 @@ public final class Store: ObservableObject {
         heads[id].map { $0.prompt != nil || $0.size > Transcript.headBytes } ?? false
     }
 
-    private func readHead(for s: Session, url: URL?, size: Int) -> (prompt: String?, branch: String?) {
-        guard let url else { return (nil, nil) }
-        if let h = heads[s.id], headIsFinal(s.id) || h.size == size { return (h.prompt, h.branch) }
+    private func readHead(for s: Session, url: URL?, size: Int) -> String? {
+        guard let url else { return nil }
+        if let h = heads[s.id], headIsFinal(s.id) || h.size == size { return h.prompt }
         let d = Transcript.head(url)
         let full = Transcript.firstPrompt(in: d)
-        let h = (prompt: full.map { Transcript.displayText($0, limit: 200) }, branch: Transcript.gitBranch(in: d, last: false), size: size)
+        let h = (prompt: full.map { Transcript.displayText($0, limit: 200) }, size: size)
         heads[s.id] = h
-        return (h.prompt, h.branch)
+        return h.prompt
     }
 
-    private func readTail(for s: Session, url: URL?, size: Int) -> (reply: String?, replyText: AttributedString?, pending: PendingState?, branch: String?) {
-        // A busy row keeps the branch the last tail read saw.
-        guard s.isFinished, let url else { return (nil, nil, nil, cache[s.id]?.branch) }
-        var c = cache[s.id] ?? Cached(since: s.since, size: -1, reply: nil, branch: nil, pending: nil)
+    private func readTail(for s: Session, url: URL?, size: Int) -> (reply: String?, replyText: AttributedString?, pending: PendingState?) {
+        guard s.isFinished, let url else { return (nil, nil, nil) }
+        var c = cache[s.id] ?? Cached(since: s.since, size: -1, reply: nil, pending: nil)
         let prompt = s.isPermissionPrompt
-        if c.size == size && c.since == s.since && c.prompt == prompt { return (c.reply, c.replyText, c.pending, c.branch) }
+        if c.size == size && c.since == s.since && c.prompt == prompt { return (c.reply, c.replyText, c.pending) }
         c.since = s.since
         c.size = size
         c.prompt = prompt
@@ -267,11 +268,10 @@ public final class Store: ObservableObject {
         let full = Transcript.lastReply(in: tail)
         c.reply = full.map { Transcript.displayText($0, limit: 600) }
         c.replyText = c.reply.map(markdown)
-        c.branch = Transcript.gitBranch(in: tail, last: true)
         c.pending = prompt ? Transcript.pending(in: tail) : nil
         if let t = Transcript.lastAITitle(in: tail) { c.aiTitle = t }
         cache[s.id] = c
-        return (c.reply, c.replyText, c.pending, c.branch)
+        return (c.reply, c.replyText, c.pending)
     }
 
     /// The last tool call of a busy session, read from the bytes appended since the last refresh (at most `activityWindow`).
@@ -355,9 +355,9 @@ public final class Store: ObservableObject {
             if url != nil { sizes[s.id] = UInt64(size) }
             let t = readTail(for: s, url: url, size: size)
             let head = readHead(for: s, url: url, size: size)
-            s.firstPrompt = head.prompt
+            s.firstPrompt = head
             s.aiTitle = cache[s.id]?.aiTitle
-            s.branch = t.branch ?? head.branch
+            s.branch = branchReader(s.cwd)
             s.lastReply = t.reply
             s.replyText = t.replyText
             s.todo = readTodo(for: s)
@@ -402,9 +402,9 @@ public final class Store: ObservableObject {
         var entries: [String: [ButtonEntry]] = [:]
         for i in list.indices {
             let id = list[i].id
-            let key = ButtonKey(version: scans[id]?.version ?? 0, projectsGeneration: projectsGeneration, branch: list[i].branch)
+            let key = ButtonKey(version: scans[id]?.version ?? 0, projectsGeneration: projectsGeneration)
             if buttonCache[id]?.key != key {
-                buttonCache[id] = (key, Store.buttons(scans[id] ?? ScanResult(), projects: jiraProjects, branch: list[i].branch))
+                buttonCache[id] = (key, Store.buttons(scans[id] ?? ScanResult(), projects: jiraProjects))
             }
             entries[id] = buttonCache[id]?.buttons ?? []
         }
@@ -498,7 +498,7 @@ public final class Store: ObservableObject {
     }
 
     struct ButtonEntry {
-        enum Source { case branch, user, claude, pr }
+        enum Source { case user, claude, pr }
         let link: SessionLink
         let refs: [PRRef]
         let source: Source
@@ -506,12 +506,11 @@ public final class Store: ObservableObject {
         let target: JiraTarget?
     }
 
-    /// Buttons for one session: the branch's ticket, tickets the user mentioned, tickets only Claude mentioned, then PR-shaped links.
-    static func buttons(_ r: ScanResult, projects: [String: String], branch: String?) -> [ButtonEntry] {
+    /// Buttons for one session: tickets the user mentioned, tickets only Claude mentioned, then PR-shaped links.
+    static func buttons(_ r: ScanResult, projects: [String: String]) -> [ButtonEntry] {
         func host(_ key: String) -> String? { Transcript.projectPrefix(of: key).flatMap { projects[$0] } }
         var keys: [(key: String, source: ButtonEntry.Source)] = []
-        for k in branch.map(Transcript.ticketKeys) ?? [] where host(k) != nil && !keys.contains(where: { $0.key == k }) { keys.append((k, .branch)) }
-        let known = r.tickets.values.filter { t in host(t.key) != nil && !keys.contains(where: { $0.key == t.key }) }
+        let known = r.tickets.values.filter { host($0.key) != nil }
         keys += known.filter(\.byUser).sorted { $0.first < $1.first }.map { ($0.key, .user) }
         keys += known.filter { !$0.byUser }.sorted { $0.last > $1.last }.map { ($0.key, .claude) }
         let tickets = keys.compactMap { k -> ButtonEntry? in
@@ -571,7 +570,7 @@ public final class Store: ObservableObject {
         let untracked = entries.filter { $0.source == .pr && !$0.refs.contains(where: tracked.contains) }
             .map { LinkItem(text: $0.link.label, url: $0.link.url, kind: .link, code: $0.link.label) }
         let pr = LinkSection(title: "PR", items: (prs ?? []).map(prItem) + untracked)
-        return [tickets(.branch, "Nhánh"), tickets(.user, "Bạn nhắc"), tickets(.claude, "Claude nhắc"), pr].filter { !$0.items.isEmpty }
+        return [tickets(.user, "Bạn nhắc"), tickets(.claude, "Claude nhắc"), pr].filter { !$0.items.isEmpty }
     }
 
     static func line(present: Bool, account: String?, state: ConnectionState) -> ConnectionLine {

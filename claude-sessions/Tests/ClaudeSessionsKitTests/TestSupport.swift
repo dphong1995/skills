@@ -23,9 +23,9 @@ func writeSession(_ dir: URL, _ file: String, pid: Int32, status: String, waitin
 let frontend = "/Users/phong/talo6-dct-frontend"
 let backend = "/Users/phong/talo6-dct-backend"
 
-/// Store whose transcript lookups never touch the real ~/.claude/projects.
-func makeStore(dir: URL, projects: URL = makeTempDir(), tasks: URL = makeTempDir(), startHidden: Bool = false, prs: PRMonitor? = nil, jira: JiraMonitor? = nil) -> Store {
-    Store(dir: dir, projects: projects, tasks: tasks, startHidden: startHidden, prs: prs, jira: jira, scanner: TranscriptScanner(queue: nil))
+/// Store whose transcript lookups never touch the real ~/.claude/projects and whose branch reader never touches a real repo.
+func makeStore(dir: URL, projects: URL = makeTempDir(), tasks: URL = makeTempDir(), startHidden: Bool = false, prs: PRMonitor? = nil, jira: JiraMonitor? = nil, branch: @escaping (String) -> String? = { _ in nil }) -> Store {
+    Store(dir: dir, projects: projects, tasks: tasks, startHidden: startHidden, prs: prs, jira: jira, scanner: TranscriptScanner(queue: nil), branch: branch)
 }
 
 func append(_ url: URL, _ s: String) {
@@ -48,12 +48,10 @@ func jsonLine(_ o: [String: Any]) -> String {
     String(data: try! JSONSerialization.data(withJSONObject: o), encoding: .utf8)!
 }
 
-func assistantLine(_ text: String?, sidechain: Bool = false, branch: String? = nil) -> String {
+func assistantLine(_ text: String?, sidechain: Bool = false) -> String {
     // One content block per line, like Claude Code writes them.
     let content: [[String: Any]] = [text.map { ["type": "text", "text": $0] } ?? ["type": "tool_use", "name": "Bash"]]
-    var o: [String: Any] = ["type": "assistant", "isSidechain": sidechain, "message": ["content": content]]
-    if let branch { o["gitBranch"] = branch }
-    return jsonLine(o)
+    return jsonLine(["type": "assistant", "isSidechain": sidechain, "message": ["content": content]])
 }
 
 func writeTranscript(_ projects: URL, cwd: String, id: String, lines: [String]) -> URL {
@@ -75,10 +73,9 @@ func toolResultLine(id: String) -> String {
     return jsonLine(o)
 }
 
-func userLine(_ text: String, branch: String? = nil, isMeta: Bool = false) -> String {
+func userLine(_ text: String, isMeta: Bool = false) -> String {
     var o: [String: Any] = ["type": "user", "message": ["content": text]]
     if isMeta { o["isMeta"] = true }
-    if let branch { o["gitBranch"] = branch }
     return jsonLine(o)
 }
 

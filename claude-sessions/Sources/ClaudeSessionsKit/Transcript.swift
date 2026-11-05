@@ -230,13 +230,6 @@ enum Transcript {
         return nil
     }
 
-    static func gitBranch(in data: Data, last: Bool) -> String? {
-        for o in objects(data, reversed: last) {
-            if let b = o["gitBranch"] as? String, !b.isEmpty { return b }
-        }
-        return nil
-    }
-
     static func lastReply(in data: Data) -> String? {
         for line in data.split(separator: 0x0A).reversed() {
             guard let o = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],

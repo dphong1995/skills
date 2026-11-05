@@ -120,12 +120,9 @@ private func bash(_ id: String, _ cmd: String = "npm test") -> String {
     #expect(Transcript.firstPrompt(in: data([commandLine("/clear", args: ""), assistantLine("x")])) == nil)
 }
 
-@Test func lastAITitleAndBranch() {
-    let empty = #"{"type":"assistant","gitBranch":"","message":{"content":[]}}"#
-    let d = data([aiTitleLine("old"), userLine("a", branch: "main"), aiTitleLine("new"), assistantLine("b", branch: "feat-x"), empty])
+@Test func lastAITitle() {
+    let d = data([aiTitleLine("old"), userLine("a"), aiTitleLine("new"), assistantLine("b")])
     #expect(Transcript.lastAITitle(in: d) == "new")
-    #expect(Transcript.gitBranch(in: d, last: true) == "feat-x")
-    #expect(Transcript.gitBranch(in: d, last: false) == "main")
 }
 
 @Test func headDropsPartialLine() {
