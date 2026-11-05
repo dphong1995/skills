@@ -339,7 +339,7 @@ struct SnapshotTests {
         api.set("/2.0/user", json: ["uuid": "{me}"])
         api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7571, repo: repo, comments: 1)]])
         api.set("/statuses", json: ["values": [rabbitStatus(description: "Review completed")]])
-        api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 2**", at: "2026-11-03T03:40:00.000000+00:00"), rabbitInline(id: 1, "nit", at: "2026-11-03T03:40:00.000000+00:00")]])
+        api.set("/comments", json: ["values": pendingFinding(count: 2, at: "2026-11-03T03:40:00.000000+00:00")])
         let keys = (101...108).map { "T6IR-\($0)" }
         let urls = keys.map { "https://talo6.atlassian.net/browse/\($0)" }.joined(separator: " ")
         let pr = "https://bitbucket.org/\(repo)/pull-requests/7571"

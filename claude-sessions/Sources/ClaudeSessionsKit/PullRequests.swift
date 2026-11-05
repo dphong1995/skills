@@ -86,19 +86,18 @@ enum PullRequests {
         else { return nil }
         let reviewers = (o["participants"] as? [[String: Any]] ?? []).filter { $0["role"] as? String == "REVIEWER" }
         let source = o["source"] as? [String: Any]
-        var pr = PRStatus(
+        let approving = reviewers.filter { $0["approved"] as? Bool == true }
+        return PRStatus(
             ref: ref, url: url, state: o["state"] as? String ?? "",
             reviewers: reviewers.count,
-            approved: reviewers.filter { $0["approved"] as? Bool == true }.count,
+            approved: approving.count,
             changesRequested: reviewers.filter { $0["state"] as? String == "changes_requested" }.count,
             comments: o["comment_count"] as? Int ?? 0,
             commit: (source?["commit"] as? [String: Any])?["hash"] as? String,
             sourceRepo: (source?["repository"] as? [String: Any])?["full_name"] as? String,
             branch: (source?["branch"] as? [String: Any])?["name"] as? String,
-            title: o["title"] as? String)
-        pr.approvers = Set(reviewers.filter { $0["approved"] as? Bool == true }
-            .compactMap { ($0["user"] as? [String: Any])?["uuid"] as? String })
-        return pr
+            title: o["title"] as? String,
+            approvers: Set(approving.compactMap { ($0["user"] as? [String: Any])?["uuid"] as? String }))
     }
 
     static func page(_ data: Data) -> (values: [PRStatus], next: String?)? {

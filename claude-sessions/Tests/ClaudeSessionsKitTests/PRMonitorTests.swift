@@ -294,7 +294,7 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
     @Test func rabbitAssigned() {
         let api = fake(open: [prJSON(id: 7571, comments: 1)])
         setStatuses(api, rabbitStatus(description: "Review completed", created: Self.started))
-        api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 2**", at: Self.later), rabbitInline(id: 1, "nit", at: Self.later)]])
+        api.set("/comments", json: ["values": pendingFinding(count: 2, at: Self.later)])
         let m = monitor(api)
         m.update([target([prRef(7571)])], at: t0)
         let p = m.takeSnapshot().prs["s"]?.first
@@ -332,7 +332,7 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         let n = api.requests(containing: "/comments")
 
         setStatuses(api, rabbitStatus(description: "Review completed", created: Self.started))
-        api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 2**", at: Self.later), rabbitInline(id: 1, "nit", at: Self.later)]])
+        api.set("/comments", json: ["values": pendingFinding(count: 2, at: Self.later)])
         m.update([target([prRef(7571)])], at: t0 + 61)
         #expect(api.requests(containing: "/comments") == n + 1)
         #expect(rabbitOf(m) == .reviewed(findings: 2))
@@ -384,7 +384,7 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         api.set("/statuses", json: ["values": [inProgress()]]) // CodeRabbit's status stays INPROGRESS; the finished review is re-polled only by the 5-minute slow poll
         let m = monitor(api)
         m.update([target([prRef(7571)])], at: t0)
-        api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 1**", at: Self.summaryAt), rabbitInline(id: 1, "nit", at: Self.summaryAt)]])
+        api.set("/comments", json: ["values": pendingFinding(count: 1, at: Self.summaryAt)])
         bump(api, comments: 2)
         m.update([target([prRef(7571)])], at: t0 + 61)
         _ = m.takeSnapshot()
@@ -404,7 +404,7 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         let m = monitor(api)
         m.update([target([prRef(7571)])], at: t0)
         _ = m.takeSnapshot()
-        api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 1**", at: Self.summaryAt), rabbitInline(id: 1, "nit", at: Self.summaryAt)]])
+        api.set("/comments", json: ["values": pendingFinding(count: 1, at: Self.summaryAt)])
         m.update([target([prRef(7571)])], at: t0 + 61)
         let snap = m.takeSnapshot()
         #expect(snap.prs["s"]?.first?.rabbit == .reviewed(findings: 1))
@@ -425,7 +425,7 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
     @Test func summaryBeforeInProgressStartDoesNotEndReview() {
         let api = fake(open: [prJSON(id: 7571, comments: 1)])
         setStatuses(api, inProgress())
-        api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 1**", at: "2026-11-04T09:00:00.000000+00:00"), rabbitInline(id: 1, "nit", at: "2026-11-04T09:00:00.000000+00:00")]])
+        api.set("/comments", json: ["values": pendingFinding(count: 1, at: "2026-11-04T09:00:00.000000+00:00")])
         let m = monitor(api)
         m.update([target([prRef(7571)])], at: t0)
         _ = m.takeSnapshot()
@@ -455,7 +455,7 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
     @Test func firstSightOfReviewedPRWithInProgressStatusDoesNotChime() {
         let api = fake(open: [prJSON(id: 7571, comments: 1)])
         setStatuses(api, inProgress())
-        api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 1**", at: Self.summaryAt), rabbitInline(id: 1, "nit", at: Self.summaryAt)]])
+        api.set("/comments", json: ["values": pendingFinding(count: 1, at: Self.summaryAt)])
         let m = monitor(api)
         m.update([target([prRef(7571)])], at: t0)
         #expect(rabbitOf(m) == .reviewed(findings: 1))
@@ -465,7 +465,7 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
     @Test func rabbitChimesOncePerReview() {
         let api = fake(open: [prJSON(id: 7571, comments: 1)])
         setStatuses(api, rabbitStatus(description: "Review completed", created: Self.started))
-        api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 2**", at: Self.later), rabbitInline(id: 1, "nit", at: Self.later)]])
+        api.set("/comments", json: ["values": pendingFinding(count: 2, at: Self.later)])
         let m = monitor(api)
         m.update([target([prRef(7571)])], at: t0)
         #expect(m.takeSnapshot().events.isEmpty)
@@ -474,7 +474,7 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
 
         api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [withCommit(prJSON(id: 7571, comments: 1), "def456")]])
         api.set("/statuses", json: ["values": [rabbitStatus(description: "Review completed", commit: "def456", created: "2026-11-03T05:00:00.000000+00:00")]])
-        api.set("/comments", json: ["values": [rabbitComment("No actionable comments were generated.", at: "2026-11-03T05:10:00.000000+00:00"), rabbitInline(id: 1, "nit", at: "2026-11-03T05:10:00.000000+00:00")]])
+        api.set("/comments", json: ["values": pendingFinding(count: 0, at: "2026-11-03T05:10:00.000000+00:00")])
         m.update([target([prRef(7571)])], at: t0 + 122)
         let snap = m.takeSnapshot()
         #expect(snap.events == [.rabbitDone])
@@ -486,14 +486,14 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
     @Test func rabbitChimesWhenReviewEndsBetweenPolls() {
         let api = fake(open: [prJSON(id: 7571, comments: 1)])
         setStatuses(api, rabbitStatus(description: "Review completed", created: Self.started))
-        api.set("/comments", json: ["values": [rabbitComment("No actionable comments were generated.", at: Self.later), rabbitInline(id: 1, "nit", at: Self.later)]])
+        api.set("/comments", json: ["values": pendingFinding(count: 0, at: Self.later)])
         let m = monitor(api)
         m.update([target([prRef(7571)])], at: t0)
         #expect(rabbitOf(m) == .reviewed(findings: 0))
 
         api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [withCommit(prJSON(id: 7571, comments: 1), "def456")]])
         api.set("/statuses", json: ["values": [rabbitStatus(description: "Review completed", commit: "def456", created: "2026-11-03T05:00:00.000000+00:00")]])
-        api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 1**", at: "2026-11-03T05:10:00.000000+00:00"), rabbitInline(id: 1, "nit", at: "2026-11-03T05:10:00.000000+00:00")]])
+        api.set("/comments", json: ["values": pendingFinding(count: 1, at: "2026-11-03T05:10:00.000000+00:00")])
         m.update([target([prRef(7571)])], at: t0 + 61)
         #expect(m.takeSnapshot().events == [.rabbitNeedsYou])
     }
@@ -501,7 +501,7 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
     @Test func findingsKeptWhenSummaryMissingFromCommentsPage() {
         let api = fake(open: [prJSON(id: 7571, comments: 1)])
         setStatuses(api, rabbitStatus(description: "Review completed", created: Self.started))
-        api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 8**", at: Self.later), rabbitInline(id: 1, "nit", at: Self.later)]])
+        api.set("/comments", json: ["values": pendingFinding(count: 8, at: Self.later)])
         let m = monitor(api)
         m.update([target([prRef(7571)])], at: t0)
         #expect(rabbitOf(m) == .reviewed(findings: 8))
@@ -520,7 +520,7 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         let m = monitor(api)
         m.update([target([prRef(7571)])], at: t0)
         setStatuses(api, rabbitStatus(description: "Review completed", created: Self.started))
-        api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 2**", at: Self.later), rabbitInline(id: 1, "nit", at: Self.later)]])
+        api.set("/comments", json: ["values": pendingFinding(count: 2, at: Self.later)])
         m.update([target([prRef(7571)])], at: t0 + 61)
         let snap = m.takeSnapshot()
         #expect(snap.prs["s"]?.first?.rabbit == .reviewed(findings: 2))
@@ -528,7 +528,7 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
 
         api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [withCommit(prJSON(id: 7571, comments: 1), "def456")]])
         api.set("/statuses", json: ["values": [rabbitStatus(description: "Review completed", commit: "def456", created: "2026-11-03T05:00:00.000000+00:00")]])
-        api.set("/comments", json: ["values": [rabbitComment("No actionable comments were generated.", at: "2026-11-03T05:10:00.000000+00:00"), rabbitInline(id: 1, "nit", at: "2026-11-03T05:10:00.000000+00:00")]])
+        api.set("/comments", json: ["values": pendingFinding(count: 0, at: "2026-11-03T05:10:00.000000+00:00")])
         m.update([target([prRef(7571)])], at: t0 + 122)
         #expect(m.takeSnapshot().events == [.rabbitDone])
     }
@@ -541,7 +541,7 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         setStatuses(api, rabbitStatus(description: "Review completed", created: Self.started))
         api.routes["/comments"] = .failure(.transport)
         m.update([target([prRef(7571)])], at: t0 + 61)
-        api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 2**", at: Self.later), rabbitInline(id: 1, "nit", at: Self.later)]])
+        api.set("/comments", json: ["values": pendingFinding(count: 2, at: Self.later)])
         m.update([target([prRef(7571)])], at: t0 + 122)
         let snap = m.takeSnapshot()
         #expect(snap.prs["s"]?.first?.rabbit == .reviewed(findings: 2))
@@ -551,7 +551,7 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
     @Test func reviewedReviewIsSlowPolledUntilItFlipsToApproved() {
         let api = fake(open: [prJSON(id: 7571, comments: 1)])
         setStatuses(api, rabbitStatus(description: "Review completed", created: Self.started))
-        api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 1**", at: Self.later), rabbitInline(id: 1, "nit", at: Self.later)]])
+        api.set("/comments", json: ["values": pendingFinding(count: 1, at: Self.later)])
         let m = monitor(api)
         m.update([target([prRef(7571)])], at: t0)
         #expect(rabbitOf(m) == .reviewed(findings: 1))
@@ -670,7 +670,7 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
 
         api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7571, comments: 2)]])
         setStatuses(api, rabbitStatus(description: "Review completed", created: Self.later))
-        api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 2**", at: Self.later), rabbitInline(id: 1, "nit", at: Self.later)]])
+        api.set("/comments", json: ["values": pendingFinding(count: 2, at: Self.later)])
         m.update([target([prRef(7571)])], at: t0 + 61)
         #expect(m.takeSnapshot().events == [.rabbitNeedsYou])
     }
@@ -688,7 +688,7 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         setStatuses(api, rabbitStatus(state: "INPROGRESS", description: "Review in progress", created: Self.later))
         m.update([target([prRef(7571)])], at: t0 + 61)
         setStatuses(api, rabbitStatus(description: "Review completed", created: "2026-11-03T04:00:00.000000+00:00"))
-        api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 2**", at: "2026-11-03T04:05:00.000000+00:00"), rabbitInline(id: 1, "nit", at: "2026-11-03T04:05:00.000000+00:00")]])
+        api.set("/comments", json: ["values": pendingFinding(count: 2, at: "2026-11-03T04:05:00.000000+00:00")])
         m.update([target([prRef(7571)])], at: t0 + 122)
         #expect(m.takeSnapshot().events == [.rabbitNeedsYou])
     }
@@ -702,7 +702,7 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         #expect(rabbitOf(m) == .reviewed(findings: nil))
         let n = api.requests(containing: "/comments")
 
-        api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 2**", at: Self.later), rabbitInline(id: 1, "nit", at: Self.later)]])
+        api.set("/comments", json: ["values": pendingFinding(count: 2, at: Self.later)])
         m.update([target([prRef(7571)])], at: t0 + 61)
         #expect(api.requests(containing: "/comments") == n + 1)
         let snap = m.takeSnapshot()
@@ -729,7 +729,7 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         m.update([target([prRef(7571)])], at: t0)
         _ = m.takeSnapshot()
         api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7571, comments: 1)]])
-        api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 1**", at: Self.later), rabbitInline(id: 1, "nit", at: Self.later)]])
+        api.set("/comments", json: ["values": pendingFinding(count: 1, at: Self.later)])
         m.update([target([prRef(7571)])], at: t0 + 61)
         let snap = m.takeSnapshot()
         #expect(snap.events.isEmpty)
@@ -792,8 +792,7 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
     }
 
     private func unansweredThread(_ api: FakeBitbucket) {
-        api.set("/comments", json: ["values": [
-            rabbitComment("**Actionable comments posted: 1**", at: Self.c1), rabbitInline(id: 1, "nit", at: Self.c1)]])
+        api.set("/comments", json: ["values": pendingFinding(count: 1, at: Self.c1)])
     }
 
     @Test func awaitingApprovalChimesOnce() {
@@ -847,14 +846,51 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
 
     // MARK: nudge
 
+    /// A monitor on a PR in `🐰 chờ duyệt`. With a `queue`, returns once the first cycle has run on it.
     private func awaitingMonitor(_ api: FakeBitbucket, queue: DispatchQueue? = nil) -> PRMonitor {
         api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7583, comments: 3, rabbitApproved: false)]])
         setStatuses(api, rabbitStatus(description: "Review completed", created: Self.started))
         answeredThread(api)
         let m = PRMonitor(api: api, queue: queue, remote: { _ in nil })
         m.update([target([prRef(7583)])], at: t0)
-        if queue != nil { Thread.sleep(forTimeInterval: 0.3) }
+        queue?.sync {}
         return m
+    }
+
+    @Test func ownReplyDoesNotRechime() {
+        let api = fake(open: [prJSON(id: 7583, comments: 1, rabbitApproved: false)])
+        setStatuses(api, rabbitStatus(description: "Review completed", created: Self.started))
+        unansweredThread(api)
+        let m = monitor(api)
+        m.update([target([prRef(7583)])], at: t0)
+        _ = m.takeSnapshot()
+
+        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7583, comments: 3, rabbitApproved: false)]])
+        answeredThread(api)
+        m.update([target([prRef(7583)])], at: t0 + 61)
+        let awaiting = m.takeSnapshot()
+        #expect(awaiting.prs["s"]?.first?.rabbit == .awaitingApproval)
+        #expect(awaiting.events.filter { $0 == .rabbitDone }.count == 1)
+
+        // The human replies on a CodeRabbit thread again: CodeRabbit's answer is no longer the newest.
+        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7583, comments: 4, rabbitApproved: false)]])
+        api.set("/comments", json: ["values": [
+            rabbitComment("**Actionable comments posted: 1**", at: Self.c1),
+            rabbitInline(id: 1, "nit", at: Self.c1),
+            humanReply(id: 2, parent: 1, "won't fix", at: Self.c2),
+            rabbitInline(id: 3, "withdrawn", at: Self.c3, parent: 1),
+            humanReply(id: 4, parent: 1, "one more thing", at: "2026-11-04T10:03:00.000000+00:00")]])
+        m.update([target([prRef(7583)])], at: t0 + 122)
+        let replied = m.takeSnapshot()
+        #expect(replied.prs["s"]?.first?.rabbit == .reviewed(findings: 1))
+        #expect(!replied.events.contains(.rabbitDone) && !replied.events.contains(.rabbitNeedsYou))
+
+        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7583, comments: 5, rabbitApproved: false)]])
+        answeredThread(api)
+        m.update([target([prRef(7583)])], at: t0 + 183)
+        let answered = m.takeSnapshot()
+        #expect(answered.prs["s"]?.first?.rabbit == .awaitingApproval)
+        #expect(!answered.events.contains(.rabbitDone) && !answered.events.contains(.rabbitNeedsYou))
     }
 
     @Test func nudgePostsApproveCommand() {
@@ -868,10 +904,19 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         #expect(api.posts.first?.path == "/2.0/repositories/t6engineering/talo6-dct-backend/pullrequests/7583/comments")
         #expect(api.posts.first?.json["content"] as? [String: String] == ["raw": "@coderabbitai approve"])
         #expect(rabbitOf(m) == .nudged)
-        let n = api.requests(containing: "/2.0/user")
+
+        // The next cycle reads the comments again and still sees the command as the newest one.
+        let n = api.requests(containing: "/comments")
+        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7583, comments: 4, rabbitApproved: false)]])
+        api.set("/comments", json: ["values": [
+            humanReply(id: 5, parent: nil, "@coderabbitai approve", at: "2026-11-04T10:10:00.000000+00:00", inline: false),
+            rabbitComment("**Actionable comments posted: 1**", at: Self.c1),
+            rabbitInline(id: 1, "nit", at: Self.c1),
+            humanReply(id: 2, parent: 1, "won't fix", at: Self.c2),
+            rabbitInline(id: 3, "withdrawn", at: Self.c3, parent: 1)]])
         m.update([target([prRef(7583)])], at: t0 + 1)
-        #expect(api.requests(containing: "/2.0/workspaces") >= 2)
-        #expect(api.requests(containing: "/2.0/user") == n)
+        #expect(api.requests(containing: "/comments") == n + 1)
+        #expect(rabbitOf(m) == .nudged)
     }
 
     @Test func nudgeFailureKeepsState() {
@@ -897,29 +942,40 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         #expect(api.posts.isEmpty)
     }
 
-    @Test func nudgeTwiceSendsOnce() {
-        let api = fake()
-        let m = awaitingMonitor(api, queue: DispatchQueue(label: "test.nudge"))
+    /// Two clicks while the first post is held: the second is refused at once, the first finishes as `result`.
+    private func twoNudgesWhileGated(_ api: FakeBitbucket) -> (posts: Int, results: [Bool]) {
+        let queue = DispatchQueue(label: "test.nudge")
+        let m = awaitingMonitor(api, queue: queue)
         api.postGate = DispatchSemaphore(value: 0)
         let lock = NSLock()
         var results: [Bool] = []
-        let both = DispatchSemaphore(value: 0)
         for _ in 0..<2 {
-            m.nudge(prRef(7583)) { ok in
-                lock.lock(); results.append(ok); lock.unlock()
-                both.signal()
-            }
+            m.nudge(prRef(7583)) { ok in lock.lock(); results.append(ok); lock.unlock() }
         }
-        Thread.sleep(forTimeInterval: 0.2)
         api.postGate?.signal()
-        // `done` is delivered on the main queue, which the test thread must not block: poll it.
+        // `done` is delivered on the main queue, which the test thread must not block: pump it.
         let deadline = Date().addingTimeInterval(5)
         while Date() < deadline {
             lock.lock(); let n = results.count; lock.unlock()
             if n == 2 { break }
-            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+            RunLoop.main.run(until: Date().addingTimeInterval(0.01))
         }
-        #expect(api.posts.count == 1)
+        queue.sync {}
+        lock.lock(); defer { lock.unlock() }
+        return (api.posts.count, results)
+    }
+
+    @Test func nudgeTwiceSendsOnce() {
+        let (posts, results) = twoNudgesWhileGated(fake())
+        #expect(posts == 1)
         #expect(results.sorted(by: { !$0 && $1 }) == [false, true])
+    }
+
+    @Test func nudgeTwiceAfterFailureSendsOnce() {
+        let api = fake()
+        api.postResult = .failure(.transport)
+        let (posts, results) = twoNudgesWhileGated(api)
+        #expect(posts == 1)
+        #expect(results == [false, false])
     }
 }

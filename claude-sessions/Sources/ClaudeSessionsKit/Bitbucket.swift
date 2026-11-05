@@ -28,28 +28,22 @@ public final class BitbucketClient: BitbucketAPI, CredentialReloading {
     public func reload() { http.reload() }
 
     public func get(_ path: String) throws -> Data {
-        guard let header = http.currentAuth(), let url = URL(string: Self.base + path) else { throw BitbucketError.transport }
-        var req = URLRequest(url: url, timeoutInterval: 15)
-        req.setValue(header, forHTTPHeaderField: "Authorization")
-        req.setValue("application/json", forHTTPHeaderField: "Accept")
-        do {
-            return try http.send(req)
-        } catch BasicAuthHTTP.Failure.http(let code) {
-            throw BitbucketError.http(code)
-        } catch {
-            throw BitbucketError.transport
-        }
+        try send(path, method: "GET", body: nil)
     }
 
     public func post(_ path: String, json: [String: Any]) throws -> Data {
-        guard let header = http.currentAuth(), let url = URL(string: Self.base + path),
-              let body = try? JSONSerialization.data(withJSONObject: json) else { throw BitbucketError.transport }
+        guard let body = try? JSONSerialization.data(withJSONObject: json) else { throw BitbucketError.transport }
+        return try send(path, method: "POST", body: body)
+    }
+
+    private func send(_ path: String, method: String, body: Data?) throws -> Data {
+        guard let header = http.currentAuth(), let url = URL(string: Self.base + path) else { throw BitbucketError.transport }
         var req = URLRequest(url: url, timeoutInterval: 15)
-        req.httpMethod = "POST"
+        req.httpMethod = method
         req.httpBody = body
         req.setValue(header, forHTTPHeaderField: "Authorization")
         req.setValue("application/json", forHTTPHeaderField: "Accept")
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if body != nil { req.setValue("application/json", forHTTPHeaderField: "Content-Type") }
         do {
             return try http.send(req)
         } catch BasicAuthHTTP.Failure.http(let code) {

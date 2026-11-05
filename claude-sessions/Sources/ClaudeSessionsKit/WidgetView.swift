@@ -547,10 +547,10 @@ public struct WidgetView: View {
                         .onTapGesture { onAction(.openLink(s.id, pr.url)) }
                         .help(pr.title ?? "")
                     Spacer(minLength: 0)
-                    if pr.isOpen && pr.rabbit == .awaitingApproval {
-                        PillButton(title: "🐰 Nhắc duyệt") { onAction(.nudgeRabbit(s.id, pr.ref)) }
-                    }
                     if pr.isOpen {
+                        if pr.rabbit == .awaitingApproval {
+                            PillButton(title: "🐰 Nhắc duyệt") { onAction(.nudgeRabbit(s.id, pr.ref)) }
+                        }
                         PillButton(title: "Nhờ Claude") {
                             onAction(.askClaude(s.id, prompt: PullRequests.prompt(store.prPrompt, url: pr.url, id: pr.ref.id)))
                         }

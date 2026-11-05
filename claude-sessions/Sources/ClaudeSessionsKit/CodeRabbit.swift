@@ -18,15 +18,16 @@ enum CodeRabbit {
         (v["key"] as? String)?.hasPrefix("coderabbitai/") == true || v["name"] as? String == "CodeRabbit"
     }
 
-    static func isComment(_ v: [String: Any]) -> Bool {
-        ((v["content"] as? [String: Any])?["raw"] as? String)?.contains(marker) == true
-    }
+    private static func raw(_ v: [String: Any]) -> String { (v["content"] as? [String: Any])?["raw"] as? String ?? "" }
+
+    private static func stamp(_ v: [String: Any], _ key: String) -> Date? { (v[key] as? String).flatMap(PullRequests.date) }
+
+    static func isComment(_ v: [String: Any]) -> Bool { raw(v).contains(marker) }
 
     /// The newest CodeRabbit status of `commit`; `findings` is filled in by `findings(fromComments:since:)`.
     static func state(fromStatuses data: Data, commit: String?) -> (rabbit: Rabbit, since: Date)? {
         guard let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let values = o["values"] as? [[String: Any]] else { return nil }
-        func stamp(_ v: [String: Any], _ key: String) -> Date? { (v[key] as? String).flatMap(PullRequests.date) }
         let newest = values.filter { v in
             guard isStatus(v) else { return false }
             guard let commit, let hash = (v["commit"] as? [String: Any])?["hash"] as? String else { return true }
@@ -64,7 +65,7 @@ enum CodeRabbit {
         guard let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let values = o["values"] as? [[String: Any]] else { return .notFound }
         for v in values where (v["deleted"] as? Bool) != true && isComment(v) {
-            let raw = (v["content"] as? [String: Any])?["raw"] as? String ?? ""
+            let raw = raw(v)
             let count: Int
             let ns = raw as NSString
             if let m = actionable.firstMatch(in: raw, range: NSRange(location: 0, length: ns.length)),
@@ -75,7 +76,7 @@ enum CodeRabbit {
             } else {
                 continue
             }
-            let dates = (createdOnly ? ["created_on"] : ["created_on", "updated_on"]).compactMap { (v[$0] as? String).flatMap(PullRequests.date) }
+            let dates = (createdOnly ? ["created_on"] : ["created_on", "updated_on"]).compactMap { stamp(v, $0) }
             return dates.contains { $0 >= since } ? .count(count) : .stale
         }
         return .notFound
@@ -106,9 +107,8 @@ enum CodeRabbit {
     /// What the full comment list says about the CodeRabbit account, its inline threads and a pending approve command.
     static func facts(from values: [[String: Any]]) -> RabbitFacts {
         let live = values.filter { ($0["deleted"] as? Bool) != true }
-        func created(_ v: [String: Any]) -> Date { (v["created_on"] as? String).flatMap(PullRequests.date) ?? .distantPast }
+        func created(_ v: [String: Any]) -> Date { stamp(v, "created_on") ?? .distantPast }
         func parent(_ v: [String: Any]) -> Int? { (v["parent"] as? [String: Any])?["id"] as? Int }
-        func raw(_ v: [String: Any]) -> String { (v["content"] as? [String: Any])?["raw"] as? String ?? "" }
         let marked = live.filter(isComment)
         let rabbitUser = marked.max { created($0) < created($1) }
             .flatMap { ($0["user"] as? [String: Any])?["uuid"] as? String }

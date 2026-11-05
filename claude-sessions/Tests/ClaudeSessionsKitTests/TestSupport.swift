@@ -123,8 +123,11 @@ func prJSON(id: Int, repo: String = "t6engineering/talo6-dct-backend", branch: S
 final class FakeBitbucket: BitbucketAPI {
     var routes: [String: Result<Data, BitbucketError>] = [:]
     var failAll: BitbucketError?
-    private(set) var requests: [String] = []
-    private(set) var posts: [(path: String, json: [String: Any])] = []
+    private let lock = NSLock()
+    private var _requests: [String] = []
+    private var _posts: [(path: String, json: [String: Any])] = []
+    var requests: [String] { lock.lock(); defer { lock.unlock() }; return _requests }
+    var posts: [(path: String, json: [String: Any])] { lock.lock(); defer { lock.unlock() }; return _posts }
     var postResult: Result<Data, BitbucketError> = .success(Data("{}".utf8))
     /// When set, `post` waits on it before returning.
     var postGate: DispatchSemaphore?
@@ -134,14 +137,14 @@ final class FakeBitbucket: BitbucketAPI {
     func requests(containing s: String) -> Int { requests.filter { $0.contains(s) }.count }
 
     func get(_ path: String) throws -> Data {
-        requests.append(path)
+        lock.lock(); _requests.append(path); lock.unlock()
         if let failAll { throw failAll }
         guard let key = routes.keys.filter({ path.contains($0) }).max(by: { $0.count < $1.count }) else { throw BitbucketError.http(404) }
         return try routes[key]!.get()
     }
 
     func post(_ path: String, json: [String: Any]) throws -> Data {
-        posts.append((path, json))
+        lock.lock(); _posts.append((path, json)); lock.unlock()
         postGate?.wait()
         return try postResult.get()
     }
@@ -180,6 +183,12 @@ func rabbitInline(id: Int, _ raw: String, at: String, parent: Int? = nil) -> [St
     c["inline"] = ["path": "a.ts"]
     if let parent { c["parent"] = ["id": parent] }
     return c
+}
+
+/// A CodeRabbit summary with `count` and one top-level finding nobody answered, so the review stays in
+/// `.reviewed(findings:)` instead of moving on to `.awaitingApproval`.
+func pendingFinding(count: Int, at: String) -> [[String: Any]] {
+    [rabbitComment("**Actionable comments posted: \(count)**", at: at), rabbitInline(id: 1, "nit", at: at)]
 }
 
 /// A comment without the CodeRabbit marker, e.g. a human reply to a finding.

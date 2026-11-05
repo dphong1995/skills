@@ -62,7 +62,8 @@ public final class PRMonitor {
     private var remotes: [String: (repo: Repo?, at: Date)] = [:]
     private var absentSince: [String: Date] = [:]
     private var statuses: [PRRef: PRStatus] = [:]
-    private var rabbitSeen: [PRRef: (commit: String?, label: String)] = [:]
+    /// Per PR: the commit and the labels already chimed for it (a new commit starts a new set).
+    private var rabbitSeen: [PRRef: (commit: String?, labels: Set<String>)] = [:]
     /// PRs whose `/statuses` was fetched successfully at least once.
     private var statusesFetched = Set<PRRef>()
     /// Facts of each PR's last successful full `/comments` fetch.
@@ -158,9 +159,8 @@ public final class PRMonitor {
             lastCycle = now
             (events, eventRefs, succeeded) = cycle(targets, at: now)
         }
+        publish()
         lock.lock()
-        snapshot.prs = shownPRs()
-        snapshot.connection = connection
         snapshot.events += events
         snapshot.eventRefs.formUnion(eventRefs)
         if succeeded { snapshot.lastSuccess = now }
@@ -179,58 +179,66 @@ public final class PRMonitor {
     /// Posts `@coderabbitai approve` on a PR that is `🐰 chờ duyệt`. `done(true)` once posted; `done(false)` when
     /// refused (not awaiting, or a post for it is already in flight) or the post failed. `done` runs on the main queue.
     public func nudge(_ ref: PRRef, done: @escaping (Bool) -> Void) {
-        let work = { [self] in
-            guard !nudging.contains(ref), statuses[ref]?.rabbit == .awaitingApproval else { return false }
-            nudging.insert(ref)
-            defer { nudging.remove(ref) }
+        lock.lock()
+        let claimed = nudging.insert(ref).inserted
+        lock.unlock()
+        guard claimed else {
+            if queue == nil { return done(false) }
+            return DispatchQueue.main.async { done(false) }
+        }
+        let work = { [self] () -> Bool in
+            defer { lock.lock(); nudging.remove(ref); lock.unlock() }
+            guard statuses[ref]?.rabbit == .awaitingApproval else { return false }
             let path = "/2.0/repositories/\(ref.workspace)/\(ref.repo)/pullrequests/\(ref.id)/comments"
             do {
                 _ = try post(path, json: ["content": ["raw": "@coderabbitai approve"]])
             } catch {
-                publishConnection()
+                publish()
                 return false
             }
             rabbitFacts[ref]?.nudgePending = true
-            if let pr = statuses[ref] {
-                statuses[ref]!.rabbit = CodeRabbit.resolve(pr.rabbitStatus, approvers: pr.approvers, facts: rabbitFacts[ref])
-            }
+            if let pr = statuses[ref] { statuses[ref]?.rabbit = resolved(pr, ref) }
             lastCycle = nil
-            lock.lock()
-            snapshot.prs = shownPRs()
-            snapshot.connection = connection
-            lock.unlock()
+            publish()
             return true
         }
         guard let queue else { return done(work()) }
         queue.async { let ok = work(); DispatchQueue.main.async { done(ok) } }
     }
 
-    private func publishConnection() {
-        lock.lock(); snapshot.connection = connection; lock.unlock()
+    private func publish() {
+        lock.lock()
+        snapshot.prs = shownPRs()
+        snapshot.connection = connection
+        lock.unlock()
+    }
+
+    private func resolved(_ pr: PRStatus, _ ref: PRRef) -> Rabbit? {
+        CodeRabbit.resolve(pr.rabbitStatus, approvers: pr.approvers, facts: rabbitFacts[ref])
     }
 
     private func post(_ path: String, json: [String: Any]) throws -> Data {
-        do {
-            let d = try api.post(path, json: json)
-            connection = ConnectionState.after(nil, previous: connection)
-            return d
-        } catch {
-            connection = ConnectionState.after(error, previous: connection)
-            throw error
-        }
+        try recorded { try api.post(path, json: json) }
     }
 
-    /// Remembers the `(commit, label)` of a finished review so only a new one chimes.
+    /// Remembers the label of a finished review so only a new one (or a new commit) chimes.
     private func recordRabbit(_ ref: PRRef, _ pr: PRStatus) {
-        if let r = pr.rabbit, CodeRabbit.isFinal(r) { rabbitSeen[ref] = (pr.commit, CodeRabbit.label(r)) }
+        guard let r = pr.rabbit, CodeRabbit.isFinal(r) else { return }
+        var labels = rabbitSeen[ref].flatMap { $0.commit == pr.commit ? $0.labels : nil } ?? []
+        labels.insert(CodeRabbit.label(r))
+        rabbitSeen[ref] = (pr.commit, labels)
     }
 
     /// Every API call goes through here so each path records the connection state.
     private func fetch(_ path: String) throws -> Data {
+        try recorded { try api.get(path) }
+    }
+
+    private func recorded<T>(_ call: () throws -> T) throws -> T {
         do {
-            let d = try api.get(path)
+            let r = try call()
             connection = ConnectionState.after(nil, previous: connection)
-            return d
+            return r
         } catch {
             connection = ConnectionState.after(error, previous: connection)
             throw error
@@ -241,23 +249,9 @@ public final class PRMonitor {
         try? JSONSerialization.jsonObject(with: d) as? [String: Any]
     }
 
-    private func openList(_ workspace: String, me: String) throws -> [PRStatus] {
-        let uuid = me.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? me
-        var path: String? = "/2.0/workspaces/\(workspace)/pullrequests/\(uuid)?state=OPEN&pagelen=50&fields=\(Self.openFields)"
-        var out: [PRStatus] = []
-        var pages = 0
-        while let p = path, pages < Self.maxPages {
-            guard let page = PullRequests.page(try fetch(p)) else { throw BitbucketError.transport }
-            out += page.values
-            path = page.next.map { $0.hasPrefix(BitbucketClient.base) ? String($0.dropFirst(BitbucketClient.base.count)) : $0 }
-            pages += 1
-        }
-        return out
-    }
-
-    /// Every page of `/comments`, merged into one `{"values": [...]}` document.
-    private func fetchComments(_ path: String) throws -> Data {
-        var next: String? = "\(path)/comments?sort=-created_on&pagelen=100&fields=\(Self.commentFields)"
+    /// The `values` of every page from `first`, following `next` up to `maxPages`.
+    private func allValues(_ first: String) throws -> [[String: Any]] {
+        var next: String? = first
         var values: [[String: Any]] = []
         var pages = 0
         while let p = next, pages < Self.maxPages {
@@ -266,6 +260,18 @@ public final class PRMonitor {
             next = (o["next"] as? String).map { $0.hasPrefix(BitbucketClient.base) ? String($0.dropFirst(BitbucketClient.base.count)) : $0 }
             pages += 1
         }
+        return values
+    }
+
+    private func openList(_ workspace: String, me: String) throws -> [PRStatus] {
+        let uuid = me.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? me
+        return try allValues("/2.0/workspaces/\(workspace)/pullrequests/\(uuid)?state=OPEN&pagelen=50&fields=\(Self.openFields)")
+            .compactMap(PullRequests.status(from:))
+    }
+
+    /// Every page of `/comments`, merged into one `{"values": [...]}` document.
+    private func fetchComments(_ path: String) throws -> Data {
+        let values = try allValues("\(path)/comments?sort=-created_on&pagelen=100&fields=\(Self.commentFields)")
         return try JSONSerialization.data(withJSONObject: ["values": values])
     }
 
@@ -376,7 +382,7 @@ public final class PRMonitor {
                     guard let d = try? fetchComments(path) else {
                         if prev != nil { continue }
                         commentsOwed.insert(ref)
-                        pr.rabbit = CodeRabbit.resolve(pr.rabbitStatus, approvers: pr.approvers, facts: rabbitFacts[ref])
+                        pr.rabbit = resolved(pr, ref)
                         recordRabbit(ref, pr)
                         if firstStatuses { statusesFetched.insert(ref) }
                         statuses[ref] = pr
@@ -395,7 +401,7 @@ public final class PRMonitor {
                         case .notFound: break // the summary is beyond this page: keep the known count
                         }
                     }
-                    pr.rabbit = CodeRabbit.resolve(pr.rabbitStatus, approvers: pr.approvers, facts: rabbitFacts[ref])
+                    pr.rabbit = resolved(pr, ref)
                     // Re-record only a count filled in for the review already recorded; a new kind must still chime.
                     if owed, rabbitSeen[ref]?.commit == pr.commit, CodeRabbit.kind(prev?.rabbit) == CodeRabbit.kind(pr.rabbit),
                        pr.rabbitSince == prev?.rabbitSince { recordRabbit(ref, pr) }
@@ -403,12 +409,12 @@ public final class PRMonitor {
                     if owed, rabbitSeen[ref] == nil { recordRabbit(ref, pr) }
                 }
             }
-            pr.rabbit = CodeRabbit.resolve(pr.rabbitStatus, approvers: pr.approvers, facts: rabbitFacts[ref])
+            pr.rabbit = resolved(pr, ref)
             if let prev {
                 var found = PullRequests.events(old: prev, new: pr)
                 if firstStatuses {
                     recordRabbit(ref, pr)
-                } else if pr.isOpen, let r = pr.rabbit, CodeRabbit.isFinal(r), rabbitSeen[ref].map({ $0 != (pr.commit, CodeRabbit.label(r)) }) ?? true {
+                } else if pr.isOpen, let r = pr.rabbit, CodeRabbit.isFinal(r), rabbitSeen[ref].map({ !($0.commit == pr.commit && $0.labels.contains(CodeRabbit.label(r))) }) ?? true {
                     switch r {
                     case .reviewed(let n?) where n > 0: found.append(.rabbitNeedsYou)
                     case .failed: found.append(.rabbitNeedsYou)
