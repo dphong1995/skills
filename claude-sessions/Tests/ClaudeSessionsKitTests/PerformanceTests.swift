@@ -206,7 +206,11 @@ private final class Fixture {
                 worst = max(worst, count - live)
                 #expect(count <= live, "\(name) holds \(count) entries for \(live) live sessions")
             }
-            // "branches" is per cwd; each fixture session has its own cwd, so it is bounded by `live` and 0 at the end too.
+            // "branches" is per cwd, so it is bounded by the distinct cwds of the live sessions.
+            let liveCwds = Set(f.store.sessions.map(\.cwd)).count
+            let branches = f.store.cacheCounts["branches"] ?? 0
+            #expect(branches > 0, "branches cache is empty while \(live) sessions are live")
+            #expect(branches <= liveCwds, "branches holds \(branches) entries for \(liveCwds) live cwds")
         }
         print("caches: worst excess over live sessions = \(worst)")
         for id in f.ids { f.remove(id) }

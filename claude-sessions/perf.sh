@@ -36,7 +36,7 @@ cleanup() {
         kill "$APP_PID" 2>/dev/null
         # `wait` below must not block forever on an app that ignores TERM.
         for _ in $(seq 30); do kill -0 "$APP_PID" 2>/dev/null || break; sleep 0.1; done
-        kill -9 "$APP_PID" 2>/dev/null
+        app_alive && kill -9 "$APP_PID" 2>/dev/null
     fi
     [ ${#SLEEP_PIDS[@]} -gt 0 ] && kill "${SLEEP_PIDS[@]}" 2>/dev/null
     wait 2>/dev/null
