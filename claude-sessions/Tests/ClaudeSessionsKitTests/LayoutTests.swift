@@ -238,3 +238,11 @@ private func prStatus(id: Int, state: String = "OPEN", reviewers: Int = 0, appro
     closed.rabbit = .reviewed(findings: 2)
     #expect(!prLine(closed, now: now, stale: nil).contains("🐰"))
 }
+
+@Test func expandedHeightGrowsWithOpenList() {
+    var s = session("a", "idle", "hi")
+    let url = URL(string: "https://x.y/1")!
+    s.menu = [LinkSection(title: "Nhánh", items: [LinkItem(text: "A", url: url)]),
+              LinkSection(title: "PR", items: [LinkItem(text: "B", url: url), LinkItem(text: "C", url: url)])]
+    #expect(Layout.expanded([s], open: [s.id]).height == Layout.expanded([s]).height + 3 * 22 + 2 * 16)
+}

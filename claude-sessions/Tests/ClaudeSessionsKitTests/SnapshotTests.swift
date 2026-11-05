@@ -367,18 +367,92 @@ struct SnapshotTests {
         render(store, panel, "27-fresh-long-title")
     }
 
-    @Test func renderLinkMenuRow() {
+    private static func swatch(_ c: NSColor) -> NSImage {
+        NSImage(size: NSSize(width: 16, height: 16), flipped: false) { r in
+            c.setFill()
+            NSBezierPath(roundedRect: r.insetBy(dx: 1, dy: 1), xRadius: 3, yRadius: 3).fill()
+            return true
+        }
+    }
+
+    private static let iconBug = URL(string: "https://talo6.atlassian.net/icon/bug")!
+    private static let iconStory = URL(string: "https://talo6.atlassian.net/icon/story")!
+    private static let iconTask = URL(string: "https://talo6.atlassian.net/icon/task")!
+
+    /// One session `b` mentioning seven tickets (the last has no type or icon data) and PRs; icons are put straight into the store.
+    private func linkStore(jira connected: Bool) -> (Store, PanelState) {
         let dir = makeTempDir(), projects = makeTempDir()
         let keys = (101...107).map { "T6IR-\($0)" }
         let urls = keys.map { "https://talo6.atlassian.net/browse/\($0)" }.joined(separator: " ")
         let prs = "https://github.com/a/b/pull/1 https://github.com/a/b/pull/2"
         _ = writeTranscript(projects, cwd: backend, id: "b", lines: [userLine(urls), assistantLine(prs), ""])
         writeSession(dir, "b", pid: me, status: "idle", ageSec: 30, name: "talo6-dct-backend-3f", cwd: backend)
-        let store = makeStore(dir: dir, projects: projects)
+        let api = FakeJira()
+        let spec: [(String, String, String?, String?, (String, URL)?)] = [
+            ("T6IR-101", "Add retry to the sync worker", "To Do", "new", ("Bug", Self.iconBug)),
+            ("T6IR-102", "Fix site scope filter on the dashboard", "In Progress", "indeterminate", ("Story", Self.iconStory)),
+            ("T6IR-103", "Remove the legacy export endpoint", "Done", "done", ("Task", Self.iconTask)),
+            ("T6IR-104", "Cache the permission lookups", "Ready for Grooming with Engineering", "new", ("Bug", Self.iconBug)),
+            ("T6IR-105", "Odd workflow status", "Blocked", "weird", ("Story", Self.iconStory)),
+            ("T6IR-106", "Ticket with a status and no category", "Review", nil, ("Task", Self.iconTask)),
+            ("T6IR-107", "Ticket whose icon never arrived", "To Do", "new", nil),
+        ]
+        for (k, title, status, cat, type) in spec {
+            api.issues[k] = (title, status)
+            if let cat { api.categories[k] = cat }
+            if let type { api.types[k] = (type.0, type.1.absoluteString) }
+        }
+        let store = makeStore(dir: dir, projects: projects, jira: connected ? JiraMonitor(api: api, queue: nil) : nil)
+        store.jiraProjects = ["T6IR": "talo6.atlassian.net"]
+        store.refresh(at: Date())
+        if connected {
+            store.issueIcons = [Self.iconBug: Self.swatch(.systemRed), Self.iconStory: Self.swatch(.systemGreen),
+                                Self.iconTask: Self.swatch(.systemBlue)]
+            // Bitbucket is not faked here: swap the untracked PR links for one PR in each state.
+            let pr = { (id: Int, status: String, tone: ItemTone) in
+                LinkItem(text: "PR #\(id)", url: URL(string: "https://github.com/a/b/pull/\(id)")!, kind: .pr, code: "#\(id)",
+                         title: "Rework the \(status) pull request", status: status, tone: tone)
+            }
+            let i = store.sessions[0].menu.firstIndex { $0.title == "PR" }!
+            store.sessions[0].menu[i] = LinkSection(title: "PR", items: [pr(41, "mở", .open), pr(42, "đã merge", .merged), pr(43, "đã đóng", .closed)])
+        }
         let panel = PanelState()
         panel.hovering = true
-        store.refresh(at: Date())
-        #expect(store.sessions.first?.menuCount == 9)
+        return (store, panel)
+    }
+
+    @Test func renderLinkMenuRow() {
+        let (store, panel) = linkStore(jira: true)
+        #expect(store.sessions.first?.menuCount == 10)
         render(store, panel, "28-link-menu-row")
+    }
+
+    @Test func renderLinkListOpen() {
+        let (store, panel) = linkStore(jira: true)
+        let s = store.sessions[0]
+        panel.openMenus = [s.id]
+        #expect(s.menu.reduce(0) { $0 + $1.items.count } == s.menuCount)
+        render(store, panel, "29-link-list-open")
+    }
+
+    @Test func renderLinkListConnect() {
+        let (store, panel) = linkStore(jira: false)
+        let s = store.sessions[0]
+        panel.openMenus = [s.id]
+        #expect(s.menuNeedsJira)
+        render(store, panel, "30-link-list-connect")
+    }
+
+    @Test func openMenusClearedOnCollapse() async throws {
+        let (store, panel) = linkStore(jira: true)
+        panel.openMenus = [store.sessions[0].id]
+        let host = NSHostingView(rootView: WidgetView(store: store, panel: panel))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 600, height: 640), styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = host
+        host.layoutSubtreeIfNeeded()
+        panel.hovering = false
+        host.layoutSubtreeIfNeeded()
+        for _ in 0..<20 where !panel.openMenus.isEmpty { try await Task.sleep(for: .milliseconds(50)) }
+        #expect(panel.openMenus.isEmpty)
     }
 }

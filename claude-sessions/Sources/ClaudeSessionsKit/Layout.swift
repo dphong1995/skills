@@ -75,19 +75,23 @@ public enum Layout {
         return lines <= 4 && s.count <= 240 ? .short : .long
     }
 
-    static func height(of s: Session) -> CGFloat {
+    static let linkRowHeight: CGFloat = 22
+    static let linkSectionHeight: CGFloat = 16
+
+    static func height(of s: Session, open: Bool = false) -> CGFloat {
         (s.isFinished && s.lastReply != nil ? replyRowHeight : rowHeight) + (s.todo != nil ? todoHeight : 0) + (s.activity != nil ? todoHeight : 0)
             + (s.title.count > 60 ? 16 : 0) + (s.menu.isEmpty ? 0 : 22) + s.prs.reduce(0) { $0 + ($1.isOpen ? 22 : 18) }
+            + (open ? CGFloat(s.menuCount) * linkRowHeight + CGFloat(s.menu.count) * linkSectionHeight + (s.menuNeedsJira ? linkRowHeight : 0) : 0)
     }
 
-    static func expanded(_ sessions: [Session]) -> CGSize {
-        let rows = sessions.isEmpty ? rowHeight : sessions.reduce(0) { $0 + height(of: $1) }
+    static func expanded(_ sessions: [Session], open: Set<String> = []) -> CGSize {
+        let rows = sessions.isEmpty ? rowHeight : sessions.reduce(0) { $0 + height(of: $1, open: open.contains($1.id)) }
         return CGSize(width: expandedWidth, height: headerHeight + listPadding + rows)
     }
 
     public static func size(_ store: Store, _ panel: PanelState) -> CGSize {
         guard panel.expanded(store) else { return collapsed }
-        let h = panel.measuredHeight ?? expanded(store.sessions).height
+        let h = panel.measuredHeight ?? expanded(store.sessions, open: panel.openMenus).height
         return CGSize(width: expandedWidth, height: min(h, maxExpandedHeight))
     }
 

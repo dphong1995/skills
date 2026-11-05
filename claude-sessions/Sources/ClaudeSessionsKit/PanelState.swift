@@ -9,6 +9,9 @@ public final class PanelState: ObservableObject {
     /// Height of the session rows alone, so the list can scroll when the panel is full.
     @Published public var listHeight: CGFloat?
 
+    /// Session ids whose `☰ N` list is expanded; cleared when the widget collapses.
+    @Published public var openMenus: Set<String> = []
+
     public init() {}
 
     public func expanded(_ store: Store) -> Bool { hovering || editing != nil || store.peeking }

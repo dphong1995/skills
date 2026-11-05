@@ -161,15 +161,41 @@ public enum WidgetAction: Equatable {
     }
 }
 
+/// Tone to colours: `nil` and todo/closed are grey, doing blue, done/open green, merged purple.
+func toneColor(_ t: ItemTone?) -> Color {
+    switch t {
+    case .doing?: .blue
+    case .done?, .open?: .green
+    case .merged?: .purple
+    case .todo?, .closed?, nil: .white.opacity(0.55)
+    }
+}
+
+func toneColor(_ t: JiraIssue.Tone?) -> Color { toneColor(t.map(ItemTone.init)) }
+
 struct PillLabel: View {
     let title: String
     var fill: Color = .white.opacity(0.12)
     var textColor: Color = .white
+    var icon: NSImage? = nil
+    /// Reserves a 14x14 slot for the icon even while `icon` is nil, so labels line up.
+    var showsIcon = false
+    var dot: Color? = nil
 
     var body: some View {
-        Text(title).font(.system(size: 11, weight: .semibold)).foregroundStyle(textColor)
-            .padding(.horizontal, 9).padding(.vertical, 3)
-            .background(Capsule().fill(fill))
+        HStack(spacing: 5) {
+            if showsIcon {
+                Group {
+                    if let icon { Image(nsImage: icon).resizable().interpolation(.high) } else { Color.clear }
+                }
+                .frame(width: 14, height: 14)
+            }
+            Text(title)
+            if let dot { Circle().fill(dot).frame(width: 6, height: 6) }
+        }
+        .font(.system(size: 11, weight: .semibold)).foregroundStyle(textColor)
+        .padding(.horizontal, 9).padding(.vertical, 3)
+        .background(Capsule().fill(fill))
     }
 }
 
@@ -177,11 +203,72 @@ struct PillButton: View {
     let title: String
     var fill: Color = .white.opacity(0.12)
     var textColor: Color = .white
+    var icon: NSImage? = nil
+    var showsIcon = false
+    var dot: Color? = nil
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) { PillLabel(title: title, fill: fill, textColor: textColor) }
-            .buttonStyle(.plain)
+        Button(action: action) {
+            PillLabel(title: title, fill: fill, textColor: textColor, icon: icon, showsIcon: showsIcon, dot: dot)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Status of a ticket or PR: a capsule tinted by its tone.
+struct StatusTag: View {
+    let text: String
+    let tone: ItemTone?
+
+    var body: some View {
+        let c = toneColor(tone)
+        let grey = tone == nil || tone == .todo || tone == .closed
+        let bright = Color(nsColor: NSColor(c).blended(withFraction: 0.35, of: .white) ?? .white)
+        Text(text).font(.system(size: 10.5, weight: .semibold))
+            .foregroundStyle(grey ? c : bright)
+            .lineLimit(1).truncationMode(.tail)
+            .padding(.horizontal, 7).padding(.vertical, 2)
+            .background(Capsule().fill(grey ? Color.white.opacity(0.12) : c.opacity(0.25)))
+            .frame(maxWidth: 130)
+    }
+}
+
+/// One line of the inline `☰ N` list.
+final class RowHover: ObservableObject { @Published var on = false }
+
+struct LinkRow: View {
+    @ObservedObject var store: Store
+    let item: LinkItem
+    let onOpen: () -> Void
+    @StateObject private var hover = RowHover()
+
+    var body: some View {
+        HStack(spacing: 6) {
+            icon.frame(width: 14, height: 14)
+            Text(item.code).font(.system(size: 10.5).monospaced()).foregroundStyle(.white.opacity(0.5)).lineLimit(1).fixedSize()
+            if let title = item.title {
+                Text(title).font(.system(size: 11.5)).foregroundStyle(.white.opacity(0.85)).lineLimit(1).truncationMode(.tail)
+            }
+            Spacer(minLength: 6)
+            if let status = item.status { StatusTag(text: status, tone: item.tone) }
+        }
+        .padding(.horizontal, 4)
+        .frame(height: Layout.linkRowHeight)
+        .background(RoundedRectangle(cornerRadius: 5).fill(.white.opacity(hover.on ? 0.08 : 0)))
+        .contentShape(Rectangle())
+        .onHover { hover.on = $0 }
+        .onTapGesture(perform: onOpen)
+        .help(item.help ?? item.text)
+    }
+
+    @ViewBuilder private var icon: some View {
+        switch item.kind {
+        case .ticket:
+            if let url = item.iconURL, let img = store.issueIcons[url] { Image(nsImage: img).resizable().interpolation(.high) } else { Color.clear }
+        case .pr: Image(systemName: "arrow.triangle.pull").font(.system(size: 10)).foregroundStyle(.white.opacity(0.6))
+        case .link: Image(systemName: "link").font(.system(size: 10)).foregroundStyle(.white.opacity(0.6))
+        }
     }
 }
 
@@ -240,6 +327,7 @@ public struct WidgetView: View {
             Button("Thoát") { NSApp.terminate(nil) }
         }
         .animation(.spring(response: 0.36, dampingFraction: 0.8), value: expanded)
+        .onChange(of: expanded) { _, now in if !now { panel.openMenus = [] } }
         .animation(.spring(response: 0.36, dampingFraction: 0.8), value: store.sessions.count)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: panel.anchor.alignment)
         .padding(Layout.margin)
@@ -260,7 +348,7 @@ public struct WidgetView: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
             if abs(h - (panel.listHeight ?? 0)) > 0.5 { panel.listHeight = h }
         }
-        let height = min(panel.listHeight ?? (Layout.expanded(store.sessions).height - Layout.headerHeight), Layout.maxListHeight)
+        let height = min(panel.listHeight ?? (Layout.expanded(store.sessions, open: panel.openMenus).height - Layout.headerHeight), Layout.maxListHeight)
         return Group {
             if snapshotRendering {
                 rows.fixedSize(horizontal: false, vertical: true)
@@ -370,29 +458,27 @@ public struct WidgetView: View {
             .onExitCommand { panel.editing = nil }
     }
 
-    /// `☰ N`: every ticket and PR of the session in one menu. Snapshots draw a static pill, since `ImageRenderer` shows AppKit-backed views as placeholders.
-    @ViewBuilder
+    /// `☰ N`: toggles the inline list of every ticket and PR of the session.
     private func menuButton(_ s: Session) -> some View {
-        let label = PillLabel(title: "☰ \(s.menuCount)")
-        if snapshotRendering {
-            label
-        } else {
-            Menu {
-                ForEach(s.menu, id: \.title) { section in
-                    Section(section.title) {
-                        ForEach(Array(section.items.enumerated()), id: \.offset) { _, item in
-                            Button(item.text) { onAction(.openLink(s.id, item.url)) }
-                        }
-                    }
+        let open = panel.openMenus.contains(s.id)
+        return PillButton(title: "☰ \(s.menuCount)", fill: .white.opacity(open ? 0.22 : 0.12)) {
+            if open { panel.openMenus.remove(s.id) } else { panel.openMenus.insert(s.id) }
+        }
+    }
+
+    private func linkList(_ s: Session) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(s.menu, id: \.title) { section in
+                Text(section.title).font(.system(size: 10)).foregroundStyle(.white.opacity(0.45))
+                    .frame(height: Layout.linkSectionHeight, alignment: .bottomLeading)
+                ForEach(Array(section.items.enumerated()), id: \.offset) { _, item in
+                    LinkRow(store: store, item: item) { onAction(.openLink(s.id, item.url)) }
                 }
-                if s.menuNeedsJira {
-                    Divider()
-                    Button("Kết nối Jira…") { onAction(.connect(.jira)) }
-                }
-            } label: { label }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
-            .fixedSize()
+            }
+            if s.menuNeedsJira {
+                PillButton(title: "Kết nối Jira…") { onAction(.connect(.jira)) }
+                    .frame(height: Layout.linkRowHeight, alignment: .leading)
+            }
         }
     }
 
@@ -434,8 +520,15 @@ public struct WidgetView: View {
                         ForEach(Array(stride(from: min(s.links.count, 5), through: 1, by: -1)), id: \.self) { k in
                             HStack(spacing: 6) {
                                 ForEach(s.links.prefix(k), id: \.url) { link in
-                                    PillButton(title: "↗ \(link.label)") { onAction(.openLink(s.id, link.url)) }
-                                        .help(link.help ?? "")
+                                    Group {
+                                        if link.help != nil {
+                                            PillButton(title: link.label, icon: link.iconURL.flatMap { store.issueIcons[$0] }, showsIcon: true,
+                                                       dot: toneColor(link.tone)) { onAction(.openLink(s.id, link.url)) }
+                                        } else {
+                                            PillButton(title: "↗ \(link.label)") { onAction(.openLink(s.id, link.url)) }
+                                        }
+                                    }
+                                    .help(link.help ?? "")
                                 }
                             }
                             .fixedSize(horizontal: true, vertical: false)
@@ -445,6 +538,7 @@ public struct WidgetView: View {
                     menuButton(s)
                 }
                 .padding(.leading, 18)
+                if panel.openMenus.contains(s.id) { linkList(s).padding(.leading, 18) }
             }
             ForEach(s.prs, id: \.ref) { pr in
                 HStack(spacing: 6) {
