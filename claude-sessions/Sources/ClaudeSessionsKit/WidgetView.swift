@@ -349,6 +349,15 @@ public struct WidgetView: View {
                 ScrollView(.vertical) { rows }.frame(height: height)
             }
         }
+        .task(id: panel.dwellTarget(in: store)) {
+            guard let id = panel.dwellTarget(in: store) else { return }
+            try? await Task.sleep(for: Layout.seenDwell)
+            if Task.isCancelled || panel.dwellTarget(in: store) != id { return }
+            withAnimation(.easeOut(duration: 0.3)) { store.markSeen(id) }
+        }
+        .onChange(of: store.sessions.map(\.id)) {
+            if panel.hoveredRow != nil { panel.hoveredRow = nil }
+        }
         .transition(.opacity)
     }
 
@@ -559,6 +568,7 @@ public struct WidgetView: View {
         .overlay(alignment: .leading) {
             if fresh { Capsule().fill(.yellow).frame(width: 3).padding(.vertical, 4) }
         }
+        .onHover { panel.noteRowHover(s.id, inside: $0) }
     }
 }
 

@@ -12,7 +12,23 @@ public final class PanelState: ObservableObject {
     /// Session ids whose `☰ N` list is expanded; cleared when the widget collapses.
     @Published public var openMenus: Set<String> = []
 
+    /// Session id the mouse is over in the expanded card; drives the hover-dwell that clears a fresh mark.
+    @Published public var hoveredRow: String?
+
     public init() {}
+
+    public func noteRowHover(_ id: String, inside: Bool) {
+        if inside {
+            if hoveredRow != id { hoveredRow = id }
+        } else if hoveredRow == id {
+            hoveredRow = nil
+        }
+    }
+
+    /// The hovered row when it carries a fresh mark.
+    public func dwellTarget(in store: Store) -> String? {
+        hoveredRow.flatMap { store.unseen.contains($0) ? $0 : nil }
+    }
 
     public func expanded(_ store: Store) -> Bool { hovering || editing != nil || store.peeking }
 }

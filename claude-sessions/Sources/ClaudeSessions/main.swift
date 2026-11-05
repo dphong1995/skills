@@ -440,6 +440,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 p.state.hovering = inside
                 if inside { store.peekUntil = nil }
             }
+            if !inside && p.state.hoveredRow != nil { p.state.hoveredRow = nil }
             // While editing, clicks outside the card must reach the app beneath (and make the panel resign key).
             if p.window.ignoresMouseEvents == inside { p.window.ignoresMouseEvents = !inside }
         }

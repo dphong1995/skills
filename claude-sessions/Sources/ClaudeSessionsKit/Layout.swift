@@ -30,6 +30,8 @@ public enum Layout {
     static let canvas = CGSize(width: expandedWidth + margin * 2, height: 640)
     static var maxExpandedHeight: CGFloat { canvas.height - 2 * margin }
     static let rowHeight: CGFloat = 36
+    /// How long the mouse must rest on a fresh row before its mark clears.
+    static let seenDwell: Duration = .seconds(2)
     static let replyRowHeight: CGFloat = 92
     static let todoHeight: CGFloat = 15
     static let headerHeight: CGFloat = 32
