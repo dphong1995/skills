@@ -355,8 +355,8 @@ public struct WidgetView: View {
             if Task.isCancelled || panel.dwellTarget(in: store) != id { return }
             withAnimation(.easeOut(duration: 0.3)) { store.markSeen(id) }
         }
-        .onChange(of: store.sessions.map(\.id)) {
-            if panel.hoveredRow != nil { panel.hoveredRow = nil }
+        .onChange(of: store.sessions.map(\.id)) { old, new in
+            panel.noteOrderChange(from: old, to: new)
         }
         .transition(.opacity)
     }

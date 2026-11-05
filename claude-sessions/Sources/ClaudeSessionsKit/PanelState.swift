@@ -25,6 +25,12 @@ public final class PanelState: ObservableObject {
         }
     }
 
+    /// Clears `hoveredRow` when its position in the id order changed or it vanished.
+    public func noteOrderChange(from old: [String], to new: [String]) {
+        guard let id = hoveredRow, old.firstIndex(of: id) != new.firstIndex(of: id) else { return }
+        hoveredRow = nil
+    }
+
     /// The hovered row when it carries a fresh mark.
     public func dwellTarget(in store: Store) -> String? {
         hoveredRow.flatMap { store.unseen.contains($0) ? $0 : nil }
