@@ -17,7 +17,7 @@ public struct SessionLink: Equatable {
     /// Hover text; a ticket button shows its Jira title and status here.
     public var help: String? = nil
     public var iconURL: URL? = nil
-    public var tone: JiraIssue.Tone? = nil
+    var tone: ItemTone? = nil
 }
 
 enum Transcript {

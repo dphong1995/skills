@@ -70,6 +70,7 @@ import Foundation
         #expect(items.contains(URLQueryItem(name: "size", value: "medium")))
         #expect(items.contains(URLQueryItem(name: "format", value: "png")))
         #expect(req.value(forHTTPHeaderField: "Authorization") == "Basic x")
+        #expect(JiraClient.iconRequest(url: URL(string: "http://talosix.atlassian.net/x.png")!, auth: "x") == nil)
         #expect(JiraClient.iconRequest(url: URL(string: "https://evil.example/x.png")!, auth: "x") == nil)
         #expect(JiraClient.iconRequest(url: URL(string: "https://atlassian.net.evil.example/x")!, auth: "x") == nil)
     }

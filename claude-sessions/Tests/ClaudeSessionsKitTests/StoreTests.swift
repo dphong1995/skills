@@ -1070,9 +1070,12 @@ private func typedJira() -> FakeJira {
     bad.iconData[iconURL] = Data([1, 2, 3])
     let (store2, _, _) = menuStore(jira: bad)
     #expect(store2.issueIcons[iconURL] == nil)
-    bad.iconData[iconURL] = png()
-    store2.refresh(at: prT0.addingTimeInterval(1))
-    #expect(store2.issueIcons[iconURL] == nil)
+
+    // Decoding happens once per URL: a later valid image for the same URL is ignored.
+    let (store3, _, _) = menuStore()
+    store3.decodeIcons([iconURL: Data([1, 2, 3])])
+    store3.decodeIcons([iconURL: png()])
+    #expect(store3.issueIcons[iconURL] == nil)
 }
 
 @Test func menuNeedsJiraWhenNotOk() {

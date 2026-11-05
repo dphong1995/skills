@@ -167,6 +167,16 @@ private func targets(_ keys: [String], host: String = host) -> [JiraTarget] {
         #expect(m.takeSnapshot().icons.isEmpty)
     }
 
+    @Test func iconSkipsNonHTTPS() {
+        let plain = URL(string: "http://talosix.atlassian.net/avatar/1")!
+        let api = iconAPI(plain)
+        let m = JiraMonitor(api: api, queue: nil)
+        m.update(targets(["A-1"]), at: t0)
+        m.update(targets(["A-1"]), at: t0.addingTimeInterval(120))
+        #expect(api.iconCalls.isEmpty)
+        #expect(m.takeSnapshot().icons.isEmpty)
+    }
+
     @Test func iconsSurviveForget() {
         let api = iconAPI()
         let m = JiraMonitor(api: api, queue: nil)

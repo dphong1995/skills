@@ -37,6 +37,8 @@ public struct PRStatus: Equatable {
     public var rabbitSince: Date?
 
     public var isOpen: Bool { state == "OPEN" }
+    var stateWord: String { isOpen ? "mở" : state == "MERGED" ? "đã merge" : "đã đóng" }
+    var tone: ItemTone { isOpen ? .open : state == "MERGED" ? .merged : .closed }
 }
 
 public enum PREvent: Equatable { case comment, approved, changesRequested, merged, declined, rabbitNeedsYou, rabbitDone }

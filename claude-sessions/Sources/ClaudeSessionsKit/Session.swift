@@ -18,13 +18,13 @@ struct LinkItem: Equatable {
     enum Kind { case ticket, pr, link }
     let text: String
     let url: URL
-    var kind: Kind = .link
+    var kind: Kind
     var code: String
-    var title: String? = nil
-    var status: String? = nil
-    var tone: ItemTone? = nil
-    var iconURL: URL? = nil
-    var help: String? = nil
+    var title: String?
+    var status: String?
+    var tone: ItemTone?
+    var iconURL: URL?
+    var help: String?
 
     init(text: String, url: URL, kind: Kind = .link, code: String? = nil, title: String? = nil, status: String? = nil,
          tone: ItemTone? = nil, iconURL: URL? = nil, help: String? = nil) {
@@ -192,11 +192,11 @@ public final class Store: ObservableObject {
 
     public var prMonitor: PRMonitor?
     public var jiraMonitor: JiraMonitor?
-    /// Keychain account (email) per service, set by the app.
     /// Decoded issue type icons by URL, kept for the run.
     @Published var issueIcons: [URL: NSImage] = [:]
     private var iconsSeen = Set<URL>()
 
+    /// Keychain account (email) per service, set by the app.
     @Published public var accounts: [Service: String] = [:]
     @Published var connections: [Service: ConnectionLine] = [:]
     private let scanner: TranscriptScanner
@@ -427,9 +427,10 @@ public final class Store: ObservableObject {
             list[i].links = buttons.map { b in
                 var link = b.link
                 if let t = b.target {
-                    link.help = Store.help(key: t.key, issues[t.key])
-                    link.iconURL = issues[t.key]?.iconURL
-                    link.tone = issues[t.key]?.tone
+                    let issue = issues[t.key]
+                    link.help = Store.help(key: t.key, issue)
+                    link.iconURL = issue?.iconURL
+                    link.tone = issue?.tone.map(ItemTone.init)
                 }
                 return link
             }
@@ -529,7 +530,7 @@ public final class Store: ObservableObject {
     }
 
     /// Decodes each icon once; undecodable data is not retried.
-    private func decodeIcons(_ data: [URL: Data]) {
+    func decodeIcons(_ data: [URL: Data]) {
         var next = issueIcons
         for (url, d) in data where iconsSeen.insert(url).inserted {
             if let img = NSImage(data: d) { next[url] = img }
@@ -546,15 +547,12 @@ public final class Store: ObservableObject {
 
     /// `PR #id  title  ·  state`.
     static func linkText(_ pr: PRStatus) -> String {
-        let state = pr.isOpen ? "mở" : pr.state == "MERGED" ? "đã merge" : "đã đóng"
-        return "PR #\(pr.ref.id)  " + (pr.title.map { "\($0)  ·  " } ?? "·  ") + state
+        "PR #\(pr.ref.id)  " + (pr.title.map { "\($0)  ·  " } ?? "·  ") + pr.stateWord
     }
 
     private static func prItem(_ pr: PRStatus) -> LinkItem {
-        let merged = pr.state == "MERGED"
-        return LinkItem(text: linkText(pr), url: pr.url, kind: .pr, code: "#\(pr.ref.id)", title: pr.title,
-                        status: pr.isOpen ? "mở" : merged ? "đã merge" : "đã đóng",
-                        tone: pr.isOpen ? .open : merged ? .merged : .closed, help: pr.title)
+        LinkItem(text: linkText(pr), url: pr.url, kind: .pr, code: "#\(pr.ref.id)", title: pr.title,
+                 status: pr.stateWord, tone: pr.tone, help: pr.title)
     }
 
     /// The `☰ N` menu: tickets by origin, then every PR. `prs` is nil without a PR monitor, so every PR link is listed as it is.

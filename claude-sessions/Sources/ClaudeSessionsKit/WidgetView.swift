@@ -46,7 +46,7 @@ func markdown(_ s: String) -> AttributedString {
 private func prParts(_ pr: PRStatus, now: Date, stale: Date?) -> [(text: String, tint: Color?)] {
     var parts: [(String, Color?)] = [("PR #\(pr.ref.id)", nil)]
     if !pr.isOpen {
-        parts.append((pr.state == "MERGED" ? "đã merge" : "đã đóng", nil))
+        parts.append((pr.stateWord, nil))
         return parts
     }
     if pr.changesRequested > 0 { parts.append(("✗ \(pr.changesRequested) yêu cầu sửa", .red)) }
@@ -161,17 +161,15 @@ public enum WidgetAction: Equatable {
     }
 }
 
-/// Tone to colours: `nil` and todo/closed are grey, doing blue, done/open green, merged purple.
-func toneColor(_ t: ItemTone?) -> Color {
+/// Tone to a tint: doing blue, done/open green, merged purple; `nil` for grey (todo, closed, no tone).
+func toneColor(_ t: ItemTone?) -> Color? {
     switch t {
     case .doing?: .blue
     case .done?, .open?: .green
     case .merged?: .purple
-    case .todo?, .closed?, nil: .white.opacity(0.55)
+    case .todo?, .closed?, nil: nil
     }
 }
-
-func toneColor(_ t: JiraIssue.Tone?) -> Color { toneColor(t.map(ItemTone.init)) }
 
 struct PillLabel: View {
     let title: String
@@ -222,15 +220,14 @@ struct StatusTag: View {
     let tone: ItemTone?
 
     var body: some View {
-        let c = toneColor(tone)
-        let grey = tone == nil || tone == .todo || tone == .closed
-        let bright = Color(nsColor: NSColor(c).blended(withFraction: 0.35, of: .white) ?? .white)
-        Text(text).font(.system(size: 10.5, weight: .semibold))
-            .foregroundStyle(grey ? c : bright)
+        let tint = toneColor(tone)
+        let text = tint.map { Color(nsColor: NSColor($0).blended(withFraction: 0.35, of: .white) ?? .white) } ?? .white.opacity(0.55)
+        Text(self.text).font(.system(size: 10.5, weight: .semibold))
+            .foregroundStyle(text)
             .lineLimit(1).truncationMode(.tail)
             .padding(.horizontal, 7).padding(.vertical, 2)
-            .background(Capsule().fill(grey ? Color.white.opacity(0.12) : c.opacity(0.25)))
-            .frame(maxWidth: 130)
+            .background(Capsule().fill(tint?.opacity(0.25) ?? .white.opacity(0.12)))
+            .frame(maxWidth: 130, alignment: .trailing)
     }
 }
 
@@ -238,14 +235,14 @@ struct StatusTag: View {
 final class RowHover: ObservableObject { @Published var on = false }
 
 struct LinkRow: View {
-    @ObservedObject var store: Store
     let item: LinkItem
+    let icon: NSImage?
     let onOpen: () -> Void
     @StateObject private var hover = RowHover()
 
     var body: some View {
         HStack(spacing: 6) {
-            icon.frame(width: 14, height: 14)
+            leadingIcon.frame(width: 14, height: 14)
             Text(item.code).font(.system(size: 10.5).monospaced()).foregroundStyle(.white.opacity(0.5)).lineLimit(1).fixedSize()
             if let title = item.title {
                 Text(title).font(.system(size: 11.5)).foregroundStyle(.white.opacity(0.85)).lineLimit(1).truncationMode(.tail)
@@ -262,10 +259,10 @@ struct LinkRow: View {
         .help(item.help ?? item.text)
     }
 
-    @ViewBuilder private var icon: some View {
+    @ViewBuilder private var leadingIcon: some View {
         switch item.kind {
         case .ticket:
-            if let url = item.iconURL, let img = store.issueIcons[url] { Image(nsImage: img).resizable().interpolation(.high) } else { Color.clear }
+            if let icon { Image(nsImage: icon).resizable().interpolation(.high) } else { Color.clear }
         case .pr: Image(systemName: "arrow.triangle.pull").font(.system(size: 10)).foregroundStyle(.white.opacity(0.6))
         case .link: Image(systemName: "link").font(.system(size: 10)).foregroundStyle(.white.opacity(0.6))
         }
@@ -472,7 +469,7 @@ public struct WidgetView: View {
                 Text(section.title).font(.system(size: 10)).foregroundStyle(.white.opacity(0.45))
                     .frame(height: Layout.linkSectionHeight, alignment: .bottomLeading)
                 ForEach(Array(section.items.enumerated()), id: \.offset) { _, item in
-                    LinkRow(store: store, item: item) { onAction(.openLink(s.id, item.url)) }
+                    LinkRow(item: item, icon: item.iconURL.flatMap { store.issueIcons[$0] }) { onAction(.openLink(s.id, item.url)) }
                 }
             }
             if s.menuNeedsJira {
@@ -520,15 +517,11 @@ public struct WidgetView: View {
                         ForEach(Array(stride(from: min(s.links.count, 5), through: 1, by: -1)), id: \.self) { k in
                             HStack(spacing: 6) {
                                 ForEach(s.links.prefix(k), id: \.url) { link in
-                                    Group {
-                                        if link.help != nil {
-                                            PillButton(title: link.label, icon: link.iconURL.flatMap { store.issueIcons[$0] }, showsIcon: true,
-                                                       dot: toneColor(link.tone)) { onAction(.openLink(s.id, link.url)) }
-                                        } else {
-                                            PillButton(title: "↗ \(link.label)") { onAction(.openLink(s.id, link.url)) }
-                                        }
-                                    }
-                                    .help(link.help ?? "")
+                                    let titled = link.help != nil
+                                    PillButton(title: titled ? link.label : "↗ \(link.label)",
+                                               icon: titled ? link.iconURL.flatMap { store.issueIcons[$0] } : nil, showsIcon: titled,
+                                               dot: titled ? toneColor(link.tone) ?? .white.opacity(0.55) : nil) { onAction(.openLink(s.id, link.url)) }
+                                        .help(link.help ?? "")
                                 }
                             }
                             .fixedSize(horizontal: true, vertical: false)

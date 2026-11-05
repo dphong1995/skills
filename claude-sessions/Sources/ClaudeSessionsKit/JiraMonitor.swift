@@ -92,16 +92,20 @@ public final class JiraMonitor {
             changed = true
         }
 
-        if fetchIcons(at: now) { changed = true }
-
         if changed {
             // Sorted by host so a key shared by two hosts always resolves to the same one.
             let issues = Dictionary(cache.sorted { ($0.key.host, $0.key.key) < ($1.key.host, $1.key.key) }.map { ($0.key.key, $0.value) },
                                     uniquingKeysWith: { a, _ in a })
             lock.lock()
             snapshot.issues = issues
-            snapshot.icons = icons
             snapshot.connection = connection
+            lock.unlock()
+        }
+
+        // Titles are published above, so a slow icon download never delays them.
+        if connection != .rejected, fetchIcons(at: now) {
+            lock.lock()
+            snapshot.icons = icons
             lock.unlock()
         }
     }
@@ -109,7 +113,7 @@ public final class JiraMonitor {
     /// One request per distinct Atlassian icon URL; a failure waits `retryAfter`. Returns whether an icon arrived.
     private func fetchIcons(at now: Date) -> Bool {
         var arrived = false
-        let urls = Set(cache.values.compactMap(\.iconURL)).filter { Jira.isAtlassianHost($0.host ?? "") && icons[$0] == nil }
+        let urls = Set(cache.values.compactMap(\.iconURL)).filter { $0.scheme?.lowercased() == "https" && Jira.isAtlassianHost($0.host ?? "") && icons[$0] == nil }
         for url in urls.sorted(by: { $0.absoluteString < $1.absoluteString }) where iconRetryAt[url].map({ now >= $0 }) ?? true {
             do {
                 icons[url] = try api.icon(url: url)

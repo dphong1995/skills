@@ -80,9 +80,9 @@ public final class JiraClient: JiraAPI, CredentialReloading {
         return req
     }
 
-    /// Nil for a host outside `*.atlassian.net`: the token must never go elsewhere. Asks Jira for a PNG rendering.
+    /// Nil for a non-https URL or a host outside `*.atlassian.net`: the token must never go elsewhere. Asks Jira for a PNG rendering.
     static func iconRequest(url: URL, auth: String) -> URLRequest? {
-        guard Jira.isAtlassianHost(url.host ?? ""), var c = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
+        guard url.scheme?.lowercased() == "https", Jira.isAtlassianHost(url.host ?? ""), var c = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
         c.queryItems = (c.queryItems ?? []).filter { $0.name != "format" } + [URLQueryItem(name: "format", value: "png")]
         guard let full = c.url, full.host == url.host else { return nil }
         var req = URLRequest(url: full, timeoutInterval: 15)

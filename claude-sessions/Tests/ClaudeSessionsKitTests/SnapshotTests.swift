@@ -390,7 +390,7 @@ struct SnapshotTests {
         let api = FakeJira()
         let spec: [(String, String, String?, String?, (String, URL)?)] = [
             ("T6IR-101", "Add retry to the sync worker", "To Do", "new", ("Bug", Self.iconBug)),
-            ("T6IR-102", "Fix site scope filter on the dashboard", "In Progress", "indeterminate", ("Story", Self.iconStory)),
+            ("T6IR-102", "Fix site scope filter on the dashboard", "In Progress", "indeterminate", nil),
             ("T6IR-103", "Remove the legacy export endpoint", "Done", "done", ("Task", Self.iconTask)),
             ("T6IR-104", "Cache the permission lookups", "Ready for Grooming with Engineering", "new", ("Bug", Self.iconBug)),
             ("T6IR-105", "Odd workflow status", "Blocked", "weird", ("Story", Self.iconStory)),
@@ -431,7 +431,8 @@ struct SnapshotTests {
         let (store, panel) = linkStore(jira: true)
         let s = store.sessions[0]
         panel.openMenus = [s.id]
-        #expect(s.menu.reduce(0) { $0 + $1.items.count } == s.menuCount)
+        #expect(s.menuCount == 10)
+        #expect(s.menu.map(\.title) == ["Bạn nhắc", "PR"])
         render(store, panel, "29-link-list-open")
     }
 
