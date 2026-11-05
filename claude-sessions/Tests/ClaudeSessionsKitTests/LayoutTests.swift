@@ -8,6 +8,7 @@ private let scr = NSRect(x: 0, y: 0, width: 1512, height: 982)
     #expect(Anchor.near(CGPoint(x: 1400, y: 950), in: scr) == Anchor(h: .trailing, up: false))
     #expect(Anchor.near(CGPoint(x: 100, y: 50), in: scr) == Anchor(h: .leading, up: true))
     #expect(Anchor.near(CGPoint(x: 756, y: 950), in: scr) == Anchor(h: .center, up: false))
+    #expect(Anchor.near(CGPoint(x: ext.minX + 900, y: ext.maxY - 50), in: ext) == Anchor(h: .center, up: false))
 }
 
 @Test(arguments: [Anchor(h: .leading, up: false), Anchor(h: .center, up: true), Anchor(h: .trailing, up: true)])
@@ -119,17 +120,18 @@ private func session(_ id: String, _ status: String, _ text: String?) -> Session
     #expect(Layout.dragOrigin(start: CGPoint(x: 100, y: 200), mouseDown: CGPoint(x: 150, y: 230), mouse: CGPoint(x: 10, y: 900)) == CGPoint(x: -40, y: 870))
 }
 
-@Test func settledPillOriginKeepsDroppedCard() {
-    #expect(Layout.settledPillOrigin(card: NSRect(x: 0, y: 500, width: 520, height: 400), screen: scr) == CGPoint(x: 0, y: 868))
-    #expect(Layout.settledPillOrigin(card: NSRect(x: 992, y: 582, width: 520, height: 400), screen: scr) == CGPoint(x: 1386, y: 950))
-    #expect(Layout.settledPillOrigin(card: NSRect(x: 0, y: 20, width: 520, height: 400), screen: scr) == CGPoint(x: 0, y: 20))
-}
-
-@Test func settledPillOriginCollapsedIsIdentity() {
-    for o in [CGPoint(x: 1370, y: 950), CGPoint(x: 100, y: 50), CGPoint(x: 694, y: 950)] {
-        let r = NSRect(origin: o, size: Layout.collapsed)
-        #expect(Layout.settledPillOrigin(card: r, screen: scr) == o)
+@Test func settledPillOriginKeepsDroppedPill() {
+    let cases: [(Anchor, CGPoint)] = [
+        (Anchor(h: .trailing), CGPoint(x: 850, y: 918)),
+        (Anchor(h: .leading, up: true), CGPoint(x: 100, y: 50)),
+        (Anchor(h: .center), CGPoint(x: 694, y: 918)),
+        (Anchor(h: .trailing, up: true), CGPoint(x: 1300, y: 300)),
+    ]
+    for (a, o) in cases {
+        #expect(Layout.settledPillOrigin(window: Layout.canvasFrame(pillOrigin: o, anchor: a), anchor: a) == o)
     }
+    // The anchor changes at drop (centre of the pill is in the middle third) but the pill does not move.
+    #expect(Anchor.near(Layout.pillCentre(CGPoint(x: 850, y: 918)), in: scr).h == .center)
 }
 
 private let ext = NSRect(x: 1512, y: 0, width: 2560, height: 1440)

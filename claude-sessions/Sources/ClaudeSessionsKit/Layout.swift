@@ -56,11 +56,9 @@ public enum Layout {
         CGPoint(x: start.x + mouse.x - mouseDown.x, y: start.y + mouse.y - mouseDown.y)
     }
 
-    /// Pill origin after a drop: the dropped card stays put and the pill takes the card's corner for the anchor its centre implies.
-    public static func settledPillOrigin(card: NSRect, screen: NSRect) -> CGPoint {
-        // pill(in:) expects the canvas, which is the card grown by `margin`.
-        pill(in: card.insetBy(dx: -margin, dy: -margin), size: collapsed,
-             anchor: Anchor.near(CGPoint(x: card.midX, y: card.midY), in: screen)).origin
+    /// Pill origin after a drop: the pill stays where it was dropped; `place` then re-anchors it.
+    public static func settledPillOrigin(window: NSRect, anchor: Anchor) -> CGPoint {
+        pill(in: window, size: collapsed, anchor: anchor).origin
     }
 
     static func isDrag(from a: CGPoint, to b: CGPoint) -> Bool {

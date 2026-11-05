@@ -425,10 +425,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return offset
     }
 
-    /// After a drop the card stays where it was dropped and the pill moves to its corner.
+    /// After a drop the pill stays where it was dropped and the card re-lays out around it.
     func settleAfterDrop(_ p: Panel) {
-        let card = Layout.pill(in: p.window.frame, size: Layout.size(store, p.state), anchor: p.state.anchor)
-        place(p, pillOrigin: Layout.settledPillOrigin(card: card, screen: p.screen), save: true)
+        place(p, pillOrigin: Layout.settledPillOrigin(window: p.window.frame, anchor: p.state.anchor), save: true)
         trackMouse()
     }
 
