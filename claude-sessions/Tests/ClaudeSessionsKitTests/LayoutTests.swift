@@ -7,24 +7,10 @@ private let scr = NSRect(x: 0, y: 0, width: 1512, height: 982)
 @Test func anchorNearScreenRegions() {
     #expect(Anchor.near(CGPoint(x: 1400, y: 950), in: scr) == Anchor(h: .trailing, up: false))
     #expect(Anchor.near(CGPoint(x: 100, y: 50), in: scr) == Anchor(h: .leading, up: true))
-    #expect(Anchor.near(CGPoint(x: 756, y: 950), in: scr) == Anchor(h: .trailing, up: false))
-    #expect(Anchor.near(CGPoint(x: 600, y: 950), in: scr) == Anchor(h: .leading, up: false))
-    #expect(Anchor.near(CGPoint(x: 697, y: 950), in: scr) == Anchor(h: .trailing, up: false))
-    #expect(Anchor.near(CGPoint(x: 696, y: 950), in: scr) == Anchor(h: .leading, up: false))
+    #expect(Anchor.near(CGPoint(x: 756, y: 950), in: scr) == Anchor(h: .center, up: false))
 }
 
-@Test func anchorNearMiddleWithoutRoomOpensRight() {
-    let narrow = NSRect(x: 0, y: 0, width: 1280, height: 800)
-    #expect(Anchor.near(CGPoint(x: 640, y: 700), in: narrow) == Anchor(h: .leading, up: false))
-}
-
-@Test func anchorNearUsesScreenMinX() {
-    #expect(Anchor.near(CGPoint(x: ext.minX + 900, y: ext.maxY - 50), in: ext) == Anchor(h: .trailing, up: false))
-    let narrow = NSRect(x: 1512, y: 0, width: 1280, height: 800)
-    #expect(Anchor.near(CGPoint(x: 1512 + 600, y: 750), in: narrow) == Anchor(h: .leading, up: false))
-}
-
-@Test(arguments: [Anchor(h: .leading, up: false), Anchor(h: .leading, up: true), Anchor(h: .trailing, up: true)])
+@Test(arguments: [Anchor(h: .leading, up: false), Anchor(h: .center, up: true), Anchor(h: .trailing, up: true)])
 func canvasPillRoundTrip(a: Anchor) {
     let o = CGPoint(x: 600, y: 300)
     let f = Layout.canvasFrame(pillOrigin: o, anchor: a)
@@ -40,6 +26,7 @@ func canvasPillRoundTrip(a: Anchor) {
 
 @Test func migrateShiftsByAnchor() {
     #expect(Layout.migrate(pillX: 1280, from: 232, to: 124, anchor: Anchor(h: .trailing)) == 1388)
+    #expect(Layout.migrate(pillX: 600, from: 232, to: 124, anchor: Anchor(h: .center)) == 654)
     #expect(Layout.migrate(pillX: 40, from: 232, to: 124, anchor: Anchor(h: .leading)) == 40)
 }
 
@@ -164,9 +151,9 @@ private let ext = NSRect(x: 1512, y: 0, width: 2560, height: 1440)
     let l = Anchor(h: .leading, up: true)
     #expect(Layout.relativeOrigin(CGPoint(x: scr.minX + 20, y: scr.minY + 30), from: scr, to: ext, anchor: l)
         == CGPoint(x: ext.minX + 20, y: ext.minY + 30))
-    let ld = Anchor(h: .leading, up: false)
-    #expect(Layout.relativeOrigin(CGPoint(x: scr.minX + 40, y: scr.maxY - 50), from: scr, to: ext, anchor: ld)
-        == CGPoint(x: ext.minX + 40, y: ext.maxY - 50))
+    let c = Anchor(h: .center, up: false)
+    #expect(Layout.relativeOrigin(CGPoint(x: scr.midX + 40, y: scr.maxY - 50), from: scr, to: ext, anchor: c)
+        == CGPoint(x: ext.midX + 40, y: ext.maxY - 50))
 }
 
 @Test func relativeOriginClampsToTarget() {

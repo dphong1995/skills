@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-public enum HAnchor { case leading, trailing }
+public enum HAnchor { case leading, center, trailing }
 
 public struct Anchor: Equatable {
     public var h: HAnchor = .trailing
@@ -10,23 +10,17 @@ public struct Anchor: Equatable {
     var alignment: Alignment {
         switch (h, up) {
         case (.leading, false): .topLeading
+        case (.center, false): .top
         case (.trailing, false): .topTrailing
         case (.leading, true): .bottomLeading
+        case (.center, true): .bottom
         case (.trailing, true): .bottomTrailing
         }
     }
 
     public static func near(_ p: CGPoint, in s: NSRect) -> Anchor {
         let third = s.width / 3
-        let h: HAnchor
-        if p.x < s.minX + third {
-            h = .leading
-        } else if p.x > s.maxX - third {
-            h = .trailing
-        } else {
-            // Middle: open left if the card fits.
-            h = p.x + Layout.collapsed.width / 2 - Layout.expandedWidth >= s.minX ? .trailing : .leading
-        }
+        let h: HAnchor = p.x < s.minX + third ? .leading : p.x > s.maxX - third ? .trailing : .center
         return Anchor(h: h, up: p.y < s.midY)
     }
 }
@@ -50,10 +44,11 @@ public enum Layout {
     public static let bgOpacities: [Double] = [0, 0.25, 0.5, 0.75, cardOpacity]
     static let dragThreshold: CGFloat = 4
 
-    /// Shifts a saved pill x when the collapsed width changed, keeping the anchored edge in place.
+    /// Shifts a saved pill x when the collapsed width changed, keeping the anchored edge (or centre) in place.
     public static func migrate(pillX x: CGFloat, from old: CGFloat, to new: CGFloat, anchor: Anchor) -> CGFloat {
         switch anchor.h {
         case .trailing: x + (old - new)
+        case .center: x + (old - new) / 2
         case .leading: x
         }
     }
@@ -104,6 +99,7 @@ public enum Layout {
         let x: CGFloat
         switch anchor.h {
         case .leading: x = f.minX + margin
+        case .center: x = f.midX - size.width / 2
         case .trailing: x = f.maxX - margin - size.width
         }
         let y = anchor.up ? f.minY + margin : f.maxY - margin - size.height
@@ -115,6 +111,7 @@ public enum Layout {
         let x: CGFloat
         switch anchor.h {
         case .leading: x = o.x - margin
+        case .center: x = o.x + c.width / 2 - canvas.width / 2
         case .trailing: x = o.x + c.width + margin - canvas.width
         }
         let y = anchor.up ? o.y - margin : o.y + c.height + margin - canvas.height
@@ -140,6 +137,7 @@ public enum Layout {
         switch anchor.h {
         case .trailing: x = b.maxX - (a.maxX - o.x)
         case .leading: x = b.minX + (o.x - a.minX)
+        case .center: x = b.midX + (o.x - a.midX)
         }
         let y = anchor.up ? b.minY + (o.y - a.minY) : b.maxY - (a.maxY - o.y)
         return clamp(pillOrigin: CGPoint(x: x, y: y), to: b)
