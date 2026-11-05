@@ -299,6 +299,35 @@ cd ~/.claude/skills-repo/claude-sessions && swift test   # ảnh PNG nằm trong
 
 Chạy `swift test` trong Bash sandbox của Claude Code có thể lỗi "plugin for module 'TestingMacros' not found"
 (sandbox chặn plugin macro của Swift); chạy ở terminal thường thì qua.
+Trong sandbox thì truyền đường dẫn plugin của Command Line Tools:
+
+```bash
+cd ~/.claude/skills-repo/claude-sessions && swift test -Xswiftc -plugin-path -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing
+```
+
+Đo hiệu năng của widget thật bằng `perf.sh` (cần tắt sandbox, mất khoảng 3 phút):
+
+```bash
+bash ~/.claude/skills-repo/claude-sessions/perf.sh   # in bảng PASS/FAIL, thoát 1 nếu có dòng FAIL
+```
+
+- `perf.sh` build bản release, tạo fixture 10 session (~680 MB transcript) trong `claude-sessions/.build/perf-fixture` (gitignored; xoá thư mục này để tạo lại), rồi chạy binary với `CLAUDE_SESSIONS_ROOT` trỏ vào fixture. Khi biến này được đặt, app không đọc Keychain và không gọi `SMAppService.mainApp.register()`; khi không đặt thì app chạy y như cũ. Trong lúc đo, một pill thứ hai hiện trên màn hình khoảng 2-3 phút. Script không đụng `~/.claude`, Keychain hay app đang cài.
+- Hai pha, mỗi pha 60 giây (đổi bằng `PERF_PHASE_SECONDS`): pha idle (không ghi gì) và pha load (ghi thêm vào transcript liên tục). Mỗi dòng của bảng là một chỉ số trong một pha: footprint cuối pha, mức tăng footprint trong pha, CPU trung bình, số wakeup mỗi giây (chỉ pha idle). Ngưỡng là các biến ở đầu `perf.sh` (`FOOTPRINT_MAX_MB`, `GROWTH_MAX_MB`, `CPU_IDLE_MAX`, `CPU_LOAD_MAX`, `WAKEUPS_MAX`); không sửa ngưỡng để cho qua, chạy lại khi máy rảnh.
+- Quy tắc: mọi thay đổi widget phải chạy `swift test` và `perf.sh` trước khi xong việc. Footprint còn ít dư địa (~96 MB so với ngưỡng 100 MB với fixture 10 session), nên thỉnh thoảng pha load có thể vọt lên và FAIL; chạy lại một lần khi máy rảnh trước khi kết luận.
+
+Trước và sau khi tối ưu (cùng máy, `perf.sh` với pha 60 giây; chi tiết trong `plans/2026-11-05-claude-sessions-perf/reports/baseline.md`):
+
+| chỉ số | trước | sau | ngưỡng |
+|---|---|---|---|
+| footprint cuối pha idle (MB) | 94.7 | 96.5 | < 100 |
+| tăng footprint pha idle (MB) | 0.0 | 0.0 | < 5 |
+| CPU pha idle (%) | 0.93 | 0.33 | < 1 |
+| wakeup pha idle (/s) | 0.63 | 0.72 | < 5 |
+| footprint cuối pha load (MB) | 94.8 | 97.3 | < 100 |
+| tăng footprint pha load (MB) | 0.1 | 0.8 | < 5 |
+| CPU pha load (%) | 0.98 | 0.42 | < 2 |
+| `refresh()` trung vị trong `swift test` (debug, 10 session) | 1,84 ms | 0,45 ms | < 10 ms |
+| mỗi lần refresh ổn định: parse `.json` / đọc `HEAD` / liệt kê thư mục task | 10 / 10 / 10 | 0 / 0 / 0 | không đọc lại gì |
 
 Đẩy thay đổi ngược lên repo (bản đang dùng nằm ở `~/.claude/tools/claude-sessions/`):
 
