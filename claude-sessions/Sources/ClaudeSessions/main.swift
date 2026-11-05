@@ -425,10 +425,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return offset
     }
 
-    /// After a drop the pill lands where the drag put it (pushing against a screen edge puts it at that edge);
-    /// `place` clamps it to the screen and re-anchors it, and the card re-lays out around it.
-    func settleAfterDrop(_ p: Panel, windowOrigin: CGPoint) {
-        place(p, pillOrigin: Layout.settledPillOrigin(window: NSRect(origin: windowOrigin, size: p.window.frame.size), anchor: p.state.anchor), save: true)
+    /// After a drop the pill stays where it was shown, or at the screen edge the drag pushed the card into;
+    /// `place` re-anchors it and the card re-lays out around it.
+    func settleAfterDrop(_ p: Panel, windowOrigin raw: CGPoint) {
+        place(p, pillOrigin: Layout.settledPillOrigin(window: p.window.frame, raw: raw, anchor: p.state.anchor, screen: p.screen), save: true)
         trackMouse()
     }
 

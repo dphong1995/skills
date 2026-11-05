@@ -56,9 +56,13 @@ public enum Layout {
         CGPoint(x: start.x + mouse.x - mouseDown.x, y: start.y + mouse.y - mouseDown.y)
     }
 
-    /// Pill origin after a drop: the pill stays where it was dropped; `place` then re-anchors it.
-    public static func settledPillOrigin(window: NSRect, anchor: Anchor) -> CGPoint {
-        pill(in: window, size: collapsed, anchor: anchor).origin
+    /// Pill origin after a drop: the pill stays where it was shown, except that on an axis where the drag pushed the
+    /// card against a screen edge (the window was clamped short of `raw`) it goes to that edge. `place` then re-anchors it.
+    public static func settledPillOrigin(window: NSRect, raw: CGPoint, anchor: Anchor, screen s: NSRect) -> CGPoint {
+        var o = pill(in: window, size: collapsed, anchor: anchor).origin
+        if raw.x < window.minX { o.x = s.minX } else if raw.x > window.minX { o.x = s.maxX - collapsed.width }
+        if raw.y < window.minY { o.y = s.minY } else if raw.y > window.minY { o.y = s.maxY - collapsed.height }
+        return o
     }
 
     static func isDrag(from a: CGPoint, to b: CGPoint) -> Bool {

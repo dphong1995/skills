@@ -128,7 +128,8 @@ private func session(_ id: String, _ status: String, _ text: String?) -> Session
         (Anchor(h: .trailing, up: true), CGPoint(x: 1300, y: 300)),
     ]
     for (a, o) in cases {
-        #expect(Layout.settledPillOrigin(window: Layout.canvasFrame(pillOrigin: o, anchor: a), anchor: a) == o)
+        let w = Layout.canvasFrame(pillOrigin: o, anchor: a)
+        #expect(Layout.settledPillOrigin(window: w, raw: w.origin, anchor: a, screen: scr) == o)
     }
     // The anchor changes at drop (centre of the pill is in the middle third) but the pill does not move.
     #expect(Anchor.near(Layout.pillCentre(CGPoint(x: 850, y: 918)), in: scr).h == .center)
@@ -138,28 +139,49 @@ private func session(_ id: String, _ status: String, _ text: String?) -> Session
     let o = CGPoint(x: 850, y: 918)
     let a = Anchor.near(Layout.pillCentre(o), in: scr)
     let canvas = Layout.canvasFrame(pillOrigin: o, anchor: a)
+    #expect(Layout.pill(in: canvas, size: Layout.collapsed, anchor: a).origin == o)
     let card = Layout.pill(in: canvas, size: CGSize(width: Layout.expandedWidth, height: 400), anchor: a)
     #expect(card.minX >= scr.minX && card.maxX <= scr.maxX)
 }
 
-@Test func clampedDropReachesTheEdge() {
-    let o = CGPoint(x: 1300, y: 918)
-    // Horizontal: a trailing card dragged hard left.
-    let a = Anchor.near(Layout.pillCentre(o), in: scr)
+/// Drag the canvas of a pill at `o` by `(dx, dy)`, clamp it as the app does and settle.
+private func drop(_ o: CGPoint, _ a: Anchor, dx: CGFloat, dy: CGFloat, height: CGFloat) -> (settled: CGPoint, shown: CGPoint) {
     let w0 = Layout.canvasFrame(pillOrigin: o, anchor: a)
-    let raw = CGPoint(x: w0.origin.x - 1400, y: w0.origin.y)
-    let clamped = Layout.clampDrag(windowOrigin: raw, windowSize: w0.size, visible: CGSize(width: Layout.expandedWidth, height: 400), anchor: a, screen: scr)
-    #expect(Layout.pill(in: NSRect(origin: clamped, size: w0.size), size: Layout.collapsed, anchor: a).origin.x >= 634)
-    let h = Layout.clamp(pillOrigin: Layout.settledPillOrigin(window: NSRect(origin: raw, size: w0.size), anchor: a), to: scr)
-    #expect(h.x == 0)
-    #expect(Anchor.near(Layout.pillCentre(h), in: scr).h == .leading)
-    // Vertical: a down-anchored 550 pt card dragged hard down.
-    let d = Anchor(h: .trailing, up: false)
-    let w1 = Layout.canvasFrame(pillOrigin: o, anchor: d)
-    let rawV = CGPoint(x: w1.origin.x, y: w1.origin.y - 1200)
-    let v = Layout.clamp(pillOrigin: Layout.settledPillOrigin(window: NSRect(origin: rawV, size: w1.size), anchor: d), to: scr)
-    #expect(v.y == 0)
-    #expect(Anchor.near(Layout.pillCentre(v), in: scr).up == true)
+    let raw = CGPoint(x: w0.origin.x + dx, y: w0.origin.y + dy)
+    let clamped = Layout.clampDrag(windowOrigin: raw, windowSize: w0.size, visible: CGSize(width: Layout.expandedWidth, height: height), anchor: a, screen: scr)
+    let w = NSRect(origin: clamped, size: w0.size)
+    return (Layout.settledPillOrigin(window: w, raw: raw, anchor: a, screen: scr),
+            Layout.pill(in: w, size: Layout.collapsed, anchor: a).origin)
+}
+
+@Test func droppedFarFromThePillStillReachesTheLeftEdge() {
+    let o = CGPoint(x: 1386, y: 950)
+    let a = Anchor.near(Layout.pillCentre(o), in: scr)
+    // Grabbed 630 pt left of the pill, cursor stopped at x = 0.
+    let r = drop(o, a, dx: -630 - o.x, dy: 0, height: 400)
+    #expect(r.settled.x == 0)
+    #expect(Anchor.near(Layout.pillCentre(r.settled), in: scr).h == .leading)
+}
+
+@Test func overshootingOnThePillReachesTheLeftEdge() {
+    let o = CGPoint(x: 1386, y: 950)
+    let a = Anchor.near(Layout.pillCentre(o), in: scr)
+    #expect(drop(o, a, dx: -1400, dy: 0, height: 400).settled.x == 0)
+}
+
+@Test func droppedPastTheBottomReachesTheBottomEdge() {
+    let o = CGPoint(x: 1300, y: 918)
+    let a = Anchor(h: .trailing, up: false)
+    let r = drop(o, a, dx: 0, dy: -1200, height: 550)
+    #expect(r.settled.y == 0)
+    #expect(Anchor.near(Layout.pillCentre(r.settled), in: scr).up == true)
+}
+
+@Test func dropInsideTheScreenKeepsThePillWhereShown() {
+    let o = CGPoint(x: 850, y: 600)
+    let a = Anchor.near(Layout.pillCentre(o), in: scr)
+    let r = drop(o, a, dx: -100, dy: -50, height: 400)
+    #expect(r.settled == r.shown)
 }
 
 private let ext = NSRect(x: 1512, y: 0, width: 2560, height: 1440)
