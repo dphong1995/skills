@@ -18,8 +18,15 @@ public struct Anchor: Equatable {
 
     public static func near(_ p: CGPoint, in s: NSRect) -> Anchor {
         let third = s.width / 3
-        let h: HAnchor = p.x < s.minX + third ? .leading : p.x > s.maxX - third ? .trailing
-            : p.x + Layout.collapsed.width / 2 - Layout.expandedWidth >= s.minX ? .trailing : .leading
+        let h: HAnchor
+        if p.x < s.minX + third {
+            h = .leading
+        } else if p.x > s.maxX - third {
+            h = .trailing
+        } else {
+            // Middle: open left if the card fits.
+            h = p.x + Layout.collapsed.width / 2 - Layout.expandedWidth >= s.minX ? .trailing : .leading
+        }
         return Anchor(h: h, up: p.y < s.midY)
     }
 }
@@ -43,7 +50,7 @@ public enum Layout {
     public static let bgOpacities: [Double] = [0, 0.25, 0.5, 0.75, cardOpacity]
     static let dragThreshold: CGFloat = 4
 
-    /// Shifts a saved pill x when the collapsed width changed, keeping the anchored edge (or centre) in place.
+    /// Shifts a saved pill x when the collapsed width changed, keeping the anchored edge in place.
     public static func migrate(pillX x: CGFloat, from old: CGFloat, to new: CGFloat, anchor: Anchor) -> CGFloat {
         switch anchor.h {
         case .trailing: x + (old - new)

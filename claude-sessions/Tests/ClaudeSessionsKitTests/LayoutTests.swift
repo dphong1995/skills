@@ -9,6 +9,8 @@ private let scr = NSRect(x: 0, y: 0, width: 1512, height: 982)
     #expect(Anchor.near(CGPoint(x: 100, y: 50), in: scr) == Anchor(h: .leading, up: true))
     #expect(Anchor.near(CGPoint(x: 756, y: 950), in: scr) == Anchor(h: .trailing, up: false))
     #expect(Anchor.near(CGPoint(x: 600, y: 950), in: scr) == Anchor(h: .leading, up: false))
+    #expect(Anchor.near(CGPoint(x: 697, y: 950), in: scr) == Anchor(h: .trailing, up: false))
+    #expect(Anchor.near(CGPoint(x: 696, y: 950), in: scr) == Anchor(h: .leading, up: false))
 }
 
 @Test func anchorNearMiddleWithoutRoomOpensRight() {
@@ -162,8 +164,8 @@ private let ext = NSRect(x: 1512, y: 0, width: 2560, height: 1440)
     let l = Anchor(h: .leading, up: true)
     #expect(Layout.relativeOrigin(CGPoint(x: scr.minX + 20, y: scr.minY + 30), from: scr, to: ext, anchor: l)
         == CGPoint(x: ext.minX + 20, y: ext.minY + 30))
-    let c = Anchor(h: .leading, up: false)
-    #expect(Layout.relativeOrigin(CGPoint(x: scr.minX + 40, y: scr.maxY - 50), from: scr, to: ext, anchor: c)
+    let ld = Anchor(h: .leading, up: false)
+    #expect(Layout.relativeOrigin(CGPoint(x: scr.minX + 40, y: scr.maxY - 50), from: scr, to: ext, anchor: ld)
         == CGPoint(x: ext.minX + 40, y: ext.maxY - 50))
 }
 
