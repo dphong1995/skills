@@ -116,6 +116,19 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         #expect(api.requests(containing: "/statuses") == 2)
     }
 
+    @Test func runningCIStatusDoesNotRefetchStatuses() {
+        let api = fake(open: [prJSON(id: 7571)])
+        // A still-running CI status next to a finished CodeRabbit review must not keep the statuses polled.
+        api.set("/statuses", json: ["values": [["state": "INPROGRESS"], rabbitStatus(description: "Review completed")]])
+        let m = monitor(api)
+        let refs = [prRef(7571)]
+        m.update([target(refs)], at: t0)
+        #expect(api.requests(containing: "/statuses") == 1)
+        m.update([target(refs)], at: t0 + 46)
+        m.update([target(refs)], at: t0 + 92)
+        #expect(api.requests(containing: "/statuses") == 1)
+    }
+
     @Test func commentsOnlyWhenCountChanges() {
         let api = fake(open: [prJSON(id: 7571, comments: 2)])
         api.set("/comments", json: ["values": [comment("{tin}", "Tin Tran", "2026-11-04T10:00:00.000000+00:00")]])
