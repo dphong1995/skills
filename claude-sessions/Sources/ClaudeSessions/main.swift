@@ -62,9 +62,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.state = state
         let p = Panel(uuid: uuid, window: window, state: state)
         let host = DragHostingView(rootView: WidgetView(store: store, panel: state, onAction: { [weak self] in self?.handle($0) }))
-        host.onDragEnd = { [weak self, weak p] raw in
+        host.onDragEnd = { [weak self, weak p] raw, clamped in
             guard let self, let p else { return }
-            settleAfterDrop(p, windowOrigin: raw)
+            settleAfterDrop(p, raw: raw, clamped: clamped)
         }
         host.clampOrigin = { [weak self, weak p] origin in
             guard let self, let p else { return origin }
@@ -426,9 +426,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// After a drop the pill stays where it was shown, or at the screen edge the drag pushed the card into;
-    /// `place` re-anchors it and the card re-lays out around it.
-    func settleAfterDrop(_ p: Panel, windowOrigin raw: CGPoint) {
-        place(p, pillOrigin: Layout.settledPillOrigin(window: p.window.frame, raw: raw, anchor: p.state.anchor, screen: p.screen), save: true)
+    /// `place` re-anchors it and the card re-lays out around it. `clamped` is the exact origin given to the window
+    /// (its frame is rounded to whole points, so it must not be read back).
+    func settleAfterDrop(_ p: Panel, raw: CGPoint, clamped: CGPoint) {
+        place(p, pillOrigin: Layout.settledPillOrigin(window: NSRect(origin: clamped, size: p.window.frame.size), raw: raw, anchor: p.state.anchor, screen: p.screen), save: true)
         trackMouse()
     }
 

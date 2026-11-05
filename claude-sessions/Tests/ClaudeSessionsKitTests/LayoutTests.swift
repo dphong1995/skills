@@ -158,7 +158,7 @@ private func drop(_ o: CGPoint, _ a: Anchor, dx: CGFloat, dy: CGFloat, height: C
     let o = CGPoint(x: 1386, y: 950)
     let a = Anchor.near(Layout.pillCentre(o), in: scr)
     // Grabbed 630 pt left of the pill, cursor stopped at x = 0.
-    let r = drop(o, a, dx: -630 - o.x, dy: 0, height: 400)
+    let r = drop(o, a, dx: -(o.x - 630), dy: 0, height: 400)
     #expect(r.settled.x == 0)
     #expect(Anchor.near(Layout.pillCentre(r.settled), in: scr).h == .leading)
 }
@@ -182,6 +182,21 @@ private func drop(_ o: CGPoint, _ a: Anchor, dx: CGFloat, dy: CGFloat, height: C
     let a = Anchor.near(Layout.pillCentre(o), in: scr)
     let r = drop(o, a, dx: -100, dy: -50, height: 400)
     #expect(r.settled == r.shown)
+}
+
+@Test func fractionalDropInsideTheScreenKeepsThePill() {
+    let o = CGPoint(x: 850, y: 600)
+    let a = Anchor.near(Layout.pillCentre(o), in: scr)
+    let w0 = Layout.canvasFrame(pillOrigin: o, anchor: a)
+    let raw = CGPoint(x: w0.origin.x - 100.4, y: w0.origin.y - 50.3)
+    let clamped = Layout.clampDrag(windowOrigin: raw, windowSize: w0.size, visible: CGSize(width: Layout.expandedWidth, height: 400), anchor: a, screen: scr)
+    let w = NSRect(origin: clamped, size: w0.size)
+    let shown = Layout.pill(in: w, size: Layout.collapsed, anchor: a).origin
+    #expect(abs(shown.x - 749.6) < 0.001 && abs(shown.y - 549.7) < 0.001)
+    #expect(Layout.settledPillOrigin(window: w, raw: raw, anchor: a, screen: scr) == shown)
+    // The frame AppKit reads back is rounded down to whole points, which would look like an edge clamp.
+    let rounded = NSRect(origin: CGPoint(x: clamped.x.rounded(.down), y: clamped.y.rounded(.down)), size: w0.size)
+    #expect(Layout.settledPillOrigin(window: rounded, raw: raw, anchor: a, screen: scr) != shown)
 }
 
 private let ext = NSRect(x: 1512, y: 0, width: 2560, height: 1440)
