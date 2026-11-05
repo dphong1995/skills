@@ -138,9 +138,28 @@ private func session(_ id: String, _ status: String, _ text: String?) -> Session
     let o = CGPoint(x: 850, y: 918)
     let a = Anchor.near(Layout.pillCentre(o), in: scr)
     let canvas = Layout.canvasFrame(pillOrigin: o, anchor: a)
-    #expect(Layout.pill(in: canvas, size: Layout.collapsed, anchor: a).origin == o)
-    let card = Layout.pill(in: canvas, size: CGSize(width: 760, height: 400), anchor: a)
+    let card = Layout.pill(in: canvas, size: CGSize(width: Layout.expandedWidth, height: 400), anchor: a)
     #expect(card.minX >= scr.minX && card.maxX <= scr.maxX)
+}
+
+@Test func clampedDropReachesTheEdge() {
+    let o = CGPoint(x: 1300, y: 918)
+    // Horizontal: a trailing card dragged hard left.
+    let a = Anchor.near(Layout.pillCentre(o), in: scr)
+    let w0 = Layout.canvasFrame(pillOrigin: o, anchor: a)
+    let raw = CGPoint(x: w0.origin.x - 1400, y: w0.origin.y)
+    let clamped = Layout.clampDrag(windowOrigin: raw, windowSize: w0.size, visible: CGSize(width: Layout.expandedWidth, height: 400), anchor: a, screen: scr)
+    #expect(Layout.pill(in: NSRect(origin: clamped, size: w0.size), size: Layout.collapsed, anchor: a).origin.x >= 634)
+    let h = Layout.clamp(pillOrigin: Layout.settledPillOrigin(window: NSRect(origin: raw, size: w0.size), anchor: a), to: scr)
+    #expect(h.x == 0)
+    #expect(Anchor.near(Layout.pillCentre(h), in: scr).h == .leading)
+    // Vertical: a down-anchored 550 pt card dragged hard down.
+    let d = Anchor(h: .trailing, up: false)
+    let w1 = Layout.canvasFrame(pillOrigin: o, anchor: d)
+    let rawV = CGPoint(x: w1.origin.x, y: w1.origin.y - 1200)
+    let v = Layout.clamp(pillOrigin: Layout.settledPillOrigin(window: NSRect(origin: rawV, size: w1.size), anchor: d), to: scr)
+    #expect(v.y == 0)
+    #expect(Anchor.near(Layout.pillCentre(v), in: scr).up == true)
 }
 
 private let ext = NSRect(x: 1512, y: 0, width: 2560, height: 1440)
