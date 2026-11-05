@@ -55,3 +55,17 @@ private func repo(_ head: String) -> URL {
 @Test func gitBranchNoRepoIsNil() {
     #expect(GitBranch.current(in: makeTempDir().path) == nil)
 }
+
+@Test func cachedBranchSeesCheckout() throws {
+    let d = repo("ref: refs/heads/main\n")
+    let reader = GitBranchReader()
+    #expect(reader.current(in: d.path) == "main")
+    #expect(reader.current(in: d.path) == "main")
+    #expect(reader.headReads == 1)
+    let head = d.appendingPathComponent(".git/HEAD")
+    try "ref: refs/heads/feat\n".write(to: head, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.modificationDate: Date().addingTimeInterval(5)], ofItemAtPath: head.path)
+    #expect(reader.current(in: d.path) == "feat")
+    try FileManager.default.removeItem(at: d.appendingPathComponent(".git"))
+    #expect(reader.current(in: d.path) == nil)
+}

@@ -445,6 +445,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func trackMouse() {
         if store.hidden { return }
         let mouse = NSEvent.mouseLocation
+        // Idle mouse: outside every panel frame (the pill and card lie inside it) and no panel in a state the loop would change.
+        if panels.values.allSatisfy({ !$0.window.frame.contains(mouse) && !$0.state.hovering && $0.state.hoveredRow == nil && $0.window.ignoresMouseEvents }) { return }
         for p in panels.values {
             let inside = Layout.pill(in: p.window.frame, size: Layout.size(store, p.state), anchor: p.state.anchor).contains(mouse)
             if p.state.editing == nil && inside != p.state.hovering {

@@ -399,6 +399,39 @@ private func approvableStore() -> (Store, URL, URL, URL) {
     #expect(store.sessions.first?.todo == nil)
 }
 
+@Test func sessionJSONSameSizeRewriteIsSeen() throws {
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
+    let t = Date()
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend, updatedAt: t)
+    store.refresh(at: t)
+    #expect(store.sessions.first?.status == "idle")
+    // Same byte size ("idle" -> "busy" padded), written to a temp file and renamed like Claude Code does.
+    let file = dir.appendingPathComponent("a.json")
+    let old = try Data(contentsOf: file)
+    var text = String(decoding: old, as: UTF8.self).replacingOccurrences(of: "\"idle\"", with: "\"busy\"")
+    text += String(repeating: " ", count: old.count - text.utf8.count)
+    #expect(text.utf8.count == old.count)
+    let tmp = dir.appendingPathComponent("a.tmp")
+    try text.write(to: tmp, atomically: false, encoding: .utf8)
+    _ = try FileManager.default.replaceItemAt(file, withItemAt: tmp)
+    store.refresh(at: t.addingTimeInterval(1))
+    #expect(store.sessions.first?.status == "busy")
+}
+
+@Test func taskRewriteInPlaceIsSeen() {
+    let dir = makeTempDir(), tasks = makeTempDir()
+    let store = makeStore(dir: dir, tasks: tasks)
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 5, name: "a", cwd: frontend)
+    writeTask(tasks, session: "a", id: 1, status: "pending", subject: "Phase 1")
+    store.refresh(at: Date())
+    #expect(store.sessions.first?.todo == Todo(done: 0, total: 1, current: "Phase 1"))
+    // Same file name, same size, rewritten in place: the directory does not change.
+    writeTask(tasks, session: "a", id: 1, status: "pending", subject: "Phase 2")
+    store.refresh(at: Date())
+    #expect(store.sessions.first?.todo == Todo(done: 0, total: 1, current: "Phase 2"))
+}
+
 @Test func branchFollowsCheckoutWhileBusy() {
     let dir = makeTempDir(), projects = makeTempDir()
     var heads = [frontend: "main"]

@@ -2,6 +2,23 @@ import Foundation
 import Combine
 import AppKit
 
+/// What identifies a file's content between two refreshes: inode (rename-based writes), size and nanosecond mtime.
+struct FileStamp: Equatable {
+    let inode: UInt64
+    let size: Int
+    let sec: Int
+    let nsec: Int
+
+    init?(_ path: String) {
+        var st = stat()
+        guard stat(path, &st) == 0 else { return nil }
+        inode = UInt64(st.st_ino)
+        size = Int(st.st_size)
+        sec = Int(st.st_mtimespec.tv_sec)
+        nsec = Int(st.st_mtimespec.tv_nsec)
+    }
+}
+
 enum ItemTone: Equatable {
     case todo, doing, done, open, merged, closed
 
@@ -149,7 +166,21 @@ public final class Store: ObservableObject {
     private var urls: [String: URL] = [:]
     private var urlTried: [String: Date?] = [:]
     private var heads: [String: (prompt: String?, size: Int)] = [:]
-    private var todos: [String: (key: TaskKey, todo: Todo?)] = [:]
+    private var todos: [String: (key: TaskKey, files: [URL], todo: Todo?)] = [:]
+    /// The fields of a session `.json` that `refresh` uses.
+    private struct ParsedSession {
+        let pid: Int32
+        let id: String?
+        let name: String?
+        let cwd: String?
+        let status: String?
+        let waitingFor: String?
+        let statusUpdatedAt: Double?
+        let nameSource: String?
+        let spare: Bool
+    }
+    /// Parsed session files by URL, valid while the file's `FileStamp` is unchanged.
+    private var sessionJSON: [URL: (stamp: FileStamp, parsed: ParsedSession)] = [:]
     private var activities: [String: (offset: UInt64, text: String?)] = [:]
     /// File reads done for the running-tool line, for tests.
     private(set) var activityReads = 0
@@ -165,15 +196,14 @@ public final class Store: ObservableObject {
     var cacheCounts: [String: Int] {
         ["cache": cache.count, "buttonCache": buttonCache.count, "urls": urls.count, "urlTried": urlTried.count,
          "heads": heads.count, "todos": todos.count, "activities": activities.count,
-         "pids": pids.count, "surfaces": surfaces.count]
+         "pids": pids.count, "surfaces": surfaces.count, "sessionJSON": sessionJSON.count]
     }
 
     /// Changes whenever a task file is added, removed or rewritten; sizes cover writes within one timestamp tick.
     private struct TaskKey: Equatable {
-        var dirDate: Date?
+        var dir: FileStamp?
         var files: [String]
-        var dates: [Date?]
-        var sizes: [Int]
+        var stamps: [FileStamp?]
     }
 
     private struct Cached {
@@ -244,23 +274,22 @@ public final class Store: ObservableObject {
         return u
     }
 
-    private func fileSize(_ url: URL) -> Int {
-        (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
-    }
-
     private func readTodo(for s: Session) -> Todo? {
         let d = tasks.appendingPathComponent(s.id, isDirectory: true)
-        let keys: [URLResourceKey] = [.contentModificationDateKey, .fileSizeKey]
-        taskListings += 1
-        let files = Tasks.files(in: d)
-        let values = files.map { try? $0.resourceValues(forKeys: Set(keys)) }
-        let key = TaskKey(dirDate: (try? d.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
-                          files: files.map(\.lastPathComponent),
-                          dates: values.map { $0?.contentModificationDate },
-                          sizes: values.map { $0?.fileSize ?? -1 })
-        if let c = todos[s.id], c.key == key { return c.todo }
+        let dirStamp = FileStamp(d.path)
+        let cached = todos[s.id]
+        // An unchanged directory has the same files: re-stat them (an in-place rewrite does not touch the directory) instead of listing.
+        let files: [URL]
+        if let cached, cached.key.dir == dirStamp {
+            files = cached.files
+        } else {
+            taskListings += 1
+            files = Tasks.files(in: d)
+        }
+        let key = TaskKey(dir: dirStamp, files: files.map(\.lastPathComponent), stamps: files.map { FileStamp($0.path) })
+        if let cached, cached.key == key { return cached.todo }
         let todo = Tasks.read(files)
-        todos[s.id] = (key, todo)
+        todos[s.id] = (key, files, todo)
         return todo
     }
 
@@ -358,27 +387,39 @@ public final class Store: ObservableObject {
         let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
         var list: [Session] = []
         var sizes: [String: UInt64] = [:]
+        var seenFiles = Set<URL>()
         for file in files where file.pathExtension == "json" {
-            sessionParses += 1
-            guard let data = try? Data(contentsOf: file),
-                  let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let pid = (o["pid"] as? NSNumber)?.int32Value,
-                  kill(pid, 0) == 0 || errno == EPERM,
-                  (o["spare"] as? Bool) != true
-            else { continue }
-            let ms = (o["statusUpdatedAt"] as? NSNumber)?.doubleValue
+            seenFiles.insert(file)
+            guard let stamp = FileStamp(file.path) else { continue }
+            let p: ParsedSession
+            if let c = sessionJSON[file], c.stamp == stamp {
+                p = c.parsed
+            } else {
+                sessionParses += 1
+                guard let data = try? Data(contentsOf: file),
+                      let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                      let pid = (o["pid"] as? NSNumber)?.int32Value
+                else { continue }
+                p = ParsedSession(pid: pid, id: o["sessionId"] as? String, name: o["name"] as? String, cwd: o["cwd"] as? String,
+                                  status: o["status"] as? String, waitingFor: o["waitingFor"] as? String,
+                                  statusUpdatedAt: (o["statusUpdatedAt"] as? NSNumber)?.doubleValue,
+                                  nameSource: o["nameSource"] as? String, spare: (o["spare"] as? Bool) == true)
+                sessionJSON[file] = (stamp, p)
+            }
+            // Liveness is checked every refresh: a dead pid drops the row even when the file is unchanged.
+            guard kill(p.pid, 0) == 0 || errno == EPERM, !p.spare else { continue }
             var s = Session(
-                id: o["sessionId"] as? String ?? String(pid),
-                name: o["name"] as? String ?? "pid \(pid)",
-                cwd: o["cwd"] as? String ?? "",
-                status: o["status"] as? String ?? "",
-                waitingFor: o["waitingFor"] as? String,
-                since: ms.map { Date(timeIntervalSince1970: $0 / 1000) },
-                pid: pid
+                id: p.id ?? String(p.pid),
+                name: p.name ?? "pid \(p.pid)",
+                cwd: p.cwd ?? "",
+                status: p.status ?? "",
+                waitingFor: p.waitingFor,
+                since: p.statusUpdatedAt.map { Date(timeIntervalSince1970: $0 / 1000) },
+                pid: p.pid
             )
-            s.nameSource = o["nameSource"] as? String
+            s.nameSource = p.nameSource
             let url = transcriptURL(for: s)
-            let size = url.map(fileSize) ?? 0
+            let size = url.flatMap { FileStamp($0.path)?.size } ?? 0
             if url != nil { sizes[s.id] = UInt64(size) }
             let t = readTail(for: s, url: url, size: size)
             let head = readHead(for: s, url: url, size: size)
@@ -391,6 +432,7 @@ public final class Store: ObservableObject {
             if s.isPermissionPrompt { s.pending = t.pending }
             list.append(s)
         }
+        for k in sessionJSON.keys where !seenFiles.contains(k) { sessionJSON[k] = nil }
         // One conversation open in two processes (resumed in another pane): keep only the newest, so rows and caches keyed by id stay unique.
         var newest: [String: Session] = [:]
         for s in list where (newest[s.id]?.since ?? .distantPast) <= (s.since ?? .distantPast) { newest[s.id] = s }
@@ -398,7 +440,7 @@ public final class Store: ObservableObject {
         // After the dedupe, so two processes sharing a sessionId cannot reset each other's cached activity.
         for i in list.indices {
             let url = transcriptURL(for: list[i])
-            list[i].activity = readActivity(for: list[i], url: url, size: url.map(fileSize) ?? 0)
+            list[i].activity = readActivity(for: list[i], url: url, size: Int(sizes[list[i].id] ?? 0))
         }
 
         if list.isEmpty {
@@ -502,6 +544,7 @@ public final class Store: ObservableObject {
         urlTried = urlTried.filter { live.contains($0.key) }
         heads = heads.filter { live.contains($0.key) }
         todos = todos.filter { live.contains($0.key) }
+        gitReader?.prune(keeping: Set(list.map(\.cwd)))
         activities = activities.filter { live.contains($0.key) }
         for s in list where pids[s.id] != nil && pids[s.id] != s.pid {
             surfaces[s.id] = nil

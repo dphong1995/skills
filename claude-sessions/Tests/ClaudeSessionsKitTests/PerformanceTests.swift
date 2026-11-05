@@ -127,7 +127,7 @@ private final class Fixture {
         #expect(d.parsed == 0)
     }
 
-    @Test(.disabled("enabled in phase 2")) func steadyRefreshReadsNothing() {
+    @Test func steadyRefreshReadsNothing() {
         let d = steadyDeltas()
         #expect(d.parses == 0)
         #expect(d.heads == 0)
@@ -169,7 +169,7 @@ private final class Fixture {
         for r in appendRounds() { #expect(r.delta.bytes <= r.appended + 3 * longest) }
     }
 
-    @Test(.disabled("enabled in phase 2")) func appendDoesNotReparseSessions() {
+    @Test func appendDoesNotReparseSessions() {
         for r in appendRounds() { #expect(r.delta.parses == 0) }
     }
 
