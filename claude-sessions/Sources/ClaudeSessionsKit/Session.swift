@@ -529,7 +529,7 @@ public final class Store: ObservableObject {
         return ([key, title] + [issue?.status].compactMap { $0 }).joined(separator: " · ")
     }
 
-    /// Decodes each icon once; undecodable data is not retried.
+    /// Decodes each icon once; undecodable data is not retried. Internal for tests.
     func decodeIcons(_ data: [URL: Data]) {
         var next = issueIcons
         for (url, d) in data where iconsSeen.insert(url).inserted {

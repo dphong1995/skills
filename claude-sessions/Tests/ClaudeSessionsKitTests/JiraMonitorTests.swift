@@ -157,6 +157,19 @@ private func targets(_ keys: [String], host: String = host) -> [JiraTarget] {
         #expect(api.calls.count == 1)
     }
 
+    @Test func iconsSkippedWhileRejected() {
+        let api = iconAPI()
+        api.iconFail = .transport
+        let m = JiraMonitor(api: api, queue: nil)
+        m.update(targets(["A-1"]), at: t0)
+        #expect(api.iconCalls.count == 1)
+        api.iconFail = nil
+        api.fail = .http(401)
+        for dt in [900.0, 960, 1020] { m.update(targets(["A-1"]), at: t0.addingTimeInterval(dt)) }
+        #expect(m.takeSnapshot().connection == .rejected)
+        #expect(api.iconCalls.count == 1)
+    }
+
     @Test func iconSkipsForeignHost() {
         let foreign = URL(string: "https://cdn.example/x.png")!
         let api = iconAPI(foreign)

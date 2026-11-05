@@ -221,13 +221,13 @@ struct StatusTag: View {
 
     var body: some View {
         let tint = toneColor(tone)
-        let text = tint.map { Color(nsColor: NSColor($0).blended(withFraction: 0.35, of: .white) ?? .white) } ?? .white.opacity(0.55)
-        Text(self.text).font(.system(size: 10.5, weight: .semibold))
-            .foregroundStyle(text)
+        let textColor = tint.map { Color(nsColor: NSColor($0).blended(withFraction: 0.35, of: .white) ?? .white) } ?? .white.opacity(0.55)
+        Text(text).font(.system(size: 10.5, weight: .semibold))
+            .foregroundStyle(textColor)
             .lineLimit(1).truncationMode(.tail)
+            .frame(maxWidth: 130 - 14).fixedSize(horizontal: true, vertical: false)
             .padding(.horizontal, 7).padding(.vertical, 2)
             .background(Capsule().fill(tint?.opacity(0.25) ?? .white.opacity(0.12)))
-            .frame(maxWidth: 130, alignment: .trailing)
     }
 }
 
@@ -246,6 +246,7 @@ struct LinkRow: View {
             Text(item.code).font(.system(size: 10.5).monospaced()).foregroundStyle(.white.opacity(0.5)).lineLimit(1).fixedSize()
             if let title = item.title {
                 Text(title).font(.system(size: 11.5)).foregroundStyle(.white.opacity(0.85)).lineLimit(1).truncationMode(.tail)
+                    .layoutPriority(1)
             }
             Spacer(minLength: 6)
             if let status = item.status { StatusTag(text: status, tone: item.tone) }

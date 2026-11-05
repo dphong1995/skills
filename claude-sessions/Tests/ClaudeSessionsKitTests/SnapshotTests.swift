@@ -340,7 +340,7 @@ struct SnapshotTests {
         api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7571, repo: repo, comments: 1)]])
         api.set("/statuses", json: ["values": [rabbitStatus(description: "Review completed")]])
         api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 2**", at: "2026-11-03T03:40:00.000000+00:00")]])
-        let keys = (101...107).map { "T6IR-\($0)" }
+        let keys = (101...108).map { "T6IR-\($0)" }
         let urls = keys.map { "https://talo6.atlassian.net/browse/\($0)" }.joined(separator: " ")
         let pr = "https://bitbucket.org/\(repo)/pull-requests/7571"
         _ = writeTranscript(projects, cwd: backend, id: "b", lines: [userLine(urls), assistantLine("Đã push, xem " + pr), ""])
@@ -382,7 +382,7 @@ struct SnapshotTests {
     /// One session `b` mentioning seven tickets (the last has no type or icon data) and PRs; icons are put straight into the store.
     private func linkStore(jira connected: Bool) -> (Store, PanelState) {
         let dir = makeTempDir(), projects = makeTempDir()
-        let keys = (101...107).map { "T6IR-\($0)" }
+        let keys = (101...108).map { "T6IR-\($0)" }
         let urls = keys.map { "https://talo6.atlassian.net/browse/\($0)" }.joined(separator: " ")
         let prs = "https://github.com/a/b/pull/1 https://github.com/a/b/pull/2"
         _ = writeTranscript(projects, cwd: backend, id: "b", lines: [userLine(urls), assistantLine(prs), ""])
@@ -396,6 +396,7 @@ struct SnapshotTests {
             ("T6IR-105", "Odd workflow status", "Blocked", "weird", ("Story", Self.iconStory)),
             ("T6IR-106", "Ticket with a status and no category", "Review", nil, ("Task", Self.iconTask)),
             ("T6IR-107", "Ticket whose icon never arrived", "To Do", "new", nil),
+            ("T6IR-108", String(repeating: "Very long ticket title that overflows the row ", count: 3), "To Do", "new", ("Task", Self.iconTask)),
         ]
         for (k, title, status, cat, type) in spec {
             api.issues[k] = (title, status)
@@ -423,7 +424,7 @@ struct SnapshotTests {
 
     @Test func renderLinkMenuRow() {
         let (store, panel) = linkStore(jira: true)
-        #expect(store.sessions.first?.menuCount == 10)
+        #expect(store.sessions.first?.menuCount == 11)
         render(store, panel, "28-link-menu-row")
     }
 
@@ -431,8 +432,9 @@ struct SnapshotTests {
         let (store, panel) = linkStore(jira: true)
         let s = store.sessions[0]
         panel.openMenus = [s.id]
-        #expect(s.menuCount == 10)
+        #expect(s.menuCount == 11)
         #expect(s.menu.map(\.title) == ["Bạn nhắc", "PR"])
+        #expect(s.menu.reduce(0) { $0 + $1.items.count } == s.menuCount)
         render(store, panel, "29-link-list-open")
     }
 
