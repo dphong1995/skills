@@ -957,7 +957,7 @@ private func menuPR(_ id: Int, _ title: String) -> [String: Any] {
     return o
 }
 
-/// One idle session `a` the user mentions T6IR-2 then T6IR-3, Claude T6IR-4 and four PRs.
+/// One idle session `a`: the user mentions T6IR-2 then T6IR-3, Claude T6IR-4 and four PRs.
 private func menuStore(extra: [String] = [], jira: FakeJira? = nil, prs: Bool = true) -> (Store, FakeJira, FakeBitbucket) {
     let fakeJira = jira ?? FakeJira()
     if jira == nil { fakeJira.issues["T6IR-2"] = (menuTitle, "To Do") }

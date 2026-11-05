@@ -179,8 +179,8 @@ public final class Store: ObservableObject {
                 prs: PRMonitor? = nil,
                 jira: JiraMonitor? = nil,
                 scanner: TranscriptScanner = TranscriptScanner(),
-                branch: @escaping (String) -> String? = GitBranch.current(in:)) {
-        self.branchReader = branch
+                branch: ((String) -> String?)? = nil) {
+        self.branchReader = branch ?? GitBranch.current(in:)
         self.prMonitor = prs
         self.jiraMonitor = jira
         self.scanner = scanner

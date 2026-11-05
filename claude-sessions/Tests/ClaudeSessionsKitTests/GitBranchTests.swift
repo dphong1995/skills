@@ -31,6 +31,15 @@ private func repo(_ head: String) -> URL {
     #expect(GitBranch.current(in: root.appendingPathComponent("w").path) == "feature/x")
 }
 
+@Test func gitBranchWorktreeSubdirRelativeGitdir() {
+    let root = makeTempDir()
+    write(root.appendingPathComponent("main/.git/worktrees/w/HEAD"), "ref: refs/heads/feature/x\n")
+    write(root.appendingPathComponent("w/.git"), "gitdir: ../main/.git/worktrees/w\n")
+    let sub = root.appendingPathComponent("w/src")
+    try! FileManager.default.createDirectory(at: sub, withIntermediateDirectories: true)
+    #expect(GitBranch.current(in: sub.path) == "feature/x")
+}
+
 @Test func gitBranchWorktreeAbsoluteGitdir() {
     let root = makeTempDir()
     let gitdir = root.appendingPathComponent("main/.git/worktrees/w")
