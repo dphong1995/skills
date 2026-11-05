@@ -134,6 +134,15 @@ private func session(_ id: String, _ status: String, _ text: String?) -> Session
     #expect(Anchor.near(Layout.pillCentre(CGPoint(x: 850, y: 918)), in: scr).h == .center)
 }
 
+@Test func droppedPillStaysPutAndCardFitsAfterReanchor() {
+    let o = CGPoint(x: 850, y: 918)
+    let a = Anchor.near(Layout.pillCentre(o), in: scr)
+    let canvas = Layout.canvasFrame(pillOrigin: o, anchor: a)
+    #expect(Layout.pill(in: canvas, size: Layout.collapsed, anchor: a).origin == o)
+    let card = Layout.pill(in: canvas, size: CGSize(width: 760, height: 400), anchor: a)
+    #expect(card.minX >= scr.minX && card.maxX <= scr.maxX)
+}
+
 private let ext = NSRect(x: 1512, y: 0, width: 2560, height: 1440)
 
 @Test func clampDragStopsVisibleCardAtEdges() {
