@@ -144,12 +144,13 @@ public enum WidgetAction: Equatable {
     case deny(String, toolId: String, reason: String)
     case openLink(String, URL)
     case askClaude(String, prompt: String)
+    case nudgeRabbit(String, PRRef)
     /// Opens the token dialog of a service; belongs to no session.
     case connect(Service)
 
     public var sessionId: String {
         switch self {
-        case .jump(let id), .approve(let id, _), .deny(let id, _, _), .openLink(let id, _), .askClaude(let id, _): id
+        case .jump(let id), .approve(let id, _), .deny(let id, _, _), .openLink(let id, _), .askClaude(let id, _), .nudgeRabbit(let id, _): id
         case .connect: ""
         }
     }
@@ -546,6 +547,9 @@ public struct WidgetView: View {
                         .onTapGesture { onAction(.openLink(s.id, pr.url)) }
                         .help(pr.title ?? "")
                     Spacer(minLength: 0)
+                    if pr.isOpen && pr.rabbit == .awaitingApproval {
+                        PillButton(title: "🐰 Nhắc duyệt") { onAction(.nudgeRabbit(s.id, pr.ref)) }
+                    }
                     if pr.isOpen {
                         PillButton(title: "Nhờ Claude") {
                             onAction(.askClaude(s.id, prompt: PullRequests.prompt(store.prPrompt, url: pr.url, id: pr.ref.id)))

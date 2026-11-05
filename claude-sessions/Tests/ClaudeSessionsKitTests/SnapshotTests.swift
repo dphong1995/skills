@@ -352,6 +352,27 @@ struct SnapshotTests {
         render(store, panel, "23-ticket-row-overflow")
     }
 
+    @Test func prAwaitingApproval() {
+        let dir = makeTempDir(), projects = makeTempDir()
+        let api = FakeBitbucket()
+        let repo = "t6engineering/talo6-dct-backend"
+        let c1 = "2026-11-03T03:40:00.000000+00:00", c2 = "2026-11-03T03:41:00.000000+00:00", c3 = "2026-11-03T03:42:00.000000+00:00"
+        api.set("/2.0/user", json: ["uuid": "{me}"])
+        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7583, repo: repo, comments: 3, rabbitApproved: false)]])
+        api.set("/statuses", json: ["values": [rabbitStatus(description: "Review completed", created: "2026-11-03T03:33:15.111541+00:00")]])
+        api.set("/comments", json: ["values": [
+            rabbitComment("**Actionable comments posted: 1**", at: c1), rabbitInline(id: 1, "nit", at: c1),
+            humanReply(id: 2, parent: 1, "won't fix", at: c2), rabbitInline(id: 3, "withdrawn", at: c3, parent: 1)]])
+        let pr = "https://bitbucket.org/\(repo)/pull-requests/7583"
+        _ = writeTranscript(projects, cwd: backend, id: "b", lines: [userLine("Xem " + pr), assistantLine("Đã push, xem " + pr), ""])
+        writeSession(dir, "b", pid: me, status: "idle", ageSec: 30, name: "talo6-dct-backend-3f", cwd: backend)
+        let store = makeStore(dir: dir, projects: projects, prs: PRMonitor(api: api, queue: nil, remote: { _ in nil }))
+        let panel = PanelState()
+        panel.hovering = true
+        store.refresh(at: Date())
+        render(store, panel, "31-pr-awaiting-approval")
+    }
+
     @Test func renderFreshLongTitle() {
         let dir = makeTempDir(), projects = makeTempDir()
         let store = makeStore(dir: dir, projects: projects)

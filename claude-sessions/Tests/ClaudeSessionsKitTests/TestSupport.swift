@@ -124,6 +124,10 @@ final class FakeBitbucket: BitbucketAPI {
     var routes: [String: Result<Data, BitbucketError>] = [:]
     var failAll: BitbucketError?
     private(set) var requests: [String] = []
+    private(set) var posts: [(path: String, json: [String: Any])] = []
+    var postResult: Result<Data, BitbucketError> = .success(Data("{}".utf8))
+    /// When set, `post` waits on it before returning.
+    var postGate: DispatchSemaphore?
 
     func set(_ key: String, json: Any) { routes[key] = .success(try! JSONSerialization.data(withJSONObject: json)) }
 
@@ -134,6 +138,12 @@ final class FakeBitbucket: BitbucketAPI {
         if let failAll { throw failAll }
         guard let key = routes.keys.filter({ path.contains($0) }).max(by: { $0.count < $1.count }) else { throw BitbucketError.http(404) }
         return try routes[key]!.get()
+    }
+
+    func post(_ path: String, json: [String: Any]) throws -> Data {
+        posts.append((path, json))
+        postGate?.wait()
+        return try postResult.get()
     }
 }
 

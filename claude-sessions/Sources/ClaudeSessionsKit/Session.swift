@@ -598,7 +598,7 @@ public final class Store: ObservableObject {
 
     public func stillValid(_ a: WidgetAction) -> Bool {
         switch a {
-        case .jump, .openLink, .connect: return true
+        case .jump, .openLink, .connect, .nudgeRabbit: return true
         case .approve(_, let toolId), .deny(_, let toolId, _): return allows(Editing(id: a.sessionId, kind: .deny, toolId: toolId))
         case .askClaude(let id, _): return sessions.first { $0.id == id }?.status == "idle"
         }

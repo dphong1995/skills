@@ -844,4 +844,82 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         #expect(api.requests(containing: "page=2") == 1)
         #expect(rabbitOf(m) == .awaitingApproval)
     }
+
+    // MARK: nudge
+
+    private func awaitingMonitor(_ api: FakeBitbucket, queue: DispatchQueue? = nil) -> PRMonitor {
+        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7583, comments: 3, rabbitApproved: false)]])
+        setStatuses(api, rabbitStatus(description: "Review completed", created: Self.started))
+        answeredThread(api)
+        let m = PRMonitor(api: api, queue: queue, remote: { _ in nil })
+        m.update([target([prRef(7583)])], at: t0)
+        if queue != nil { Thread.sleep(forTimeInterval: 0.3) }
+        return m
+    }
+
+    @Test func nudgePostsApproveCommand() {
+        let api = fake()
+        let m = awaitingMonitor(api)
+        #expect(rabbitOf(m) == .awaitingApproval)
+        var result: Bool?
+        m.nudge(prRef(7583)) { result = $0 }
+        #expect(result == true)
+        #expect(api.posts.count == 1)
+        #expect(api.posts.first?.path == "/2.0/repositories/t6engineering/talo6-dct-backend/pullrequests/7583/comments")
+        #expect(api.posts.first?.json["content"] as? [String: String] == ["raw": "@coderabbitai approve"])
+        #expect(rabbitOf(m) == .nudged)
+        let n = api.requests(containing: "/2.0/user")
+        m.update([target([prRef(7583)])], at: t0 + 1)
+        #expect(api.requests(containing: "/2.0/workspaces") >= 2)
+        #expect(api.requests(containing: "/2.0/user") == n)
+    }
+
+    @Test func nudgeFailureKeepsState() {
+        let api = fake()
+        let m = awaitingMonitor(api)
+        api.postResult = .failure(.http(403))
+        var result: Bool?
+        m.nudge(prRef(7583)) { result = $0 }
+        #expect(result == false)
+        #expect(rabbitOf(m) == .awaitingApproval)
+    }
+
+    @Test func nudgeRefusedWhenNotAwaiting() {
+        let api = fake(open: [prJSON(id: 7583, comments: 1, rabbitApproved: false)])
+        setStatuses(api, rabbitStatus(description: "Review completed", created: Self.started))
+        unansweredThread(api)
+        let m = monitor(api)
+        m.update([target([prRef(7583)])], at: t0)
+        #expect(rabbitOf(m) == .reviewed(findings: 1))
+        var result: Bool?
+        m.nudge(prRef(7583)) { result = $0 }
+        #expect(result == false)
+        #expect(api.posts.isEmpty)
+    }
+
+    @Test func nudgeTwiceSendsOnce() {
+        let api = fake()
+        let m = awaitingMonitor(api, queue: DispatchQueue(label: "test.nudge"))
+        api.postGate = DispatchSemaphore(value: 0)
+        let lock = NSLock()
+        var results: [Bool] = []
+        let both = DispatchSemaphore(value: 0)
+        for _ in 0..<2 {
+            m.nudge(prRef(7583)) { ok in
+                lock.lock(); results.append(ok); lock.unlock()
+                both.signal()
+            }
+        }
+        Thread.sleep(forTimeInterval: 0.2)
+        api.postGate?.signal()
+        // `done` is delivered on the main queue, which the test thread must not block: poll it.
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline {
+            lock.lock(); let n = results.count; lock.unlock()
+            if n == 2 { break }
+            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+        }
+        #expect(api.posts.count == 1)
+        #expect(results.sorted(by: { !$0 && $1 }) == [false, true])
+    }
 }

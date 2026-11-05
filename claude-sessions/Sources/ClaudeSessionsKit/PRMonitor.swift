@@ -76,6 +76,8 @@ public final class PRMonitor {
     private var closed = Set<PRRef>()
     private var me: String?
     private var lastCycle: Date?
+    /// PRs with a nudge post in flight.
+    private var nudging = Set<PRRef>()
     private var connection: ConnectionState = .checking
 
     public init(api: BitbucketAPI, queue: DispatchQueue? = DispatchQueue(label: "claude-sessions.pr-monitor"),
@@ -156,18 +158,66 @@ public final class PRMonitor {
             lastCycle = now
             (events, eventRefs, succeeded) = cycle(targets, at: now)
         }
-        var prs: [String: [PRStatus]] = [:]
-        for (id, s) in sessions {
-            let list = s.refs.compactMap { statuses[$0] }
-            if !list.isEmpty { prs[id] = list }
-        }
         lock.lock()
-        snapshot.prs = prs
+        snapshot.prs = shownPRs()
         snapshot.connection = connection
         snapshot.events += events
         snapshot.eventRefs.formUnion(eventRefs)
         if succeeded { snapshot.lastSuccess = now }
         lock.unlock()
+    }
+
+    private func shownPRs() -> [String: [PRStatus]] {
+        var prs: [String: [PRStatus]] = [:]
+        for (id, s) in sessions {
+            let list = s.refs.compactMap { statuses[$0] }
+            if !list.isEmpty { prs[id] = list }
+        }
+        return prs
+    }
+
+    /// Posts `@coderabbitai approve` on a PR that is `🐰 chờ duyệt`. `done(true)` once posted; `done(false)` when
+    /// refused (not awaiting, or a post for it is already in flight) or the post failed. `done` runs on the main queue.
+    public func nudge(_ ref: PRRef, done: @escaping (Bool) -> Void) {
+        let work = { [self] in
+            guard !nudging.contains(ref), statuses[ref]?.rabbit == .awaitingApproval else { return false }
+            nudging.insert(ref)
+            defer { nudging.remove(ref) }
+            let path = "/2.0/repositories/\(ref.workspace)/\(ref.repo)/pullrequests/\(ref.id)/comments"
+            do {
+                _ = try post(path, json: ["content": ["raw": "@coderabbitai approve"]])
+            } catch {
+                publishConnection()
+                return false
+            }
+            rabbitFacts[ref]?.nudgePending = true
+            if let pr = statuses[ref] {
+                statuses[ref]!.rabbit = CodeRabbit.resolve(pr.rabbitStatus, approvers: pr.approvers, facts: rabbitFacts[ref])
+            }
+            lastCycle = nil
+            lock.lock()
+            snapshot.prs = shownPRs()
+            snapshot.connection = connection
+            lock.unlock()
+            return true
+        }
+        guard let queue else { return done(work()) }
+        queue.async { let ok = work(); DispatchQueue.main.async { done(ok) } }
+    }
+
+    private func publishConnection() {
+        lock.lock(); snapshot.connection = connection; lock.unlock()
+    }
+
+    private func post(_ path: String, json: [String: Any]) throws -> Data {
+        do {
+            let d = try api.post(path, json: json)
+            connection = ConnectionState.after(nil, previous: connection)
+            return d
+        } catch {
+            connection = ConnectionState.after(error, previous: connection)
+            throw error
+        }
     }
 
     /// Remembers the `(commit, label)` of a finished review so only a new one chimes.

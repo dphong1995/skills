@@ -377,6 +377,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSWorkspace.shared.open(url)
             return
         }
+        if case .nudgeRabbit(_, let ref) = a {
+            guard let monitor = store.prMonitor else { return NSSound.beep() }
+            monitor.nudge(ref) { ok in if !ok { NSSound.beep() } }
+            return
+        }
         if case .jump = a {
             store.markSeen(id)
             resolveSurface(id) { surface in
