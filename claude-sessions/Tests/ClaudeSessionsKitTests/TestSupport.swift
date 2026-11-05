@@ -73,10 +73,17 @@ func toolResultLine(id: String) -> String {
     return jsonLine(o)
 }
 
-func userLine(_ text: String, isMeta: Bool = false) -> String {
+func userLine(_ text: String, isMeta: Bool = false, origin: String? = nil) -> String {
     var o: [String: Any] = ["type": "user", "message": ["content": text]]
     if isMeta { o["isMeta"] = true }
+    if let origin { o["origin"] = ["kind": origin] }
     return jsonLine(o)
+}
+
+/// A background agent's report as Claude Code records it; `origin: false` is the older format without the field.
+func notificationLine(_ result: String, origin: Bool = true) -> String {
+    userLine("<task-notification>\n<status>completed</status>\n<result>\(result)</result>\n</task-notification>",
+             origin: origin ? "task-notification" : nil)
 }
 
 func commandLine(_ name: String, args: String) -> String {

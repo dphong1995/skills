@@ -38,6 +38,8 @@ public final class TranscriptScanner {
         var carry = Data()
         var skipping = false
         var counter = 0
+        /// The current turn began with a prompt the user typed, not with a background agent's report.
+        var yourTurn = false
         var result = ScanResult()
         var lastSeen: Date
     }
@@ -160,8 +162,14 @@ public final class TranscriptScanner {
             text = Transcript.text(of: kept)
         } else { return }
         let clean = Transcript.stripReminders(text)
-        let byUser = isUser && (o["isCompactSummary"] as? Bool) != true
-        for key in Transcript.ticketKeys(in: clean) {
+        let summary = (o["isCompactSummary"] as? Bool) == true
+        let byUser = isUser && !summary
+        if byUser {
+            // Older transcripts have no `origin`; their agent reports are recognised by the tag.
+            let kind = (o["origin"] as? [String: Any])?["kind"] as? String
+            s.yourTurn = kind.map { $0 == "human" } ?? !text.hasPrefix("<task-notification>")
+        }
+        for key in s.yourTurn || summary ? Transcript.ticketKeys(in: clean) : [] {
             s.counter += 1
             s.result.version += 1
             if var m = s.result.tickets[key] {

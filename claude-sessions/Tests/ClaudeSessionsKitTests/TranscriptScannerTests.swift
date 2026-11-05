@@ -78,6 +78,22 @@ private func link(_ repo: String, _ id: Int) -> String { "https://bitbucket.org/
         #expect(scan(TranscriptScanner(queue: nil), url).jiraHosts == ["T6IR": "talosix.atlassian.net", "OPS": "other.example"])
     }
 
+    @Test func claudeTicketsOnlyInTurnsYouStarted() {
+        let url = transcript([
+            userLine("start"), assistantLine("T6IR-1"),
+            notificationLine("agent report T6IR-2"), assistantLine("master has commits of T6IR-3"),
+            userLine("ok", origin: "human"), assistantLine("T6IR-4"),
+            notificationLine("T6IR-5", origin: false), assistantLine("T6IR-6")])
+        #expect(scan(TranscriptScanner(queue: nil), url).tickets.keys.sorted() == ["T6IR-1", "T6IR-4"])
+    }
+
+    @Test func notificationTurnKeepsPRLinks() {
+        let url = transcript([userLine("start"), notificationLine("done"), assistantLine("PR \(link("a", 9)) for T6IR-7")])
+        let r = scan(TranscriptScanner(queue: nil), url)
+        #expect(r.tickets.isEmpty)
+        #expect(r.prRefs == [ref("a", 9)])
+    }
+
     @Test func shellOutputAndRemindersIgnored() {
         let url = transcript([userLine("<bash-stdout>T6IR-5</bash-stdout>"),
                               assistantLine("ok <system-reminder>T6IR-6</system-reminder>")])
