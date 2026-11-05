@@ -56,12 +56,14 @@ public enum Layout {
         CGPoint(x: start.x + mouse.x - mouseDown.x, y: start.y + mouse.y - mouseDown.y)
     }
 
-    /// Pill origin after a drop: the pill stays where it was shown, except that on an axis where the drag pushed the
-    /// card against a screen edge (the window was clamped short of `raw`) it goes to that edge. `place` then re-anchors it.
-    public static func settledPillOrigin(window: NSRect, raw: CGPoint, anchor: Anchor, screen s: NSRect) -> CGPoint {
-        var o = pill(in: window, size: collapsed, anchor: anchor).origin
-        if raw.x < window.minX { o.x = s.minX } else if raw.x > window.minX { o.x = s.maxX - collapsed.width }
-        if raw.y < window.minY { o.y = s.minY } else if raw.y > window.minY { o.y = s.maxY - collapsed.height }
+    /// Pill origin after a drop: the pill stays where it was shown (in the window at `clamped`, the exact origin given
+    /// to the window; its frame is rounded to whole points, so it must not be read back), except that on an axis where
+    /// the drag moved toward a screen edge and pushed the card against it (`clamped` short of `raw`) it goes to that edge.
+    /// `place` then re-anchors it.
+    public static func settledPillOrigin(start: CGPoint, raw: CGPoint, clamped: CGPoint, size: CGSize, anchor: Anchor, screen s: NSRect) -> CGPoint {
+        var o = pill(in: NSRect(origin: clamped, size: size), size: collapsed, anchor: anchor).origin
+        if raw.x < clamped.x && raw.x < start.x { o.x = s.minX } else if raw.x > clamped.x && raw.x > start.x { o.x = s.maxX - collapsed.width }
+        if raw.y < clamped.y && raw.y < start.y { o.y = s.minY } else if raw.y > clamped.y && raw.y > start.y { o.y = s.maxY - collapsed.height }
         return o
     }
 

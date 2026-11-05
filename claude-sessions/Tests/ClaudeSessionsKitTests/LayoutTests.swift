@@ -129,7 +129,7 @@ private func session(_ id: String, _ status: String, _ text: String?) -> Session
     ]
     for (a, o) in cases {
         let w = Layout.canvasFrame(pillOrigin: o, anchor: a)
-        #expect(Layout.settledPillOrigin(window: w, raw: w.origin, anchor: a, screen: scr) == o)
+        #expect(Layout.settledPillOrigin(start: w.origin, raw: w.origin, clamped: w.origin, size: w.size, anchor: a, screen: scr) == o)
     }
     // The anchor changes at drop (centre of the pill is in the middle third) but the pill does not move.
     #expect(Anchor.near(Layout.pillCentre(CGPoint(x: 850, y: 918)), in: scr).h == .center)
@@ -150,7 +150,7 @@ private func drop(_ o: CGPoint, _ a: Anchor, dx: CGFloat, dy: CGFloat, height: C
     let raw = CGPoint(x: w0.origin.x + dx, y: w0.origin.y + dy)
     let clamped = Layout.clampDrag(windowOrigin: raw, windowSize: w0.size, visible: CGSize(width: Layout.expandedWidth, height: height), anchor: a, screen: scr)
     let w = NSRect(origin: clamped, size: w0.size)
-    return (Layout.settledPillOrigin(window: w, raw: raw, anchor: a, screen: scr),
+    return (Layout.settledPillOrigin(start: w0.origin, raw: raw, clamped: clamped, size: w0.size, anchor: a, screen: scr),
             Layout.pill(in: w, size: Layout.collapsed, anchor: a).origin)
 }
 
@@ -184,6 +184,19 @@ private func drop(_ o: CGPoint, _ a: Anchor, dx: CGFloat, dy: CGFloat, height: C
     #expect(r.settled == r.shown)
 }
 
+@Test func horizontalDragOfAnOverflowingCardDoesNotSnapVertically() {
+    let o = CGPoint(x: 1300, y: 480)
+    let a = Anchor(h: .trailing, up: false)
+    #expect(Anchor.near(Layout.pillCentre(o), in: scr) == a)
+    let canvas = Layout.canvasFrame(pillOrigin: o, anchor: a)
+    let raw = CGPoint(x: canvas.origin.x - 10, y: canvas.origin.y)
+    let clamped = Layout.clampDrag(windowOrigin: raw, windowSize: canvas.size, visible: CGSize(width: Layout.expandedWidth, height: 600), anchor: a, screen: scr)
+    let shown = Layout.pill(in: NSRect(origin: clamped, size: canvas.size), size: Layout.collapsed, anchor: a).origin
+    let settled = Layout.settledPillOrigin(start: canvas.origin, raw: raw, clamped: clamped, size: canvas.size, anchor: a, screen: scr)
+    #expect(settled.y == shown.y)
+    #expect(settled.y != 0)
+}
+
 @Test func fractionalDropInsideTheScreenKeepsThePill() {
     let o = CGPoint(x: 850, y: 600)
     let a = Anchor.near(Layout.pillCentre(o), in: scr)
@@ -193,10 +206,10 @@ private func drop(_ o: CGPoint, _ a: Anchor, dx: CGFloat, dy: CGFloat, height: C
     let w = NSRect(origin: clamped, size: w0.size)
     let shown = Layout.pill(in: w, size: Layout.collapsed, anchor: a).origin
     #expect(abs(shown.x - 749.6) < 0.001 && abs(shown.y - 549.7) < 0.001)
-    #expect(Layout.settledPillOrigin(window: w, raw: raw, anchor: a, screen: scr) == shown)
-    // The frame AppKit reads back is rounded down to whole points, which would look like an edge clamp.
+    #expect(Layout.settledPillOrigin(start: w0.origin, raw: raw, clamped: clamped, size: w0.size, anchor: a, screen: scr) == shown)
+    // A frame read back after AppKit's rounding (built by hand here) would not give the shown pill.
     let rounded = NSRect(origin: CGPoint(x: clamped.x.rounded(.down), y: clamped.y.rounded(.down)), size: w0.size)
-    #expect(Layout.settledPillOrigin(window: rounded, raw: raw, anchor: a, screen: scr) != shown)
+    #expect(Layout.settledPillOrigin(start: w0.origin, raw: raw, clamped: rounded.origin, size: w0.size, anchor: a, screen: scr) != shown)
 }
 
 private let ext = NSRect(x: 1512, y: 0, width: 2560, height: 1440)

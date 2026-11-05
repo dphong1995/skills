@@ -563,7 +563,7 @@ public struct WidgetView: View {
 }
 
 public final class DragHostingView<V: View>: NSHostingView<V> {
-    public var onDragEnd: ((_ raw: CGPoint, _ clamped: CGPoint) -> Void)?
+    public var onDragEnd: ((_ start: CGPoint, _ raw: CGPoint, _ clamped: CGPoint) -> Void)?
     public var clampOrigin: ((CGPoint) -> CGPoint)?
     private var replaying = false
     public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -577,7 +577,7 @@ public final class DragHostingView<V: View>: NSHostingView<V> {
         while let e = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
             if e.type == .leftMouseUp {
                 if moving {
-                    onDragEnd?(lastRaw, lastClamped)
+                    onDragEnd?(start, lastRaw, lastClamped)
                     return
                 }
                 // A click: replay the press and release so SwiftUI sees them through the normal event path.
