@@ -130,7 +130,7 @@ final class FakeBitbucket: BitbucketAPI {
     }
 }
 
-/// Routes for the user, an open list and default passing pipeline / no comments.
+/// Routes for the user, an open list and default passing CI status / no comments.
 func fake(open: [[String: Any]] = []) -> FakeBitbucket {
     let api = FakeBitbucket()
     api.set("/2.0/user", json: ["uuid": "{me}"])

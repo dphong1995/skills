@@ -38,7 +38,6 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         #expect(prs.first?.reviewers == 3)
         #expect(prs.first?.approved == 1)
         #expect(prs.first?.changesRequested == 1)
-        #expect(prs.first?.pipeline == .passed)
         #expect(snap.lastSuccess == t0)
         #expect(snap.events.isEmpty)
     }
@@ -174,9 +173,9 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         m.update([target([prRef(7571), prRef(7572)])], at: t0 + 5)
         let second = api.requests.count
         #expect(second > first)
-        m.update([target(refs)], at: t0 + 30)
+        m.update([target(refs)], at: t0 + 5 + 44)
         #expect(api.requests.count == second)
-        m.update([target(refs)], at: t0 + 70)
+        m.update([target(refs)], at: t0 + 5 + 46)
         #expect(api.requests.count > second)
     }
 
@@ -253,15 +252,15 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         m.update([target(refs)], at: t0 + 122)
         #expect(api.requests(containing: "/statuses") == before + 1)
         let p = m.takeSnapshot().prs["s"]?.first
-        #expect(p?.pipeline == .failed && p?.commit == "def456")
+        #expect(p?.commit == "def456")
     }
 
     private static let started = "2026-11-03T03:33:15.111541+00:00"
     private static let later = "2026-11-03T03:40:00.000000+00:00"
-    private static let pipelinePass: [String: Any] = ["state": "SUCCESSFUL", "commit": ["hash": "abc123"]]
+    private static let ciPass: [String: Any] = ["state": "SUCCESSFUL", "commit": ["hash": "abc123"]]
 
     private func setStatuses(_ api: FakeBitbucket, _ rabbit: [String: Any]?) {
-        api.set("/statuses", json: ["values": [Self.pipelinePass] + (rabbit.map { [$0] } ?? [])])
+        api.set("/statuses", json: ["values": [Self.ciPass] + (rabbit.map { [$0] } ?? [])])
     }
 
     private func rabbitOf(_ m: PRMonitor) -> Rabbit? { m.takeSnapshot().prs["s"]?.first?.rabbit }
@@ -274,7 +273,6 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         m.update([target([prRef(7571)])], at: t0)
         let p = m.takeSnapshot().prs["s"]?.first
         #expect(p?.rabbit == .reviewed(findings: 2))
-        #expect(p?.pipeline == .passed)
         #expect(p?.lastOther == nil)
     }
 
@@ -357,7 +355,7 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
 
     @Test func overrideKeptWhenOnlyStatusesAreRefetched() {
         let api = fake(open: [prJSON(id: 7571, comments: 1)])
-        api.set("/statuses", json: ["values": [inProgress()]]) // no pipeline: statuses stay polled inside the new-commit window
+        api.set("/statuses", json: ["values": [inProgress()]]) // no CodeRabbit status; the finished review is re-polled at the slow rate
         let m = monitor(api)
         m.update([target([prRef(7571)])], at: t0)
         api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 1**", at: Self.summaryAt)]])
@@ -366,7 +364,7 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         _ = m.takeSnapshot()
         let statuses = api.requests(containing: "/statuses")
         let comments = api.requests(containing: "/comments")
-        m.update([target([prRef(7571)])], at: t0 + 122)
+        m.update([target([prRef(7571)])], at: t0 + 361)
         #expect(api.requests(containing: "/statuses") == statuses + 1)
         #expect(api.requests(containing: "/comments") == comments)
         #expect(rabbitOf(m) == .reviewed(findings: 1))
@@ -592,13 +590,12 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         m.update([target(refs)], at: t0)
         m.update([target(refs)], at: t0 + 599)
         let n = api.requests(containing: "/statuses")
-        api.set("/statuses", json: ["values": [Self.pipelinePass]])
+        api.set("/statuses", json: ["values": [Self.ciPass]])
         m.update([target(refs)], at: t0 + 660)
         m.update([target(refs)], at: t0 + 800)
         #expect(api.requests(containing: "/statuses") == n)
         m.update([target(refs)], at: t0 + 900)
         #expect(api.requests(containing: "/statuses") == n + 1)
-        #expect(m.takeSnapshot().prs["s"]?.first?.pipeline == .passed)
     }
 
     @Test func statusesFailingThroughTheWindowAreFetchedAfterIt() {
@@ -612,7 +609,6 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         let n = api.requests(containing: "/statuses")
         m.update([target(refs)], at: t0 + 660)
         #expect(api.requests(containing: "/statuses") == n + 1)
-        #expect(m.takeSnapshot().prs["s"]?.first?.pipeline == .passed)
         m.update([target(refs)], at: t0 + 721)
         #expect(api.requests(containing: "/statuses") == n + 1)
     }

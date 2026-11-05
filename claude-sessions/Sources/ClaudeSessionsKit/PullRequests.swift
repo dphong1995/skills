@@ -9,8 +9,6 @@ public struct PRRef: Hashable {
     }
 }
 
-public enum Pipeline: Equatable { case running, passed, failed }
-
 public struct PRComment: Equatable {
     public let name: String
     public let at: Date
@@ -31,7 +29,6 @@ public struct PRStatus: Equatable {
     public let sourceRepo: String?
     public let branch: String?
     public var title: String?
-    public var pipeline: Pipeline?
     public var lastOther: PRComment?
     public var rabbit: Rabbit?
     public var rabbitSince: Date?
@@ -100,24 +97,6 @@ enum PullRequests {
         guard let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         let values = (o["values"] as? [[String: Any]] ?? []).compactMap(status(from:))
         return (values, o["next"] as? String)
-    }
-
-    /// Only statuses of `commit` count; statuses or a PR without a commit hash are kept.
-    static func pipeline(fromStatuses data: Data, commit: String? = nil) -> Pipeline? {
-        guard let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              var values = o["values"] as? [[String: Any]] else { return nil }
-        values = values.filter { !CodeRabbit.isStatus($0) }
-        if let commit {
-            values = values.filter {
-                guard let hash = ($0["commit"] as? [String: Any])?["hash"] as? String else { return true }
-                return hash.hasPrefix(commit)
-            }
-        }
-        let states = Set(values.compactMap { $0["state"] as? String })
-        if states.contains("FAILED") { return .failed }
-        if states.contains("INPROGRESS") { return .running }
-        if states.contains("SUCCESSFUL") { return .passed }
-        return nil
     }
 
     static func lastOther(fromComments data: Data, me: String) -> PRComment? {

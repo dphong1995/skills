@@ -51,12 +51,6 @@ private func prParts(_ pr: PRStatus, now: Date, stale: Date?) -> [(text: String,
     }
     if pr.changesRequested > 0 { parts.append(("✗ \(pr.changesRequested) yêu cầu sửa", .red)) }
     if pr.reviewers > 0 { parts.append(("✓ \(pr.approved)/\(pr.reviewers)", pr.approved > 0 ? .green : nil)) }
-    switch pr.pipeline {
-    case .passed?: parts.append(("pipeline ✓", nil))
-    case .failed?: parts.append(("pipeline ✗", nil))
-    case .running?: parts.append(("pipeline …", nil))
-    case nil: break
-    }
     if let rabbit = pr.rabbit { parts.append((CodeRabbit.label(rabbit), nil)) }
     if pr.comments > 0 { parts.append(("💬 \(pr.comments)", nil)) }
     if let c = pr.lastOther { parts.append(("\(c.name) \(elapsed(c.at, now))", nil)) }

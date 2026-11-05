@@ -31,7 +31,7 @@ private func data(_ o: [String: Any]) -> Data { try! JSONSerialization.data(with
         #expect(s.branch == "bugfix/T6IR-14744")
         #expect(s.sourceRepo == "t6engineering/talo6-dct-backend")
         #expect(s.isOpen && s.ref == ref("talo6-dct-backend", 7571) && s.commit == "abc123")
-        #expect(s.pipeline == nil && s.lastOther == nil)
+        #expect(s.lastOther == nil)
         #expect(PullRequests.status(from: ["state": "OPEN"]) == nil)
     }
 
@@ -40,25 +40,6 @@ private func data(_ o: [String: Any]) -> Data { try! JSONSerialization.data(with
         #expect(p?.values.count == 2 && p?.next == "https://x/next")
         #expect(PullRequests.page(data(["values": []]))?.next == nil)
         #expect(PullRequests.page(Data("nope".utf8)) == nil)
-    }
-
-    @Test func pipelineAggregation() {
-        func p(_ states: [String]) -> Pipeline? {
-            PullRequests.pipeline(fromStatuses: data(["values": states.map { ["state": $0] }]))
-        }
-        #expect(p(["FAILED", "SUCCESSFUL"]) == .failed)
-        #expect(p(["INPROGRESS", "SUCCESSFUL"]) == .running)
-        #expect(p(["SUCCESSFUL"]) == .passed)
-        #expect(p([]) == nil)
-    }
-
-    @Test func pipelineIgnoresOldCommits() {
-        let d = data(["values": [
-            ["state": "FAILED", "commit": ["hash": "old111" + String(repeating: "0", count: 34)]],
-            ["state": "SUCCESSFUL", "commit": ["hash": "abc123" + String(repeating: "0", count: 34)]],
-        ]])
-        #expect(PullRequests.pipeline(fromStatuses: d, commit: "abc123") == .passed)
-        #expect(PullRequests.pipeline(fromStatuses: d, commit: nil) == .failed)
     }
 
     @Test func lastOtherSkipsMeAndDeleted() {
@@ -78,9 +59,6 @@ private func data(_ o: [String: Any]) -> Data { try! JSONSerialization.data(with
     @Test func eventsEachKind() {
         let base = status(prJSON(id: 1, reviewers: 3))
         #expect(PullRequests.events(old: base, new: base) == [])
-        var p = base; p.pipeline = .failed
-        #expect(PullRequests.events(old: base, new: p) == [])
-
         var withComment = base; withComment.lastOther = PRComment(name: "A", at: Date(timeIntervalSince1970: 100))
         #expect(PullRequests.events(old: base, new: withComment) == [.comment])
         var newer = withComment; newer.lastOther = PRComment(name: "B", at: Date(timeIntervalSince1970: 200))
@@ -106,14 +84,6 @@ private func data(_ o: [String: Any]) -> Data { try! JSONSerialization.data(with
         #expect(PullRequests.chime(for: [.approved]) == .done)
         #expect(PullRequests.chime(for: [.declined]) == .needsYou)
         #expect(PullRequests.chime(for: []) == nil)
-    }
-
-    @Test func pipelineIgnoresCodeRabbit() {
-        func d(_ v: [[String: Any]]) -> Data { data(["values": v]) }
-        let pass: [String: Any] = ["state": "SUCCESSFUL"]
-        #expect(PullRequests.pipeline(fromStatuses: d([rabbitStatus(state: "INPROGRESS", description: "Review in progress"), pass])) == .passed)
-        #expect(PullRequests.pipeline(fromStatuses: d([rabbitStatus(state: "FAILED", description: "Review failed"), pass])) == .passed)
-        #expect(PullRequests.pipeline(fromStatuses: d([rabbitStatus(description: "Review completed")])) == nil)
     }
 
     @Test func lastOtherSkipsCodeRabbit() {

@@ -77,7 +77,7 @@ public final class PRMonitor {
     private var connection: ConnectionState = .checking
 
     public init(api: BitbucketAPI, queue: DispatchQueue? = DispatchQueue(label: "claude-sessions.pr-monitor"),
-                remote: ((String) -> String?)? = nil, interval: TimeInterval = 60) {
+                remote: ((String) -> String?)? = nil, interval: TimeInterval = 45) {
         self.api = api; self.queue = queue; self.remote = remote ?? Self.gitRemote; self.interval = interval
     }
 
@@ -268,7 +268,6 @@ public final class PRMonitor {
                     closed.insert(ref)
                 }
             }
-            pr.pipeline = prev?.pipeline
             pr.lastOther = prev?.lastOther
             pr.rabbit = prev?.rabbit
             pr.rabbitSince = prev?.rabbitSince
@@ -278,18 +277,17 @@ public final class PRMonitor {
                 if headSeen[ref].map({ $0.commit != pr.commit }) ?? true { headSeen[ref] = (pr.commit, now) }
                 let inWindow = now.timeIntervalSince(headSeen[ref]!.at) < Self.rabbitWait
                 let rabbitPending = prev?.rabbit == .reviewing || (prev?.rabbit == nil && inWindow)
-                // A missing pipeline or CodeRabbit status (after the window) and a finished review (a later approval or
+                // A missing CodeRabbit status (after the window) and a finished review (a later approval or
                 // failure) are still looked for, at a slow rate.
                 var reviewed = false
                 if case .reviewed? = prev?.rabbit { reviewed = true }
-                let slowPoll = (reviewed || (!inWindow && (pr.pipeline == nil || prev?.rabbit == nil)))
+                let slowPoll = (reviewed || (!inWindow && prev?.rabbit == nil))
                     && statusesAt[ref].map { now.timeIntervalSince($0) >= Self.statusesSlowPoll } ?? true
-                if prev == nil || prev?.commit != pr.commit || (pr.pipeline == nil && inWindow) || pr.pipeline == .running
+                if prev == nil || prev?.commit != pr.commit
                     || rabbitPending || prev?.comments != pr.comments || !statusesFetched.contains(ref) || slowPoll {
                     if let d = try? fetch("\(path)/statuses?fields=\(Self.statusFields)&pagelen=50&sort=-created_on") {
                         firstStatuses = !statusesFetched.contains(ref)
                         statusesAt[ref] = now
-                        pr.pipeline = PullRequests.pipeline(fromStatuses: d, commit: pr.commit)
                         let fresh = CodeRabbit.state(fromStatuses: d, commit: pr.commit)
                         let sameCommit = prev?.commit == pr.commit
                         if var r = fresh?.rabbit {
@@ -304,8 +302,6 @@ public final class PRMonitor {
                         pr.rabbitSince = fresh?.since
                     } else if prev != nil {
                         continue
-                    } else {
-                        pr.pipeline = nil
                     }
                 }
                 let owed = commentsOwed.contains(ref)
