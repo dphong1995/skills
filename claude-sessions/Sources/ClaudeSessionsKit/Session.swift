@@ -1,9 +1,36 @@
 import Foundation
 import Combine
+import AppKit
+
+enum ItemTone: Equatable {
+    case todo, doing, done, open, merged, closed
+
+    init(_ t: JiraIssue.Tone) {
+        switch t {
+        case .todo: self = .todo
+        case .doing: self = .doing
+        case .done: self = .done
+        }
+    }
+}
 
 struct LinkItem: Equatable {
+    enum Kind { case ticket, pr, link }
     let text: String
     let url: URL
+    var kind: Kind = .link
+    var code: String
+    var title: String? = nil
+    var status: String? = nil
+    var tone: ItemTone? = nil
+    var iconURL: URL? = nil
+    var help: String? = nil
+
+    init(text: String, url: URL, kind: Kind = .link, code: String? = nil, title: String? = nil, status: String? = nil,
+         tone: ItemTone? = nil, iconURL: URL? = nil, help: String? = nil) {
+        self.text = text; self.url = url; self.kind = kind; self.code = code ?? text; self.title = title; self.status = status
+        self.tone = tone; self.iconURL = iconURL; self.help = help
+    }
 }
 
 struct LinkSection: Equatable {
@@ -166,6 +193,10 @@ public final class Store: ObservableObject {
     public var prMonitor: PRMonitor?
     public var jiraMonitor: JiraMonitor?
     /// Keychain account (email) per service, set by the app.
+    /// Decoded issue type icons by URL, kept for the run.
+    @Published var issueIcons: [URL: NSImage] = [:]
+    private var iconsSeen = Set<URL>()
+
     @Published public var accounts: [Service: String] = [:]
     @Published var connections: [Service: ConnectionLine] = [:]
     private let scanner: TranscriptScanner
@@ -385,6 +416,7 @@ public final class Store: ObservableObject {
             jiraMonitor.update(targets, at: now)
             let snap = jiraMonitor.takeSnapshot()
             issues = snap.issues
+            decodeIcons(snap.icons)
             jiraState = snap.connection
         }
         var prState: ConnectionState?
@@ -394,7 +426,11 @@ public final class Store: ObservableObject {
             let buttons = entries[list[i].id] ?? []
             list[i].links = buttons.map { b in
                 var link = b.link
-                if let t = b.target { link.help = Store.help(key: t.key, issues[t.key]) }
+                if let t = b.target {
+                    link.help = Store.help(key: t.key, issues[t.key])
+                    link.iconURL = issues[t.key]?.iconURL
+                    link.tone = issues[t.key]?.tone
+                }
                 return link
             }
             buttonRefs[list[i].id] = buttons.map(\.refs)
@@ -492,6 +528,15 @@ public final class Store: ObservableObject {
         return ([key, title] + [issue?.status].compactMap { $0 }).joined(separator: " · ")
     }
 
+    /// Decodes each icon once; undecodable data is not retried.
+    private func decodeIcons(_ data: [URL: Data]) {
+        var next = issueIcons
+        for (url, d) in data where iconsSeen.insert(url).inserted {
+            if let img = NSImage(data: d) { next[url] = img }
+        }
+        if next.count != issueIcons.count { issueIcons = next }
+    }
+
     /// `KEY  title  ·  status`, the title cut at 60 characters; the key alone without a title.
     static func ticketText(key: String, _ issue: JiraIssue?) -> String {
         guard let title = issue?.title else { return key }
@@ -505,17 +550,29 @@ public final class Store: ObservableObject {
         return "PR #\(pr.ref.id)  " + (pr.title.map { "\($0)  ·  " } ?? "·  ") + state
     }
 
+    private static func prItem(_ pr: PRStatus) -> LinkItem {
+        let merged = pr.state == "MERGED"
+        return LinkItem(text: linkText(pr), url: pr.url, kind: .pr, code: "#\(pr.ref.id)", title: pr.title,
+                        status: pr.isOpen ? "mở" : merged ? "đã merge" : "đã đóng",
+                        tone: pr.isOpen ? .open : merged ? .merged : .closed, help: pr.title)
+    }
+
     /// The `☰ N` menu: tickets by origin, then every PR. `prs` is nil without a PR monitor, so every PR link is listed as it is.
     static func menu(_ entries: [ButtonEntry], issues: [String: JiraIssue], prs: [PRStatus]?) -> [LinkSection] {
         func tickets(_ source: ButtonEntry.Source, _ title: String) -> LinkSection {
             LinkSection(title: title, items: entries.filter { $0.source == source }.compactMap { e in
-                e.target.map { LinkItem(text: ticketText(key: $0.key, issues[$0.key]), url: e.link.url) }
+                e.target.map { t in
+                    let issue = issues[t.key]
+                    return LinkItem(text: ticketText(key: t.key, issue), url: e.link.url, kind: .ticket, code: t.key, title: issue?.title,
+                                    status: issue?.status, tone: issue?.tone.map(ItemTone.init), iconURL: issue?.iconURL,
+                                    help: help(key: t.key, issue))
+                }
             })
         }
         let tracked = Set((prs ?? []).map(\.ref))
         let untracked = entries.filter { $0.source == .pr && !$0.refs.contains(where: tracked.contains) }
-            .map { LinkItem(text: $0.link.label, url: $0.link.url) }
-        let pr = LinkSection(title: "PR", items: (prs ?? []).map { LinkItem(text: linkText($0), url: $0.url) } + untracked)
+            .map { LinkItem(text: $0.link.label, url: $0.link.url, kind: .link, code: $0.link.label) }
+        let pr = LinkSection(title: "PR", items: (prs ?? []).map(prItem) + untracked)
         return [tickets(.branch, "Nhánh"), tickets(.user, "Bạn nhắc"), tickets(.claude, "Claude nhắc"), pr].filter { !$0.items.isEmpty }
     }
 

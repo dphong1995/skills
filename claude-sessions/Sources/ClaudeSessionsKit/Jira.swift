@@ -7,12 +7,22 @@ public protocol JiraAPI: AnyObject {
     func bulkFetch(host: String, keys: [String]) throws -> Data
     /// Blocking: called only on a background queue.
     func myself(host: String) throws -> Data
+    /// Blocking: called only on the monitor's queue. `url` is an issue type icon.
+    func icon(url: URL) throws -> Data
 }
 
 public struct JiraIssue: Equatable {
     public let title: String?
     public let status: String?
-    public init(title: String?, status: String?) { self.title = title; self.status = status }
+    public let type: String?
+    public let iconURL: URL?
+    public let tone: Tone?
+
+    public enum Tone: Equatable { case todo, doing, done }
+
+    public init(title: String?, status: String?, type: String? = nil, iconURL: URL? = nil, tone: Tone? = nil) {
+        self.title = title; self.status = status; self.type = type; self.iconURL = iconURL; self.tone = tone
+    }
 }
 
 enum Jira {
@@ -32,8 +42,18 @@ enum Jira {
         for issue in o["issues"] as? [[String: Any]] ?? [] {
             guard let key = issue["key"] as? String, out[key] != nil else { continue }
             let fields = issue["fields"] as? [String: Any]
-            out[key] = JiraIssue(title: fields?["summary"] as? String,
-                                 status: (fields?["status"] as? [String: Any])?["name"] as? String)
+            let status = fields?["status"] as? [String: Any]
+            let type = fields?["issuetype"] as? [String: Any]
+            let tone: JiraIssue.Tone?
+            switch (status?["statusCategory"] as? [String: Any])?["key"] as? String {
+            case "new": tone = .todo
+            case "indeterminate": tone = .doing
+            case "done": tone = .done
+            default: tone = nil
+            }
+            out[key] = JiraIssue(title: fields?["summary"] as? String, status: status?["name"] as? String,
+                                 type: type?["name"] as? String, iconURL: (type?["iconUrl"] as? String).flatMap { URL(string: $0) },
+                                 tone: tone)
         }
         return out
     }
@@ -52,11 +72,21 @@ public final class JiraClient: JiraAPI, CredentialReloading {
 
     static func request(host: String, keys: [String], auth: String) -> URLRequest? {
         guard var req = request(host: host, path: "/rest/api/3/issue/bulkfetch", auth: auth),
-              let body = try? JSONSerialization.data(withJSONObject: ["issueIdsOrKeys": keys, "fields": ["summary", "status"]])
+              let body = try? JSONSerialization.data(withJSONObject: ["issueIdsOrKeys": keys, "fields": ["summary", "status", "issuetype"]])
         else { return nil }
         req.httpMethod = "POST"
         req.httpBody = body
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        return req
+    }
+
+    /// Nil for a host outside `*.atlassian.net`: the token must never go elsewhere. Asks Jira for a PNG rendering.
+    static func iconRequest(url: URL, auth: String) -> URLRequest? {
+        guard Jira.isAtlassianHost(url.host ?? ""), var c = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
+        c.queryItems = (c.queryItems ?? []).filter { $0.name != "format" } + [URLQueryItem(name: "format", value: "png")]
+        guard let full = c.url, full.host == url.host else { return nil }
+        var req = URLRequest(url: full, timeoutInterval: 15)
+        req.setValue(auth, forHTTPHeaderField: "Authorization")
         return req
     }
 
@@ -76,6 +106,11 @@ public final class JiraClient: JiraAPI, CredentialReloading {
 
     public func myself(host: String) throws -> Data {
         guard let header = http.currentAuth(), let req = Self.request(host: host, path: "/rest/api/3/myself", auth: header) else { throw JiraError.transport }
+        return try send(req)
+    }
+
+    public func icon(url: URL) throws -> Data {
+        guard let header = http.currentAuth(), let req = Self.iconRequest(url: url, auth: header) else { throw JiraError.transport }
         return try send(req)
     }
 

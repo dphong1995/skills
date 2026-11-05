@@ -7,6 +7,7 @@ struct JiraTarget: Hashable {
 
 struct JiraSnapshot: Equatable {
     var issues: [String: JiraIssue] = [:]
+    var icons: [URL: Data] = [:]
     var connection: ConnectionState = .checking
 }
 
@@ -31,6 +32,8 @@ public final class JiraMonitor {
     private var absentSince: [JiraTarget: Date] = [:]
     /// Keys that failed or were never asked wait here until their retry time.
     private var retryAt: [JiraTarget: Date] = [:]
+    private var icons: [URL: Data] = [:]
+    private var iconRetryAt: [URL: Date] = [:]
     private var lastRequest: Date?
     private var lastRefresh: Date?
     private var connection: ConnectionState = .checking
@@ -89,15 +92,34 @@ public final class JiraMonitor {
             changed = true
         }
 
+        if fetchIcons(at: now) { changed = true }
+
         if changed {
             // Sorted by host so a key shared by two hosts always resolves to the same one.
             let issues = Dictionary(cache.sorted { ($0.key.host, $0.key.key) < ($1.key.host, $1.key.key) }.map { ($0.key.key, $0.value) },
                                     uniquingKeysWith: { a, _ in a })
             lock.lock()
             snapshot.issues = issues
+            snapshot.icons = icons
             snapshot.connection = connection
             lock.unlock()
         }
+    }
+
+    /// One request per distinct Atlassian icon URL; a failure waits `retryAfter`. Returns whether an icon arrived.
+    private func fetchIcons(at now: Date) -> Bool {
+        var arrived = false
+        let urls = Set(cache.values.compactMap(\.iconURL)).filter { Jira.isAtlassianHost($0.host ?? "") && icons[$0] == nil }
+        for url in urls.sorted(by: { $0.absoluteString < $1.absoluteString }) where iconRetryAt[url].map({ now >= $0 }) ?? true {
+            do {
+                icons[url] = try api.icon(url: url)
+                iconRetryAt[url] = nil
+                arrived = true
+            } catch {
+                iconRetryAt[url] = now.addingTimeInterval(Self.retryAfter)
+            }
+        }
+        return arrived
     }
 
     private func fetch(_ due: [JiraTarget], at now: Date) {

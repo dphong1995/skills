@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import Testing
 @testable import ClaudeSessionsKit
 
@@ -996,6 +997,82 @@ private func section(_ s: Session?, _ title: String) -> [String]? { s?.menu.firs
     jira.issues["T6IR-2"] = ("Only title", nil)
     let (store, _, _) = menuStore(jira: jira)
     #expect(section(store.sessions.first, "Bạn nhắc")?.first == "T6IR-2  Only title")
+}
+
+private let iconURL = URL(string: "https://talosix.atlassian.net/avatar/1?size=medium")!
+
+private func png() -> Data {
+    let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 1, pixelsHigh: 1, bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true,
+                               isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+    return rep.representation(using: .png, properties: [:])!
+}
+
+private func typedJira() -> FakeJira {
+    let jira = FakeJira()
+    jira.issues["T6IR-2"] = (menuTitle, "Done")
+    jira.types["T6IR-2"] = ("Bug", iconURL.absoluteString)
+    jira.categories["T6IR-2"] = "done"
+    return jira
+}
+
+@Test func menuItemsCarryTicketFields() {
+    let (store, _, _) = menuStore(jira: typedJira())
+    let item = store.sessions.first?.menu.first { $0.title == "Bạn nhắc" }?.items.first
+    #expect(item?.kind == .ticket)
+    #expect(item?.code == "T6IR-2")
+    #expect(item?.title == menuTitle)
+    #expect(item?.status == "Done")
+    #expect(item?.tone == .done)
+    #expect(item?.iconURL == iconURL)
+    #expect(item?.help == "T6IR-2 · \(menuTitle) · Done")
+}
+
+@Test func menuItemsCarryPRFields() {
+    let (store, _, _) = menuStore(extra: [assistantLine("https://github.com/a/b/pull/12")])
+    let items = store.sessions.first?.menu.first { $0.title == "PR" }?.items ?? []
+    #expect(items.first?.kind == .pr)
+    #expect(items.first?.code == "#7571")
+    #expect(items.first?.status == "mở")
+    #expect(items.first?.tone == .open)
+    #expect(items.first?.help == "Fix site scope filter")
+    #expect(items.last?.kind == .link)
+    #expect(items.last?.code == "PR #12")
+    #expect(items.last?.tone == nil)
+    let merged = Store.menu([], issues: [:], prs: [PRStatus(ref: PRRef(workspace: "w", repo: "r", id: 5), url: URL(string: "https://x.y/5")!, state: "MERGED", reviewers: 0, approved: 0, changesRequested: 0, comments: 0, commit: nil, sourceRepo: nil, branch: nil, title: "T")]).first?.items.first
+    #expect(merged?.code == "#5")
+    #expect(merged?.status == "đã merge")
+    #expect(merged?.tone == .merged)
+}
+
+@Test func sessionLinkCarriesIconAndTone() {
+    let (store, _, _) = menuStore(jira: typedJira())
+    let link = store.sessions.first?.links.first { $0.label == "T6IR-2" }
+    #expect(link?.iconURL == iconURL)
+    #expect(link?.tone == .done)
+
+    let (bare, _, _) = menuStore(jira: {
+        let j = FakeJira()
+        j.fail = .transport
+        return j
+    }())
+    let none = bare.sessions.first?.links.first { $0.label == "T6IR-2" }
+    #expect(none != nil)
+    #expect(none?.iconURL == nil && none?.tone == nil && none?.help == nil)
+}
+
+@Test func storeDecodesIssueIcons() {
+    let jira = typedJira()
+    jira.iconData[iconURL] = png()
+    let (store, _, _) = menuStore(jira: jira)
+    #expect(store.issueIcons[iconURL] != nil)
+
+    let bad = typedJira()
+    bad.iconData[iconURL] = Data([1, 2, 3])
+    let (store2, _, _) = menuStore(jira: bad)
+    #expect(store2.issueIcons[iconURL] == nil)
+    bad.iconData[iconURL] = png()
+    store2.refresh(at: prT0.addingTimeInterval(1))
+    #expect(store2.issueIcons[iconURL] == nil)
 }
 
 @Test func menuNeedsJiraWhenNotOk() {

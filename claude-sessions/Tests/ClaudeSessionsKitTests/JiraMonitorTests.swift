@@ -124,4 +124,56 @@ private func targets(_ keys: [String], host: String = host) -> [JiraTarget] {
         m.update(targets(["A-1"]), at: t0.addingTimeInterval(41))
         #expect(m.takeSnapshot().issues["A-2"] == nil)
     }
+
+    private static let iconA = URL(string: "https://talosix.atlassian.net/avatar/1?size=medium")!
+
+    private func iconAPI(_ url: URL = iconA) -> FakeJira {
+        let api = FakeJira()
+        api.issues = ["A-1": ("one", "Open"), "A-2": ("two", "Open")]
+        api.types = ["A-1": ("Story", url.absoluteString), "A-2": ("Story", url.absoluteString)]
+        api.iconData = [url: Data([1, 2, 3])]
+        return api
+    }
+
+    @Test func iconFetchedOncePerURL() {
+        let api = iconAPI()
+        let m = JiraMonitor(api: api, queue: nil)
+        for dt in [0.0, 10, 20] { m.update(targets(["A-1", "A-2"]), at: t0.addingTimeInterval(dt)) }
+        #expect(api.iconCalls.count == 1)
+        #expect(m.takeSnapshot().icons[Self.iconA] == Data([1, 2, 3]))
+    }
+
+    @Test func iconRetriesAfter60sOnTick() {
+        let api = iconAPI()
+        api.iconFail = .transport
+        let m = JiraMonitor(api: api, queue: nil)
+        m.update(targets(["A-1"]), at: t0)
+        api.iconFail = nil
+        m.update(targets(["A-1"]), at: t0.addingTimeInterval(30))
+        #expect(api.iconCalls.count == 1)
+        m.update(targets(["A-1"]), at: t0.addingTimeInterval(60))
+        #expect(api.iconCalls.count == 2)
+        #expect(m.takeSnapshot().icons[Self.iconA] != nil)
+        #expect(api.calls.count == 1)
+    }
+
+    @Test func iconSkipsForeignHost() {
+        let foreign = URL(string: "https://cdn.example/x.png")!
+        let api = iconAPI(foreign)
+        let m = JiraMonitor(api: api, queue: nil)
+        m.update(targets(["A-1"]), at: t0)
+        m.update(targets(["A-1"]), at: t0.addingTimeInterval(120))
+        #expect(api.iconCalls.isEmpty)
+        #expect(m.takeSnapshot().icons.isEmpty)
+    }
+
+    @Test func iconsSurviveForget() {
+        let api = iconAPI()
+        let m = JiraMonitor(api: api, queue: nil)
+        m.update(targets(["A-1"]), at: t0)
+        m.update([], at: t0.addingTimeInterval(1))
+        m.update([], at: t0.addingTimeInterval(40))
+        #expect(m.takeSnapshot().issues.isEmpty)
+        #expect(m.takeSnapshot().icons[Self.iconA] != nil)
+    }
 }

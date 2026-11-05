@@ -160,6 +160,12 @@ final class FakeJira: JiraAPI {
     /// `(host, keys)` per `bulkFetch` call.
     var calls: [(host: String, keys: [String])] = []
     var issues: [String: (title: String, status: String?)] = [:]
+    var types: [String: (name: String, icon: String)] = [:]
+    /// Key to `statusCategory.key`.
+    var categories: [String: String] = [:]
+    var iconData: [URL: Data] = [:]
+    var iconFail: JiraError?
+    var iconCalls: [URL] = []
     var fail: JiraError?
     var myselfResult = Data("{}".utf8)
 
@@ -169,7 +175,13 @@ final class FakeJira: JiraAPI {
         let found: [[String: Any]] = keys.compactMap { k in
             guard let i = issues[k] else { return nil }
             var fields: [String: Any] = ["summary": i.title]
-            if let s = i.status { fields["status"] = ["name": s] }
+            if i.status != nil || categories[k] != nil {
+                var st: [String: Any] = [:]
+                if let s = i.status { st["name"] = s }
+                if let c = categories[k] { st["statusCategory"] = ["key": c] }
+                fields["status"] = st
+            }
+            if let t = types[k] { fields["issuetype"] = ["name": t.name, "iconUrl": t.icon] }
             return ["key": k, "fields": fields]
         }
         return try JSONSerialization.data(withJSONObject: ["issues": found])
@@ -178,5 +190,12 @@ final class FakeJira: JiraAPI {
     func myself(host: String) throws -> Data {
         if let fail { throw fail }
         return myselfResult
+    }
+
+    func icon(url: URL) throws -> Data {
+        iconCalls.append(url)
+        if let iconFail { throw iconFail }
+        guard let d = iconData[url] else { throw JiraError.http(404) }
+        return d
     }
 }
