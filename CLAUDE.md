@@ -63,6 +63,7 @@ claude plugin test ~/.claude/skills-repo/mods/main-context-compact
 
 # claude-sessions widget
 cd claude-sessions && swift test   # writes state PNGs to .build/snapshots/
+bash claude-sessions/perf.sh        # real-app CPU/memory check, ~3 min, run after any widget change
 ```
 
 Pass test globs quoted; a bare directory argument fails on Node 24. Test output lands in `skills/*/tests/out/`
