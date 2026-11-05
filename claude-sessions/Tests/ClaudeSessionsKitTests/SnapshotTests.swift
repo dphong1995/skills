@@ -310,7 +310,7 @@ struct SnapshotTests {
         open["participants"] = (open["participants"] as! [[String: Any]]).map { $0["role"] as? String == "REVIEWER" && $0["approved"] as? Bool == true ? $0.merging(["approved": false]) { $1 } : $0 }
         api.set("/2.0/user", json: ["uuid": "{me}"])
         api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [open, prJSON(id: 7567, repo: repo)]])
-        api.set("/statuses", json: ["values": [["state": "FAILED"]]])
+        api.set("/statuses", json: ["values": []])
         let t0 = Date()
         let stamp = ISO8601DateFormatter().string(from: t0.addingTimeInterval(-180))
         api.set("/comments", json: ["values": [comment("{tin}", "Tin Tran", stamp)]])

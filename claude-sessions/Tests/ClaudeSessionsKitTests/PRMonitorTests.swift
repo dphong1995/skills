@@ -129,6 +129,19 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         #expect(api.requests(containing: "/statuses") == 1)
     }
 
+    @Test func finishedRabbitWithoutCIIsNotRefetchedInWindow() {
+        let api = fake(open: [prJSON(id: 7571)])
+        // A finished CodeRabbit review and no CI status at all must not keep the statuses polled.
+        api.set("/statuses", json: ["values": [rabbitStatus(description: "Review completed")]])
+        let m = monitor(api)
+        let refs = [prRef(7571)]
+        m.update([target(refs)], at: t0)
+        #expect(api.requests(containing: "/statuses") == 1)
+        m.update([target(refs)], at: t0 + 46)
+        m.update([target(refs)], at: t0 + 92)
+        #expect(api.requests(containing: "/statuses") == 1)
+    }
+
     @Test func commentsOnlyWhenCountChanges() {
         let api = fake(open: [prJSON(id: 7571, comments: 2)])
         api.set("/comments", json: ["values": [comment("{tin}", "Tin Tran", "2026-11-04T10:00:00.000000+00:00")]])
@@ -260,7 +273,7 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         api.routes["/statuses"] = .failure(.http(500))
         m.update([target(refs)], at: t0 + 61)
         #expect(m.takeSnapshot().prs == good.prs)
-        api.set("/statuses", json: ["values": [["state": "FAILED"]]])
+        api.set("/statuses", json: ["values": []])
         let before = api.requests(containing: "/statuses")
         m.update([target(refs)], at: t0 + 122)
         #expect(api.requests(containing: "/statuses") == before + 1)
@@ -368,7 +381,7 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
 
     @Test func overrideKeptWhenOnlyStatusesAreRefetched() {
         let api = fake(open: [prJSON(id: 7571, comments: 1)])
-        api.set("/statuses", json: ["values": [inProgress()]]) // no CodeRabbit status; the finished review is re-polled at the slow rate
+        api.set("/statuses", json: ["values": [inProgress()]]) // CodeRabbit's status stays INPROGRESS; the finished review is re-polled only by the 5-minute slow poll
         let m = monitor(api)
         m.update([target([prRef(7571)])], at: t0)
         api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 1**", at: Self.summaryAt)]])
@@ -377,7 +390,7 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         _ = m.takeSnapshot()
         let statuses = api.requests(containing: "/statuses")
         let comments = api.requests(containing: "/comments")
-        m.update([target([prRef(7571)])], at: t0 + 361)
+        m.update([target([prRef(7571)])], at: t0 + 400)
         #expect(api.requests(containing: "/statuses") == statuses + 1)
         #expect(api.requests(containing: "/comments") == comments)
         #expect(rabbitOf(m) == .reviewed(findings: 1))
@@ -603,12 +616,13 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         m.update([target(refs)], at: t0)
         m.update([target(refs)], at: t0 + 599)
         let n = api.requests(containing: "/statuses")
-        api.set("/statuses", json: ["values": [Self.ciPass]])
+        setStatuses(api, rabbitStatus(description: "Review completed", created: Self.started))
         m.update([target(refs)], at: t0 + 660)
         m.update([target(refs)], at: t0 + 800)
         #expect(api.requests(containing: "/statuses") == n)
         m.update([target(refs)], at: t0 + 900)
         #expect(api.requests(containing: "/statuses") == n + 1)
+        #expect(rabbitOf(m) != nil)
     }
 
     @Test func statusesFailingThroughTheWindowAreFetchedAfterIt() {

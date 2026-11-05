@@ -5,7 +5,7 @@ public enum Rabbit: Equatable { case reviewing, reviewed(findings: Int?), approv
 enum CodeRabbit {
     static let marker = "coderabbit.ai/#html-comment"
 
-    static func isStatus(_ v: [String: Any]) -> Bool {
+    private static func isStatus(_ v: [String: Any]) -> Bool {
         (v["key"] as? String)?.hasPrefix("coderabbitai/") == true || v["name"] as? String == "CodeRabbit"
     }
 
