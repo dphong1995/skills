@@ -139,7 +139,7 @@ private let ext = NSRect(x: 1512, y: 0, width: 2560, height: 1440)
     #expect(pillRect(Layout.clampDrag(windowOrigin: top, windowSize: size, visible: c, anchor: down, screen: scr), c, down).maxY == scr.maxY)
     let bottom = CGPoint(x: inside.x, y: -50 - Layout.margin)
     #expect(pillRect(Layout.clampDrag(windowOrigin: bottom, windowSize: size, visible: c, anchor: up, screen: scr), c, up).minY == scr.minY)
-    let card = CGSize(width: 520, height: 400)
+    let card = CGSize(width: Layout.expandedWidth, height: 400)
     #expect(pillRect(Layout.clampDrag(windowOrigin: right, windowSize: size, visible: card, anchor: down, screen: scr), card, down).maxX == scr.maxX)
     #expect(Layout.clampDrag(windowOrigin: inside, windowSize: size, visible: c, anchor: down, screen: scr) == inside)
 }

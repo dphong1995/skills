@@ -246,7 +246,7 @@ widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouT
   (đang chạy), `waiting` (`waitingFor`: `permission prompt` → chờ duyệt, còn lại → chờ trả lời) hoặc
   `idle` (xong, chờ bạn). Bỏ qua tiến trình đã chết. Không cần hook hay mod.
 - Thu gọn: viên nhỏ rộng 126 pt, không có chữ "Claude", chỉ có chấm trạng thái + số session theo màu (đỏ chờ, cam xong, xanh đang chạy); khi có session có tin mới thì nhóm vàng `✦ N` hiện đầu tiên.
-- Rê chuột vào thì mở danh sách rộng 520 pt (header chỉ có các nhóm `● n` bên phải; mỗi dòng có tiêu đề, `thư mục · nhánh`, chấm màu trạng thái, thời gian). Session vừa chuyển từ đang chạy
+- Rê chuột vào thì mở danh sách rộng 760 pt (header chỉ có các nhóm `● n` bên phải; mỗi dòng có tiêu đề, `thư mục · nhánh`, chấm màu trạng thái, thời gian). Session vừa chuyển từ đang chạy
   sang xong/chờ thì widget tự mở 5 giây.
 - Dấu mới bật khi session chuyển từ đang chạy sang xong/chờ, hoặc khi PR của session có sự kiện. Dòng có dấu có vạch vàng bên trái và nền vàng nhạt. Dấu mất khi bấm dòng / link / dòng PR, khi `Nhờ Claude`/duyệt/từ chối gõ thành công, khi session chạy lại, hoặc khi pane của nó được focus trong cmux qua 2 lần kiểm tra liền nhau (mỗi 2 giây, chỉ khi cmux ở trước và còn dấu, bằng `cmux identify`). Dấu không còn sau khi mở lại app.
 - Tên dòng lấy theo thứ tự: tên đặt bằng `/rename` → tiêu đề AI → prompt đầu (bỏ `/clear`, lệnh không đối số,
