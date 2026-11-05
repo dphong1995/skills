@@ -26,7 +26,7 @@ public struct Anchor: Equatable {
 }
 public enum Layout {
     static let margin: CGFloat = 14
-    static let expandedWidth: CGFloat = 520
+    static let expandedWidth: CGFloat = 760
     static let canvas = CGSize(width: expandedWidth + margin * 2, height: 640)
     static var maxExpandedHeight: CGFloat { canvas.height - 2 * margin }
     static let rowHeight: CGFloat = 36

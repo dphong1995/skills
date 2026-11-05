@@ -249,7 +249,7 @@ public final class Store: ObservableObject {
         if let h = heads[s.id], headIsFinal(s.id) || h.size == size { return (h.prompt, h.branch) }
         let d = Transcript.head(url)
         let full = Transcript.firstPrompt(in: d)
-        let h = (prompt: full.map { Transcript.displayText($0, limit: 140) }, branch: Transcript.gitBranch(in: d, last: false), size: size)
+        let h = (prompt: full.map { Transcript.displayText($0, limit: 200) }, branch: Transcript.gitBranch(in: d, last: false), size: size)
         heads[s.id] = h
         return (h.prompt, h.branch)
     }

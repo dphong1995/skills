@@ -250,7 +250,7 @@ widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouT
   sang xong/chờ thì widget tự mở 5 giây.
 - Dấu mới bật khi session chuyển từ đang chạy sang xong/chờ, hoặc khi PR của session có sự kiện. Dòng có dấu có vạch vàng bên trái và nền vàng nhạt. Dấu mất khi bấm dòng / link / dòng PR, khi `Nhờ Claude`/duyệt/từ chối gõ thành công, khi session chạy lại, hoặc khi pane của nó được focus trong cmux qua 2 lần kiểm tra liền nhau (mỗi 2 giây, chỉ khi cmux ở trước và còn dấu, bằng `cmux identify`). Dấu không còn sau khi mở lại app.
 - Tên dòng lấy theo thứ tự: tên đặt bằng `/rename` → tiêu đề AI → prompt đầu (bỏ `/clear`, lệnh không đối số,
-  thẻ hệ thống; cắt 140 ký tự, hiện tối đa 2 dòng) → tên mặc định. Mẹo: gõ `/rename` để Claude tự đặt tên.
+  thẻ hệ thống; cắt 200 ký tự, hiện tối đa 2 dòng) → tên mặc định. Mẹo: gõ `/rename` để Claude tự đặt tên.
 - Session có task (TaskCreate/TaskUpdate, `~/.claude/tasks/<sessionId>/`) thì hiện thêm dòng `☑ đã xong/tổng · việc đang làm`;
   xong hết thì ẩn. Có task đang làm thì hiện chữ của nó (không có chữ thì chỉ hiện số), không thì hiện task chờ đầu tiên.
 - Session đang chạy hiện thêm dòng `▸ Bash: …` là tool Claude vừa gọi gần nhất (chỉ đọc phần transcript mới được ghi từ giây trước, tối đa 256 KB, không đọc cả file, chỉ phân tích dòng có `"tool_use"`); hết chạy thì dòng này biến mất.

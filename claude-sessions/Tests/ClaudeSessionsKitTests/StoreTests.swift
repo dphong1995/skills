@@ -413,13 +413,13 @@ private func approvableStore() -> (Store, URL, URL, URL) {
     #expect(store.sessions[0].subtitle.hasSuffix("· feat"))
 }
 
-@Test func titleCutAt140() {
+@Test func titleCutAt200() {
     let dir = makeTempDir(), projects = makeTempDir()
     let store = makeStore(dir: dir, projects: projects)
-    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine(String(repeating: "t", count: 200))])
+    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine(String(repeating: "t", count: 260))])
     writeSession(dir, "a", pid: me, status: "busy", ageSec: 5, name: "a", cwd: frontend)
     store.refresh(at: Date())
-    #expect(store.sessions.first?.title == String(repeating: "t", count: 140) + "…")
+    #expect(store.sessions.first?.title == String(repeating: "t", count: 200) + "…")
 }
 
 @Test func replyCutAt600WithLabels() {
