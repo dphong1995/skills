@@ -693,6 +693,33 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         #expect(m.takeSnapshot().events == [.rabbitNeedsYou])
     }
 
+    @Test func newReviewOnSameCommitChimesAgainAfterAwaiting() {
+        let api = fake(open: [prJSON(id: 7583, comments: 1, rabbitApproved: false)])
+        setStatuses(api, rabbitStatus(description: "Review completed", created: Self.started))
+        unansweredThread(api)
+        let m = monitor(api)
+        m.update([target([prRef(7583)])], at: t0)
+        _ = m.takeSnapshot()
+
+        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7583, comments: 3, rabbitApproved: false)]])
+        answeredThread(api)
+        m.update([target([prRef(7583)])], at: t0 + 61)
+        #expect(m.takeSnapshot().prs["s"]?.first?.rabbit == .awaitingApproval)
+
+        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7583, comments: 4, rabbitApproved: false)]])
+        setStatuses(api, rabbitStatus(state: "INPROGRESS", description: "Review in progress", created: "2026-11-05T10:00:00.000000+00:00"))
+        m.update([target([prRef(7583)])], at: t0 + 122)
+        #expect(m.takeSnapshot().prs["s"]?.first?.rabbit == .reviewing)
+
+        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7583, comments: 5, rabbitApproved: false)]])
+        setStatuses(api, rabbitStatus(description: "Review completed", created: "2026-11-05T10:00:00.000000+00:00"))
+        api.set("/comments", json: ["values": pendingFinding(count: 1, at: "2026-11-05T10:05:00.000000+00:00")])
+        m.update([target([prRef(7583)])], at: t0 + 183)
+        let snap = m.takeSnapshot()
+        #expect(snap.prs["s"]?.first?.rabbit == .reviewed(findings: 1))
+        #expect(snap.events == [.rabbitNeedsYou])
+    }
+
     @Test func failedFirstCommentsFetchIsRetried() {
         let api = fake(open: [prJSON(id: 7571, comments: 1)])
         setStatuses(api, rabbitStatus(description: "Review completed", created: Self.started))
@@ -907,6 +934,7 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
 
         // The next cycle reads the comments again and still sees the command as the newest one.
         let n = api.requests(containing: "/comments")
+        let users = api.requests(containing: "/2.0/user")
         api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7583, comments: 4, rabbitApproved: false)]])
         api.set("/comments", json: ["values": [
             humanReply(id: 5, parent: nil, "@coderabbitai approve", at: "2026-11-04T10:10:00.000000+00:00", inline: false),
@@ -916,6 +944,7 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
             rabbitInline(id: 3, "withdrawn", at: Self.c3, parent: 1)]])
         m.update([target([prRef(7583)])], at: t0 + 1)
         #expect(api.requests(containing: "/comments") == n + 1)
+        #expect(api.requests(containing: "/2.0/user") == users)
         #expect(rabbitOf(m) == .nudged)
     }
 

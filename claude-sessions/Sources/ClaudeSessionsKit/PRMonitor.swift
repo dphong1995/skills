@@ -56,14 +56,16 @@ public final class PRMonitor {
     private let lock = NSLock()
     private var snapshot = PRSnapshot()
     private var pending: (targets: [PRTarget], now: Date)?
+    /// PRs with a nudge post in flight (guarded by `lock`).
+    private var nudging = Set<PRRef>()
 
     // Touched only by `tick` (the monitor queue, or inline when `queue` is nil).
     private var sessions: [String: SessionState] = [:]
     private var remotes: [String: (repo: Repo?, at: Date)] = [:]
     private var absentSince: [String: Date] = [:]
     private var statuses: [PRRef: PRStatus] = [:]
-    /// Per PR: the commit and the labels already chimed for it (a new commit starts a new set).
-    private var rabbitSeen: [PRRef: (commit: String?, labels: Set<String>)] = [:]
+    /// Per PR: the commit, the review run (`rabbitSince`) and the labels already chimed for it (a new commit or a new run starts a new set).
+    private var rabbitSeen: [PRRef: (commit: String?, since: Date?, labels: Set<String>)] = [:]
     /// PRs whose `/statuses` was fetched successfully at least once.
     private var statusesFetched = Set<PRRef>()
     /// Facts of each PR's last successful full `/comments` fetch.
@@ -77,8 +79,6 @@ public final class PRMonitor {
     private var closed = Set<PRRef>()
     private var me: String?
     private var lastCycle: Date?
-    /// PRs with a nudge post in flight.
-    private var nudging = Set<PRRef>()
     private var connection: ConnectionState = .checking
 
     public init(api: BitbucketAPI, queue: DispatchQueue? = DispatchQueue(label: "claude-sessions.pr-monitor"),
@@ -159,12 +159,7 @@ public final class PRMonitor {
             lastCycle = now
             (events, eventRefs, succeeded) = cycle(targets, at: now)
         }
-        publish()
-        lock.lock()
-        snapshot.events += events
-        snapshot.eventRefs.formUnion(eventRefs)
-        if succeeded { snapshot.lastSuccess = now }
-        lock.unlock()
+        publish(events: events, refs: eventRefs, success: succeeded ? now : nil)
     }
 
     private func shownPRs() -> [String: [PRStatus]] {
@@ -206,10 +201,13 @@ public final class PRMonitor {
         queue.async { let ok = work(); DispatchQueue.main.async { done(ok) } }
     }
 
-    private func publish() {
+    private func publish(events: [PREvent] = [], refs: Set<PRRef> = [], success: Date? = nil) {
         lock.lock()
         snapshot.prs = shownPRs()
         snapshot.connection = connection
+        snapshot.events += events
+        snapshot.eventRefs.formUnion(refs)
+        if let success { snapshot.lastSuccess = success }
         lock.unlock()
     }
 
@@ -224,9 +222,9 @@ public final class PRMonitor {
     /// Remembers the label of a finished review so only a new one (or a new commit) chimes.
     private func recordRabbit(_ ref: PRRef, _ pr: PRStatus) {
         guard let r = pr.rabbit, CodeRabbit.isFinal(r) else { return }
-        var labels = rabbitSeen[ref].flatMap { $0.commit == pr.commit ? $0.labels : nil } ?? []
+        var labels = rabbitSeen[ref].flatMap { $0.commit == pr.commit && $0.since == pr.rabbitSince ? $0.labels : nil } ?? []
         labels.insert(CodeRabbit.label(r))
-        rabbitSeen[ref] = (pr.commit, labels)
+        rabbitSeen[ref] = (pr.commit, pr.rabbitSince, labels)
     }
 
     /// Every API call goes through here so each path records the connection state.
@@ -414,7 +412,7 @@ public final class PRMonitor {
                 var found = PullRequests.events(old: prev, new: pr)
                 if firstStatuses {
                     recordRabbit(ref, pr)
-                } else if pr.isOpen, let r = pr.rabbit, CodeRabbit.isFinal(r), rabbitSeen[ref].map({ !($0.commit == pr.commit && $0.labels.contains(CodeRabbit.label(r))) }) ?? true {
+                } else if pr.isOpen, let r = pr.rabbit, CodeRabbit.isFinal(r), rabbitSeen[ref].map({ !($0.commit == pr.commit && $0.since == pr.rabbitSince && $0.labels.contains(CodeRabbit.label(r))) }) ?? true {
                     switch r {
                     case .reviewed(let n?) where n > 0: found.append(.rabbitNeedsYou)
                     case .failed: found.append(.rabbitNeedsYou)
