@@ -1610,3 +1610,109 @@ private func typedJira() -> FakeJira {
     let again = Store(dir: makeTempDir(), projects: makeTempDir(), tasks: makeTempDir(), scanner: TranscriptScanner(queue: nil), branch: { _ in nil }, closedStore: defaults)
     #expect(again.closed.items.map(\.id) == ["a"])
 }
+
+private func feedStore(_ items: [[String: Any]]) -> (Store, URL, FakeFeedTransport) {
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
+    let t = FakeFeedTransport()
+    t.items = items
+    store.feedMonitor = FeedMonitor(transport: t, queue: nil)
+    return (store, dir, t)
+}
+
+@Test func questionMatchesSessionByPid() {
+    let (store, dir, _) = feedStore([feedItem(requestId: "R1", sessionId: "other-id")])
+    writeSession(dir, "a", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 0, name: "a", cwd: frontend)
+    writeSession(dir, "b", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 0, name: "b", cwd: backend)
+    store.refresh(at: Date())
+    #expect(store.sessions.allSatisfy { $0.question == nil })
+    // By sessionId from workstream_id.
+    let (s2, d2, _) = feedStore([feedItem(requestId: "R1", sessionId: "b")])
+    writeSession(d2, "a", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 0, name: "a", cwd: frontend)
+    writeSession(d2, "b", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 0, name: "b", cwd: backend)
+    s2.refresh(at: Date())
+    #expect(s2.sessions.first { $0.id == "b" }?.question?.requestId == "R1")
+    #expect(s2.sessions.first { $0.id == "a" }?.question == nil)
+    // By pid (ppid) wins over a different sessionId.
+    let t = FakeFeedTransport()
+    var item = feedItem(requestId: "R2", sessionId: "zzz")
+    item["ppid"] = Int(me)
+    t.items = [item]
+    let s3 = makeStore(dir: d2)
+    s3.feedMonitor = FeedMonitor(transport: t, queue: nil)
+    s3.refresh(at: Date())
+    #expect(s3.sessions.filter { $0.question?.requestId == "R2" }.count == 2)
+}
+
+@Test func questionPollsOnlyForBusyOrAskingSessions() {
+    let (store, dir, t) = feedStore([feedItem()])
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(t.calls.isEmpty)
+    writeSession(dir, "a", pid: me, status: "waiting", waitingFor: "permission prompt", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(t.calls.isEmpty)
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(t.calls.count == 1)
+}
+
+@Test func questionCountsAsWaiting() {
+    let (store, dir, t) = feedStore([])
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
+    let t0 = Date()
+    store.refresh(at: t0)
+    #expect(store.unseen["a"] == nil && store.transitions.isEmpty)
+    // The question shows up while the session still reads `busy`.
+    t.items = [feedItem(requestId: "R1", sessionId: "a")]
+    store.refresh(at: t0.addingTimeInterval(1))
+    #expect(store.unseen["a"]?.claude == true)
+    #expect(store.transitions["a"] == .needsYou)
+    #expect(store.chime == .needsYou)
+    let chime = store.applyAlert(transitions: store.transitions, prChime: store.prChime, excluding: [], at: t0.addingTimeInterval(1))
+    #expect(chime == .needsYou)
+    #expect(store.peeking)
+    // The same question is announced once; the later busy -> waiting flip stays quiet.
+    store.refresh(at: t0.addingTimeInterval(2))
+    #expect(store.transitions.isEmpty)
+    writeSession(dir, "a", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: t0.addingTimeInterval(3))
+    #expect(store.transitions.isEmpty && store.chime == nil)
+    #expect(store.unseen["a"]?.claude == true)
+}
+
+@Test func questionNotAnnouncedWhenAlreadyThereAtFirstSight() {
+    let (store, dir, _) = feedStore([feedItem(requestId: "R1", sessionId: "a")])
+    writeSession(dir, "a", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(store.unseen["a"] == nil && store.transitions.isEmpty)
+}
+
+@Test func sentMarkShownUntilSessionRunsAgain() {
+    let (store, dir, _) = feedStore([feedItem(requestId: "R1", sessionId: "a")])
+    writeSession(dir, "a", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    store.noteSent(session: "a", requestId: "R1")
+    #expect(store.sent["a"] == "R1")
+    store.refresh(at: Date())
+    #expect(store.sent["a"] == "R1")
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(store.sent["a"] == nil)
+}
+
+@Test func answerValidOnlyWhileItsQuestionIsLive() {
+    let (store, dir, t) = feedStore([feedItem(requestId: "R1", sessionId: "a")])
+    writeSession(dir, "a", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 0, name: "a", cwd: frontend)
+    let t0 = Date()
+    store.refresh(at: t0)
+    let ok = WidgetAction.answer("a", requestId: "R1", answers: [["Red"]], other: [:])
+    #expect(store.stillValid(ok))
+    #expect(!store.stillValid(.answer("a", requestId: "R2", answers: [["Red"]], other: [:])))
+    #expect(!store.stillValid(.answer("zzz", requestId: "R1", answers: [["Red"]], other: [:])))
+    #expect(store.allows(Store.Editing(id: "a", kind: .answer)))
+    t.items = []
+    store.refresh(at: t0.addingTimeInterval(1))
+    #expect(!store.stillValid(ok))
+    #expect(!store.allows(Store.Editing(id: "a", kind: .answer)))
+}

@@ -62,3 +62,36 @@ import Testing
     panel.hoveredRow = "a"
     #expect(panel.dwellTarget(in: store) == nil)
 }
+
+private func twoQuestions(multi: Bool = false) -> FeedQuestion {
+    let opts = ["x", "y"].map { FeedQuestion.Option(id: $0, label: $0, description: nil) }
+    return feedQuestion(questions: [FeedQuestion.Item(prompt: "A", header: nil, multiSelect: multi, options: opts),
+                                    FeedQuestion.Item(prompt: "B", header: nil, multiSelect: false, options: opts)])
+}
+
+@Test func singleSelectPickReplacesAndClearsOther() {
+    let panel = PanelState()
+    let q = twoQuestions()
+    panel.pick(q, 0, "x")
+    panel.pick(q, 0, "y")
+    #expect(panel.answers["R1"] == [["y"], []])
+    panel.setOther(q, 0, "free")
+    #expect(panel.answers["R1"]?[0] == [])
+    #expect(panel.others["R1"]?[0] == "free")
+    panel.pick(q, 0, "x")
+    #expect(panel.others["R1"]?[0] == nil)
+    #expect(panel.answers["R1"]?[0] == ["x"])
+}
+
+@Test func multiSelectPickToggles() {
+    let panel = PanelState()
+    let q = twoQuestions(multi: true)
+    panel.pick(q, 0, "x")
+    panel.pick(q, 0, "y")
+    #expect(panel.answers["R1"]?[0] == ["x", "y"])
+    panel.pick(q, 0, "x")
+    #expect(panel.answers["R1"]?[0] == ["y"])
+    panel.setOther(q, 0, "more")
+    #expect(panel.answers["R1"]?[0] == ["y"])
+    #expect(panel.others["R1"]?[0] == "more")
+}

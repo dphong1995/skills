@@ -24,7 +24,39 @@ public final class PanelState: ObservableObject {
     /// Session id the mouse is over in the expanded card; drives the hover-dwell that clears a fresh mark.
     @Published public var hoveredRow: String?
 
+    /// Request id -> the options picked per question index, and the `Khác…` text per question index.
+    @Published public var answers: [String: [[String]]] = [:]
+    @Published public var others: [String: [Int: String]] = [:]
+    /// The `Khác…` field to focus once it appears, as `"<session id>#<question index>"`.
+    public var wantOther: String?
+    /// Request ids whose send failed; their card falls back to `Trả lời trong cmux`.
+    @Published public var failedQuestions: Set<String> = []
+
     public init() {}
+
+    /// Picks `label` for question `i`: replaces the pick of a single-select question (and drops its Other text), toggles it in a multi-select one.
+    public func pick(_ q: FeedQuestion, _ i: Int, _ label: String) {
+        guard q.questions.indices.contains(i) else { return }
+        var all = answers[q.requestId] ?? []
+        while all.count < q.questions.count { all.append([]) }
+        if q.questions[i].multiSelect {
+            if let at = all[i].firstIndex(of: label) { all[i].remove(at: at) } else { all[i].append(label) }
+        } else {
+            all[i] = [label]
+            others[q.requestId]?[i] = nil
+        }
+        answers[q.requestId] = all
+    }
+
+    /// Sets the `Khác…` text of question `i`; typing in a single-select question drops its pick.
+    public func setOther(_ q: FeedQuestion, _ i: Int, _ text: String) {
+        guard q.questions.indices.contains(i) else { return }
+        others[q.requestId, default: [:]][i] = text
+        if !q.questions[i].multiSelect, !text.isEmpty, var all = answers[q.requestId], all.indices.contains(i) {
+            all[i] = []
+            answers[q.requestId] = all
+        }
+    }
 
     public func noteRowHover(_ id: String, inside: Bool) {
         if inside {

@@ -82,3 +82,7 @@ private let identify = #"{"focused": {"surface_id": "6E39B188-F067-48FA-852D-3CE
     #expect(CmuxJump.focusedSurface(fromIdentify: Data("nope".utf8)) == nil)
     #expect(CmuxJump.focusedSurface(fromIdentify: Data("{}".utf8)) == nil)
 }
+
+@Test func answerSendsNoKeystrokes() {
+    #expect(CmuxJump.keys(for: .answer("a", requestId: "R", answers: [["x"]], other: [:])).isEmpty)
+}

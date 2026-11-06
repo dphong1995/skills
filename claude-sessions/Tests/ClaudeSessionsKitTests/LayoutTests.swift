@@ -350,3 +350,20 @@ private func prStatus(id: Int, state: String = "OPEN", reviewers: Int = 0, appro
     #expect(collapsed == base + Layout.cardGap + Layout.closedRowHeight)
     #expect(Layout.expanded([a], closed: 2, closedOpen: true).height == collapsed + 2 * Layout.closedRowHeight)
 }
+
+@Test func questionBlockHeight() {
+    let one = feedQuestion()
+    // prompt line + 2 options + Other field, then the Gửi row.
+    let perQuestion = Layout.questionLineHeight + 2 * Layout.optionRowHeight + Layout.otherFieldHeight
+    #expect(Layout.questionBlockHeight(one) == perQuestion + Layout.questionFooterHeight)
+    let two = feedQuestion(questions: one.questions + one.questions)
+    #expect(Layout.questionBlockHeight(two) == 2 * perQuestion + Layout.questionFooterHeight)
+    var s = session("a", "waiting", "reply text")
+    #expect(Layout.height(of: s) == 92)
+    s.question = one
+    s.questionLive = true
+    // The block replaces the reply text's room.
+    #expect(Layout.height(of: s) == Layout.rowHeight + Layout.questionBlockHeight(one))
+    s.questionLive = false
+    #expect(Layout.height(of: s) == Layout.rowHeight + Layout.questionFallbackHeight)
+}

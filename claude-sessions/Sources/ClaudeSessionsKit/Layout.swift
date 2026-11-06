@@ -87,8 +87,26 @@ public enum Layout {
     static let linkSectionHeight: CGFloat = 16
     static let cardGap: CGFloat = 4
 
+    static let questionLineHeight: CGFloat = 16
+    static let optionRowHeight: CGFloat = 22
+    static let otherFieldHeight: CGFloat = 26
+    static let questionFooterHeight: CGFloat = 26
+    /// A question's `Trả lời trong cmux` line.
+    static let questionFallbackHeight: CGFloat = 22
+
+    /// The form: per question a prompt line, one row per option and the `Khác…` field, then the `Gửi` row.
+    static func questionBlockHeight(_ q: FeedQuestion) -> CGFloat {
+        q.questions.reduce(questionFooterHeight) { $0 + questionLineHeight + CGFloat($1.options.count) * optionRowHeight + otherFieldHeight }
+    }
+
     static func height(of s: Session, open: Bool = false) -> CGFloat {
-        (s.isFinished && s.lastReply != nil ? replyRowHeight : rowHeight) + (s.todo != nil ? todoHeight : 0) + (s.activity != nil ? todoHeight : 0)
+        let base: CGFloat
+        if let q = s.question {
+            base = rowHeight + (s.questionLive && Feed.supports(q) ? questionBlockHeight(q) : questionFallbackHeight)
+        } else {
+            base = s.isFinished && s.lastReply != nil ? replyRowHeight : rowHeight
+        }
+        return base + (s.todo != nil ? todoHeight : 0) + (s.activity != nil ? todoHeight : 0)
             + (s.title.count > 60 ? 16 : 0) + (s.menu.isEmpty ? 0 : 22) + s.prs.reduce(0) { $0 + ($1.isOpen ? 22 : 18) }
             + (open ? CGFloat(s.menuCount) * linkRowHeight + CGFloat(s.menu.count) * linkSectionHeight + (s.menuNeedsJira ? linkRowHeight : 0) : 0)
     }

@@ -583,6 +583,49 @@ struct SnapshotTests {
         #expect(Layout.size(store, panel).width == Layout.collapsed.width)
     }
 
+    @Test func renderQuestion() {
+        let dir = makeTempDir()
+        let store = makeStore(dir: dir)
+        let panel = PanelState()
+        let t = FakeFeedTransport()
+        let now = Date()
+        func opts(_ labels: [String]) -> [[String: Any]] {
+            labels.enumerated().map { ["id": "o\($0.offset)", "label": $0.element, "description": "Mô tả \($0.element)"] }
+        }
+        let single = ["id": "q0", "prompt": "Chọn màu nào?", "header": "Màu", "multi_select": false, "options": opts(["Đỏ", "Xanh", "Lá"])] as [String: Any]
+        let multi = ["id": "q1", "prompt": "Chọn các tính năng", "header": "Tính năng", "multi_select": true, "options": opts(["A", "B", "C"])] as [String: Any]
+        t.items = [feedItem(requestId: "R1", sessionId: "a", created: now, questions: [single])]
+        store.feedMonitor = FeedMonitor(transport: t, queue: nil)
+        writeSession(dir, "a", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 5, name: "talo6-dct-backend-3f", cwd: backend)
+        writeSession(dir, "b", pid: me, status: "busy", ageSec: 42, name: "talo6-dct-frontend-d7", cwd: frontend)
+        store.refresh(at: now)
+        panel.hovering = true
+        var q = store.sessions.first { $0.id == "a" }!.question!
+        render(store, panel, "question-1-single")
+        panel.pick(q, 0, "Xanh")
+        render(store, panel, "question-2-single-picked")
+        panel.setOther(q, 0, "Tím than")
+        panel.editing = Store.Editing(id: "a", kind: .answer)
+        render(store, panel, "question-3-other-typed")
+        panel.editing = nil
+        t.items = [feedItem(requestId: "R2", sessionId: "a", created: now, questions: [single, multi])]
+        store.refresh(at: now.addingTimeInterval(1))
+        q = store.sessions.first { $0.id == "a" }!.question!
+        panel.pick(q, 0, "Đỏ")
+        panel.pick(q, 1, "A")
+        panel.pick(q, 1, "C")
+        render(store, panel, "question-4-two-questions")
+        store.refresh(at: now.addingTimeInterval(95))
+        render(store, panel, "question-5-countdown")
+        store.noteSent(session: "a", requestId: "R2")
+        render(store, panel, "question-6-sent")
+        t.items = []
+        store.sent = [:]
+        store.refresh(at: now.addingTimeInterval(100))
+        #expect(!store.sessions.first { $0.id == "a" }!.questionLive)
+        render(store, panel, "question-7-fallback")
+    }
+
     @Test func openMenusClearedOnCollapse() async throws {
         let (store, panel) = linkStore(jira: true)
         panel.openMenus = [store.sessions[0].id]

@@ -268,3 +268,91 @@ func prRef(_ id: Int, repo: String = "t6engineering/talo6-dct-backend") -> PRRef
     let parts = repo.split(separator: "/")
     return PRRef(workspace: String(parts[0]), repo: String(parts[1]), id: id)
 }
+
+/// One `question` item as `feed.list` returns it (snake_case; no `ppid`; the session id is inside `workstream_id`).
+func feedItem(requestId: String = "R1", sessionId: String = "a", created: Date = Date(), questions: [[String: Any]]? = nil) -> [String: Any] {
+    let qs = questions ?? [feedQuestionJSON()]
+    let b64 = { (s: String) in Data(s.utf8).base64EncodedString() }
+    return ["kind": "question", "id": "ID-\(requestId)", "request_id": requestId, "status": "pending", "source": "claude",
+            "cwd": "/x", "created_at": ISO8601DateFormatter().string(from: created),
+            "workstream_id": "cmux-feed-v1:\(b64("claude")):\(b64(sessionId))", "questions": qs]
+}
+
+func feedQuestionJSON(prompt: String = "Pick a color", header: String = "Color", multi: Bool = false, labels: [String] = ["Red", "Blue", "Green"]) -> [String: Any] {
+    ["id": "q0", "prompt": prompt, "header": header, "multi_select": multi,
+     "options": labels.enumerated().map { ["id": "opt\($0.offset)", "label": $0.element, "description": "d-\($0.element)"] }]
+}
+
+func feedQuestion(requestId: String = "R1", sessionId: String? = "a", pid: Int32? = nil, created: Date = Date(), questions: [FeedQuestion.Item]? = nil) -> FeedQuestion {
+    FeedQuestion(requestId: requestId, createdAt: created, pid: pid, sessionId: sessionId,
+                 questions: questions ?? [FeedQuestion.Item(prompt: "Pick a color", header: "Color", multiSelect: false,
+                                                            options: ["Red", "Blue"].map { FeedQuestion.Option(id: $0, label: $0, description: nil) })])
+}
+
+/// Canned `feed.list` / `feed.question.reply`; records every call. `failAll` makes every call throw.
+final class FakeFeedTransport: FeedTransport {
+    struct Failure: Error {}
+    var items: [[String: Any]] = []
+    var failAll = false
+    var replyResult = "{\"ok\":true,\"result\":{\"delivered\":true}}"
+    private let lock = NSLock()
+    private var _calls: [(method: String, params: [String: Any])] = []
+    var calls: [(method: String, params: [String: Any])] { lock.lock(); defer { lock.unlock() }; return _calls }
+
+    func request(_ method: String, _ params: [String: Any], timeout: TimeInterval) throws -> Data {
+        lock.lock(); _calls.append((method, params)); lock.unlock()
+        if failAll { throw Failure() }
+        if method == "feed.list" {
+            return try JSONSerialization.data(withJSONObject: ["ok": true, "id": "x", "result": ["items": items]])
+        }
+        return Data(replyResult.utf8)
+    }
+}
+
+/// A one-connection-at-a-time `AF_UNIX` listener: reads one line, answers `answer` (nothing when nil) and closes after the client does.
+final class TestUnixServer {
+    var answer: String?
+    private let fd: Int32
+    private let lock = NSLock()
+    private var request = Data()
+
+    init(path: String) throws {
+        fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        var addr = sockaddr_un()
+        addr.sun_family = sa_family_t(AF_UNIX)
+        withUnsafeMutableBytes(of: &addr.sun_path) { buf in
+            for (i, b) in path.utf8.enumerated() { buf[i] = b }
+        }
+        let bound = withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
+        }
+        guard bound == 0, listen(fd, 4) == 0 else { throw CocoaError(.fileWriteUnknown) }
+        Thread.detachNewThread { [self] in serve() }
+    }
+
+    private func serve() {
+        while true {
+            let c = accept(fd, nil, nil)
+            if c < 0 { return }
+            var line = Data()
+            var byte: UInt8 = 0
+            while read(c, &byte, 1) == 1 {
+                line.append(byte)
+                if byte == 10 { break }
+            }
+            lock.lock(); request = line; lock.unlock()
+            if let answer {
+                _ = answer.withCString { write(c, $0, strlen($0)) }
+                Darwin.close(c)
+            } else {
+                // Stay silent until the client gives up.
+                var b: UInt8 = 0
+                _ = read(c, &b, 1)
+                Darwin.close(c)
+            }
+        }
+    }
+
+    func lastRequest() -> Data { lock.lock(); defer { lock.unlock() }; return request }
+    func close() { Darwin.close(fd) }
+}

@@ -68,6 +68,9 @@ struct Session: Identifiable, Equatable {
     var menu: [LinkSection] = []
     /// The menu holds a ticket and Jira is not connected: the menu ends with a `Kết nối Jira…` item.
     var menuNeedsJira = false
+    /// The Feed question this session asked; kept (with `questionLive` false) while the session still waits after the item left `feed.list`.
+    var question: FeedQuestion? = nil
+    var questionLive = false
 }
 
 extension Session {
@@ -92,6 +95,7 @@ extension Session {
         switch kind {
         case .deny: toolId != nil && approvable?.toolId == toolId
         case .reply: canAskClaude
+        case .answer: questionLive
         }
     }
 }
@@ -124,7 +128,7 @@ public final class Store: ObservableObject {
     /// The pid of the live session with this id as of the last refresh.
     public func pid(of id: String) -> Int32? { pids[id] }
     public struct Editing: Equatable {
-        public enum Kind { case deny, reply }
+        public enum Kind { case deny, reply, answer }
         public let id: String
         public let kind: Kind
         /// The tool a `.deny` editor is for.
@@ -282,6 +286,14 @@ public final class Store: ObservableObject {
     private let branchReader: (String) -> String?
     private let gitReader: GitBranchReader?
     public var prMonitor: PRMonitor?
+    /// Reads cmux Feed questions; nil in fixture runs and when cmux has no socket path file.
+    public var feedMonitor: FeedMonitor?
+    /// Session id -> request id of the question the widget answered; dropped once the session stops waiting.
+    @Published public internal(set) var sent: [String: String] = [:]
+    /// Session id -> the last question seen for it, kept while the session waits so an item that left the Feed still shows the fallback.
+    private var lastQuestion: [String: FeedQuestion] = [:]
+    /// Session id -> request id announced as a new mark, so the busy -> waiting flip after it stays quiet.
+    private var announcedQuestion: [String: String] = [:]
     public var jiraMonitor: JiraMonitor?
     /// Decoded issue type icons by URL, kept for the run.
     @Published var issueIcons: [URL: NSImage] = [:]
@@ -532,13 +544,44 @@ public final class Store: ObservableObject {
             emptySince = nil
         }
 
+        if let feedMonitor {
+            feedMonitor.update(active: list.contains { $0.status == "busy" || ($0.status == "waiting" && !$0.isPermissionPrompt) }, at: now)
+            let items = feedMonitor.takeSnapshot()
+            for i in list.indices {
+                let s = list[i]
+                if let q = Feed.match(items, pid: s.pid, sessionId: s.id) {
+                    lastQuestion[s.id] = q
+                    list[i].question = q
+                    list[i].questionLive = true
+                } else if s.status == "waiting", !s.isPermissionPrompt, let q = lastQuestion[s.id] {
+                    list[i].question = q
+                } else {
+                    lastQuestion[s.id] = nil
+                }
+            }
+        }
         var newUnseen = unseen
         for s in list {
             if let last = lastStatus[s.id], last != "busy", s.status == "busy" { newUnseen[s.id] = nil }
+            var announced = false
             if lastStatus[s.id] == "busy" && (s.status == "idle" || s.status == "waiting") {
                 newUnseen[s.id, default: NewMark()].claude = true
-                transitions[s.id] = s.status == "waiting" ? .needsYou : .done
-                if s.status == "waiting" { chime = .needsYou } else if chime == nil { chime = .done }
+                announced = true
+                if s.status == "waiting" && s.questionLive && announcedQuestion[s.id] == s.question?.requestId {
+                    // Already announced when the question appeared.
+                } else {
+                    transitions[s.id] = s.status == "waiting" ? .needsYou : .done
+                    if s.status == "waiting" { chime = .needsYou } else if chime == nil { chime = .done }
+                }
+            }
+            // A question seen for the first time counts as the session starting to wait; one there at first sight stays quiet.
+            if s.questionLive, let id = s.question?.requestId, announcedQuestion[s.id] != id {
+                if lastStatus[s.id] == "busy", !announced {
+                    newUnseen[s.id, default: NewMark()].claude = true
+                    transitions[s.id] = .needsYou
+                    chime = .needsYou
+                }
+                announcedQuestion[s.id] = id
             }
             lastStatus[s.id] = s.status
         }
@@ -635,6 +678,10 @@ public final class Store: ObservableObject {
         nowClosed.prune(now: now)
         if nowClosed != closed { closed = nowClosed }
         lastLive = Dictionary(list.map { ($0.id, ClosedSession(id: $0.id, title: $0.title, cwd: $0.cwd, branch: $0.branch, closedAt: now)) }, uniquingKeysWith: { $1 })
+        lastQuestion = lastQuestion.filter { live.contains($0.key) }
+        announcedQuestion = announcedQuestion.filter { live.contains($0.key) }
+        let stillAsking = sent.filter { id, _ in list.contains { $0.id == id && $0.status == "waiting" } }
+        if stillAsking != sent { sent = stillAsking }
         cache = cache.filter { live.contains($0.key) }
         buttonCache = buttonCache.filter { live.contains($0.key) }
         urls = urls.filter { live.contains($0.key) }
@@ -763,12 +810,21 @@ public final class Store: ObservableObject {
         }
     }
 
+    /// The Feed question the session `id` is asking, as of the last refresh.
+    public func question(of id: String) -> FeedQuestion? { sessions.first { $0.id == id }?.question }
+
+    /// Remembers that the answer to `requestId` reached cmux, so the card reads `Đã gửi`.
+    public func noteSent(session id: String, requestId: String) { sent[id] = requestId }
+
     public func stillValid(_ a: WidgetAction) -> Bool {
         switch a {
         case .jump, .openLink, .connect, .nudgeRabbit, .resume: return true
         case .approve(_, let toolId), .deny(_, let toolId, _): return allows(Editing(id: a.sessionId, kind: .deny, toolId: toolId))
         case .askClaude(let id, _), .reply(let id, _): return sessions.first { $0.id == id }?.canAskClaude == true
         case .stop(let id): return sessions.first { $0.id == id }?.shownStatus == "busy"
+        case .answer(let id, let requestId, _, _):
+            guard let s = sessions.first(where: { $0.id == id }) else { return false }
+            return s.questionLive && s.question?.requestId == requestId
         }
     }
 }

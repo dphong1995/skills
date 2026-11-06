@@ -154,6 +154,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // The Keychain read spawns `security`; keep it off the main thread.
         if AppDelegate.root == nil {
+            let socketPath = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".local/state/cmux/last-socket-path")
+            if let transport = SocketFeedTransport(pathFile: socketPath) { store.feedMonitor = FeedMonitor(transport: transport) }
             DispatchQueue.global(qos: .utility).async { [weak self] in
                 let creds = Dictionary(uniqueKeysWithValues: Service.allCases.compactMap { s in Credentials.read(s).map { (s, $0) } })
                 let bitbucket = creds[.bitbucket].map { BitbucketClient(account: $0.account, token: $0.token) }
@@ -492,6 +494,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if case .nudgeRabbit(_, let ref) = a {
             guard let monitor = store.prMonitor else { return NSSound.beep() }
             monitor.nudge(ref) { ok in if !ok { NSSound.beep() } }
+            return
+        }
+        if case .answer(_, let requestId, let answers, let other) = a {
+            // Goes through cmux's socket, not the terminal: only a question still in the last `feed.list` of this session is answered.
+            guard !sending.contains(id), let monitor = store.feedMonitor, store.stillValid(a),
+                  let q = store.question(of: id) else { return NSSound.beep() }
+            sending.insert(id)
+            for p in panels.values where p.state.editing?.id == id { p.state.editing = nil }
+            monitor.reply(q, answers: answers, other: other) { ok in
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    sending.remove(id)
+                    if ok { return store.noteSent(session: id, requestId: requestId) }
+                    for p in panels.values { p.state.failedQuestions.insert(requestId) }
+                    NSSound.beep()
+                }
+            }
             return
         }
         if case .resume(let closed) = a {
