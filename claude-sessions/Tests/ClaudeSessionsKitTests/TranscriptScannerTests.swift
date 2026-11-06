@@ -87,6 +87,33 @@ private func link(_ repo: String, _ id: Int) -> String { "https://bitbucket.org/
         #expect(scan(TranscriptScanner(queue: nil), url).tickets.keys.sorted() == ["T6IR-1", "T6IR-4"])
     }
 
+    @Test func notificationTurnInheritsLauncher() {
+        let url = transcript([
+            userLine("tạo ticket", origin: "human"),
+            toolUseLine(id: "toolu_A", name: "Agent", input: [:]),
+            toolUseLine(id: "toolu_S", name: "Agent", input: [:], sidechain: true),
+            notificationLine("report T6IR-2", toolUseId: "toolu_A"),
+            assistantLine("Created [T6IR-14804](https://talosix.atlassian.net/browse/T6IR-14804)"),
+            notificationLine("x", toolUseId: "toolu_S"), assistantLine("T6IR-9")])
+        let t = scan(TranscriptScanner(queue: nil), url).tickets
+        #expect(t.keys.sorted() == ["T6IR-14804"])
+        #expect(t["T6IR-14804"]?.byUser == false)
+    }
+
+    @Test func notificationTurnInheritsChain() {
+        let url = transcript([
+            userLine("go", origin: "human"),
+            toolUseLine(id: "toolu_A", name: "Agent", input: [:]),
+            notificationLine("a", toolUseId: "toolu_A"),
+            toolUseLine(id: "toolu_B", name: "Agent", input: [:]),
+            notificationLine("b", toolUseId: "toolu_B"), assistantLine("T6IR-1"),
+            notificationLine("c"),
+            toolUseLine(id: "toolu_C", name: "Agent", input: [:]),
+            notificationLine("d", toolUseId: "toolu_C"), assistantLine("T6IR-2"),
+            notificationLine("e", toolUseId: "toolu_A", origin: false), assistantLine("T6IR-3")])
+        #expect(scan(TranscriptScanner(queue: nil), url).tickets.keys.sorted() == ["T6IR-1", "T6IR-3"])
+    }
+
     @Test func notificationTurnKeepsPRLinks() {
         let url = transcript([userLine("start"), notificationLine("done"), assistantLine("PR \(link("a", 9)) for T6IR-7")])
         let r = scan(TranscriptScanner(queue: nil), url)

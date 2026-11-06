@@ -100,8 +100,9 @@ func userLine(_ text: String, isMeta: Bool = false, origin: String? = nil) -> St
 }
 
 /// A background agent's report as Claude Code records it; `origin: false` is the older format without the field.
-func notificationLine(_ result: String, origin: Bool = true) -> String {
-    userLine("<task-notification>\n<status>completed</status>\n<result>\(result)</result>\n</task-notification>",
+func notificationLine(_ result: String, toolUseId: String? = nil, origin: Bool = true) -> String {
+    let id = toolUseId.map { "<tool-use-id>\($0)</tool-use-id>\n" } ?? ""
+    return userLine("<task-notification>\n\(id)<status>completed</status>\n<result>\(result)</result>\n</task-notification>",
              origin: origin ? "task-notification" : nil)
 }
 

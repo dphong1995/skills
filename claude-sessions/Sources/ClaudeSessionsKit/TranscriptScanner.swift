@@ -38,8 +38,10 @@ public final class TranscriptScanner {
         var carry = Data()
         var skipping = false
         var counter = 0
-        /// The current turn began with a prompt the user typed, not with a background agent's report.
+        /// The current turn began with a prompt the user typed, or with the report of an agent launched in such a turn.
         var yourTurn = false
+        /// Ids of main-thread tool_use blocks issued while `yourTurn` was true.
+        var yourToolUses = Set<String>()
         var result = ScanResult()
         var lastSeen: Date
     }
@@ -126,6 +128,7 @@ public final class TranscriptScanner {
             if let end = buf.lastIndex(of: 0x0A) {
                 s.carry = Data(buf[(end + 1)...])
                 for line in buf[buf.startIndex..<end].split(separator: 0x0A) where line.count <= Self.maxLineBytes {
+                    if s.yourTurn { Self.recordToolUse(line, into: &s) }
                     guard Self.keep(line) else { continue }
                     parsedCount += 1
                     Self.absorb(line, into: &s)
@@ -142,8 +145,30 @@ public final class TranscriptScanner {
     private static let reject = ["\"type\":\"tool_use\"", "\"type\":\"tool_result\"", "\"type\":\"thinking\"",
                                  "\"isSidechain\":true", "\"isMeta\":true"].map { Data($0.utf8) }
 
+    private static let toolUseMark = Data("\"type\":\"tool_use\"".utf8)
+    private static let sidechainMark = Data("\"isSidechain\":true".utf8)
+    private static let assistantMark = Data("\"type\":\"assistant\"".utf8)
+
+    /// Remembers the tool_use ids of a main-thread assistant line, so a later report of that agent continues the turn.
+    private static func recordToolUse(_ line: Data.SubSequence, into s: inout State) {
+        guard line.range(of: toolUseMark) != nil, line.range(of: assistantMark) != nil,
+              line.range(of: sidechainMark) == nil,
+              let o = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
+              (o["isSidechain"] as? Bool) != true,
+              let blocks = (o["message"] as? [String: Any])?["content"] as? [[String: Any]] else { return }
+        for b in blocks where b["type"] as? String == "tool_use" {
+            if let id = b["id"] as? String { s.yourToolUses.insert(id) }
+        }
+    }
+
     private static func keep(_ line: Data.SubSequence) -> Bool {
         want.contains { line.range(of: $0) != nil } && !reject.contains { line.range(of: $0) != nil }
+    }
+
+    private static func toolUseId(in text: String) -> String? {
+        guard let open = text.range(of: "<tool-use-id>"),
+              let close = text.range(of: "</tool-use-id>", range: open.upperBound..<text.endIndex) else { return nil }
+        return String(text[open.upperBound..<close.lowerBound])
     }
 
     /// Parses one kept line and folds its text into `s.result`.
@@ -164,12 +189,18 @@ public final class TranscriptScanner {
         let clean = Transcript.stripReminders(text)
         let summary = (o["isCompactSummary"] as? Bool) == true
         let byUser = isUser && !summary
+        var isNotification = false
         if byUser {
             // Older transcripts have no `origin`; their agent reports are recognised by the tag.
             let kind = (o["origin"] as? [String: Any])?["kind"] as? String
-            s.yourTurn = kind.map { $0 == "human" } ?? !text.hasPrefix("<task-notification>")
+            isNotification = kind.map { $0 == "task-notification" } ?? text.hasPrefix("<task-notification>")
+            if isNotification {
+                s.yourTurn = toolUseId(in: text).map { s.yourToolUses.contains($0) } ?? false
+            } else {
+                s.yourTurn = kind.map { $0 == "human" } ?? true
+            }
         }
-        for key in s.yourTurn || summary ? Transcript.ticketKeys(in: clean) : [] {
+        for key in isNotification ? [] : s.yourTurn || summary ? Transcript.ticketKeys(in: clean) : [] {
             s.counter += 1
             s.result.version += 1
             if var m = s.result.tickets[key] {
