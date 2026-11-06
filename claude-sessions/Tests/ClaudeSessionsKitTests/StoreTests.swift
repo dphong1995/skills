@@ -1329,3 +1329,21 @@ private func typedJira() -> FakeJira {
     noToken.refresh(at: prT0.addingTimeInterval(1))
     #expect(noToken.connectionText(.jira) == "Jira: ✗ chưa có token")
 }
+
+@Test func exitedButUnreapedPidIsFiltered() throws {
+    // A child that exited but was not waited for: kill(pid, 0) still returns 0 (like a Claude stuck exiting under its parent).
+    var pid: pid_t = 0
+    let argv: [UnsafeMutablePointer<CChar>?] = [strdup("/usr/bin/true"), nil]
+    defer { argv.forEach { free($0) } }
+    #expect(posix_spawn(&pid, "/usr/bin/true", nil, nil, argv, nil) == 0)
+    defer { var st: Int32 = 0; waitpid(pid, &st, 0) }
+    var info = siginfo_t()
+    #expect(waitid(P_PID, id_t(pid), &info, WEXITED | WNOWAIT) == 0)
+    #expect(kill(pid, 0) == 0)
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
+    writeSession(dir, "live", pid: me, status: "idle", ageSec: 0, name: "live", cwd: frontend)
+    writeSession(dir, "zombie", pid: pid, status: "idle", ageSec: 0, name: "zombie", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(store.sessions.map(\.id) == ["live"])
+}

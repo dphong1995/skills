@@ -361,6 +361,16 @@ public final class Store: ObservableObject {
         lastFocused = surface
     }
 
+    /// The pid exists and is not exiting: `kill(pid, 0)` alone also passes a zombie or a process stuck in exit (`P_WEXIT`).
+    static func isRunning(_ pid: Int32) -> Bool {
+        guard kill(pid, 0) == 0 || errno == EPERM else { return false }
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+        guard sysctl(&mib, 4, &info, &size, nil, 0) == 0, size > 0 else { return true }
+        return info.kp_proc.p_stat != SZOMB && info.kp_proc.p_flag & P_WEXIT == 0
+    }
+
     public func refresh(at date: Date = Date()) {
         now = date
         chime = nil
@@ -397,7 +407,7 @@ public final class Store: ObservableObject {
                 sessionJSON[file] = (stamp, base, spare)
             }
             // Liveness is checked every refresh: a dead pid drops the row even when the file is unchanged.
-            guard kill(base.pid, 0) == 0 || errno == EPERM, !spare else { continue }
+            guard Store.isRunning(base.pid), !spare else { continue }
             var s = base
             let url = transcriptURL(for: s)
             let size = url.flatMap { FileStamp($0.path)?.size } ?? 0
