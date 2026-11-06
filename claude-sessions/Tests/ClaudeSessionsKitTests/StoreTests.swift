@@ -1073,6 +1073,21 @@ private func prWithReviewer(id: Int, approved: Bool, comments: Int = 0) -> [Stri
     #expect(store.chime == .needsYou)
 }
 
+@Test func refreshSetsPrChimeForPrEventsAndClearsIt() {
+    let api = fake(open: [prWithReviewer(id: 7571, approved: false)])
+    let (store, _, _) = prStore(api, reply: prReply([7571]))
+    store.refresh(at: prT0)
+    #expect(store.prChime == nil)
+
+    api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prWithReviewer(id: 7571, approved: false, comments: 1)]])
+    api.set("/comments", json: ["values": [comment("{tin}", "Tin Tran", "2026-11-04T10:00:00.000000+00:00")]])
+    store.refresh(at: prT0 + 61)
+    #expect(store.prChime == .needsYou)
+
+    store.refresh(at: prT0 + 62)
+    #expect(store.prChime == nil)
+}
+
 @Test func prStaleAfterFiveMinutes() {
     let api = fake(open: [prJSON(id: 7571)])
     let (store, _, _) = prStore(api, reply: prReply([7571]))

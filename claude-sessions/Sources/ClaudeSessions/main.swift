@@ -202,21 +202,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// `refresh()` clears the chime, so every refresh plays it right away.
+    /// Plays this refresh's chime and opens the peek; when cmux is frontmost, sessions whose pane is focused are left out after an async cmux check.
     func refreshAndChime() {
         store.refresh()
         for p in panels.values {
             if let e = p.state.editing, !store.allows(e) { p.state.editing = nil }
         }
         let t = store.transitions, p = store.prChime
-        if t.isEmpty { return playChime(store.chime) }
-        guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier == CmuxJump.bundleID else {
+        if t.isEmpty || !cmuxFrontmost {
             return playChime(store.applyAlert(transitions: t, prChime: p, excluding: [], at: Date()))
         }
         silentIds(Array(t.keys)) { [weak self] silent in
             guard let self else { return }
             playChime(store.applyAlert(transitions: t, prChime: p, excluding: silent, at: Date()))
         }
+    }
+
+    private var cmuxFrontmost: Bool {
+        NSWorkspace.shared.frontmostApplication?.bundleIdentifier == CmuxJump.bundleID
     }
 
     /// Calls `then` on main with the ids whose cmux surface is the focused one. Empty on any cmux failure.
@@ -232,11 +235,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         group.notify(queue: .main) {
             guard !surfaces.isEmpty else { return then([]) }
-            DispatchQueue.global().async {
-                let focused = CmuxJump.focusedSurface()?.lowercased()
+            DispatchQueue.global(qos: .utility).async {
+                let focused = CmuxJump.focusedSurface()
                 DispatchQueue.main.async {
                     guard let focused else { return then([]) }
-                    then(Set(surfaces.filter { $0.value.lowercased() == focused }.keys))
+                    then(Set(surfaces.filter { $0.value.caseInsensitiveCompare(focused) == .orderedSame }.keys))
                 }
             }
         }
@@ -286,9 +289,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Every 2 s: clears the marks of the session whose pane cmux shows. Starts nothing unless a mark exists and cmux is frontmost.
     func checkFocusedPane() {
-        guard !store.unseen.isEmpty,
-              NSWorkspace.shared.frontmostApplication?.bundleIdentifier == CmuxJump.bundleID
-        else { return clearFocus() }
+        guard !store.unseen.isEmpty, cmuxFrontmost else { return clearFocus() }
         for id in store.unseen.keys where store.surfaces[id] == nil && !store.surfaceMisses.contains(id) && !lookingUp.contains(id) {
             resolveSurface(id) { _ in }
         }
