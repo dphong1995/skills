@@ -1576,16 +1576,32 @@ private func typedJira() -> FakeJira {
     #expect(store.sessions.map(\.id) == ["live"])
 }
 
+/// A live child process to stand in for Claude; `endProcess` kills and reaps it, so its pid is really gone.
+private func spawnSleeper() -> pid_t {
+    var pid: pid_t = 0
+    let argv: [UnsafeMutablePointer<CChar>?] = [strdup("/bin/sleep"), strdup("60"), nil]
+    defer { argv.forEach { free($0) } }
+    posix_spawn(&pid, "/bin/sleep", nil, nil, argv, nil)
+    return pid
+}
+
+private func endProcess(_ pid: pid_t) {
+    kill(pid, SIGKILL)
+    var st: Int32 = 0
+    waitpid(pid, &st, 0)
+}
+
 @Test func deadSessionGoesToClosed() {
     let dir = makeTempDir()
     let store = makeStore(dir: dir, branch: { _ in "feat/x" })
     writeSession(dir, "dead", pid: 999_999, status: "idle", ageSec: 10, name: "dead", cwd: "/tmp")
     store.refresh(at: Date())
     #expect(store.closed.items.isEmpty)
-    writeSession(dir, "a", pid: me, status: "idle", ageSec: 10, name: "frontend", cwd: frontend)
+    let child = spawnSleeper()
+    writeSession(dir, "a", pid: child, status: "idle", ageSec: 10, name: "frontend", cwd: frontend)
     store.refresh(at: Date())
     #expect(store.closed.items.isEmpty)
-    writeSession(dir, "a", pid: 999_999, status: "idle", ageSec: 10, name: "frontend", cwd: frontend)
+    endProcess(child)
     store.refresh(at: Date())
     let c = store.closed.items.first
     #expect(c?.id == "a")
@@ -1603,9 +1619,10 @@ private func typedJira() -> FakeJira {
     defer { defaults.removePersistentDomain(forName: suite) }
     let dir = makeTempDir()
     let store = Store(dir: dir, projects: makeTempDir(), tasks: makeTempDir(), scanner: TranscriptScanner(queue: nil), branch: { _ in nil }, closedStore: defaults)
-    writeSession(dir, "a", pid: me, status: "idle", ageSec: 10, name: "frontend", cwd: frontend)
+    let child = spawnSleeper()
+    writeSession(dir, "a", pid: child, status: "idle", ageSec: 10, name: "frontend", cwd: frontend)
     store.refresh(at: Date())
-    writeSession(dir, "a", pid: 999_999, status: "idle", ageSec: 10, name: "frontend", cwd: frontend)
+    endProcess(child)
     store.refresh(at: Date())
     let again = Store(dir: makeTempDir(), projects: makeTempDir(), tasks: makeTempDir(), scanner: TranscriptScanner(queue: nil), branch: { _ in nil }, closedStore: defaults)
     #expect(again.closed.items.map(\.id) == ["a"])
@@ -1696,9 +1713,42 @@ private func feedStore(_ items: [[String: Any]]) -> (Store, URL, FakeFeedTranspo
     #expect(store.sent["a"] == "R1")
     store.refresh(at: Date())
     #expect(store.sent["a"] == "R1")
+    // It stays while the session reads `busy` (the reply is still being taken up) and goes once it is idle.
     writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
     store.refresh(at: Date())
+    #expect(store.sent["a"] == "R1")
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
     #expect(store.sent["a"] == nil)
+}
+
+@Test func clearKeepsPidSoNothingIsClosed() {
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 10, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    // `/clear`: the same process, a new session id.
+    try? FileManager.default.removeItem(at: dir.appendingPathComponent("a.json"))
+    writeSession(dir, "b", pid: me, status: "idle", ageSec: 10, name: "b", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(store.sessions.map(\.id) == ["b"])
+    #expect(store.closed.items.isEmpty)
+}
+
+@Test func replyAndDenyDraftsAreKeptApart() {
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 10, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(Store.draftKey("a", .reply) != Store.draftKey("a", .deny))
+    store.drafts[Store.draftKey("a", .reply)] = "half a reply"
+    #expect(store.drafts[Store.draftKey("a", .deny)] == nil)
+    // Both survive a refresh while the session lives, and go with it.
+    store.refresh(at: Date())
+    #expect(store.drafts[Store.draftKey("a", .reply)] == "half a reply")
+    try? FileManager.default.removeItem(at: dir.appendingPathComponent("a.json"))
+    store.refresh(at: Date())
+    #expect(store.drafts.isEmpty)
 }
 
 @Test func answerValidOnlyWhileItsQuestionIsLive() {

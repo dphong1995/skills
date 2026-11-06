@@ -58,10 +58,22 @@ public final class HotKeys {
         }, 1, &spec, Unmanaged.passUnretained(self).toOpaque(), nil)
     }
 
-    /// The session to jump to: the one after `after` when pressed again within 5 s of `lastPress`, else the first.
-    public static func next(after: String?, in order: [String], lastPress: Date?, now: Date) -> String? {
-        guard !order.isEmpty else { return nil }
-        guard let after, let lastPress, now.timeIntervalSince(lastPress) <= 5, let i = order.firstIndex(of: after) else { return order[0] }
-        return order[(i + 1) % order.count]
+    /// One run of presses: the order seen on its first press, the session jumped to last, and when.
+    public struct Cycle: Equatable {
+        public let order: [String]
+        public let id: String
+        public let at: Date
+        public init(order: [String], id: String, at: Date) { self.order = order; self.id = id; self.at = at }
+    }
+
+    /// The order to walk and the session to jump to: within 5 s of the last press, the live one after `cycle.id` in the order saved
+    /// on the first press (a finished session leaves `fresh` once it is seen, so `fresh` cannot be used); else the first of `fresh`.
+    public static func advance(cycle: Cycle?, fresh: [String], isLive: (String) -> Bool, now: Date) -> (order: [String], first: String)? {
+        if let cycle, now.timeIntervalSince(cycle.at) <= 5, let i = cycle.order.firstIndex(of: cycle.id) {
+            let n = cycle.order.count
+            guard let id = (1...n).map({ cycle.order[(i + $0) % n] }).first(where: isLive) else { return nil }
+            return (cycle.order, id)
+        }
+        return fresh.first.map { (fresh, $0) }
     }
 }

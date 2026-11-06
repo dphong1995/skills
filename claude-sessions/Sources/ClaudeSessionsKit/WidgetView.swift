@@ -546,7 +546,8 @@ public struct WidgetView: View {
     }
 
     private func editor(_ s: Session, _ kind: Store.Editing.Kind) -> some View {
-        let draft = Binding(get: { store.drafts[s.id, default: ""] }, set: { store.drafts[s.id] = $0 })
+        let draftKey = Store.draftKey(s.id, kind)
+        let draft = Binding(get: { store.drafts[draftKey, default: ""] }, set: { store.drafts[draftKey] = $0 })
         return TextField(kind == .reply ? "Trả lời…" : "Lý do (để trống = chỉ từ chối)", text: draft, axis: .vertical)
             .textFieldStyle(.plain)
             .font(.system(size: 11.5))
@@ -577,7 +578,8 @@ public struct WidgetView: View {
         } else if s.shownStatus == "busy" {
             let armed = panel.stopArmed[s.id].map { store.now.timeIntervalSince($0) < 3 } ?? false
             PillButton(title: armed ? "Bấm lần nữa để dừng" : "Dừng") {
-                if armed {
+                // The click compares with the real time: `store.now` only ticks once a second.
+                if panel.stopArmed[s.id].map({ Date().timeIntervalSince($0) < 3 }) ?? false {
                     panel.stopArmed[s.id] = nil
                     onAction(.stop(s.id))
                 } else {
@@ -637,7 +639,7 @@ public struct WidgetView: View {
                         .frame(height: Layout.optionRowHeight, alignment: .leading)
                 }
                 Group {
-                    if panel.editing == Store.Editing(id: s.id, kind: .answer) || !(other[i] ?? "").isEmpty {
+                    if (panel.editing == Store.Editing(id: s.id, kind: .answer) && panel.otherKey == key) || !(other[i] ?? "").isEmpty {
                         TextField("Khác…", text: Binding(get: { panel.others[q.requestId]?[i] ?? "" }, set: { panel.setOther(q, i, $0) }))
                             .textFieldStyle(.plain)
                             .font(.system(size: 11.5))
@@ -650,6 +652,7 @@ public struct WidgetView: View {
                     } else {
                         PillButton(title: "Khác…") {
                             panel.wantOther = key
+                            panel.otherKey = key
                             panel.editing = Store.Editing(id: s.id, kind: .answer)
                         }
                     }

@@ -29,6 +29,8 @@ public final class PanelState: ObservableObject {
     @Published public var others: [String: [Int: String]] = [:]
     /// The `Khác…` field to focus once it appears, as `"<session id>#<question index>"`.
     public var wantOther: String?
+    /// The `Khác…` field that was opened, same key form: only that question shows its field.
+    @Published public var otherKey: String?
     /// Request ids whose send failed; their card falls back to `Trả lời trong cmux`.
     @Published public var failedQuestions: Set<String> = []
 

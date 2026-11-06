@@ -16,6 +16,10 @@ public struct ClosedSession: Equatable, Codable {
         self.closedAt = closedAt
     }
 
+    init(_ s: Session, closedAt: Date) {
+        self.init(id: s.id, title: s.title, cwd: s.cwd, branch: s.branch, closedAt: closedAt)
+    }
+
     var folder: String { (cwd as NSString).lastPathComponent }
     var subtitle: String { branch.map { "\(folder) · \($0)" } ?? folder }
 

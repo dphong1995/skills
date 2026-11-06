@@ -12,26 +12,34 @@ private struct Shape {
     let prompt: String
     let answers: [[String]]
     let other: [Int: String]
-    /// What Claude's `tool_result` must contain.
-    let expected: String
+    /// What the AskUserQuestion `tool_result` must contain: each answer value, not the prompt text (haiku rewords prompts).
+    let expected: [String]
 }
 
 private let shapes = [
     Shape(name: "single", prompt: "Call AskUserQuestion once with exactly one question 'Pick a color' and options Red, Blue, Green, then reply with the answer only.",
-          answers: [["Blue"]], other: [:], expected: "\"Pick a color\"=\"Blue\""),
+          answers: [["Blue"]], other: [:], expected: ["=\"Blue\""]),
     Shape(name: "multi", prompt: "Call AskUserQuestion once with exactly one question 'Pick colors' with multiSelect true and options Red, Blue, Green, then reply with the answer only.",
-          answers: [["Red", "Blue"]], other: [:], expected: "\"Pick colors\"=\"Red, Blue\""),
+          answers: [["Red", "Blue"]], other: [:], expected: ["=\"Red, Blue\""]),
     Shape(name: "two", prompt: "Call AskUserQuestion once with exactly two questions: 'Pick a color' (options Red, Blue) and 'Pick a size' (options Small, Large), then reply with both answers only.",
-          answers: [["Red"], ["Large"]], other: [:], expected: "\"Pick a color\"=\"Red\", \"Pick a size\"=\"Large\""),
+          answers: [["Red"], ["Large"]], other: [:], expected: ["=\"Red\"", "=\"Large\""]),
     Shape(name: "other", prompt: "Call AskUserQuestion once with exactly one question 'Pick a color' and options Red, Blue, Green, then reply with the answer only.",
-          answers: [[]], other: [0: "Purple"], expected: "\"Pick a color\"=\"Purple\""),
+          answers: [[]], other: [0: "Purple"], expected: ["=\"Purple\""]),
 ]
 
-private func transcriptText(_ id: String, cwd: String) -> String {
+/// The text of the AskUserQuestion `tool_result` line (found by its `tool_use_id`); empty until Claude has it.
+private func askResult(_ id: String, cwd: String) -> String {
     let projects = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/projects")
-    guard let url = Transcript.find(sessionId: id, cwd: cwd, projects: projects) else { return "" }
+    guard let url = Transcript.find(sessionId: id, cwd: cwd, projects: projects),
+          let text = try? String(contentsOf: url, encoding: .utf8) else { return "" }
+    let lines = text.split(separator: "\n").map(String.init)
+    let usePattern = #""id":"(toolu_[A-Za-z0-9]+)","name":"AskUserQuestion""#
+    guard let use = lines.first(where: { $0.range(of: usePattern, options: .regularExpression) != nil }),
+          let range = use.range(of: usePattern, options: .regularExpression),
+          let toolId = use[range].split(separator: "\"").dropFirst(2).first.map(String.init) else { return "" }
     // Raw JSONL escapes the quotes inside the tool_result text.
-    return ((try? String(contentsOf: url, encoding: .utf8)) ?? "").replacingOccurrences(of: "\\\"", with: "\"")
+    return lines.first { $0.contains("\"tool_use_id\":\"\(toolId)\"") }
+        .map { $0.replacingOccurrences(of: "\\\"", with: "\"") } ?? ""
 }
 
 private func wait(timeout: TimeInterval, _ done: () -> Bool) -> Bool {
@@ -72,6 +80,7 @@ struct FeedE2ETests {
         var sent: Bool?
         monitor.reply(question, answers: shape.answers, other: shape.other) { sent = $0 }
         #expect(sent == true)
-        #expect(wait(timeout: 60) { transcriptText(id, cwd: cwd.path).contains(shape.expected) }, "Claude never saw \(shape.expected)")
+        #expect(wait(timeout: 60) { let r = askResult(id, cwd: cwd.path); return shape.expected.allSatisfy(r.contains) },
+                "Claude never saw \(shape.expected)")
     }
 }

@@ -141,7 +141,9 @@ public final class Store: ObservableObject {
     }
     /// Tool ids whose long command the user expanded with Xem đủ.
     @Published var shownCommands: Set<String> = []
+    /// Typed text per `draftKey`: a reply and a deny reason of one session are kept apart.
     @Published public var drafts: [String: String] = [:]
+    public static func draftKey(_ id: String, _ kind: Editing.Kind) -> String { kind == .reply ? "\(id)#reply" : id }
     @Published var now = Date()
     /// The OMC usage cache's 5h and weekly quota; nil when there is no reader or no usable file.
     @Published public var quota: Quota?
@@ -154,8 +156,6 @@ public final class Store: ObservableObject {
     }
     private let closedStore: UserDefaults?
     private static let closedKey = "closedSessions"
-    /// The live sessions of the previous refresh, as what a closed row needs; nil before the first refresh.
-    private var lastLive: [String: ClosedSession]?
     private let quotaReader: QuotaReader?
     @Published public var peekUntil: Date?
     @Published public var muted = false
@@ -671,16 +671,17 @@ public final class Store: ObservableObject {
         if lines != connections { connections = lines }
         let live = Set(list.map(\.id))
         var nowClosed = closed
-        for (id, c) in lastLive ?? [:] where !live.contains(id) {
-            nowClosed.add(ClosedSession(id: id, title: c.title, cwd: c.cwd, branch: c.branch, closedAt: now), now: now)
+        // `sessions` still holds the previous refresh. A session that left is closed only once its process is gone: `/clear` gives the same pid a new id.
+        let livePids = Set(list.map(\.pid))
+        for s in sessions where !live.contains(s.id) && !livePids.contains(s.pid) && !Store.isRunning(s.pid) {
+            nowClosed.add(ClosedSession(s, closedAt: now), now: now)
         }
         nowClosed.revive(live)
         nowClosed.prune(now: now)
         if nowClosed != closed { closed = nowClosed }
-        lastLive = Dictionary(list.map { ($0.id, ClosedSession(id: $0.id, title: $0.title, cwd: $0.cwd, branch: $0.branch, closedAt: now)) }, uniquingKeysWith: { $1 })
         lastQuestion = lastQuestion.filter { live.contains($0.key) }
         announcedQuestion = announcedQuestion.filter { live.contains($0.key) }
-        let stillAsking = sent.filter { id, _ in list.contains { $0.id == id && $0.status == "waiting" } }
+        let stillAsking = sent.filter { id, _ in list.contains { $0.id == id && ($0.status == "waiting" || $0.status == "busy") } }
         if stillAsking != sent { sent = stillAsking }
         cache = cache.filter { live.contains($0.key) }
         buttonCache = buttonCache.filter { live.contains($0.key) }
@@ -699,7 +700,7 @@ public final class Store: ObservableObject {
         if newUnseen != unseen { unseen = newUnseen }
         pids = Dictionary(list.map { ($0.id, $0.pid) }, uniquingKeysWith: { $1 })
         surfaces = surfaces.filter { live.contains($0.key) }
-        let liveDrafts = drafts.filter { live.contains($0.key) }
+        let liveDrafts = drafts.filter { live.contains($0.key.components(separatedBy: "#")[0]) }
         if liveDrafts.count != drafts.count { drafts = liveDrafts }
         let openTools = Set(list.compactMap { $0.approvable?.toolId })
         if !shownCommands.isSubset(of: openTools) { shownCommands.formIntersection(openTools) }

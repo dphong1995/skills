@@ -52,7 +52,8 @@ public final class QuotaReader {
               let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               o["error"] as? Bool != true,
               let d = o["data"] as? [String: Any],
-              let five = d["fiveHourPercent"] as? Int, let weekly = d["weeklyPercent"] as? Int,
+              let five = (d["fiveHourPercent"] as? NSNumber).map({ Int($0.doubleValue.rounded()) }),
+              let weekly = (d["weeklyPercent"] as? NSNumber).map({ Int($0.doubleValue.rounded()) }),
               let fiveReset = (d["fiveHourResetsAt"] as? String).flatMap(Self.date),
               let weeklyReset = (d["weeklyResetsAt"] as? String).flatMap(Self.date),
               let last = o["lastSuccessAt"] as? Double

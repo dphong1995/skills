@@ -28,7 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                          closedStore: .standard)
     var panels: [String: Panel] = [:]
     let hotKeys = HotKeys()
-    var lastNext: (id: String, at: Date)?
+    var lastNext: HotKeys.Cycle?
     var timer: Timer?
     var monitors: [Any] = []
     var sending: Set<String> = []
@@ -244,20 +244,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let mouse = NSEvent.mouseLocation
         guard let p = panels.values.first(where: { $0.screen.contains(mouse) }) ?? panels.values.first else { return NSSound.beep() }
-        store.peekUntil = nil
         p.state.pinnedOpen = true
         p.state.pinnedEntered = false
-        p.state.hovering = true
-        p.window.ignoresMouseEvents = false
+        trackMouse()
     }
 
     /// Jumps to the session that has waited longest; repeated presses within 5 s move on. Sessions outside cmux are skipped.
     func jumpToNextWaiting() {
-        let order = store.waitingOrder()
         let now = Date()
-        guard let first = HotKeys.next(after: lastNext?.id, in: order, lastPress: lastNext?.at, now: now),
-              var i = order.firstIndex(of: first) else { return NSSound.beep() }
-        lastNext = (first, now)
+        guard let pick = HotKeys.advance(cycle: lastNext, fresh: store.waitingOrder(), isLive: { store.pid(of: $0) != nil }, now: now),
+              var i = pick.order.firstIndex(of: pick.first) else { return NSSound.beep() }
+        let order = pick.order
+        lastNext = HotKeys.Cycle(order: order, id: pick.first, at: now)
         var left = order.count
         func attempt() {
             let id = order[i]
@@ -269,7 +267,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     i = (i + 1) % order.count
                     return attempt()
                 }
-                lastNext = (id, now)
+                lastNext = HotKeys.Cycle(order: order, id: id, at: now)
                 store.markSeen(id)
                 if !CmuxJump.jump(surface: surface) { NSSound.beep() }
             }
@@ -544,6 +542,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             default: return nil
             }
         }()
+        let draftKey = Store.draftKey(id, { if case .reply = a { return .reply }; return .deny }())
         // Close the editor now so a second Enter cannot queue a second send; the draft stays until the send succeeds.
         if denyReason != nil {
             for p in panels.values where p.state.editing?.id == id { p.state.editing = nil }
@@ -562,7 +561,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 sending.remove(id)
                 guard ok else { return NSSound.beep() }
                 store.markSeen(id)
-                if let denyReason, store.drafts[id] == denyReason { store.drafts[id] = nil }
+                if let denyReason, store.drafts[draftKey] == denyReason { store.drafts[draftKey] = nil }
             }
         }
     }
@@ -604,8 +603,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if want { store.peekUntil = nil }
             }
             if !inside && p.state.hoveredRow != nil { p.state.hoveredRow = nil }
-            // While editing, clicks outside the card must reach the app beneath (and make the panel resign key).
-            if p.window.ignoresMouseEvents == want { p.window.ignoresMouseEvents = !want }
+            // Only the card takes clicks, also while pinned open or editing: the rest of the canvas must reach the app beneath.
+            if p.window.ignoresMouseEvents == inside { p.window.ignoresMouseEvents = !inside }
         }
     }
 }

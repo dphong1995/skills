@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import ClaudeSessionsKit
 
-private func writeCache(_ url: URL, five: Int = 30, fiveReset: String = "2026-11-06T11:00:00.171Z", weekly: Int = 5, error: Bool = false, last: Double = 1793961364363) {
+private func writeCache(_ url: URL, five: Double = 30, fiveReset: String = "2026-11-06T11:00:00.171Z", weekly: Double = 5, error: Bool = false, last: Double = 1793961364363) {
     let o: [String: Any] = ["timestamp": last, "data": ["fiveHourPercent": five, "fiveHourResetsAt": fiveReset, "weeklyPercent": weekly,
                             "weeklyResetsAt": "2026-11-13T06:00:00.171Z", "scopedWeeklyBuckets": []],
                             "error": error, "source": "anthropic", "lastSuccessAt": last]
@@ -20,6 +20,14 @@ private func cacheURL() -> URL { makeTempDir().appendingPathComponent("usage.jso
     #expect(q?.fiveHourReset == Date(timeIntervalSince1970: 1793962800.171))
     #expect(q?.weeklyReset == Date(timeIntervalSince1970: 1794549600.171))
     #expect(q?.updated == Date(timeIntervalSince1970: 1793961364.363))
+}
+
+@Test func fractionalPercentIsRounded() {
+    let url = cacheURL()
+    writeCache(url, five: 37.5, weekly: 4.2)
+    let q = QuotaReader(url: url).read(at: Date(timeIntervalSince1970: 1793961364))
+    #expect(q?.fiveHour == 38)
+    #expect(q?.weekly == 4)
 }
 
 @Test func missingAndStale() {

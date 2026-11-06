@@ -69,13 +69,13 @@ public enum Feed {
     }
 
     /// `feed.question.reply` params: one string per answered question, in order: the label, the labels joined by `", "`
-    /// (multi-select), or the typed Other text; Other text follows the picks. Questions without an answer are left out.
+    /// (multi-select), or the typed Other text; Other text follows the picks. A question without an answer sends `""`, so later answers keep their slot.
     public static func replyParams(requestId: String, answers: [[String]], other: [Int: String]) -> [String: Any] {
         let count = max(answers.count, (other.keys.max() ?? -1) + 1)
-        let selections: [String] = (0..<count).compactMap { i in
+        let selections: [String] = (0..<count).map { i in
             let text = (other[i] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             let parts = (answers.indices.contains(i) ? answers[i] : []) + (text.isEmpty ? [] : [text])
-            return parts.isEmpty ? nil : parts.joined(separator: ", ")
+            return parts.joined(separator: ", ")
         }
         return ["request_id": requestId, "selections": selections]
     }
@@ -100,7 +100,9 @@ public enum Feed {
         guard let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any], o["ok"] as? Bool == true,
               let items = (o["result"] as? [String: Any])?["items"] as? [[String: Any]] else { return [] }
         return items.compactMap { item in
-            guard item["kind"] as? String == "question", (item["status"] as? String ?? "pending") == "pending" else { return nil }
+            guard item["kind"] as? String == "question", (item["source"] as? String ?? "claude") == "claude",
+                  (item["status"] as? String ?? "pending") == "pending",
+                  let createdAt = date(item["created_at"] ?? item["createdAt"]) else { return nil }
             let payload = (item["payload"] as? [String: Any])?["question"] as? [String: Any]
             guard let requestId = item["request_id"] as? String ?? payload?["requestId"] as? String else { return nil }
             let raw = item["questions"] as? [[String: Any]] ?? payload?["questions"] as? [[String: Any]] ?? []
@@ -113,7 +115,7 @@ public enum Feed {
                 return FeedQuestion.Item(prompt: prompt, header: q["header"] as? String,
                                          multiSelect: (q["multi_select"] ?? q["multiSelect"]) as? Bool ?? false, options: options)
             }
-            return FeedQuestion(requestId: requestId, createdAt: date(item["created_at"] ?? item["createdAt"]) ?? Date(),
+            return FeedQuestion(requestId: requestId, createdAt: createdAt,
                                 pid: (item["ppid"] as? NSNumber)?.int32Value,
                                 sessionId: sessionId(of: (item["workstream_id"] ?? item["workstreamId"]) as? String), questions: questions)
         }
@@ -242,6 +244,7 @@ public final class FeedMonitor {
             let params = Feed.replyParams(requestId: q.requestId, answers: answers, other: other)
             guard let data = try? transport.request("feed.question.reply", params, timeout: 5),
                   let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any], o["ok"] as? Bool == true else { return completion(false) }
+            lock.lock(); snapshot.removeAll { $0.requestId == q.requestId }; lock.unlock()
             completion(true)
         }
         if let queue { queue.async(execute: run) } else { run() }

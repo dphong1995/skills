@@ -36,6 +36,15 @@ private let capturedList = """
     #expect(q?.questions.first?.multiSelect == true)
 }
 
+@Test func parseSkipsOtherSourcesAndMissingDate() {
+    var other = feedItem(requestId: "X1")
+    other["source"] = "codex"
+    var undated = feedItem(requestId: "X2")
+    undated["created_at"] = nil
+    let data = try! JSONSerialization.data(withJSONObject: ["ok": true, "result": ["items": [other, undated, feedItem(requestId: "OK")]]])
+    #expect(Feed.parseList(data).map(\.requestId) == ["OK"])
+}
+
 @Test func parseGarbageIsEmpty() {
     #expect(Feed.parseList(Data("not json".utf8)).isEmpty)
     #expect(Feed.parseList(Data("{\"ok\":false,\"error\":{\"code\":\"x\"}}".utf8)).isEmpty)
@@ -60,7 +69,10 @@ private func selections(_ p: [String: Any]) -> [String]? { p["selections"] as? [
     #expect(selections(p) == ["Purple"])
     // Other after the picks; an unanswered question is left out like cmux's own panel does
     p = Feed.replyParams(requestId: "R", answers: [["Red"], []], other: [0: "x"])
-    #expect(selections(p) == ["Red, x"])
+    #expect(selections(p) == ["Red, x", ""])
+    // An unanswered question in the middle keeps the later answers on their own prompts.
+    p = Feed.replyParams(requestId: "R", answers: [[], ["Large"]], other: [:])
+    #expect(selections(p) == ["", "Large"])
 }
 
 @Test func supportsAndComplete() {
@@ -143,9 +155,13 @@ private func selections(_ p: [String: Any]) -> [String]? { p["selections"] as? [
     #expect(last.method == "feed.question.reply")
     #expect(last.params["request_id"] as? String == "R1")
     #expect(last.params["selections"] as? [String] == ["Red"])
+    // A delivered answer leaves the snapshot at once, so the next card build cannot show the form again.
+    #expect(m.takeSnapshot().isEmpty)
     t.replyResult = "{\"ok\":false,\"error\":{\"code\":\"not_found\",\"message\":\"x\"}}"
+    m.update(active: true, at: Date().addingTimeInterval(1))
     m.reply(feedQuestion(requestId: "R1"), answers: [["Red"]], other: [:]) { ok = $0 }
     #expect(ok == false)
+    m.update(active: true, at: Date().addingTimeInterval(2))
     t.failAll = true
     m.reply(feedQuestion(requestId: "R1"), answers: [["Red"]], other: [:]) { ok = $0 }
     #expect(ok == false)
