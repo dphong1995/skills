@@ -282,6 +282,7 @@ widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouT
   (MCP…) thì chỉ nhảy tới cmux để duyệt.
 - Cơ chế: widget gõ phím hộ vào terminal cmux qua AppleScript (`1` = Yes, Esc = từ chối, lý do từ chối = dán chữ sau Esc rồi Enter), chỉ cho session chạy trong cmux (session ngoài cmux: bấm Cho phép/Từ chối chỉ kêu beep), và kiểm lại trạng thái ngay trước khi gõ (đổi rồi thì
   chỉ kêu beep, không gõ gì).
+- Quota: header khung mở rộng hiện `5h N% · HH:mm · tuần N%` (giờ là lúc cửa sổ 5 giờ reset, giờ địa phương) đọc từ `~/.claude/plugins/oh-my-claudecode/.usage-cache-anthropic.json` do OMC HUD ghi (chỉ đọc lại khi file đổi, tối đa 10 giây một lần; `error: true`, thiếu `data` hoặc không có file thì ẩn). Mỗi phần trăm vàng từ 80, đỏ từ 95. Có `→ HH:mm` sau phần 5h khi tốc độ tăng trong 30 phút gần nhất của cùng cửa sổ 5 giờ (cần ít nhất 2 mẫu cách nhau từ 5 phút) chạm 100% trước lúc reset. `lastSuccessAt` cũ hơn 15 phút thì cả cụm mờ đi và thêm `cũ`. Viên thu gọn chỉ hiện thêm `N%` (số lớn hơn của hai phần, màu theo ngưỡng) khi từ 80% trở lên, viên rộng thêm 44 pt. Không đọc khi đặt `CLAUDE_SESSIONS_ROOT`.
 - Không còn session 30 giây thì widget ẩn, có session thì hiện lại; mở app lúc chưa có session nào thì widget ẩn ngay.
 
 Cài (cần Command Line Tools: `xcode-select --install`), build ra `~/Applications/ClaudeSessions.app`:

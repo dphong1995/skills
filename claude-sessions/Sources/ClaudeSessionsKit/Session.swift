@@ -136,6 +136,9 @@ public final class Store: ObservableObject {
     @Published var shownCommands: Set<String> = []
     @Published public var drafts: [String: String] = [:]
     @Published var now = Date()
+    /// The OMC usage cache's 5h and weekly quota; nil when there is no reader or no usable file.
+    @Published public var quota: Quota?
+    private let quotaReader: QuotaReader?
     @Published public var peekUntil: Date?
     @Published public var muted = false
     @Published public var bgOpacity: Double = 0.25
@@ -229,6 +232,7 @@ public final class Store: ObservableObject {
                 startHidden: Bool = false,
                 prs: PRMonitor? = nil,
                 jira: JiraMonitor? = nil,
+                quota: QuotaReader? = nil,
                 scanner: TranscriptScanner = TranscriptScanner(),
                 branch: ((String) -> String?)? = nil) {
         if let branch {
@@ -241,6 +245,7 @@ public final class Store: ObservableObject {
         }
         self.prMonitor = prs
         self.jiraMonitor = jira
+        self.quotaReader = quota
         self.scanner = scanner
         self.dir = dir
         self.projects = projects
@@ -404,6 +409,10 @@ public final class Store: ObservableObject {
 
     public func refresh(at date: Date = Date()) {
         now = date
+        if let quotaReader {
+            let q = quotaReader.read(at: date)
+            if q != quota { quota = q }
+        }
         chime = nil
         transitions = [:]
         prChime = nil

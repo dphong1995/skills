@@ -497,6 +497,35 @@ struct SnapshotTests {
         render(store, panel, "30-link-list-connect")
     }
 
+    @Test func renderQuota() {
+        let dir = makeTempDir()
+        let store = makeStore(dir: dir)
+        let panel = PanelState()
+        let now = Date()
+        writeSession(dir, "a", pid: me, status: "busy", ageSec: 42, name: "talo6-dct-frontend-d7", cwd: frontend)
+        writeSession(dir, "b", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 75, name: "ocr-service-a1", cwd: backend)
+        func quota(_ five: Int, _ weekly: Int, forecast: Bool = false, age: TimeInterval = 60) -> Quota {
+            Quota(fiveHour: five, fiveHourReset: now.addingTimeInterval(2 * 3600), weekly: weekly, weeklyReset: now.addingTimeInterval(5 * 86400),
+                  updated: now.addingTimeInterval(-age), forecast: forecast ? now.addingTimeInterval(3600) : nil)
+        }
+        store.refresh(at: now)
+        panel.hovering = true
+        store.quota = quota(30, 5)
+        render(store, panel, "quota-1-normal")
+        store.quota = quota(82, 96)
+        render(store, panel, "quota-2-warn")
+        store.quota = quota(97, 40, forecast: true)
+        render(store, panel, "quota-3-high-forecast")
+        store.quota = quota(30, 5, age: 20 * 60)
+        render(store, panel, "quota-4-stale")
+        panel.hovering = false
+        store.quota = quota(85, 10)
+        #expect(Layout.size(store, panel).width == Layout.collapsed.width + Layout.quotaPillExtra)
+        render(store, panel, "quota-5-pill-85")
+        store.quota = quota(30, 10)
+        #expect(Layout.size(store, panel).width == Layout.collapsed.width)
+    }
+
     @Test func openMenusClearedOnCollapse() async throws {
         let (store, panel) = linkStore(jira: true)
         panel.openMenus = [store.sessions[0].id]

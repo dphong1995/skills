@@ -290,7 +290,7 @@ public struct WidgetView: View {
             header(expanded: expanded).frame(height: Layout.headerHeight)
             if expanded && !panel.anchor.up { list }
         }
-        .frame(width: expanded ? Layout.expandedWidth : Layout.collapsed.width, alignment: panel.anchor.up ? .bottom : .top)
+        .frame(width: expanded ? Layout.expandedWidth : Layout.collapsedWidth(store), alignment: panel.anchor.up ? .bottom : .top)
         .frame(height: expanded ? nil : Layout.collapsed.height)
         .fixedSize(horizontal: false, vertical: expanded)
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
@@ -385,6 +385,13 @@ public struct WidgetView: View {
         let counts = Dictionary(grouping: store.sessions, by: \.shownStatus).mapValues(\.count)
         let newCount = store.newCount
         return HStack(spacing: gap) {
+            if let q = store.quota {
+                if expanded {
+                    quotaGroup(q)
+                } else if let p = q.pillPercent {
+                    Text("\(p)%").font(.system(size: 12, weight: .semibold).monospacedDigit()).foregroundStyle(quotaColor(p)).fixedSize()
+                }
+            }
             if newCount > 0 {
                 HStack(spacing: dot) {
                     Text("✦").font(.system(size: 11, weight: .bold)).fixedSize()
@@ -407,6 +414,37 @@ public struct WidgetView: View {
                 }
             }
         }
+    }
+
+    private func quotaColor(_ percent: Int) -> Color {
+        switch QuotaLevel.level(percent) {
+        case .normal: .white
+        case .warn: .yellow
+        case .high: .red
+        }
+    }
+
+    private static let clock: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return f
+    }()
+
+    private func quotaGroup(_ q: Quota) -> some View {
+        let stale = q.isStale(now: store.now)
+        let t = Self.clock
+        return HStack(spacing: 4) {
+            Text("5h \(q.fiveHour)%").foregroundStyle(quotaColor(q.fiveHour))
+            Text("· \(t.string(from: q.fiveHourReset))")
+            if let f = q.forecast { Text("→ \(t.string(from: f))") }
+            Text("· tuần \(q.weekly)%").foregroundStyle(quotaColor(q.weekly))
+            if stale { Text("cũ") }
+        }
+        .font(.system(size: 11, weight: .semibold).monospacedDigit())
+        .foregroundStyle(.white.opacity(0.7))
+        .lineLimit(1).fixedSize()
+        .opacity(stale ? 0.5 : 1)
+        .padding(.trailing, 6)
     }
 
     private func approvalBlock(_ s: Session, _ pending: PendingState) -> some View {

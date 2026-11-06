@@ -41,6 +41,8 @@ public enum Layout {
     static let listPadding = listPaddingNear + listPaddingFar
     static var maxListHeight: CGFloat { maxExpandedHeight - headerHeight }
     public static let collapsed = CGSize(width: 126, height: headerHeight)
+    /// Extra pill width for the `N%` quota group.
+    static let quotaPillExtra: CGFloat = 44
     /// Background opacity of the expanded card; the last of `bgOpacities`.
     static let cardOpacity: Double = 0.92
     public static let bgOpacities: [Double] = [0, 0.25, 0.5, 0.75, cardOpacity]
@@ -96,8 +98,12 @@ public enum Layout {
         return CGSize(width: expandedWidth, height: headerHeight + listPadding + rows + cardGap * CGFloat(max(sessions.count - 1, 0)))
     }
 
+    static func collapsedWidth(_ store: Store) -> CGFloat {
+        collapsed.width + (store.quota?.pillPercent == nil ? 0 : quotaPillExtra)
+    }
+
     public static func size(_ store: Store, _ panel: PanelState) -> CGSize {
-        guard panel.expanded(store) else { return collapsed }
+        guard panel.expanded(store) else { return CGSize(width: collapsedWidth(store), height: collapsed.height) }
         let h = panel.measuredHeight ?? expanded(store.sessions, open: panel.openMenus).height
         return CGSize(width: expandedWidth, height: min(h, maxExpandedHeight))
     }
