@@ -326,6 +326,33 @@ enum Transcript {
         return nil
     }
 
+    /// Main-thread `Agent`/`Task` calls opened and tool results seen in `lines`, in order; only lines holding `"tool_use"` or `"tool_result"` are parsed.
+    static func agentChanges(in lines: Data.SubSequence) -> (opened: [(id: String, description: String)], closed: [String]) {
+        let markers = ["\"tool_use\"", "\"tool_result\""].map { Data($0.utf8) }
+        var opened: [(id: String, description: String)] = []
+        var closed: [String] = []
+        for line in lines.split(separator: 0x0A) where markers.contains(where: { line.range(of: $0) != nil }) {
+            guard let o = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
+                  (o["isSidechain"] as? Bool) != true,
+                  let content = (o["message"] as? [String: Any])?["content"] as? [[String: Any]]
+            else { continue }
+            switch o["type"] as? String {
+            case "assistant":
+                for c in content where c["type"] as? String == "tool_use" {
+                    guard let id = c["id"] as? String, let name = c["name"] as? String, name == "Agent" || name == "Task" else { continue }
+                    let desc = ((c["input"] as? [String: Any])?["description"] as? String).map(oneLine) ?? ""
+                    opened.append((id, desc.isEmpty ? name : desc))
+                }
+            case "user":
+                for c in content where c["type"] as? String == "tool_result" {
+                    if let id = c["tool_use_id"] as? String { closed.append(id) }
+                }
+            default: break
+            }
+        }
+        return (opened, closed)
+    }
+
     /// The state given by the last main-thread user/assistant/`turn_duration` line of `data`; nil when it has none.
     private static let mainTurnMarkers = ["\"turn_duration\"", "\"type\":\"user\"", "\"type\":\"assistant\""].map { Data($0.utf8) }
 

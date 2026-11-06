@@ -706,6 +706,19 @@ func activitySurvivesDuplicateSessionIdOrder(busyFile: String, idleFile: String)
     }
 }
 
+@Test func busyCardCountsAgents() {
+    func agent(_ id: String) -> String { toolUseLine(id: id, name: "Agent", input: ["description": "review \(id)"]) }
+    let r = ActivityRig([userLine("hi"), agent("a1"), agent("a2"), agent("a3"), toolResultLine(id: "a1")])
+    r.refresh()
+    #expect(r.session?.agents == ["review a2", "review a3"])
+    r.append(toolResultLine(id: "a2") + "\n")
+    r.refresh()
+    #expect(r.session?.agents == ["review a3"])
+    r.idle()
+    r.refresh()
+    #expect(r.session?.agents == [])
+}
+
 private let askX = WidgetAction.askClaude("a", prompt: "x")
 
 @Test func backgroundWaitShown() {

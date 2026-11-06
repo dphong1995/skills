@@ -551,9 +551,14 @@ public struct WidgetView: View {
                             .lineLimit(1).truncationMode(.tail)
                     }
                     if let a = s.activity {
-                        Text("▸ \(a)")
-                            .font(.system(size: 11)).foregroundStyle(.white.opacity(0.6))
-                            .lineLimit(1).truncationMode(.tail)
+                        HStack(spacing: 6) {
+                            Text("▸ \(a)").lineLimit(1).truncationMode(.tail)
+                            if !s.agents.isEmpty {
+                                Text("🤖×\(s.agents.count)").lineLimit(1).fixedSize()
+                                    .help(s.agents.joined(separator: "\n"))
+                            }
+                        }
+                        .font(.system(size: 11)).foregroundStyle(.white.opacity(0.6))
                     }
                     if s.isFinished, let reply = s.replyText {
                         Text(reply).font(.system(size: 11)).foregroundStyle(.white.opacity(0.75))

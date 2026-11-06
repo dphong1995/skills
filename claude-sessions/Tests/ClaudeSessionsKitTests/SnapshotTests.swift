@@ -184,6 +184,21 @@ struct SnapshotTests {
         render(store, panel, "18-activity")
     }
 
+    @Test func renderAgents() {
+        let dir = makeTempDir(), projects = makeTempDir(), tasks = makeTempDir()
+        let store = makeStore(dir: dir, projects: projects, tasks: tasks)
+        let panel = PanelState()
+        _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [
+            toolUseLine(id: "t1", name: "Agent", input: ["description": "review A"]) + "\n",
+            toolUseLine(id: "t2", name: "Agent", input: ["description": "review B"]) + "\n",
+            toolUseLine(id: "t3", name: "Task", input: ["description": "review C"]) + "\n"])
+        writeSession(dir, "a", pid: me, status: "busy", ageSec: 90, name: "talo6-dct-frontend-d7", cwd: frontend)
+        store.refresh(at: Date())
+        #expect(store.sessions.first?.agents.count == 3)
+        panel.hovering = true
+        render(store, panel, "19-agents")
+    }
+
     @Test func renderScroll() {
         let dir = makeTempDir(), projects = makeTempDir()
         let store = makeStore(dir: dir, projects: projects)

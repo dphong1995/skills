@@ -242,6 +242,18 @@ private func bash(_ id: String, _ cmd: String = "npm test") -> String {
     #expect(Transcript.lastToolUse(in: data([text, text])) == nil)
 }
 
+@Test func agentChanges() {
+    let d = data([toolUseLine(id: "1", name: "Agent", input: ["description": "review A"]),
+                  toolUseLine(id: "2", name: "Task", input: ["description": "review B"]),
+                  toolUseLine(id: "3", name: "Agent", input: ["description": "side"], sidechain: true),
+                  toolUseLine(id: "4", name: "Bash", input: ["command": "ls"]),
+                  toolResultLine(id: "1")])
+    let c = Transcript.agentChanges(in: d[...])
+    #expect(c.opened.map(\.id) == ["1", "2"])
+    #expect(c.opened.map(\.description) == ["review A", "review B"])
+    #expect(c.closed == ["1"])
+}
+
 private let metaLine = #"{"type":"last-prompt","lastPrompt":"x"}"#
 
 @Test func mainTurnEndedWithBackgroundAgents() {
