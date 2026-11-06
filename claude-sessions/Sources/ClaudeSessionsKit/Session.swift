@@ -356,7 +356,7 @@ public final class Store: ObservableObject {
     public func noteFocused(_ surface: String?) {
         if let surface, let last = lastFocused, last.caseInsensitiveCompare(surface) == .orderedSame {
             let matches = unseen.keys.filter { surfaces[$0]?.caseInsensitiveCompare(surface) == .orderedSame }
-            for id in matches { unseen[id] = nil }
+            if !matches.isEmpty { unseen = unseen.filter { !matches.contains($0.key) } }
         }
         lastFocused = surface
     }
@@ -496,18 +496,16 @@ public final class Store: ObservableObject {
                 allPRs[list[i].id] = all
                 let events = all.map(\.ref).filter(snap.eventRefs.contains)
                 if !events.isEmpty { newUnseen[list[i].id, default: NewMark()].prs.formUnion(events) }
+                if var mark = newUnseen[list[i].id] {
+                    mark.prs.formIntersection(all.map(\.ref))
+                    newUnseen[list[i].id] = mark.claude || !mark.prs.isEmpty ? mark : nil
+                }
                 list[i].prs = Array(all.prefix(3))
                 let shown = Set(list[i].prs.map(\.ref))
                 if !shown.isEmpty {
                     let refs = buttonRefs[list[i].id] ?? []
                     list[i].links = list[i].links.enumerated().filter { !refs[$0.offset].contains(where: shown.contains) }.map(\.element)
                 }
-            }
-            for i in list.indices {
-                let id = list[i].id
-                guard var mark = newUnseen[id] else { continue }
-                mark.prs.formIntersection(allPRs[id]?.map(\.ref) ?? [])
-                newUnseen[id] = mark.claude || !mark.prs.isEmpty ? mark : nil
             }
             if prLastSuccess != snap.lastSuccess { prLastSuccess = snap.lastSuccess }
             if !snap.events.isEmpty {

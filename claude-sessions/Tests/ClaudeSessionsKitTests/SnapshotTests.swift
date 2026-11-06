@@ -393,13 +393,12 @@ struct SnapshotTests {
         render(store, panel, name)
     }
 
-    private static let ref7571 = PRRef(workspace: "t6engineering", repo: "talo6-dct-backend", id: 7571)
 
-    @Test func renderMarkClaude() { renderMarks("27-mark-claude", ["b": NewMark(claude: true)]) }
-    @Test func renderMarkPR() { renderMarks("28-mark-pr", ["b": NewMark(prs: [Self.ref7571])]) }
-    @Test func renderMarkBoth() { renderMarks("29-mark-both", ["b": NewMark(claude: true, prs: [Self.ref7571])]) }
+    @Test func renderMarkClaude() { renderMarks("32-mark-claude", ["b": NewMark(claude: true)]) }
+    @Test func renderMarkPR() { renderMarks("33-mark-pr", ["b": NewMark(prs: [prRef(7571)])]) }
+    @Test func renderMarkBoth() { renderMarks("34-mark-both", ["b": NewMark(claude: true, prs: [prRef(7571)])]) }
     @Test func renderMarkPRHidden() {
-        renderMarks("30-mark-pr-hidden", ["b": NewMark(prs: [PRRef(workspace: "t6engineering", repo: "talo6-dct-backend", id: 9999)])])
+        renderMarks("35-mark-pr-hidden", ["b": NewMark(prs: [prRef(9999)])])
     }
 
     @Test func renderFreshLongTitle() {

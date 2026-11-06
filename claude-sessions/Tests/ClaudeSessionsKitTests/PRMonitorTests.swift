@@ -6,11 +6,6 @@ private let be = "t6engineering/talo6-dct-backend"
 private let fe = "t6engineering/talo6-dct-frontend"
 private let t0 = Date(timeIntervalSince1970: 1_800_000_000)
 
-private func prRef(_ id: Int, repo: String = be) -> PRRef {
-    let parts = repo.split(separator: "/")
-    return PRRef(workspace: String(parts[0]), repo: String(parts[1]), id: id)
-}
-
 private func target(_ linkRefs: [PRRef] = [], branch: String? = nil, cwd: String = "/x") -> PRTarget {
     PRTarget(sessionId: "s", linkRefs: linkRefs, cwd: cwd, branch: branch)
 }

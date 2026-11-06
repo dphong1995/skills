@@ -490,7 +490,8 @@ public struct WidgetView: View {
         let mark = store.unseen[s.id]
         let claudeNew = mark?.claude == true
         var newLabel = claudeNew ? [", mới: Claude"] : []
-        newLabel += s.prs.filter { mark?.prs.contains($0.ref) == true }.map { ", mới: PR #\($0.ref.id)" }
+        newLabel += (mark?.prs ?? []).sorted { $0.id < $1.id }.map { ", mới: PR #\($0.id)" }
+        let markedShown = Set(s.prs.map(\.ref)).intersection(mark?.prs ?? [])
         return VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 10) {
                 Circle().fill(color(s.status)).frame(width: 8, height: 8)
@@ -549,7 +550,7 @@ public struct WidgetView: View {
                 if panel.openMenus.contains(s.id) { linkList(s).padding(.leading, 18) }
             }
             ForEach(s.prs, id: \.ref) { pr in
-                let prNew = mark?.prs.contains(pr.ref) == true
+                let prNew = markedShown.contains(pr.ref)
                 let prText = Text(prAttributed(pr, now: store.now, stale: store.prStale ? store.prLastSuccess : nil))
                 HStack(spacing: 6) {
                     (prNew ? Text("✦ ").foregroundStyle(.purple) + prText : prText)
@@ -568,9 +569,10 @@ public struct WidgetView: View {
                         }
                     }
                 }
-                .padding(.horizontal, prNew ? 4 : 0)
+                .padding(.horizontal, 4)
                 .background(prNew ? Color.purple.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 5))
-                .padding(.leading, prNew ? 14 : 18)
+                .padding(.horizontal, -4)
+                .padding(.leading, 18)
             }
             if let pending = s.pending {
                 approvalBlock(s, pending).padding(.leading, 18)

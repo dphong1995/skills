@@ -254,3 +254,8 @@ final class FakeJira: JiraAPI {
         return d
     }
 }
+
+func prRef(_ id: Int, repo: String = "t6engineering/talo6-dct-backend") -> PRRef {
+    let parts = repo.split(separator: "/")
+    return PRRef(workspace: String(parts[0]), repo: String(parts[1]), id: id)
+}
