@@ -59,6 +59,8 @@ struct Session: Identifiable, Equatable {
     var todo: Todo? = nil
     var links: [SessionLink] = []
     var activity: String? = nil
+    /// Pending background agents and workflows; non-nil only while the session is `busy` but its main turn has ended.
+    var backgroundAgents: Int? = nil
     var prs: [PRStatus] = []
     /// Every ticket and PR of the session, grouped for the `☰ N` menu.
     var menu: [LinkSection] = []
@@ -67,6 +69,8 @@ struct Session: Identifiable, Equatable {
 }
 
 extension Session {
+    /// `idle` while only background agents run, else the raw `status`.
+    var shownStatus: String { backgroundAgents != nil ? "idle" : status }
     var title: String { nameSource == "user" ? name : (aiTitle ?? firstPrompt ?? name) }
     var folder: String { (cwd as NSString).lastPathComponent }
     var subtitle: String { branch.map { "\(folder) · \($0)" } ?? folder }
@@ -161,7 +165,7 @@ public final class Store: ObservableObject {
     private var todos: [String: (key: TaskKey, files: [URL], todo: Todo?)] = [:]
     /// Parsed session files by URL, valid while the file's `FileStamp` is unchanged: the `Session` with the fields the file gives, and its `spare` flag.
     private var sessionJSON: [URL: (stamp: FileStamp, base: Session, spare: Bool)] = [:]
-    private var activities: [String: (offset: UInt64, text: String?)] = [:]
+    private var activities: [String: (offset: UInt64, text: String?, turn: MainTurn?)] = [:]
     /// File reads done for the running-tool line, for tests.
     private(set) var activityReads = 0
     /// Transcript bytes read by the head, tail and activity reads, for tests.
@@ -309,18 +313,18 @@ public final class Store: ObservableObject {
     }
 
     /// The last tool call of a busy session, read from the bytes appended since the last refresh (at most `activityWindow`).
-    private func readActivity(for s: Session, url: URL?, size: Int) -> String? {
+    private func readActivity(for s: Session, url: URL?, size: Int) -> (text: String?, turn: MainTurn?) {
         let cached = activities[s.id]
         guard s.status == "busy", let url else {
-            if let cached { activities[s.id] = (cached.offset, nil) }
-            return nil
+            if let cached { activities[s.id] = (cached.offset, nil, nil) }
+            return (nil, nil)
         }
         let size = UInt64(size)
         let window = Transcript.activityWindow
         let tailStart = size > window ? size - window : 0
         let from: UInt64
         if let cached, size >= cached.offset {
-            if size == cached.offset { return cached.text }
+            if size == cached.offset { return (cached.text, cached.turn) }
             from = max(cached.offset, tailStart)
         } else {
             from = tailStart
@@ -333,19 +337,22 @@ public final class Store: ObservableObject {
         var offset = from
         if !atLineStart {
             guard let nl = d.firstIndex(of: 0x0A) else {
-                activities[s.id] = (size, cached?.text)
-                return cached?.text
+                activities[s.id] = (size, cached?.text, cached?.turn)
+                return (cached?.text, cached?.turn)
             }
             body = d[(nl + 1)...]
             offset = from + UInt64(nl + 1)
         }
         var text = cached?.text
+        var turn = cached?.turn
         if let end = body.lastIndex(of: 0x0A) {
             offset += UInt64(end + 1 - body.startIndex)
-            text = Transcript.lastToolUse(in: body[body.startIndex...end]) ?? text
+            let lines = Data(body[body.startIndex...end])
+            text = Transcript.lastToolUse(in: lines) ?? text
+            turn = Transcript.mainTurn(in: lines) ?? turn
         }
-        activities[s.id] = (offset, text)
-        return text
+        activities[s.id] = (offset, text, turn)
+        return (text, turn)
     }
 
     public func markSeen(_ id: String) {
@@ -431,7 +438,12 @@ public final class Store: ObservableObject {
         // After the dedupe, so two processes sharing a sessionId cannot reset each other's cached activity.
         for i in list.indices {
             let url = transcriptURL(for: list[i])
-            list[i].activity = readActivity(for: list[i], url: url, size: Int(sizes[list[i].id] ?? 0))
+            let (text, turn) = readActivity(for: list[i], url: url, size: Int(sizes[list[i].id] ?? 0))
+            if case .ended(let n) = turn {
+                list[i].backgroundAgents = n
+            } else {
+                list[i].activity = text
+            }
         }
 
         if list.isEmpty {
@@ -557,7 +569,7 @@ public final class Store: ObservableObject {
         if !shownCommands.isSubset(of: openTools) { shownCommands.formIntersection(openTools) }
 
         func rank(_ s: Session) -> Int {
-            switch s.status { case "waiting": 0; case "idle": 1; case "busy": 2; default: 3 }
+            switch s.shownStatus { case "waiting": 0; case "idle": 1; case "busy": 2; default: 3 }
         }
         list.sort { (rank($0), $0.title) < (rank($1), $1.title) }
         if list != sessions { sessions = list }
@@ -666,7 +678,7 @@ public final class Store: ObservableObject {
         switch a {
         case .jump, .openLink, .connect, .nudgeRabbit: return true
         case .approve(_, let toolId), .deny(_, let toolId, _): return allows(Editing(id: a.sessionId, kind: .deny, toolId: toolId))
-        case .askClaude(let id, _): return sessions.first { $0.id == id }?.status == "idle"
+        case .askClaude(let id, _): return sessions.first { $0.id == id }?.shownStatus == "idle"
         }
     }
 }

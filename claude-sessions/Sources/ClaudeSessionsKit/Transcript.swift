@@ -11,6 +11,12 @@ enum PendingState: Equatable {
     case unclear(count: Int)
 }
 
+/// Where the main thread of a transcript stands: a turn in progress, or ended with background agents/workflows still pending.
+enum MainTurn: Equatable {
+    case running
+    case ended(background: Int)
+}
+
 public struct SessionLink: Equatable {
     public let label: String
     public let url: URL
@@ -316,6 +322,23 @@ enum Transcript {
                   let name = use["name"] as? String
             else { continue }
             return toolSummary(name: name, input: use["input"] as? [String: Any] ?? [:])
+        }
+        return nil
+    }
+
+    /// The state given by the last main-thread user/assistant/`turn_duration` line of `data`; nil when it has none.
+    static func mainTurn(in data: Data) -> MainTurn? {
+        let markers = ["\"turn_duration\"", "\"type\":\"user\"", "\"type\":\"assistant\""].map { Data($0.utf8) }
+        for line in data.split(separator: 0x0A).reversed() where markers.contains(where: { line.range(of: $0) != nil }) {
+            guard let o = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
+                  (o["isSidechain"] as? Bool) != true
+            else { continue }
+            switch o["type"] as? String {
+            case "user", "assistant": return .running
+            case "system" where o["subtype"] as? String == "turn_duration":
+                return .ended(background: (o["pendingBackgroundAgentCount"] as? Int ?? 0) + (o["pendingWorkflowCount"] as? Int ?? 0))
+            default: continue
+            }
         }
         return nil
     }

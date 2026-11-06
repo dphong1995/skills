@@ -65,6 +65,14 @@ func assistantLine(_ text: String?, sidechain: Bool = false) -> String {
     return jsonLine(["type": "assistant", "isSidechain": sidechain, "message": ["content": content]])
 }
 
+/// The main-turn end marker Claude Code appends; counts left nil are omitted.
+func turnDurationLine(background: Int? = nil, workflows: Int? = nil, sidechain: Bool = false) -> String {
+    var o: [String: Any] = ["type": "system", "subtype": "turn_duration", "isSidechain": sidechain, "durationMs": 10]
+    if let background { o["pendingBackgroundAgentCount"] = background }
+    if let workflows { o["pendingWorkflowCount"] = workflows }
+    return jsonLine(o)
+}
+
 func writeTranscript(_ projects: URL, cwd: String, id: String, lines: [String]) -> URL {
     let d = projects.appendingPathComponent(Transcript.projectDirName(cwd))
     try! FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)

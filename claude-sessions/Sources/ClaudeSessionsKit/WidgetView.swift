@@ -19,7 +19,8 @@ func color(_ status: String) -> Color {
 }
 
 private func statusText(_ s: Session) -> String {
-    switch s.status {
+    if let n = s.backgroundAgents { return n > 0 ? "chờ \(n) agent nền" : "xong" }
+    return switch s.status {
     case "busy": "đang chạy"
     case "idle": "xong"
     case "waiting": s.isPermissionPrompt ? "chờ duyệt" : "chờ trả lời"
@@ -381,7 +382,7 @@ public struct WidgetView: View {
     }
 
     private func groups(expanded: Bool, dot: CGFloat, gap: CGFloat) -> some View {
-        let counts = Dictionary(grouping: store.sessions, by: \.status).mapValues(\.count)
+        let counts = Dictionary(grouping: store.sessions, by: \.shownStatus).mapValues(\.count)
         let newCount = store.newCount
         return HStack(spacing: gap) {
             if newCount > 0 {
@@ -424,7 +425,7 @@ public struct WidgetView: View {
                         jumpLine("Lệnh dài, bấm để duyệt trong cmux", s)
                     } else if full {
                         HStack(spacing: 6) {
-                            PillButton(title: "Cho phép", fill: color(s.status), textColor: .black) {
+                            PillButton(title: "Cho phép", fill: color(s.shownStatus), textColor: .black) {
                                 onAction(.approve(s.id, toolId: p.toolId))
                             }
                             PillButton(title: "Từ chối…") { panel.editing = Store.Editing(id: s.id, kind: .deny, toolId: p.toolId) }
@@ -494,7 +495,7 @@ public struct WidgetView: View {
         let markedShown = Set(s.prs.map(\.ref)).intersection(mark?.prs ?? [])
         return VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 10) {
-                Circle().fill(color(s.status)).frame(width: 8, height: 8)
+                Circle().fill(color(s.shownStatus)).frame(width: 8, height: 8)
                     .accessibilityLabel(statusText(s) + newLabel.joined())
                 VStack(alignment: .leading, spacing: 1) {
                     Text(s.title).font(.system(size: 12.5, weight: .medium)).foregroundStyle(.white).lineLimit(2)
@@ -564,9 +565,13 @@ public struct WidgetView: View {
                         if pr.rabbit == .awaitingApproval {
                             PillButton(title: "🐰 Nhắc duyệt") { onAction(.nudgeRabbit(s.id, pr.ref)) }
                         }
+                        let canAsk = store.stillValid(.askClaude(s.id, prompt: ""))
                         PillButton(title: "Nhờ Claude") {
                             onAction(.askClaude(s.id, prompt: PullRequests.prompt(store.prPrompt, url: pr.url, id: pr.ref.id)))
                         }
+                        .disabled(!canAsk)
+                        .opacity(canAsk ? 1 : 0.4)
+                        .help(canAsk ? "" : "Chỉ gửi được khi Claude đã xong lượt")
                     }
                 }
                 .padding(.horizontal, 4)

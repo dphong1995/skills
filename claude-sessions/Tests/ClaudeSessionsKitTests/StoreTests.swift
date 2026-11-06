@@ -172,6 +172,18 @@ private func approvableStore() -> (Store, URL, URL, URL) {
     #expect(!store.stillValid(.askClaude("zzz", prompt: "x")))
 }
 
+@Test func askClaudeInvalidWhenWaitingAfterTurnEnd() {
+    let dir = makeTempDir(), projects = makeTempDir()
+    let store = makeStore(dir: dir, projects: projects)
+    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine("hi"), assistantLine("done"), turnDurationLine(background: 1)])
+    writeSession(dir, "a", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(!store.stillValid(.askClaude("a", prompt: "x")))
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(store.stillValid(.askClaude("a", prompt: "x")))
+}
+
 @Test func allowsFalseWhenSessionGone() {
     let dir = makeTempDir()
     let store = makeStore(dir: dir)
@@ -592,6 +604,7 @@ private struct ActivityRig {
     func idle() { writeSession(dir, "a", pid: me, status: "idle", ageSec: 5, name: "n", cwd: frontend) }
     func refresh() { store.refresh(at: Date()) }
     var activity: String? { store.sessions.first?.activity }
+    var session: Session? { store.sessions.first }
     func append(_ s: String) { ClaudeSessionsKitTests.append(file, s) }
 }
 
@@ -621,6 +634,55 @@ func activitySurvivesDuplicateSessionIdOrder(busyFile: String, idleFile: String)
         #expect(store.sessions.map(\.name) == [busyFile])
         #expect(store.sessions.first?.activity == "Bash: swift test")
     }
+}
+
+private let askX = WidgetAction.askClaude("a", prompt: "x")
+
+@Test func backgroundWaitShown() {
+    let r = ActivityRig([userLine("hi"), bash("swift test"), assistantLine("done"), turnDurationLine(background: 3, workflows: 0)])
+    r.refresh()
+    #expect(r.session?.backgroundAgents == 3)
+    #expect(r.session?.shownStatus == "idle")
+    #expect(r.activity == nil)
+    #expect(r.store.stillValid(askX))
+}
+
+@Test func backgroundWaitEndsOnNewTurn() {
+    let r = ActivityRig([userLine("hi"), assistantLine("done"), turnDurationLine(background: 3)])
+    r.refresh()
+    #expect(r.session?.backgroundAgents == 3)
+    r.append(userLine("task-notification") + "\n" + bash("ls") + "\n")
+    r.refresh()
+    #expect(r.session?.backgroundAgents == nil)
+    #expect(r.session?.shownStatus == "busy")
+    #expect(r.activity == "Bash: ls")
+    #expect(!r.store.stillValid(askX))
+}
+
+@Test func sidechainLinesKeepBackgroundWait() {
+    let r = ActivityRig([userLine("hi"), assistantLine("done"), turnDurationLine(background: 2)])
+    r.refresh()
+    r.append(toolUseLine(id: "s", name: "Bash", input: ["command": "ls"], sidechain: true) + "\n" + assistantLine("side", sidechain: true) + "\n")
+    r.refresh()
+    #expect(r.session?.backgroundAgents == 2)
+    #expect(r.activity == nil)
+    #expect(r.store.stillValid(askX))
+}
+
+@Test func turnEndedWithoutBackgroundCounts() {
+    let r = ActivityRig([userLine("hi"), assistantLine("done"), turnDurationLine()])
+    r.refresh()
+    #expect(r.session?.backgroundAgents == 0)
+    #expect(r.session?.shownStatus == "idle")
+    #expect(r.store.stillValid(askX))
+}
+
+@Test func backgroundWaitClearedWhenSessionNotBusy() {
+    let r = ActivityRig([userLine("hi"), assistantLine("done"), turnDurationLine(background: 1)])
+    r.refresh()
+    r.idle()
+    r.refresh()
+    #expect(r.session?.backgroundAgents == nil)
 }
 
 @Test func activityNoReadWhenUnchanged() {

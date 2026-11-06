@@ -241,3 +241,33 @@ private func bash(_ id: String, _ cmd: String = "npm test") -> String {
     let text = jsonLine(["type": "assistant", "message": ["content": [["type": "text", "text": "hello"]]]])
     #expect(Transcript.lastToolUse(in: data([text, text])) == nil)
 }
+
+private let metaLine = #"{"type":"last-prompt","lastPrompt":"x"}"#
+
+@Test func mainTurnEndedWithBackgroundAgents() {
+    let d = data([assistantLine("done"), turnDurationLine(background: 3, workflows: 0), metaLine])
+    #expect(Transcript.mainTurn(in: d) == .ended(background: 3))
+    #expect(Transcript.mainTurn(in: data([turnDurationLine(background: 2, workflows: 1)])) == .ended(background: 3))
+}
+
+@Test func mainTurnRunningAfterNewMainLine() {
+    let ended = [assistantLine("done"), turnDurationLine(background: 3), metaLine]
+    #expect(Transcript.mainTurn(in: data(ended + [userLine("go")])) == .running)
+    #expect(Transcript.mainTurn(in: data(ended + [assistantLine(nil)])) == .running)
+}
+
+@Test func mainTurnIgnoresSidechain() {
+    let d = data([turnDurationLine(background: 3), assistantLine("side", sidechain: true), turnDurationLine(background: 0, sidechain: true)])
+    #expect(Transcript.mainTurn(in: d) == .ended(background: 3))
+    let sc = data([turnDurationLine(background: 3), assistantLine("side", sidechain: true), toolUseLine(id: "x", name: "Bash", input: [:], sidechain: true)])
+    #expect(Transcript.mainTurn(in: sc) == .ended(background: 3))
+}
+
+@Test func mainTurnEndedWithoutCounts() {
+    #expect(Transcript.mainTurn(in: data([turnDurationLine()])) == .ended(background: 0))
+}
+
+@Test func mainTurnNilWithoutRelevantLines() {
+    #expect(Transcript.mainTurn(in: data([metaLine, metaLine])) == nil)
+    #expect(Transcript.mainTurn(in: Data()) == nil)
+}
