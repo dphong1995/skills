@@ -413,10 +413,13 @@ public final class PRMonitor {
                 if firstStatuses {
                     recordRabbit(ref, pr)
                 } else if pr.isOpen, let r = pr.rabbit, CodeRabbit.isFinal(r), rabbitSeen[ref].map({ !($0.commit == pr.commit && $0.since == pr.rabbitSince && $0.labels.contains(CodeRabbit.label(r))) }) ?? true {
-                    switch r {
-                    case .reviewed(let n?) where n > 0: found.append(.rabbitNeedsYou)
-                    case .failed: found.append(.rabbitNeedsYou)
-                    default: found.append(.rabbitDone)
+                    // An approval already shown stays an approval on the same commit: `since` moved, not the review.
+                    if !(r == .approved && prev.rabbit == .approved && prev.commit == pr.commit) {
+                        switch r {
+                        case .reviewed(let n?) where n > 0: found.append(.rabbitNeedsYou)
+                        case .failed: found.append(.rabbitNeedsYou)
+                        default: found.append(.rabbitDone)
+                        }
                     }
                     recordRabbit(ref, pr)
                 }

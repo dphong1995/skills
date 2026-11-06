@@ -283,6 +283,8 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
 
     private static let started = "2026-11-03T03:33:15.111541+00:00"
     private static let later = "2026-11-03T03:40:00.000000+00:00"
+    /// After the summary comment (`later`): an INPROGRESS status touched again by the approve command.
+    private static let bumped = "2026-11-03T03:50:00.000000+00:00"
     private static let ciPass: [String: Any] = ["state": "SUCCESSFUL", "commit": ["hash": "abc123"]]
 
     private func setStatuses(_ api: FakeBitbucket, _ rabbit: [String: Any]?) {
@@ -812,11 +814,39 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
     /// The #6884 shape: the approve command bumped the INPROGRESS status's updated_on past the summary comment.
     @Test func approvedWhileStatusInProgress() {
         let api = fake(open: [prJSON(id: 6884, comments: 1, rabbitApproved: true)])
-        setStatuses(api, rabbitStatus(state: "INPROGRESS", description: "Review queued", created: Self.started, updated: "2026-11-03T03:50:00.000000+00:00"))
+        setStatuses(api, rabbitStatus(state: "INPROGRESS", description: "Review queued", created: Self.started, updated: Self.bumped))
         api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 1**", at: Self.later)]])
         let m = monitor(api)
         m.update([target([prRef(6884)])], at: t0)
         #expect(rabbitOf(m) == .approved)
+    }
+
+    /// INPROGRESS then SUCCESSFUL after the approval moves `since`: the approval must not chime a second time.
+    @Test func approvedWhileInProgressChimesOnce() {
+        let api = fake(open: [prJSON(id: 6884, comments: 1, rabbitApproved: false)])
+        setStatuses(api, rabbitStatus(state: "INPROGRESS", description: "Review queued", created: Self.started, updated: Self.bumped))
+        api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 1**", at: Self.later)]])
+        let m = monitor(api)
+        m.update([target([prRef(6884)])], at: t0)
+        #expect(m.takeSnapshot().events == [])
+
+        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 6884, comments: 2, rabbitApproved: true)]])
+        m.update([target([prRef(6884)])], at: t0 + 61)
+        let c2 = m.takeSnapshot()
+        #expect(c2.prs["s"]?.first?.rabbit == .approved)
+        #expect(c2.events == [.approved, .rabbitDone])
+
+        setStatuses(api, rabbitStatus(description: "Review completed", created: Self.started))
+        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 6884, comments: 3, rabbitApproved: true)]])
+        m.update([target([prRef(6884)])], at: t0 + 122)
+        let c3 = m.takeSnapshot()
+        #expect(c3.events == [])
+        #expect(c3.prs["s"]?.first?.rabbit == .approved)
+        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 6884, comments: 4, rabbitApproved: true)]])
+        m.update([target([prRef(6884)])], at: t0 + 183)
+        let c4 = m.takeSnapshot()
+        #expect(c4.events == [])
+        #expect(c4.prs["s"]?.first?.rabbit == .approved)
     }
 
     /// The #7583 shape: a finding the human answered and CodeRabbit withdrew, then waiting for the approval.
