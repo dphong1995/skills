@@ -58,6 +58,20 @@ import Testing
     #expect(store.sessions.first { $0.id == "c" }?.isPermissionPrompt == false)
 }
 
+@Test func waitingOrder() {
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
+    let t0 = Date()
+    writeSession(dir, "idleUnseen", pid: me, status: "idle", ageSec: 10, name: "a", cwd: frontend)
+    writeSession(dir, "waiting", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 20, name: "b", cwd: backend)
+    writeSession(dir, "perm", pid: me, status: "waiting", waitingFor: "permission prompt", ageSec: 30, name: "c", cwd: backend)
+    writeSession(dir, "busy", pid: me, status: "busy", ageSec: 40, name: "d", cwd: backend)
+    writeSession(dir, "idleSeen", pid: me, status: "idle", ageSec: 50, name: "e", cwd: backend)
+    store.refresh(at: t0)
+    store.unseen = ["idleUnseen": NewMark(claude: true), "busy": NewMark(claude: true), "waiting": NewMark(claude: true)]
+    #expect(store.waitingOrder() == ["perm", "waiting", "idleUnseen"])
+}
+
 @Test func hoverExpands() {
     let store = makeStore(dir: makeTempDir())
     let panel = PanelState()

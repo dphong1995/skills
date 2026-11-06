@@ -318,6 +318,10 @@ public struct WidgetView: View {
                 }
             }
             Button(store.muted ? "Bật tiếng" : "Tắt tiếng") { store.muted.toggle() }
+            Menu("Phím tắt") {
+                Menu("Mở widget") { hotkeyItems(HotKeyCombo.openChoices, current: store.hotkeyOpen, failed: store.hotkeyFailed.contains("open")) { store.hotkeyOpen = $0 } }
+                Menu("Nhảy session chờ") { hotkeyItems(HotKeyCombo.nextChoices, current: store.hotkeyNext, failed: store.hotkeyFailed.contains("next")) { store.hotkeyNext = $0 } }
+            }
             Button("Prompt Nhờ Claude…") { editPrompt(store) }
             Divider()
             ForEach(Service.allCases, id: \.self) { svc in
@@ -332,6 +336,15 @@ public struct WidgetView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: panel.anchor.alignment)
         .padding(Layout.margin)
         .environment(\.colorScheme, .dark)
+    }
+
+    @ViewBuilder
+    private func hotkeyItems(_ choices: [HotKeyCombo], current: HotKeyCombo?, failed: Bool, set: @escaping (HotKeyCombo?) -> Void) -> some View {
+        ForEach(choices, id: \.label) { c in
+            let on = c == current
+            Button("\(on ? "✓ " : "")\(c.label)\(on && failed ? " (đang bị app khác dùng)" : "")") { set(c) }
+        }
+        Button("\(current == nil ? "✓ " : "")Tắt") { set(nil) }
     }
 
     private var list: some View {

@@ -144,6 +144,10 @@ public final class Store: ObservableObject {
     private let quotaReader: QuotaReader?
     @Published public var peekUntil: Date?
     @Published public var muted = false
+    @Published public var hotkeyOpen: HotKeyCombo? = HotKeyCombo.openChoices[0]
+    @Published public var hotkeyNext: HotKeyCombo? = HotKeyCombo.nextChoices[0]
+    /// `"open"` / `"next"` while the system refused that hotkey (another app owns it).
+    @Published public var hotkeyFailed: Set<String> = []
     @Published public var bgOpacity: Double = 0.25
     @Published public var prPrompt: String = PullRequests.defaultPrompt
     public private(set) var chime: Chime?
@@ -396,6 +400,15 @@ public final class Store: ObservableObject {
         if case .ended = turn { text = nil; agents = [] }
         activities[s.id] = (offset, text, turn, agents)
         return (text, turn, agents.map(\.description))
+    }
+
+    /// Session ids to cycle through: waiting ones (both kinds) by oldest `since`, then finished ones with a fresh Claude mark by oldest `since`.
+    public func waitingOrder() -> [String] {
+        func oldest(_ list: [Session]) -> [String] {
+            list.sorted { ($0.since ?? .distantFuture, $0.id) < ($1.since ?? .distantFuture, $1.id) }.map(\.id)
+        }
+        return oldest(sessions.filter { $0.status == "waiting" })
+            + oldest(sessions.filter { $0.status != "waiting" && $0.shownStatus == "idle" && unseen[$0.id]?.claude == true })
     }
 
     public func markSeen(_ id: String) {

@@ -27,6 +27,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         .appendingPathComponent(".claude/plugins/oh-my-claudecode/.usage-cache-anthropic.json")),
                          git: GitStatusMonitor())
     var panels: [String: Panel] = [:]
+    let hotKeys = HotKeys()
+    var lastNext: (id: String, at: Date)?
     var timer: Timer?
     var monitors: [Any] = []
     var sending: Set<String> = []
@@ -193,6 +195,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let j = d.dictionary(forKey: "jiraProjects") as? [String: String] { store.jiraProjects = j }
         store.$jiraProjects.dropFirst().sink { UserDefaults.standard.set($0, forKey: "jiraProjects") }.store(in: &cancellables)
 
+        if AppDelegate.root == nil { setUpHotKeys() }
+
         if AppDelegate.root == nil, SMAppService.mainApp.status != .enabled { try? SMAppService.mainApp.register() }
         refreshAndSyncVisibility()
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
@@ -202,6 +206,73 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             tick += 1
             if tick.isMultiple(of: 2) { checkFocusedPane() }
         }
+    }
+
+    /// Loads the saved choices (absent key = default, stored "off" = none), registers them and keeps both in sync with the menu.
+    func setUpHotKeys() {
+        let d = UserDefaults.standard
+        func load(_ key: String, default combo: HotKeyCombo) -> HotKeyCombo? {
+            guard let v = d.object(forKey: key) else { return combo }
+            return (v as? Data).flatMap { try? JSONDecoder().decode(HotKeyCombo.self, from: $0) }
+        }
+        func save(_ key: String, _ combo: HotKeyCombo?) {
+            d.set(combo.flatMap { try? JSONEncoder().encode($0) } ?? "off", forKey: key)
+        }
+        store.hotkeyOpen = load("hotkeyOpen", default: HotKeyCombo.openChoices[0])
+        store.hotkeyNext = load("hotkeyNext", default: HotKeyCombo.nextChoices[0])
+        store.$hotkeyOpen.dropFirst().sink { save("hotkeyOpen", $0) }.store(in: &cancellables)
+        store.$hotkeyNext.dropFirst().sink { save("hotkeyNext", $0) }.store(in: &cancellables)
+        store.$hotkeyOpen.sink { [weak self] combo in
+            guard let self else { return }
+            let ok = hotKeys.register(combo, id: 1) { [weak self] in self?.toggleOpen() }
+            if ok { store.hotkeyFailed.remove("open") } else { store.hotkeyFailed.insert("open") }
+        }.store(in: &cancellables)
+        store.$hotkeyNext.sink { [weak self] combo in
+            guard let self else { return }
+            let ok = hotKeys.register(combo, id: 2) { [weak self] in self?.jumpToNextWaiting() }
+            if ok { store.hotkeyFailed.remove("next") } else { store.hotkeyFailed.insert("next") }
+        }.store(in: &cancellables)
+    }
+
+    /// Closes any open card; otherwise opens and pins the one on the screen with the mouse.
+    func toggleOpen() {
+        if panels.values.contains(where: { $0.state.pinnedOpen || $0.state.hovering }) {
+            for p in panels.values { p.state.pinnedOpen = false; p.state.pinnedEntered = false; p.state.hovering = false }
+            return
+        }
+        let mouse = NSEvent.mouseLocation
+        guard let p = panels.values.first(where: { $0.screen.contains(mouse) }) ?? panels.values.first else { return NSSound.beep() }
+        store.peekUntil = nil
+        p.state.pinnedOpen = true
+        p.state.pinnedEntered = false
+        p.state.hovering = true
+        p.window.ignoresMouseEvents = false
+    }
+
+    /// Jumps to the session that has waited longest; repeated presses within 5 s move on. Sessions outside cmux are skipped.
+    func jumpToNextWaiting() {
+        let order = store.waitingOrder()
+        let now = Date()
+        guard let first = HotKeys.next(after: lastNext?.id, in: order, lastPress: lastNext?.at, now: now),
+              var i = order.firstIndex(of: first) else { return NSSound.beep() }
+        lastNext = (first, now)
+        var left = order.count
+        func attempt() {
+            let id = order[i]
+            resolveSurface(id) { [weak self] surface in
+                guard let self else { return }
+                guard let surface else {
+                    left -= 1
+                    guard left > 0 else { return NSSound.beep() }
+                    i = (i + 1) % order.count
+                    return attempt()
+                }
+                lastNext = (id, now)
+                store.markSeen(id)
+                if !CmuxJump.jump(surface: surface) { NSSound.beep() }
+            }
+        }
+        attempt()
     }
 
     /// Plays this refresh's chime and opens the peek; when cmux is frontmost, sessions whose pane is focused are left out after an async cmux check.
@@ -483,13 +554,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for p in panels.values {
             // The pill lies inside the fixed canvas frame, so most mouse moves skip the layout computation.
             let inside = p.window.frame.contains(mouse) && Layout.pill(in: p.window.frame, size: Layout.size(store, p.state), anchor: p.state.anchor).contains(mouse)
-            if p.state.editing == nil && inside != p.state.hovering {
-                p.state.hovering = inside
-                if inside { store.peekUntil = nil }
+            var want = inside
+            if p.state.pinnedOpen {
+                if inside { p.state.pinnedEntered = true }
+                if !inside && p.state.pinnedEntered { p.state.pinnedOpen = false; p.state.pinnedEntered = false } else { want = true }
+            }
+            if p.state.editing == nil && want != p.state.hovering {
+                p.state.hovering = want
+                if want { store.peekUntil = nil }
             }
             if !inside && p.state.hoveredRow != nil { p.state.hoveredRow = nil }
             // While editing, clicks outside the card must reach the app beneath (and make the panel resign key).
-            if p.window.ignoresMouseEvents == inside { p.window.ignoresMouseEvents = !inside }
+            if p.window.ignoresMouseEvents == want { p.window.ignoresMouseEvents = !want }
         }
     }
 }

@@ -3,6 +3,9 @@ import SwiftUI
 /// State that belongs to one pill (one display); everything shared lives in `Store`.
 public final class PanelState: ObservableObject {
     @Published public var hovering = false
+    /// Opened by the hotkey: `trackMouse` keeps `hovering` true until the hotkey is pressed again or the mouse has entered and then left the card.
+    public var pinnedOpen = false
+    public var pinnedEntered = false
     @Published public var editing: Store.Editing?
     @Published public var anchor = Anchor()
     @Published public var measuredHeight: CGFloat?
