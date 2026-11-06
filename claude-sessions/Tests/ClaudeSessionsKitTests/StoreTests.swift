@@ -184,6 +184,18 @@ private func approvableStore() -> (Store, URL, URL, URL) {
     #expect(store.stillValid(.askClaude("a", prompt: "x")))
 }
 
+@Test func askClaudeInvalidWhenBusyEndedThenWaiting() {
+    let dir = makeTempDir(), projects = makeTempDir()
+    let store = makeStore(dir: dir, projects: projects)
+    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine("hi"), assistantLine("done"), turnDurationLine(background: 1)].map { $0 + "\n" })
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(store.stillValid(.askClaude("a", prompt: "x")))
+    writeSession(dir, "a", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(!store.stillValid(.askClaude("a", prompt: "x")))
+}
+
 @Test func allowsFalseWhenSessionGone() {
     let dir = makeTempDir()
     let store = makeStore(dir: dir)
@@ -657,6 +669,31 @@ private let askX = WidgetAction.askClaude("a", prompt: "x")
     #expect(r.session?.shownStatus == "busy")
     #expect(r.activity == "Bash: ls")
     #expect(!r.store.stillValid(askX))
+}
+
+@Test func endedClearsOldToolLineForNextTurn() {
+    let r = ActivityRig([userLine("hi"), bash("swift test"), assistantLine("done"), turnDurationLine(background: 1)])
+    r.refresh()
+    r.append(userLine("next") + "\n")
+    r.refresh()
+    #expect(r.session?.backgroundAgents == nil)
+    #expect(r.activity == nil)
+}
+
+@Test func backgroundWaitShowsLastReply() {
+    let r = ActivityRig([userLine("hi"), assistantLine("all done"), turnDurationLine(background: 2)])
+    r.refresh()
+    #expect(r.session?.backgroundAgents == 2)
+    #expect(r.session?.lastReply == "all done")
+    #expect(r.session?.isFinished == true)
+}
+
+@Test func backgroundWaitSurvivesMetadataOnlyAppend() {
+    let r = ActivityRig([userLine("hi"), assistantLine("done"), turnDurationLine(background: 3)])
+    r.refresh()
+    r.append(jsonLine(["type": "last-prompt", "sessionId": "a"]) + "\n")
+    r.refresh()
+    #expect(r.session?.backgroundAgents == 3)
 }
 
 @Test func sidechainLinesKeepBackgroundWait() {

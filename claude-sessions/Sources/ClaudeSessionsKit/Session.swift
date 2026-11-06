@@ -75,7 +75,10 @@ extension Session {
     var folder: String { (cwd as NSString).lastPathComponent }
     var subtitle: String { branch.map { "\(folder) · \($0)" } ?? folder }
     var menuCount: Int { menu.reduce(0) { $0 + $1.items.count } }
-    var isFinished: Bool { status == "idle" || status == "waiting" }
+    /// Shown as done or waiting, including a main turn that ended while background agents still run.
+    var isFinished: Bool { shownStatus == "idle" || status == "waiting" }
+    /// Can take a message now: the main turn is over.
+    var canAskClaude: Bool { shownStatus == "idle" }
     var isPermissionPrompt: Bool { status == "waiting" && waitingFor == "permission prompt" }
     var approvable: Pending? {
         guard case .one(let p)? = pending else { return nil }
@@ -347,10 +350,11 @@ public final class Store: ObservableObject {
         var turn = cached?.turn
         if let end = body.lastIndex(of: 0x0A) {
             offset += UInt64(end + 1 - body.startIndex)
-            let lines = Data(body[body.startIndex...end])
+            let lines = body[body.startIndex...end]
             text = Transcript.lastToolUse(in: lines) ?? text
             turn = Transcript.mainTurn(in: lines) ?? turn
         }
+        if case .ended = turn { text = nil }
         activities[s.id] = (offset, text, turn)
         return (text, turn)
     }
@@ -441,6 +445,10 @@ public final class Store: ObservableObject {
             let (text, turn) = readActivity(for: list[i], url: url, size: Int(sizes[list[i].id] ?? 0))
             if case .ended(let n) = turn {
                 list[i].backgroundAgents = n
+                // The first loop skipped the reply read: the row was still `busy` then.
+                let t = readTail(for: list[i], url: url, size: Int(sizes[list[i].id] ?? 0))
+                list[i].lastReply = t.reply
+                list[i].replyText = t.replyText
             } else {
                 list[i].activity = text
             }
@@ -455,7 +463,7 @@ public final class Store: ObservableObject {
         var newUnseen = unseen
         for s in list {
             if let last = lastStatus[s.id], last != "busy", s.status == "busy" { newUnseen[s.id] = nil }
-            if lastStatus[s.id] == "busy" && s.isFinished {
+            if lastStatus[s.id] == "busy" && (s.status == "idle" || s.status == "waiting") {
                 newUnseen[s.id, default: NewMark()].claude = true
                 peekUntil = now.addingTimeInterval(5)
                 if s.status == "waiting" { chime = .needsYou } else if chime == nil { chime = .done }
@@ -678,7 +686,7 @@ public final class Store: ObservableObject {
         switch a {
         case .jump, .openLink, .connect, .nudgeRabbit: return true
         case .approve(_, let toolId), .deny(_, let toolId, _): return allows(Editing(id: a.sessionId, kind: .deny, toolId: toolId))
-        case .askClaude(let id, _): return sessions.first { $0.id == id }?.shownStatus == "idle"
+        case .askClaude(let id, _): return sessions.first { $0.id == id }?.canAskClaude == true
         }
     }
 }

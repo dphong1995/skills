@@ -565,7 +565,7 @@ public struct WidgetView: View {
                         if pr.rabbit == .awaitingApproval {
                             PillButton(title: "🐰 Nhắc duyệt") { onAction(.nudgeRabbit(s.id, pr.ref)) }
                         }
-                        let canAsk = store.stillValid(.askClaude(s.id, prompt: ""))
+                        let canAsk = s.canAskClaude
                         PillButton(title: "Nhờ Claude") {
                             onAction(.askClaude(s.id, prompt: PullRequests.prompt(store.prPrompt, url: pr.url, id: pr.ref.id)))
                         }

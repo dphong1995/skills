@@ -327,9 +327,10 @@ enum Transcript {
     }
 
     /// The state given by the last main-thread user/assistant/`turn_duration` line of `data`; nil when it has none.
+    private static let mainTurnMarkers = ["\"turn_duration\"", "\"type\":\"user\"", "\"type\":\"assistant\""].map { Data($0.utf8) }
+
     static func mainTurn(in data: Data) -> MainTurn? {
-        let markers = ["\"turn_duration\"", "\"type\":\"user\"", "\"type\":\"assistant\""].map { Data($0.utf8) }
-        for line in data.split(separator: 0x0A).reversed() where markers.contains(where: { line.range(of: $0) != nil }) {
+        for line in data.split(separator: 0x0A).reversed() where mainTurnMarkers.contains(where: { line.range(of: $0) != nil }) {
             guard let o = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
                   (o["isSidechain"] as? Bool) != true
             else { continue }
