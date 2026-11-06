@@ -486,7 +486,7 @@ public struct WidgetView: View {
 
     private func row(_ s: Session) -> some View {
         let editing = panel.editing?.id == s.id
-        let fresh = store.unseen.contains(s.id)
+        let fresh = store.unseen[s.id] != nil
         return VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 10) {
                 Circle().fill(color(s.status)).frame(width: 8, height: 8)

@@ -772,13 +772,13 @@ private func markedStore() -> (Store, URL, Date) {
     writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
     writeSession(dir, "b", pid: me, status: "waiting", waitingFor: "permission prompt", ageSec: 0, name: "b", cwd: backend)
     store.refresh(at: t0.addingTimeInterval(1))
-    #expect(store.unseen == ["a", "b"])
+    #expect(Set(store.unseen.keys) == ["a", "b"])
 }
 
 @Test func unseenKeptAcrossRefreshes() {
     let (store, _, t0) = markedStore()
     for i in 1...3 { store.refresh(at: t0.addingTimeInterval(1 + Double(i) * 30)) }
-    #expect(store.unseen == ["a"])
+    #expect(Set(store.unseen.keys) == ["a"])
 }
 
 @Test func unseenClearedOnSwitchToBusy() {
@@ -792,20 +792,20 @@ private func markedStore() -> (Store, URL, Date) {
     let (store, dir, t0) = markedStore()
     writeSession(dir, "a", pid: 999_999, status: "idle", ageSec: 0, name: "a", cwd: frontend)
     store.refresh(at: t0.addingTimeInterval(2))
-    #expect(!store.unseen.contains("a"))
+    #expect(store.unseen["a"] == nil)
 }
 
 @Test func markSeenClears() {
     let (store, _, _) = markedStore()
     store.markSeen("zzz")
-    #expect(store.unseen == ["a"])
+    #expect(Set(store.unseen.keys) == ["a"])
     store.markSeen("a")
     #expect(store.unseen.isEmpty)
 }
 
 @Test func newCountCountsLiveOnly() {
     let (store, _, _) = markedStore()
-    store.unseen.insert("dead")
+    store.unseen["dead"] = NewMark(claude: true)
     #expect(store.newCount == 1)
 }
 
@@ -813,7 +813,7 @@ private func markedStore() -> (Store, URL, Date) {
     let (store, _, _) = markedStore()
     store.surfaces["a"] = "S1"
     store.noteFocused("S1")
-    #expect(store.unseen == ["a"])
+    #expect(Set(store.unseen.keys) == ["a"])
     store.noteFocused("s1")
     #expect(store.unseen.isEmpty)
 }
@@ -824,7 +824,7 @@ private func markedStore() -> (Store, URL, Date) {
     store.noteFocused("S1")
     store.noteFocused(nil)
     store.noteFocused("S1")
-    #expect(store.unseen == ["a"])
+    #expect(Set(store.unseen.keys) == ["a"])
 }
 
 @Test func surfaceMissDroppedWhenPidChanges() {
@@ -938,7 +938,7 @@ private func prWithReviewer(id: Int, approved: Bool, comments: Int = 0) -> [Stri
     api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prWithReviewer(id: 7571, approved: false, comments: 1)]])
     api.set("/comments", json: ["values": [comment("{tin}", "Tin Tran", "2026-11-04T10:00:00.000000+00:00")]])
     store.refresh(at: prT0 + 61)
-    #expect(store.unseen == ["a"])
+    #expect(Set(store.unseen.keys) == ["a"])
 }
 
 @Test func prEventMarksEverySessionWithThePR() {
@@ -951,7 +951,7 @@ private func prWithReviewer(id: Int, approved: Bool, comments: Int = 0) -> [Stri
     api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prWithReviewer(id: 7571, approved: false, comments: 1)]])
     api.set("/comments", json: ["values": [comment("{tin}", "Tin Tran", "2026-11-04T10:00:00.000000+00:00")]])
     store.refresh(at: prT0 + 61)
-    #expect(store.unseen == ["a", "b"])
+    #expect(Set(store.unseen.keys) == ["a", "b"])
 }
 
 @Test func prEventMarksBusySession() {
@@ -963,7 +963,7 @@ private func prWithReviewer(id: Int, approved: Bool, comments: Int = 0) -> [Stri
     api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prWithReviewer(id: 7571, approved: false, comments: 1)]])
     api.set("/comments", json: ["values": [comment("{tin}", "Tin Tran", "2026-11-04T10:00:00.000000+00:00")]])
     store.refresh(at: prT0 + 61)
-    #expect(store.unseen == ["a"])
+    #expect(Set(store.unseen.keys) == ["a"])
 }
 
 @Test func prMarkSurvivesSwitchToBusy() {
@@ -975,10 +975,50 @@ private func prWithReviewer(id: Int, approved: Bool, comments: Int = 0) -> [Stri
     api.set("/comments", json: ["values": [comment("{tin}", "Tin Tran", "2026-11-04T10:00:00.000000+00:00")]])
     writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
     store.refresh(at: prT0 + 61)
-    #expect(store.unseen == ["a"])
+    #expect(Set(store.unseen.keys) == ["a"])
     store.refresh(at: prT0 + 62)
-    #expect(store.unseen == ["a"])
+    #expect(Set(store.unseen.keys) == ["a"])
 }
+
+@Test func prEventMarksOnlyThatPR() {
+    let api = fake(open: [prWithReviewer(id: 7571, approved: false), prWithReviewer(id: 7572, approved: false)])
+    let (store, _, _) = prStore(api, reply: prReply([7571, 7572]))
+    store.refresh(at: prT0)
+    #expect(store.unseen.isEmpty)
+    api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prWithReviewer(id: 7571, approved: false), prWithReviewer(id: 7572, approved: false, comments: 1)]])
+    api.set("/comments", json: ["values": [comment("{tin}", "Tin Tran", "2026-11-04T10:00:00.000000+00:00")]])
+    store.refresh(at: prT0 + 61)
+    #expect(store.unseen["a"] == NewMark(claude: false, prs: [prMarkRef(7572)]))
+}
+
+@Test func claudeAndPRMarkTogether() {
+    let api = fake(open: [prWithReviewer(id: 7571, approved: false)])
+    let (store, dir, _) = prStore(api, reply: prReply([7571]))
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: prT0)
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prWithReviewer(id: 7571, approved: false, comments: 1)]])
+    api.set("/comments", json: ["values": [comment("{tin}", "Tin Tran", "2026-11-04T10:00:00.000000+00:00")]])
+    store.refresh(at: prT0 + 61)
+    #expect(store.unseen["a"] == NewMark(claude: true, prs: [prMarkRef(7571)]))
+}
+
+@Test func claudeOnlyMark() {
+    let (store, _, _) = markedStore()
+    #expect(store.unseen["a"] == NewMark(claude: true))
+}
+
+@Test func prMarkDroppedWhenPRGone() {
+    let api = fake(open: [prWithReviewer(id: 7571, approved: false)])
+    let (store, _, _) = prStore(api, reply: prReply([7571]))
+    store.refresh(at: prT0)
+    store.unseen["a"] = NewMark(prs: [prMarkRef(9999)])
+    store.refresh(at: prT0 + 1)
+    #expect(store.unseen["a"] == nil)
+    #expect(store.newCount == 0)
+}
+
+private func prMarkRef(_ id: Int) -> PRRef { PRRef(workspace: "t6engineering", repo: "talo6-dct-backend", id: id) }
 
 // MARK: - Link menu
 

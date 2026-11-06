@@ -52,13 +52,13 @@ import Testing
 @Test func dwellTargetOnlyForFreshRow() {
     let panel = PanelState()
     let store = makeStore(dir: makeTempDir())
-    store.unseen = ["a"]
+    store.unseen = ["a": NewMark(claude: true)]
     #expect(panel.dwellTarget(in: store) == nil)
     panel.hoveredRow = "a"
     #expect(panel.dwellTarget(in: store) == "a")
     panel.hoveredRow = "b"
     #expect(panel.dwellTarget(in: store) == nil)
-    store.unseen = []
+    store.unseen = [:]
     panel.hoveredRow = "a"
     #expect(panel.dwellTarget(in: store) == nil)
 }

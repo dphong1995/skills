@@ -88,18 +88,27 @@ extension Session {
 
 public enum Chime: Equatable { case done, needsYou }
 
+public struct NewMark: Equatable {
+    public var claude = false
+    public var prs: Set<PRRef> = []
+    public init(claude: Bool = false, prs: Set<PRRef> = []) {
+        self.claude = claude
+        self.prs = prs
+    }
+}
+
 public final class Store: ObservableObject {
     @Published var sessions: [Session] = []
     /// Session id -> cmux surface UUID, filled by the app. Pruned to live ids and dropped when the session's pid changes.
     public var surfaces: [String: String] = [:]
-    /// Session ids with a NEW mark. In memory only.
-    @Published public var unseen: Set<String> = []
+    /// Session id -> why it has a NEW mark (key present = marked). In memory only.
+    @Published public var unseen: [String: NewMark] = [:]
     /// Session ids whose cmux surface lookup failed; dropped when the pid changes or the session dies.
     public var surfaceMisses: Set<String> = []
     private var lastFocused: String?
     var newCount: Int {
         let live = Set(sessions.map(\.id))
-        return unseen.filter(live.contains).count
+        return unseen.keys.filter(live.contains).count
     }
     private var pids: [String: Int32] = [:]
     /// The pid of the live session with this id as of the last refresh.
@@ -340,14 +349,14 @@ public final class Store: ObservableObject {
     }
 
     public func markSeen(_ id: String) {
-        if unseen.contains(id) { unseen.remove(id) }
+        if unseen[id] != nil { unseen[id] = nil }
     }
 
     /// Called with the focused cmux surface (nil when unknown). Clears the marks of the session shown there once it is seen on two consecutive calls.
     public func noteFocused(_ surface: String?) {
         if let surface, let last = lastFocused, last.caseInsensitiveCompare(surface) == .orderedSame {
-            let matches = unseen.filter { surfaces[$0]?.caseInsensitiveCompare(surface) == .orderedSame }
-            if !matches.isEmpty { unseen.subtract(matches) }
+            let matches = unseen.keys.filter { surfaces[$0]?.caseInsensitiveCompare(surface) == .orderedSame }
+            for id in matches { unseen[id] = nil }
         }
         lastFocused = surface
     }
@@ -423,9 +432,9 @@ public final class Store: ObservableObject {
 
         var newUnseen = unseen
         for s in list {
-            if let last = lastStatus[s.id], last != "busy", s.status == "busy" { newUnseen.remove(s.id) }
+            if let last = lastStatus[s.id], last != "busy", s.status == "busy" { newUnseen[s.id] = nil }
             if lastStatus[s.id] == "busy" && s.isFinished {
-                newUnseen.insert(s.id)
+                newUnseen[s.id, default: NewMark()].claude = true
                 peekUntil = now.addingTimeInterval(5)
                 if s.status == "waiting" { chime = .needsYou } else if chime == nil { chime = .done }
             }
@@ -485,13 +494,20 @@ public final class Store: ObservableObject {
             for i in list.indices {
                 let all = snap.prs[list[i].id] ?? []
                 allPRs[list[i].id] = all
-                if all.contains(where: { snap.eventRefs.contains($0.ref) }) { newUnseen.insert(list[i].id) }
+                let events = all.map(\.ref).filter(snap.eventRefs.contains)
+                if !events.isEmpty { newUnseen[list[i].id, default: NewMark()].prs.formUnion(events) }
                 list[i].prs = Array(all.prefix(3))
                 let shown = Set(list[i].prs.map(\.ref))
                 if !shown.isEmpty {
                     let refs = buttonRefs[list[i].id] ?? []
                     list[i].links = list[i].links.enumerated().filter { !refs[$0.offset].contains(where: shown.contains) }.map(\.element)
                 }
+            }
+            for i in list.indices {
+                let id = list[i].id
+                guard var mark = newUnseen[id] else { continue }
+                mark.prs.formIntersection(allPRs[id]?.map(\.ref) ?? [])
+                newUnseen[id] = mark.claude || !mark.prs.isEmpty ? mark : nil
             }
             if prLastSuccess != snap.lastSuccess { prLastSuccess = snap.lastSuccess }
             if !snap.events.isEmpty {
@@ -523,7 +539,7 @@ public final class Store: ObservableObject {
             surfaceMisses.remove(s.id)
         }
         surfaceMisses.formIntersection(live)
-        newUnseen.formIntersection(live)
+        newUnseen = newUnseen.filter { live.contains($0.key) }
         if newUnseen != unseen { unseen = newUnseen }
         pids = Dictionary(list.map { ($0.id, $0.pid) }, uniquingKeysWith: { $1 })
         surfaces = surfaces.filter { live.contains($0.key) }

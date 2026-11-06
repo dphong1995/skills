@@ -236,25 +236,25 @@ struct SnapshotTests {
 
     @Test func renderCollapsedNew() {
         let store = newMarkStore(makeTempDir(), waiting: 1, idle: 2, busy: 1)
-        store.unseen = ["w0", "i1"]
+        store.unseen = ["w0": NewMark(claude: true), "i1": NewMark(claude: true)]
         render(store, PanelState(), "23-collapsed-new")
     }
 
     @Test func renderCollapsedNewTwoDigits() {
         let store = newMarkStore(makeTempDir(), waiting: 3, idle: 12, busy: 1)
-        store.unseen = Set((0..<12).map { "i\($0)" })
+        store.unseen = Dictionary(uniqueKeysWithValues: (0..<12).map { ("i\($0)", NewMark(claude: true)) })
         render(store, PanelState(), "24-collapsed-new-two-digits")
     }
 
     @Test func renderCollapsedNoNew() {
         let store = newMarkStore(makeTempDir(), waiting: 1, idle: 2, busy: 1)
-        store.unseen = []
+        store.unseen = [:]
         render(store, PanelState(), "25-collapsed-no-new")
     }
 
     @Test func renderExpandedNew() {
         let store = newMarkStore(makeTempDir(), waiting: 1, idle: 2, busy: 1)
-        store.unseen = ["i1"]
+        store.unseen = ["i1": NewMark(claude: true)]
         let panel = PanelState()
         panel.hovering = true
         render(store, panel, "26-expanded-new")
@@ -382,7 +382,7 @@ struct SnapshotTests {
             assistantLine("Đã sửa xong, test đều qua."),
         ])
         writeSession(dir, "a", pid: me, status: "idle", ageSec: 30, name: "talo6-dct-frontend-d7", cwd: frontend)
-        store.unseen = ["a"]
+        store.unseen = ["a": NewMark(claude: true)]
         store.refresh(at: Date())
         panel.hovering = true
         render(store, panel, "27-fresh-long-title")

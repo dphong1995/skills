@@ -258,10 +258,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !store.unseen.isEmpty,
               NSWorkspace.shared.frontmostApplication?.bundleIdentifier == CmuxJump.bundleID
         else { return clearFocus() }
-        for id in store.unseen where store.surfaces[id] == nil && !store.surfaceMisses.contains(id) && !lookingUp.contains(id) {
+        for id in store.unseen.keys where store.surfaces[id] == nil && !store.surfaceMisses.contains(id) && !lookingUp.contains(id) {
             resolveSurface(id) { _ in }
         }
-        guard store.unseen.contains(where: { store.surfaces[$0] != nil }) else { return clearFocus() }
+        guard store.unseen.keys.contains(where: { store.surfaces[$0] != nil }) else { return clearFocus() }
         guard !checkingFocus else { return }
         checkingFocus = true
         let gen = focusGen

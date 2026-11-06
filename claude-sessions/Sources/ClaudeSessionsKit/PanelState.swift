@@ -33,7 +33,7 @@ public final class PanelState: ObservableObject {
 
     /// The hovered row when it carries a fresh mark.
     public func dwellTarget(in store: Store) -> String? {
-        hoveredRow.flatMap { store.unseen.contains($0) ? $0 : nil }
+        hoveredRow.flatMap { store.unseen[$0] != nil ? $0 : nil }
     }
 
     public func expanded(_ store: Store) -> Bool { hovering || editing != nil || store.peeking }
