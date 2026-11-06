@@ -91,6 +91,7 @@ extension Session {
     func allows(_ kind: Store.Editing.Kind, toolId: String?) -> Bool {
         switch kind {
         case .deny: toolId != nil && approvable?.toolId == toolId
+        case .reply: canAskClaude
         }
     }
 }
@@ -123,7 +124,7 @@ public final class Store: ObservableObject {
     /// The pid of the live session with this id as of the last refresh.
     public func pid(of id: String) -> Int32? { pids[id] }
     public struct Editing: Equatable {
-        public enum Kind { case deny }
+        public enum Kind { case deny, reply }
         public let id: String
         public let kind: Kind
         /// The tool a `.deny` editor is for.
@@ -766,7 +767,8 @@ public final class Store: ObservableObject {
         switch a {
         case .jump, .openLink, .connect, .nudgeRabbit, .resume: return true
         case .approve(_, let toolId), .deny(_, let toolId, _): return allows(Editing(id: a.sessionId, kind: .deny, toolId: toolId))
-        case .askClaude(let id, _): return sessions.first { $0.id == id }?.canAskClaude == true
+        case .askClaude(let id, _), .reply(let id, _): return sessions.first { $0.id == id }?.canAskClaude == true
+        case .stop(let id): return sessions.first { $0.id == id }?.shownStatus == "busy"
         }
     }
 }

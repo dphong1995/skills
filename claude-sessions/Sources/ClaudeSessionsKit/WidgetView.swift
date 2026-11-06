@@ -151,6 +151,10 @@ public enum WidgetAction: Equatable {
     case deny(String, toolId: String, reason: String)
     case openLink(String, URL)
     case askClaude(String, prompt: String)
+    /// Types a prompt of the user's own into a finished session.
+    case reply(String, text: String)
+    /// Sends Esc to a busy session.
+    case stop(String)
     case nudgeRabbit(String, PRRef)
     /// Opens a cmux workspace that resumes a closed session.
     case resume(ClosedSession)
@@ -159,7 +163,7 @@ public enum WidgetAction: Equatable {
 
     public var sessionId: String {
         switch self {
-        case .jump(let id), .approve(let id, _), .deny(let id, _, _), .openLink(let id, _), .askClaude(let id, _), .nudgeRabbit(let id, _): id
+        case .jump(let id), .approve(let id, _), .deny(let id, _, _), .openLink(let id, _), .askClaude(let id, _), .reply(let id, _), .stop(let id), .nudgeRabbit(let id, _): id
         case .resume(let c): c.id
         case .connect: ""
         }
@@ -537,9 +541,9 @@ public struct WidgetView: View {
             .onTapGesture { onAction(.jump(s.id)) }
     }
 
-    private func editor(_ s: Session) -> some View {
+    private func editor(_ s: Session, _ kind: Store.Editing.Kind) -> some View {
         let draft = Binding(get: { store.drafts[s.id, default: ""] }, set: { store.drafts[s.id] = $0 })
-        return TextField("Lý do (để trống = chỉ từ chối)", text: draft, axis: .vertical)
+        return TextField(kind == .reply ? "Trả lời…" : "Lý do (để trống = chỉ từ chối)", text: draft, axis: .vertical)
             .textFieldStyle(.plain)
             .font(.system(size: 11.5))
             .lineLimit(1...4)
@@ -549,9 +553,36 @@ public struct WidgetView: View {
             .onAppear { focused = true }
             .onSubmit {
                 let text = draft.wrappedValue
-                onAction(.deny(s.id, toolId: s.approvable?.toolId ?? "", reason: text))
+                if kind == .reply {
+                    if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { onAction(.reply(s.id, text: text)) }
+                } else {
+                    onAction(.deny(s.id, toolId: s.approvable?.toolId ?? "", reason: text))
+                }
             }
             .onExitCommand { panel.editing = nil }
+    }
+
+    /// `Trả lời…` on a finished session, `Dừng` (two clicks within 3 s) on a busy one; both need the session to be in cmux.
+    @ViewBuilder
+    private func quickButton(_ s: Session) -> some View {
+        let inCmux = !store.surfaceMisses.contains(s.id)
+        if s.canAskClaude {
+            PillButton(title: "Trả lời…") { panel.editing = Store.Editing(id: s.id, kind: .reply) }
+                .disabled(!inCmux).opacity(inCmux ? 1 : 0.4)
+                .help(inCmux ? "" : "Chỉ dùng được trong cmux")
+        } else if s.shownStatus == "busy" {
+            let armed = panel.stopArmed[s.id].map { store.now.timeIntervalSince($0) < 3 } ?? false
+            PillButton(title: armed ? "Bấm lần nữa để dừng" : "Dừng") {
+                if armed {
+                    panel.stopArmed[s.id] = nil
+                    onAction(.stop(s.id))
+                } else {
+                    panel.stopArmed[s.id] = Date()
+                }
+            }
+            .disabled(!inCmux).opacity(inCmux ? 1 : 0.4)
+            .help(inCmux ? "" : "Chỉ dùng được trong cmux")
+        }
     }
 
     /// `☰ N`: toggles the inline list of every ticket and PR of the session.
@@ -580,7 +611,7 @@ public struct WidgetView: View {
     }
 
     private func row(_ s: Session) -> some View {
-        let editing = panel.editing?.id == s.id
+        let editing = panel.editing?.id == s.id ? panel.editing?.kind : nil
         let mark = store.unseen[s.id]
         let claudeNew = mark?.claude == true
         var newLabel = claudeNew ? [", mới: Claude"] : []
@@ -617,6 +648,7 @@ public struct WidgetView: View {
                 Spacer(minLength: 12)
                 Text(elapsed(s.since, store.now)).font(.system(size: 11.5).monospacedDigit())
                     .foregroundStyle(.white.opacity(0.55)).frame(minWidth: 36, alignment: .trailing)
+                quickButton(s)
             }
             .padding(.horizontal, 6).padding(.vertical, 3)
             .background(claudeNew ? Color.yellow.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 6))
@@ -680,8 +712,8 @@ public struct WidgetView: View {
             if let pending = s.pending {
                 approvalBlock(s, pending).padding(.leading, 18)
             }
-            if editing {
-                editor(s).padding(.leading, 18)
+            if let editing {
+                editor(s, editing).padding(.leading, 18)
             }
         }
         .padding(.horizontal, 8)

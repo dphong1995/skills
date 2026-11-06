@@ -58,6 +58,15 @@ private let line = "claude 7d0fcbef-0908-41eb-9779-ea86d5bf838a  workspace=4E6B8
     #expect(CmuxJump.keys(for: .askClaude("s", prompt: "Fix PR")) == [CmuxJump.clearInput, .paste("Fix PR"), .raw("\\r")])
 }
 
+@Test func replyKeys() {
+    #expect(CmuxJump.keys(for: .reply("s", text: "say hi")) == [CmuxJump.clearInput, .paste("say hi"), .raw("\\r")])
+    #expect(CmuxJump.keys(for: .reply("s", text: "a\nb")) == [CmuxJump.clearInput, .paste("a\nb"), .raw("\\r")])
+}
+
+@Test func stopKeys() {
+    #expect(CmuxJump.keys(for: .stop("s")) == [.raw("\\x1b")])
+}
+
 private let identify = #"{"focused": {"surface_id": "6E39B188-F067-48FA-852D-3CE78A94EF92", "surface_type": "terminal", "pane_id": "P"}, "caller": null}"#
 
 @Test func focusedSurfaceFromIdentify() {

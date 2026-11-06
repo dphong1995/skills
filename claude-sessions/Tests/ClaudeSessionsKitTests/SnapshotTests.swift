@@ -529,6 +529,31 @@ struct SnapshotTests {
         render(store, panel, "closed-2-open")
     }
 
+    @Test func renderReply() {
+        let dir = makeTempDir()
+        let store = makeStore(dir: dir)
+        let panel = PanelState()
+        writeSession(dir, "a", pid: me, status: "idle", ageSec: 30, name: "talo6-dct-backend-3f", cwd: backend)
+        writeSession(dir, "b", pid: me, status: "busy", ageSec: 42, name: "talo6-dct-frontend-d7", cwd: frontend)
+        store.refresh(at: Date())
+        panel.hovering = true
+        render(store, panel, "reply-1-buttons")
+        store.drafts["a"] = "say hi"
+        panel.editing = Store.Editing(id: "a", kind: .reply)
+        render(store, panel, "reply-2-editor")
+    }
+
+    @Test func renderStopArmed() {
+        let dir = makeTempDir()
+        let store = makeStore(dir: dir)
+        let panel = PanelState()
+        writeSession(dir, "b", pid: me, status: "busy", ageSec: 42, name: "talo6-dct-frontend-d7", cwd: frontend)
+        store.refresh(at: Date())
+        panel.hovering = true
+        panel.stopArmed["b"] = store.now
+        render(store, panel, "stop-armed")
+    }
+
     @Test func renderQuota() {
         let dir = makeTempDir()
         let store = makeStore(dir: dir)

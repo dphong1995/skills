@@ -519,7 +519,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         guard !sending.contains(id) else { return NSSound.beep() }
         sending.insert(id)
-        let denyReason: String? = { if case .deny(_, _, let r) = a { return r }; return nil }()
+        let denyReason: String? = {
+            switch a {
+            case .deny(_, _, let r), .reply(_, let r): return r
+            default: return nil
+            }
+        }()
         // Close the editor now so a second Enter cannot queue a second send; the draft stays until the send succeeds.
         if denyReason != nil {
             for p in panels.values where p.state.editing?.id == id { p.state.editing = nil }

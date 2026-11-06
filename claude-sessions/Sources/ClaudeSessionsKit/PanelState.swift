@@ -12,6 +12,9 @@ public final class PanelState: ObservableObject {
     /// Height of the session rows alone, so the list can scroll when the panel is full.
     @Published public var listHeight: CGFloat?
 
+    /// Session id -> when its `Dừng` button was first clicked; a second click within 3 s sends the stop.
+    @Published public var stopArmed: [String: Date] = [:]
+
     /// Session ids whose `☰ N` list is expanded; cleared when the widget collapses.
     @Published public var openMenus: Set<String> = []
 

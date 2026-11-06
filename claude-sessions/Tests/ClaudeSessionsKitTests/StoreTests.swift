@@ -244,6 +244,35 @@ private func approvableStore() -> (Store, URL, URL, URL) {
     #expect(!store.stillValid(.askClaude("zzz", prompt: "x")))
 }
 
+@Test func replyNeedsIdle() {
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
+    let reply = WidgetAction.reply("a", text: "hi")
+    for (status, waitingFor, ok) in [("idle", nil, true), ("busy", nil, false), ("waiting", "input needed", false), ("waiting", "permission prompt", false)] as [(String, String?, Bool)] {
+        writeSession(dir, "a", pid: me, status: status, waitingFor: waitingFor, ageSec: 0, name: "a", cwd: frontend)
+        store.refresh(at: Date())
+        #expect(store.stillValid(reply) == ok)
+    }
+    #expect(!store.stillValid(.reply("zzz", text: "hi")))
+}
+
+@Test func stopNeedsBusy() {
+    let dir = makeTempDir(), projects = makeTempDir()
+    let store = makeStore(dir: dir, projects: projects)
+    let stop = WidgetAction.stop("a")
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(store.stillValid(stop))
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(!store.stillValid(stop))
+    _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine("hi"), assistantLine("done"), turnDurationLine(background: 1)].map { $0 + "\n" })
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(!store.stillValid(stop))
+    #expect(!store.stillValid(.stop("zzz")))
+}
+
 @Test func askClaudeInvalidWhenWaitingAfterTurnEnd() {
     let dir = makeTempDir(), projects = makeTempDir()
     let store = makeStore(dir: dir, projects: projects)
