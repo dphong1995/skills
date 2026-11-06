@@ -254,6 +254,12 @@ private func bash(_ id: String, _ cmd: String = "npm test") -> String {
     #expect(c.closed == ["1"])
 }
 
+@Test func agentChangesClosesAgentsOpenedInAnEarlierChunk() {
+    let d = data([toolResultLine(id: "1"), toolResultLine(id: "9")])
+    #expect(Transcript.agentChanges(in: d[...]).closed.isEmpty)
+    #expect(Transcript.agentChanges(in: d[...], open: ["1"]).closed == ["1"])
+}
+
 private let metaLine = #"{"type":"last-prompt","lastPrompt":"x"}"#
 
 @Test func mainTurnEndedWithBackgroundAgents() {

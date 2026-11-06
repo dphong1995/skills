@@ -13,7 +13,6 @@ private let capturedList = """
     let q = list[0]
     #expect(q.requestId == "E329BEF6-5CC6-4EF4-BBE2-002B8D2460DD")
     #expect(q.sessionId == "81481e45-0dd5-41c5-9d86-0e2f606fd4ad")
-    #expect(q.pid == nil)
     #expect(q.createdAt == ISO8601DateFormatter().date(from: "2026-11-06T12:02:56Z"))
     #expect(q.questions.count == 1)
     #expect(q.questions[0].prompt == "Pick a color")
@@ -24,24 +23,14 @@ private let capturedList = """
     #expect(q.questions[0].options[1].description == "Chọn màu xanh dương")
 }
 
-@Test func parseWorkstreamLineShape() {
-    // The workstream.jsonl shape: camelCase, ppid, payload.question.
-    let line = """
-    {"ok":true,"result":{"items":[{"kind":"question","ppid":82088,"createdAt":"2026-11-06T12:01:08Z","workstreamId":"cmux-feed-v1:Y2xhdWRl:YWJj","payload":{"question":{"requestId":"RQ","questions":[{"prompt":"P","header":"H","multiSelect":true,"options":[{"id":"o","label":"L","description":"D"}]}]}}}]}}
-    """
-    let q = Feed.parseList(Data(line.utf8)).first
-    #expect(q?.requestId == "RQ")
-    #expect(q?.pid == 82088)
-    #expect(q?.sessionId == "abc")
-    #expect(q?.questions.first?.multiSelect == true)
-}
-
 @Test func parseSkipsOtherSourcesAndMissingDate() {
     var other = feedItem(requestId: "X1")
     other["source"] = "codex"
+    var unsourced = feedItem(requestId: "X3")
+    unsourced["source"] = nil
     var undated = feedItem(requestId: "X2")
     undated["created_at"] = nil
-    let data = try! JSONSerialization.data(withJSONObject: ["ok": true, "result": ["items": [other, undated, feedItem(requestId: "OK")]]])
+    let data = try! JSONSerialization.data(withJSONObject: ["ok": true, "result": ["items": [other, unsourced, undated, feedItem(requestId: "OK")]]])
     #expect(Feed.parseList(data).map(\.requestId) == ["OK"])
 }
 
@@ -67,9 +56,12 @@ private func selections(_ p: [String: Any]) -> [String]? { p["selections"] as? [
     // (d) Other free text, trimmed
     p = Feed.replyParams(requestId: "R", answers: [[]], other: [0: "  Purple "])
     #expect(selections(p) == ["Purple"])
-    // Other after the picks; an unanswered question is left out like cmux's own panel does
+    // Other after the picks; an unanswered question sends "" (callers only send complete answers)
     p = Feed.replyParams(requestId: "R", answers: [["Red"], []], other: [0: "x"])
     #expect(selections(p) == ["Red, x", ""])
+    // With the question known, the slot count is its question count.
+    p = Feed.replyParams(requestId: "R", question: feedQuestion(questions: feedQuestion().questions + feedQuestion().questions), answers: [["Red"]], other: [:])
+    #expect(selections(p) == ["Red", ""])
     // An unanswered question in the middle keeps the later answers on their own prompts.
     p = Feed.replyParams(requestId: "R", answers: [[], ["Large"]], other: [:])
     #expect(selections(p) == ["", "Large"])

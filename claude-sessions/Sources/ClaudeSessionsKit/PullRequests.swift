@@ -113,21 +113,10 @@ enum PullRequests {
             let user = v["user"] as? [String: Any]
             guard user?["uuid"] as? String != me else { continue }
             guard let name = user?["display_name"] as? String, let s = v["created_on"] as? String,
-                  let at = date(s) else { return nil }
+                  let at = ISODate.date(s) else { return nil }
             return PRComment(name: name, at: at)
         }
         return nil
-    }
-
-    private static let fractionalDate: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f
-    }()
-    private static let plainDate = ISO8601DateFormatter()
-
-    static func date(_ s: String) -> Date? {
-        fractionalDate.date(from: s) ?? plainDate.date(from: s)
     }
 
     static func events(old: PRStatus, new: PRStatus) -> [PREvent] {

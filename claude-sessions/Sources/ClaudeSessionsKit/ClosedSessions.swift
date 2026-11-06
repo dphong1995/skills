@@ -20,8 +20,14 @@ public struct ClosedSession: Equatable, Codable {
         self.init(id: s.id, title: s.title, cwd: s.cwd, branch: s.branch, closedAt: closedAt)
     }
 
-    var folder: String { (cwd as NSString).lastPathComponent }
-    var subtitle: String { branch.map { "\(folder) · \($0)" } ?? folder }
+    var folder: String { Self.folder(cwd) }
+    var subtitle: String { Self.subtitle(cwd: cwd, branch: branch) }
+
+    /// The folder name of `cwd`, followed by ` · <branch>` when there is one; shared with `Session`.
+    static func folder(_ cwd: String) -> String { (cwd as NSString).lastPathComponent }
+    static func subtitle(cwd: String, branch: String?) -> String {
+        branch.map { "\(folder(cwd)) · \($0)" } ?? folder(cwd)
+    }
 
     /// What the user can paste into a terminal when cmux cannot open the workspace.
     public var shellCommand: String {
@@ -30,10 +36,7 @@ public struct ClosedSession: Equatable, Codable {
 
     /// Blocking: call off the main thread. Opens a cmux workspace in `cwd` running `claude --resume <id>`; false on any failure.
     public func resume() -> Bool {
-        guard let cmux = NSWorkspace.shared.urlForApplication(withBundleIdentifier: CmuxJump.bundleID)?
-            .appendingPathComponent("Contents/Resources/bin/cmux").path
-        else { return false }
-        return runProcess(cmux, ["new-workspace", "--cwd", cwd, "--command", "claude --resume \(id)", "--focus", "true"], timeout: 5) != nil
+        CmuxJump.newWorkspace(cwd: cwd, command: "claude --resume \(id)")
     }
 }
 

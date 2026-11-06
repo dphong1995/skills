@@ -21,6 +21,12 @@ public enum CmuxJump {
         return surface(fromSessionsOutput: out)
     }
 
+    /// Blocking: call off the main thread. Opens a focused cmux workspace in `cwd` running `command`; false on any failure.
+    public static func newWorkspace(cwd: String, command: String) -> Bool {
+        guard let cmux = cliPath else { return false }
+        return runProcess(cmux, ["new-workspace", "--cwd", cwd, "--command", command, "--focus", "true"], timeout: 5) != nil
+    }
+
     static func focusedSurface(fromIdentify data: Data) -> String? {
         guard let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let focused = o["focused"] as? [String: Any],

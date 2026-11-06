@@ -342,7 +342,7 @@ public struct WidgetView: View {
             Button("Thoát") { NSApp.terminate(nil) }
         }
         .animation(.spring(response: 0.36, dampingFraction: 0.8), value: expanded)
-        .onChange(of: expanded) { _, now in if !now { panel.openMenus = []; panel.closedOpen = false } }
+        .onChange(of: expanded) { _, now in if !now { panel.openMenus = []; panel.closedOpen = false; panel.pruneQuestions(live: store.sessions.compactMap(\.question)) } }
         .animation(.spring(response: 0.36, dampingFraction: 0.8), value: store.sessions.count)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: panel.anchor.alignment)
         .padding(Layout.margin)
@@ -373,7 +373,7 @@ public struct WidgetView: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
             if abs(h - (panel.listHeight ?? 0)) > 0.5 { panel.listHeight = h }
         }
-        let height = min(panel.listHeight ?? (Layout.expanded(store.sessions, open: panel.openMenus, closed: store.closed.items.count, closedOpen: panel.closedOpen).height - Layout.headerHeight), Layout.maxListHeight)
+        let height = min(panel.listHeight ?? (Layout.expanded(store.sessions, open: panel.openMenus, closed: store.closed.items.count, closedOpen: panel.closedOpen, blocks: store.blockStates).height - Layout.headerHeight), Layout.maxListHeight)
         return Group {
             if snapshotRendering {
                 rows.fixedSize(horizontal: false, vertical: true)
@@ -571,24 +571,24 @@ public struct WidgetView: View {
     @ViewBuilder
     private func quickButton(_ s: Session) -> some View {
         let inCmux = !store.surfaceMisses.contains(s.id)
-        if s.canAskClaude {
-            PillButton(title: "Trả lời…") { panel.editing = Store.Editing(id: s.id, kind: .reply) }
-                .disabled(!inCmux).opacity(inCmux ? 1 : 0.4)
-                .help(inCmux ? "" : "Chỉ dùng được trong cmux")
-        } else if s.shownStatus == "busy" {
-            let armed = panel.stopArmed[s.id].map { store.now.timeIntervalSince($0) < 3 } ?? false
-            PillButton(title: armed ? "Bấm lần nữa để dừng" : "Dừng") {
-                // The click compares with the real time: `store.now` only ticks once a second.
-                if panel.stopArmed[s.id].map({ Date().timeIntervalSince($0) < 3 }) ?? false {
-                    panel.stopArmed[s.id] = nil
-                    onAction(.stop(s.id))
-                } else {
-                    panel.stopArmed[s.id] = Date()
+        Group {
+            if s.canAskClaude {
+                PillButton(title: "Trả lời…") { panel.editing = Store.Editing(id: s.id, kind: .reply) }
+            } else if s.shownStatus == "busy" {
+                let armed = panel.stopArmed[s.id].map { store.now.timeIntervalSince($0) < 3 } ?? false
+                PillButton(title: armed ? "Bấm lần nữa để dừng" : "Dừng") {
+                    // The click compares with the real time: `store.now` only ticks once a second.
+                    if panel.stopArmed[s.id].map({ Date().timeIntervalSince($0) < 3 }) ?? false {
+                        panel.stopArmed[s.id] = nil
+                        onAction(.stop(s.id))
+                    } else {
+                        panel.stopArmed[s.id] = Date()
+                    }
                 }
             }
-            .disabled(!inCmux).opacity(inCmux ? 1 : 0.4)
-            .help(inCmux ? "" : "Chỉ dùng được trong cmux")
         }
+        .disabled(!inCmux).opacity(inCmux ? 1 : 0.4)
+        .help(inCmux ? "" : "Chỉ dùng được trong cmux")
     }
 
     private func sendAnswer(_ s: Session, _ q: FeedQuestion) {
@@ -599,8 +599,7 @@ public struct WidgetView: View {
 
     /// The Feed question of a session: the form while cmux can still take the answer, else `Trả lời trong cmux`.
     private func questionBlock(_ s: Session, _ q: FeedQuestion) -> some View {
-        let state = Feed.blockState(q, live: s.questionLive, sent: store.sent[s.id] == q.requestId,
-                                    failed: panel.failedQuestions.contains(q.requestId), now: store.now)
+        let state = store.blockState(of: s) ?? .fallback
         return VStack(alignment: .leading, spacing: 0) {
             switch state {
             case .sent:
@@ -620,7 +619,7 @@ public struct WidgetView: View {
         let canSend = Feed.complete(q, answers: answers, other: other)
         return VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(q.questions.enumerated()), id: \.offset) { i, item in
-                let picked = answers.indices.contains(i) ? answers[i] : []
+                let picked = Feed.picks(answers, i)
                 let key = "\(s.id)#\(i)"
                 HStack(spacing: 6) {
                     if let h = item.header {

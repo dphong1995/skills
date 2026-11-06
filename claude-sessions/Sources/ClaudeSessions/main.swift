@@ -224,20 +224,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         store.hotkeyNext = load("hotkeyNext", default: HotKeyCombo.nextChoices[0])
         store.$hotkeyOpen.dropFirst().sink { save("hotkeyOpen", $0) }.store(in: &cancellables)
         store.$hotkeyNext.dropFirst().sink { save("hotkeyNext", $0) }.store(in: &cancellables)
-        store.$hotkeyOpen.sink { [weak self] combo in
-            guard let self else { return }
-            let ok = hotKeys.register(combo, id: 1) { [weak self] in self?.toggleOpen() }
-            if ok { store.hotkeyFailed.remove("open") } else { store.hotkeyFailed.insert("open") }
-        }.store(in: &cancellables)
-        store.$hotkeyNext.sink { [weak self] combo in
-            guard let self else { return }
-            let ok = hotKeys.register(combo, id: 2) { [weak self] in self?.jumpToNextWaiting() }
-            if ok { store.hotkeyFailed.remove("next") } else { store.hotkeyFailed.insert("next") }
-        }.store(in: &cancellables)
+        func bind(_ published: Published<HotKeyCombo?>.Publisher, id: UInt32, name: String, handler: @escaping (AppDelegate) -> () -> Void) {
+            published.sink { [weak self] combo in
+                guard let self else { return }
+                let ok = hotKeys.register(combo, id: id) { [weak self] in self.map { handler($0)() } }
+                if ok { store.hotkeyFailed.remove(name) } else { store.hotkeyFailed.insert(name) }
+            }.store(in: &cancellables)
+        }
+        bind(store.$hotkeyOpen, id: 1, name: "open", handler: AppDelegate.toggleOpen)
+        bind(store.$hotkeyNext, id: 2, name: "next", handler: AppDelegate.jumpToNextWaiting)
     }
 
     /// Closes any open card; otherwise opens and pins the one on the screen with the mouse.
     func toggleOpen() {
+        guard !store.hidden else { return }
         if panels.values.contains(where: { $0.state.pinnedOpen || $0.state.hovering }) {
             for p in panels.values { p.state.pinnedOpen = false; p.state.pinnedEntered = false; p.state.hovering = false }
             return
@@ -500,12 +500,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                   let q = store.question(of: id) else { return NSSound.beep() }
             sending.insert(id)
             for p in panels.values where p.state.editing?.id == id { p.state.editing = nil }
+            // Optimistic: the monitor drops the item from its snapshot before `ok` reaches main, which would flash `Trả lời trong cmux`.
+            store.noteSent(session: id, requestId: requestId)
             monitor.reply(q, answers: answers, other: other) { ok in
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
                     sending.remove(id)
-                    if ok { return store.noteSent(session: id, requestId: requestId) }
-                    for p in panels.values { p.state.failedQuestions.insert(requestId) }
+                    if ok { return }
+                    store.noteSendFailed(session: id, requestId: requestId)
                     NSSound.beep()
                 }
             }

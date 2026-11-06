@@ -67,12 +67,11 @@ public final class HotKeys {
     }
 
     /// The order to walk and the session to jump to: within 5 s of the last press, the live one after `cycle.id` in the order saved
-    /// on the first press (a finished session leaves `fresh` once it is seen, so `fresh` cannot be used); else the first of `fresh`.
+    /// on the first press (a finished session leaves `fresh` once it is seen, so `fresh` cannot be used); else (also when every saved session has died) the first of `fresh`.
     public static func advance(cycle: Cycle?, fresh: [String], isLive: (String) -> Bool, now: Date) -> (order: [String], first: String)? {
         if let cycle, now.timeIntervalSince(cycle.at) <= 5, let i = cycle.order.firstIndex(of: cycle.id) {
             let n = cycle.order.count
-            guard let id = (1...n).map({ cycle.order[(i + $0) % n] }).first(where: isLive) else { return nil }
-            return (cycle.order, id)
+            if let id = (1...n).map({ cycle.order[(i + $0) % n] }).first(where: isLive) { return (cycle.order, id) }
         }
         return fresh.first.map { (fresh, $0) }
     }

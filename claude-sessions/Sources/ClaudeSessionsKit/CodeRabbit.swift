@@ -20,7 +20,7 @@ enum CodeRabbit {
 
     private static func raw(_ v: [String: Any]) -> String { (v["content"] as? [String: Any])?["raw"] as? String ?? "" }
 
-    private static func stamp(_ v: [String: Any], _ key: String) -> Date? { (v[key] as? String).flatMap(PullRequests.date) }
+    private static func stamp(_ v: [String: Any], _ key: String) -> Date? { (v[key] as? String).flatMap(ISODate.date) }
 
     static func isComment(_ v: [String: Any]) -> Bool { raw(v).contains(marker) }
 

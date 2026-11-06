@@ -77,8 +77,8 @@ extension Session {
     /// `idle` while only background agents run, else the raw `status`.
     var shownStatus: String { backgroundAgents != nil ? "idle" : status }
     var title: String { nameSource == "user" ? name : (aiTitle ?? firstPrompt ?? name) }
-    var folder: String { (cwd as NSString).lastPathComponent }
-    var subtitle: String { branch.map { "\(folder) · \($0)" } ?? folder }
+    var folder: String { ClosedSession.folder(cwd) }
+    var subtitle: String { ClosedSession.subtitle(cwd: cwd, branch: branch) }
     var menuCount: Int { menu.reduce(0) { $0 + $1.items.count } }
     /// Shown as done or waiting, including a main turn that ended while background agents still run.
     var isFinished: Bool { shownStatus == "idle" || status == "waiting" }
@@ -154,6 +154,9 @@ public final class Store: ObservableObject {
             closedStore.set(try? JSONEncoder().encode(closed.items), forKey: Store.closedKey)
         }
     }
+    /// Sessions that left the list while their process may still run: session, pid, when they left.
+    private var departed: [String: (session: ClosedSession, pid: Int32, since: Date)] = [:]
+    static let departedWindow: TimeInterval = 10
     private let closedStore: UserDefaults?
     private static let closedKey = "closedSessions"
     private let quotaReader: QuotaReader?
@@ -290,6 +293,8 @@ public final class Store: ObservableObject {
     public var feedMonitor: FeedMonitor?
     /// Session id -> request id of the question the widget answered; dropped once the session stops waiting.
     @Published public internal(set) var sent: [String: String] = [:]
+    /// Session id -> request id whose send failed; the card falls back to `Trả lời trong cmux`. Dropped like `sent`.
+    @Published public internal(set) var failed: [String: String] = [:]
     /// Session id -> the last question seen for it, kept while the session waits so an item that left the Feed still shows the fallback.
     private var lastQuestion: [String: FeedQuestion] = [:]
     /// Session id -> request id announced as a new mark, so the busy -> waiting flip after it stays quiet.
@@ -418,7 +423,7 @@ public final class Store: ObservableObject {
             let lines = body[body.startIndex...end]
             text = Transcript.lastToolUse(in: lines) ?? text
             turn = Transcript.mainTurn(in: lines) ?? turn
-            let changes = Transcript.agentChanges(in: lines)
+            let changes = Transcript.agentChanges(in: lines, open: agents.map(\.id))
             agents += changes.opened
             agents.removeAll { a in changes.closed.contains(a.id) }
         }
@@ -549,7 +554,7 @@ public final class Store: ObservableObject {
             let items = feedMonitor.takeSnapshot()
             for i in list.indices {
                 let s = list[i]
-                if let q = Feed.match(items, pid: s.pid, sessionId: s.id) {
+                if let q = Feed.match(items, sessionId: s.id) {
                     lastQuestion[s.id] = q
                     list[i].question = q
                     list[i].questionLive = true
@@ -673,16 +678,30 @@ public final class Store: ObservableObject {
         var nowClosed = closed
         // `sessions` still holds the previous refresh. A session that left is closed only once its process is gone: `/clear` gives the same pid a new id.
         let livePids = Set(list.map(\.pid))
-        for s in sessions where !live.contains(s.id) && !livePids.contains(s.pid) && !Store.isRunning(s.pid) {
-            nowClosed.add(ClosedSession(s, closedAt: now), now: now)
+        // Claude deletes the session file while the process is still exiting (or a session leaves the list while its process lives):
+        // keep it in `departed` for a few seconds and close it once the process is gone.
+        for s in sessions where !live.contains(s.id) && !livePids.contains(s.pid) && departed[s.id] == nil {
+            departed[s.id] = (ClosedSession(s, closedAt: now), s.pid, now)
+        }
+        for (id, d) in departed {
+            if live.contains(id) || livePids.contains(d.pid) || now.timeIntervalSince(d.since) > Store.departedWindow {
+                departed[id] = nil
+            } else if !Store.isRunning(d.pid) {
+                nowClosed.add(d.session, now: now)
+                departed[id] = nil
+            }
         }
         nowClosed.revive(live)
         nowClosed.prune(now: now)
         if nowClosed != closed { closed = nowClosed }
         lastQuestion = lastQuestion.filter { live.contains($0.key) }
         announcedQuestion = announcedQuestion.filter { live.contains($0.key) }
-        let stillAsking = sent.filter { id, _ in list.contains { $0.id == id && ($0.status == "waiting" || $0.status == "busy") } }
-        if stillAsking != sent { sent = stillAsking }
+        func stillAsking(_ m: [String: String]) -> [String: String] {
+            m.filter { id, _ in list.contains { $0.id == id && ($0.status == "waiting" || $0.status == "busy") } }
+        }
+        let keptSent = stillAsking(sent), keptFailed = stillAsking(failed)
+        if keptSent != sent { sent = keptSent }
+        if keptFailed != failed { failed = keptFailed }
         cache = cache.filter { live.contains($0.key) }
         buttonCache = buttonCache.filter { live.contains($0.key) }
         urls = urls.filter { live.contains($0.key) }
@@ -816,6 +835,24 @@ public final class Store: ObservableObject {
 
     /// Remembers that the answer to `requestId` reached cmux, so the card reads `Đã gửi`.
     public func noteSent(session id: String, requestId: String) { sent[id] = requestId }
+
+    /// Undoes `noteSent` after the send failed: the card falls back to `Trả lời trong cmux`.
+    public func noteSendFailed(session id: String, requestId: String) {
+        if sent[id] == requestId { sent[id] = nil }
+        failed[id] = requestId
+    }
+
+    /// What the card of `s` shows for its question; nil without one.
+    func blockState(of s: Session) -> Feed.BlockState? {
+        s.question.map {
+            Feed.blockState($0, live: s.questionLive, sent: sent[s.id] == $0.requestId, failed: failed[s.id] == $0.requestId, now: now)
+        }
+    }
+
+    /// `blockState` per session id, for `Layout`.
+    var blockStates: [String: Feed.BlockState] {
+        Dictionary(sessions.compactMap { s in blockState(of: s).map { (s.id, $0) } }, uniquingKeysWith: { $1 })
+    }
 
     public func stillValid(_ a: WidgetAction) -> Bool {
         switch a {

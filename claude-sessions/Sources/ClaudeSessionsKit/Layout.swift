@@ -99,10 +99,12 @@ public enum Layout {
         q.questions.reduce(questionFooterHeight) { $0 + questionLineHeight + CGFloat($1.options.count) * optionRowHeight + otherFieldHeight }
     }
 
-    static func height(of s: Session, open: Bool = false) -> CGFloat {
+    /// `block` is what the card shows for the session's question (`Store.blockStates`); without it the form shows while the question is live and supported.
+    static func height(of s: Session, open: Bool = false, block: Feed.BlockState? = nil) -> CGFloat {
         let base: CGFloat
         if let q = s.question {
-            base = rowHeight + (s.questionLive && Feed.supports(q) ? questionBlockHeight(q) : questionFallbackHeight)
+            let form = (block ?? (s.questionLive && Feed.supports(q) ? .form : .fallback)) == .form
+            base = rowHeight + (form ? questionBlockHeight(q) : questionFallbackHeight)
         } else {
             base = s.isFinished && s.lastReply != nil ? replyRowHeight : rowHeight
         }
@@ -113,8 +115,8 @@ public enum Layout {
 
     static let closedRowHeight: CGFloat = 26
 
-    static func expanded(_ sessions: [Session], open: Set<String> = [], closed: Int = 0, closedOpen: Bool = false) -> CGSize {
-        let rows = sessions.isEmpty ? rowHeight : sessions.reduce(0) { $0 + height(of: $1, open: open.contains($1.id)) }
+    static func expanded(_ sessions: [Session], open: Set<String> = [], closed: Int = 0, closedOpen: Bool = false, blocks: [String: Feed.BlockState] = [:]) -> CGSize {
+        let rows = sessions.isEmpty ? rowHeight : sessions.reduce(0) { $0 + height(of: $1, open: open.contains($1.id), block: blocks[$1.id]) }
         let group = closed == 0 ? 0 : cardGap + closedRowHeight * CGFloat(1 + (closedOpen ? closed : 0))
         let cards = cardGap * CGFloat(max(sessions.count - 1, 0))
         return CGSize(width: expandedWidth, height: headerHeight + listPadding + rows + cards + group)
@@ -126,7 +128,7 @@ public enum Layout {
 
     public static func size(_ store: Store, _ panel: PanelState) -> CGSize {
         guard panel.expanded(store) else { return CGSize(width: collapsedWidth(store), height: collapsed.height) }
-        let h = panel.measuredHeight ?? expanded(store.sessions, open: panel.openMenus, closed: store.closed.items.count, closedOpen: panel.closedOpen).height
+        let h = panel.measuredHeight ?? expanded(store.sessions, open: panel.openMenus, closed: store.closed.items.count, closedOpen: panel.closedOpen, blocks: store.blockStates).height
         return CGSize(width: expandedWidth, height: min(h, maxExpandedHeight))
     }
 

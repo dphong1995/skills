@@ -1637,28 +1637,18 @@ private func feedStore(_ items: [[String: Any]]) -> (Store, URL, FakeFeedTranspo
     return (store, dir, t)
 }
 
-@Test func questionMatchesSessionByPid() {
-    let (store, dir, _) = feedStore([feedItem(requestId: "R1", sessionId: "other-id")])
+@Test func questionAttachesToTheSessionOfItsId() {
+    let (store, dir, _) = feedStore([feedItem(requestId: "R1", sessionId: "b")])
     writeSession(dir, "a", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 0, name: "a", cwd: frontend)
     writeSession(dir, "b", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 0, name: "b", cwd: backend)
     store.refresh(at: Date())
-    #expect(store.sessions.allSatisfy { $0.question == nil })
-    // By sessionId from workstream_id.
-    let (s2, d2, _) = feedStore([feedItem(requestId: "R1", sessionId: "b")])
+    #expect(store.sessions.first { $0.id == "b" }?.question?.requestId == "R1")
+    #expect(store.sessions.first { $0.id == "a" }?.question == nil)
+    // An unknown session id attaches to nobody, even when the pid is shared.
+    let (s2, d2, _) = feedStore([feedItem(requestId: "R2", sessionId: "other-id")])
     writeSession(d2, "a", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 0, name: "a", cwd: frontend)
-    writeSession(d2, "b", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 0, name: "b", cwd: backend)
     s2.refresh(at: Date())
-    #expect(s2.sessions.first { $0.id == "b" }?.question?.requestId == "R1")
-    #expect(s2.sessions.first { $0.id == "a" }?.question == nil)
-    // By pid (ppid) wins over a different sessionId.
-    let t = FakeFeedTransport()
-    var item = feedItem(requestId: "R2", sessionId: "zzz")
-    item["ppid"] = Int(me)
-    t.items = [item]
-    let s3 = makeStore(dir: d2)
-    s3.feedMonitor = FeedMonitor(transport: t, queue: nil)
-    s3.refresh(at: Date())
-    #expect(s3.sessions.filter { $0.question?.requestId == "R2" }.count == 2)
+    #expect(s2.sessions.allSatisfy { $0.question == nil })
 }
 
 @Test func questionPollsOnlyForBusyOrAskingSessions() {
@@ -1720,6 +1710,41 @@ private func feedStore(_ items: [[String: Any]]) -> (Store, URL, FakeFeedTranspo
     writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
     store.refresh(at: Date())
     #expect(store.sent["a"] == nil)
+}
+
+@Test func failedSendFallsBackAndIsKeptLikeSent() {
+    let (store, dir, _) = feedStore([feedItem(requestId: "R1", sessionId: "a")])
+    writeSession(dir, "a", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    let s = store.sessions[0]
+    #expect(store.blockState(of: s) == .form)
+    store.noteSent(session: "a", requestId: "R1")
+    #expect(store.blockState(of: store.sessions[0]) == .sent)
+    store.noteSendFailed(session: "a", requestId: "R1")
+    #expect(store.sent["a"] == nil && store.failed["a"] == "R1")
+    #expect(store.blockStates["a"] == .fallback)
+    #expect(Layout.expanded(store.sessions, blocks: store.blockStates).height < Layout.expanded(store.sessions).height)
+    store.refresh(at: Date())
+    #expect(store.failed["a"] == "R1")
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(store.failed["a"] == nil)
+}
+
+@Test func closeIsFoundWhenTheFileGoesBeforeTheProcess() {
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
+    let child = spawnSleeper()
+    writeSession(dir, "a", pid: child, status: "idle", ageSec: 10, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    // Claude deletes the file while the process is still exiting.
+    try? FileManager.default.removeItem(at: dir.appendingPathComponent("a.json"))
+    store.refresh(at: Date())
+    #expect(store.sessions.isEmpty)
+    #expect(store.closed.items.isEmpty)
+    endProcess(child)
+    store.refresh(at: Date())
+    #expect(store.closed.items.map(\.id) == ["a"])
 }
 
 @Test func clearKeepsPidSoNothingIsClosed() {

@@ -269,7 +269,7 @@ func prRef(_ id: Int, repo: String = "t6engineering/talo6-dct-backend") -> PRRef
     return PRRef(workspace: String(parts[0]), repo: String(parts[1]), id: id)
 }
 
-/// One `question` item as `feed.list` returns it (snake_case; no `ppid`; the session id is inside `workstream_id`).
+/// One `question` item as `feed.list` returns it (snake_case; the session id is inside `workstream_id`).
 func feedItem(requestId: String = "R1", sessionId: String = "a", created: Date = Date(), questions: [[String: Any]]? = nil) -> [String: Any] {
     let qs = questions ?? [feedQuestionJSON()]
     let b64 = { (s: String) in Data(s.utf8).base64EncodedString() }
@@ -283,8 +283,8 @@ func feedQuestionJSON(prompt: String = "Pick a color", header: String = "Color",
      "options": labels.enumerated().map { ["id": "opt\($0.offset)", "label": $0.element, "description": "d-\($0.element)"] }]
 }
 
-func feedQuestion(requestId: String = "R1", sessionId: String? = "a", pid: Int32? = nil, created: Date = Date(), questions: [FeedQuestion.Item]? = nil) -> FeedQuestion {
-    FeedQuestion(requestId: requestId, createdAt: created, pid: pid, sessionId: sessionId,
+func feedQuestion(requestId: String = "R1", sessionId: String? = "a", created: Date = Date(), questions: [FeedQuestion.Item]? = nil) -> FeedQuestion {
+    FeedQuestion(requestId: requestId, createdAt: created, sessionId: sessionId,
                  questions: questions ?? [FeedQuestion.Item(prompt: "Pick a color", header: "Color", multiSelect: false,
                                                             options: ["Red", "Blue"].map { FeedQuestion.Option(id: $0, label: $0, description: nil) })])
 }

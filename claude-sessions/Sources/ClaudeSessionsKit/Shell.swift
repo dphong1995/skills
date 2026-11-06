@@ -23,3 +23,17 @@ func runProcess(_ path: String, _ args: [String], timeout: TimeInterval, require
     if requireSuccess, p.terminationStatus != 0 { return nil }
     return String(decoding: data, as: UTF8.self)
 }
+
+/// ISO 8601 timestamps with or without fractional seconds; the formatters are built once.
+enum ISODate {
+    private static let fractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+    private static let plain = ISO8601DateFormatter()
+
+    static func date(_ s: String) -> Date? {
+        fractional.date(from: s) ?? plain.date(from: s)
+    }
+}

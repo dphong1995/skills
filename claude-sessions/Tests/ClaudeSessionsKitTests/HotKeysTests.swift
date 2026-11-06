@@ -24,6 +24,14 @@ import Testing
     #expect(HotKeys.advance(cycle: nil, fresh: [], isLive: { _ in false }, now: t) == nil)
 }
 
+@Test func cycleWithEveryIdDeadFallsBackToFresh() {
+    let t = Date()
+    let c = HotKeys.Cycle(order: ["x", "y"], id: "x", at: t)
+    let pick = HotKeys.advance(cycle: c, fresh: ["n1", "n2"], isLive: Set(["n1", "n2"]).contains, now: t.addingTimeInterval(2))
+    #expect(pick?.first == "n1")
+    #expect(pick?.order == ["n1", "n2"])
+}
+
 @Test func cycleSurvivesSessionLeavingFreshOrder() {
     // W1 waits, I1 and I2 finished; jumping to I1 marks it seen, so a fresh order is [W1, I2] and no longer holds I1.
     let t = Date()

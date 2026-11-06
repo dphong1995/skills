@@ -31,8 +31,6 @@ public final class PanelState: ObservableObject {
     public var wantOther: String?
     /// The `Khác…` field that was opened, same key form: only that question shows its field.
     @Published public var otherKey: String?
-    /// Request ids whose send failed; their card falls back to `Trả lời trong cmux`.
-    @Published public var failedQuestions: Set<String> = []
 
     public init() {}
 
@@ -58,6 +56,15 @@ public final class PanelState: ObservableObject {
             all[i] = []
             answers[q.requestId] = all
         }
+    }
+
+    /// Drops the answers and the open `Khác…` field of questions that are gone.
+    func pruneQuestions(live: [FeedQuestion]) {
+        let ids = Set(live.map(\.requestId))
+        if !answers.keys.allSatisfy(ids.contains) { answers = answers.filter { ids.contains($0.key) } }
+        if !others.keys.allSatisfy(ids.contains) { others = others.filter { ids.contains($0.key) } }
+        let sessions = Set(live.compactMap(\.sessionId))
+        if let key = otherKey, !sessions.contains(String(key.split(separator: "#").first ?? "")) { otherKey = nil }
     }
 
     public func noteRowHover(_ id: String, inside: Bool) {

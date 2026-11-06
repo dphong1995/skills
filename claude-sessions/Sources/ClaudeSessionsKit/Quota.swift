@@ -54,8 +54,8 @@ public final class QuotaReader {
               let d = o["data"] as? [String: Any],
               let five = (d["fiveHourPercent"] as? NSNumber).map({ Int($0.doubleValue.rounded()) }),
               let weekly = (d["weeklyPercent"] as? NSNumber).map({ Int($0.doubleValue.rounded()) }),
-              let fiveReset = (d["fiveHourResetsAt"] as? String).flatMap(Self.date),
-              let weeklyReset = (d["weeklyResetsAt"] as? String).flatMap(Self.date),
+              let fiveReset = (d["fiveHourResetsAt"] as? String).flatMap(ISODate.date),
+              let weeklyReset = (d["weeklyResetsAt"] as? String).flatMap(ISODate.date),
               let last = o["lastSuccessAt"] as? Double
         else { return nil }
         let updated = Date(timeIntervalSince1970: last / 1000)
@@ -66,12 +66,6 @@ public final class QuotaReader {
         }
         return Quota(fiveHour: five, fiveHourReset: fiveReset, weekly: weekly, weeklyReset: weeklyReset, updated: updated,
                      forecast: Self.forecast(samples: samples, now: now, reset: fiveReset))
-    }
-
-    private static func date(_ s: String) -> Date? {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f.date(from: s)
     }
 
     /// When the 5h percent reaches 100 at the pace of the last 30 minutes; nil without two samples 5+ minutes apart, a rising pace, or a hit after `reset`.

@@ -326,12 +326,16 @@ enum Transcript {
         return nil
     }
 
-    /// Main-thread `Agent`/`Task` calls opened and tool results seen in `lines`, in order; only lines holding `"tool_use"` or `"tool_result"` are parsed.
-    static func agentChanges(in lines: Data.SubSequence) -> (opened: [(id: String, description: String)], closed: [String]) {
-        let markers = ["\"tool_use\"", "\"tool_result\""].map { Data($0.utf8) }
+    /// Main-thread `Agent`/`Task` calls opened and tool results seen in `lines`, in order. A line is parsed only when it holds
+    /// `"name":"Agent"`/`"name":"Task"` (compact JSON, as Claude writes it) or, with agents open (`open`, plus those opened in `lines`), the `"tool_use_id":"<open id>"` of one of them.
+    static func agentChanges(in lines: Data.SubSequence, open: [String] = []) -> (opened: [(id: String, description: String)], closed: [String]) {
+        let openMarkers = ["\"name\":\"Agent\"", "\"name\":\"Task\""].map { Data($0.utf8) }
         var opened: [(id: String, description: String)] = []
         var closed: [String] = []
-        for line in lines.split(separator: 0x0A) where markers.contains(where: { line.range(of: $0) != nil }) {
+        var openMarks = Dictionary(open.map { ($0, Data("\"tool_use_id\":\"\($0)\"".utf8)) }, uniquingKeysWith: { $1 })
+        for line in lines.split(separator: 0x0A) {
+            let opens = openMarkers.contains { line.range(of: $0) != nil }
+            guard opens || openMarks.values.contains(where: { line.range(of: $0) != nil }) else { continue }
             guard let o = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
                   (o["isSidechain"] as? Bool) != true,
                   let content = (o["message"] as? [String: Any])?["content"] as? [[String: Any]]
@@ -342,10 +346,11 @@ enum Transcript {
                     guard let id = c["id"] as? String, let name = c["name"] as? String, name == "Agent" || name == "Task" else { continue }
                     let desc = ((c["input"] as? [String: Any])?["description"] as? String).map(oneLine) ?? ""
                     opened.append((id, desc.isEmpty ? name : desc))
+                    openMarks[id] = Data("\"tool_use_id\":\"\(id)\"".utf8)
                 }
             case "user":
                 for c in content where c["type"] as? String == "tool_result" {
-                    if let id = c["tool_use_id"] as? String { closed.append(id) }
+                    if let id = c["tool_use_id"] as? String { closed.append(id); openMarks[id] = nil }
                 }
             default: break
             }
