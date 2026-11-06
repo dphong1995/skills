@@ -328,7 +328,7 @@ public struct WidgetView: View {
     }
 
     private var list: some View {
-        let rows = VStack(spacing: 0) {
+        let rows = VStack(spacing: Layout.cardGap) {
             ForEach(store.sessions) { row($0) }
             if store.sessions.isEmpty {
                 Text("Không có session nào").font(.system(size: 12)).foregroundStyle(.white.opacity(0.5))
@@ -463,7 +463,8 @@ public struct WidgetView: View {
     /// `☰ N`: toggles the inline list of every ticket and PR of the session.
     private func menuButton(_ s: Session) -> some View {
         let open = panel.openMenus.contains(s.id)
-        return PillButton(title: "☰ \(s.menuCount)", fill: .white.opacity(open ? 0.22 : 0.12)) {
+        let hiddenMark = store.unseen[s.id]?.prs.subtracting(s.prs.map(\.ref)).isEmpty == false
+        return PillButton(title: "☰ \(s.menuCount)", fill: .white.opacity(open ? 0.22 : 0.12), dot: hiddenMark ? .purple : nil) {
             if open { panel.openMenus.remove(s.id) } else { panel.openMenus.insert(s.id) }
         }
     }
@@ -486,11 +487,14 @@ public struct WidgetView: View {
 
     private func row(_ s: Session) -> some View {
         let editing = panel.editing?.id == s.id
-        let fresh = store.unseen[s.id] != nil
+        let mark = store.unseen[s.id]
+        let claudeNew = mark?.claude == true
+        var newLabel = claudeNew ? [", mới: Claude"] : []
+        newLabel += s.prs.filter { mark?.prs.contains($0.ref) == true }.map { ", mới: PR #\($0.ref.id)" }
         return VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 10) {
                 Circle().fill(color(s.status)).frame(width: 8, height: 8)
-                    .accessibilityLabel(fresh ? statusText(s) + ", mới" : statusText(s))
+                    .accessibilityLabel(statusText(s) + newLabel.joined())
                 VStack(alignment: .leading, spacing: 1) {
                     Text(s.title).font(.system(size: 12.5, weight: .medium)).foregroundStyle(.white).lineLimit(2)
                     Text(s.subtitle).font(.system(size: 10.5))
@@ -514,6 +518,12 @@ public struct WidgetView: View {
                 Text(elapsed(s.since, store.now)).font(.system(size: 11.5).monospacedDigit())
                     .foregroundStyle(.white.opacity(0.55)).frame(minWidth: 36, alignment: .trailing)
             }
+            .padding(.horizontal, 6).padding(.vertical, 3)
+            .background(claudeNew ? Color.yellow.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 6))
+            .overlay(alignment: .leading) {
+                if claudeNew { Capsule().fill(.yellow).frame(width: 3).padding(.vertical, 3) }
+            }
+            .padding(.horizontal, -6).padding(.vertical, -3)
             .contentShape(Rectangle())
             .onTapGesture { onAction(.jump(s.id)) }
             if !s.menu.isEmpty {
@@ -539,8 +549,10 @@ public struct WidgetView: View {
                 if panel.openMenus.contains(s.id) { linkList(s).padding(.leading, 18) }
             }
             ForEach(s.prs, id: \.ref) { pr in
+                let prNew = mark?.prs.contains(pr.ref) == true
+                let prText = Text(prAttributed(pr, now: store.now, stale: store.prStale ? store.prLastSuccess : nil))
                 HStack(spacing: 6) {
-                    Text(prAttributed(pr, now: store.now, stale: store.prStale ? store.prLastSuccess : nil))
+                    (prNew ? Text("✦ ").foregroundStyle(.purple) + prText : prText)
                         .font(.system(size: 11)).foregroundStyle(.white.opacity(0.75))
                         .lineLimit(1).truncationMode(.tail)
                         .contentShape(Rectangle())
@@ -556,7 +568,9 @@ public struct WidgetView: View {
                         }
                     }
                 }
-                .padding(.leading, 18)
+                .padding(.horizontal, prNew ? 4 : 0)
+                .background(prNew ? Color.purple.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 5))
+                .padding(.leading, prNew ? 14 : 18)
             }
             if let pending = s.pending {
                 approvalBlock(s, pending).padding(.leading, 18)
@@ -568,10 +582,7 @@ public struct WidgetView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
         .frame(minHeight: Layout.rowHeight)
-        .background(fresh ? Color.yellow.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 8))
-        .overlay(alignment: .leading) {
-            if fresh { Capsule().fill(.yellow).frame(width: 3).padding(.vertical, 4) }
-        }
+        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
         .onHover { panel.noteRowHover(s.id, inside: $0) }
     }
 }

@@ -81,8 +81,14 @@ private func session(_ id: String, _ status: String, _ text: String?) -> Session
 }
 
 @Test func expandedSumsHeights() {
-    #expect(Layout.expanded([session("a", "busy", nil), session("b", "idle", "hi")]).height == CGFloat(174))
+    #expect(Layout.expanded([session("a", "busy", nil), session("b", "idle", "hi")]).height == CGFloat(178))
     #expect(Layout.expanded([]).height == CGFloat(82))
+}
+
+@Test func expandedAddsCardGaps() {
+    let a = session("a", "busy", nil), b = session("b", "idle", "hi")
+    #expect(Layout.expanded([a, b]).height == Layout.height(of: a) + Layout.height(of: b) + Layout.headerHeight + Layout.listPadding + 4)
+    #expect(Layout.expanded([a]).height == Layout.height(of: a) + Layout.headerHeight + Layout.listPadding)
 }
 
 @Test func isDragThreshold() {

@@ -373,6 +373,35 @@ struct SnapshotTests {
         render(store, panel, "31-pr-awaiting-approval")
     }
 
+    /// Two sessions: "b" with two open PRs (7571, 7567), "c" plain, so unmarked cards show next to marked ones.
+    private func renderMarks(_ name: String, _ marks: [String: NewMark]) {
+        let dir = makeTempDir(), projects = makeTempDir()
+        let api = FakeBitbucket()
+        let repo = "t6engineering/talo6-dct-backend"
+        api.set("/2.0/user", json: ["uuid": "{me}"])
+        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7571, repo: repo, comments: 2), prJSON(id: 7567, repo: repo)]])
+        api.set("/statuses", json: ["values": []])
+        let links = [7571, 7567].map { "https://bitbucket.org/\(repo)/pull-requests/\($0)" }.joined(separator: " ")
+        _ = writeTranscript(projects, cwd: backend, id: "b", lines: [assistantLine("Đã push, xem " + links), ""])
+        writeSession(dir, "b", pid: me, status: "idle", ageSec: 30, name: "talo6-dct-backend-3f", cwd: backend)
+        writeSession(dir, "c", pid: me, status: "idle", ageSec: 40, name: "ocr-service-a1", cwd: "/Users/phong/ocr-service")
+        let store = makeStore(dir: dir, projects: projects, prs: PRMonitor(api: api, queue: nil, remote: { _ in nil }))
+        store.refresh(at: Date())
+        store.unseen = marks
+        let panel = PanelState()
+        panel.hovering = true
+        render(store, panel, name)
+    }
+
+    private static let ref7571 = PRRef(workspace: "t6engineering", repo: "talo6-dct-backend", id: 7571)
+
+    @Test func renderMarkClaude() { renderMarks("27-mark-claude", ["b": NewMark(claude: true)]) }
+    @Test func renderMarkPR() { renderMarks("28-mark-pr", ["b": NewMark(prs: [Self.ref7571])]) }
+    @Test func renderMarkBoth() { renderMarks("29-mark-both", ["b": NewMark(claude: true, prs: [Self.ref7571])]) }
+    @Test func renderMarkPRHidden() {
+        renderMarks("30-mark-pr-hidden", ["b": NewMark(prs: [PRRef(workspace: "t6engineering", repo: "talo6-dct-backend", id: 9999)])])
+    }
+
     @Test func renderFreshLongTitle() {
         let dir = makeTempDir(), projects = makeTempDir()
         let store = makeStore(dir: dir, projects: projects)

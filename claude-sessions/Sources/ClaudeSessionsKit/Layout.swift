@@ -83,6 +83,7 @@ public enum Layout {
 
     static let linkRowHeight: CGFloat = 22
     static let linkSectionHeight: CGFloat = 16
+    static let cardGap: CGFloat = 4
 
     static func height(of s: Session, open: Bool = false) -> CGFloat {
         (s.isFinished && s.lastReply != nil ? replyRowHeight : rowHeight) + (s.todo != nil ? todoHeight : 0) + (s.activity != nil ? todoHeight : 0)
@@ -92,7 +93,7 @@ public enum Layout {
 
     static func expanded(_ sessions: [Session], open: Set<String> = []) -> CGSize {
         let rows = sessions.isEmpty ? rowHeight : sessions.reduce(0) { $0 + height(of: $1, open: open.contains($1.id)) }
-        return CGSize(width: expandedWidth, height: headerHeight + listPadding + rows)
+        return CGSize(width: expandedWidth, height: headerHeight + listPadding + rows + cardGap * CGFloat(max(sessions.count - 1, 0)))
     }
 
     public static func size(_ store: Store, _ panel: PanelState) -> CGSize {
