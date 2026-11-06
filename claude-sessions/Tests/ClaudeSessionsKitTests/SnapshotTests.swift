@@ -99,6 +99,26 @@ struct SnapshotTests {
         render(store, panel, "15-titles-branch")
     }
 
+    @Test func renderGit() throws {
+        let dir = makeTempDir(), repos = makeTempDir()
+        func repo(_ name: String) throws -> String {
+            let r = repos.appendingPathComponent(name, isDirectory: true)
+            try FileManager.default.createDirectory(at: r.appendingPathComponent(".git"), withIntermediateDirectories: true)
+            return r.path
+        }
+        let both = try repo("talo6-dct-frontend"), dirty = try repo("talo6-dct-backend"), ahead = try repo("talo-v2")
+        let outs = [both: "# branch.ab +1 -0\n1 .M a\n1 .M b\n? c\n", dirty: "1 .M a\n? b\n", ahead: "# branch.ab +1 -0\n"]
+        let store = makeStore(dir: dir, branch: { _ in "main" }, git: GitStatusMonitor(queue: nil) { outs[$0] })
+        let panel = PanelState()
+        writeSession(dir, "a", pid: me, status: "busy", ageSec: 90, name: "talo6-dct-frontend-d7", cwd: both)
+        writeSession(dir, "b", pid: me, status: "idle", ageSec: 30, name: "talo6-dct-backend-3f", cwd: dirty)
+        writeSession(dir, "c", pid: me, status: "busy", ageSec: 3700, name: "talo-v2-9c", cwd: ahead)
+        store.refresh(at: Date())
+        #expect(store.sessions.compactMap(\.git).count == 3)
+        panel.hovering = true
+        render(store, panel, "17-git")
+    }
+
     @Test func renderTodo() {
         let dir = makeTempDir(), projects = makeTempDir(), tasks = makeTempDir()
         let store = makeStore(dir: dir, projects: projects, tasks: tasks)

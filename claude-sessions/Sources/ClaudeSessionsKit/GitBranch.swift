@@ -25,6 +25,19 @@ enum GitBranch {
         }
     }
 
+    /// The directory holding the `.git` that `headFile(in:)` finds (a worktree's own directory); nil for no repo.
+    static func repoRoot(in cwd: String) -> String? {
+        guard cwd.hasPrefix("/") else { return nil }
+        let fm = FileManager.default
+        var dir = URL(fileURLWithPath: cwd, isDirectory: true)
+        while true {
+            if fm.fileExists(atPath: dir.appendingPathComponent(".git").path) { return dir.path }
+            let parent = dir.deletingLastPathComponent()
+            if parent.path == dir.path { return nil }
+            dir = parent
+        }
+    }
+
     /// The branch named by a `HEAD` file; nil for a detached HEAD or an unreadable file.
     static func branch(inHead head: URL) -> String? {
         guard let content = try? String(contentsOf: head, encoding: .utf8) else { return nil }

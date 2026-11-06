@@ -62,6 +62,7 @@ struct Session: Identifiable, Equatable {
     /// Pending background agents and workflows; non-nil only while the session is `busy` but its main turn has ended.
     var backgroundAgents: Int? = nil
     var prs: [PRStatus] = []
+    var git: GitCounts? = nil
     /// Every ticket and PR of the session, grouped for the `☰ N` menu.
     var menu: [LinkSection] = []
     /// The menu holds a ticket and Jira is not connected: the menu ends with a `Kết nối Jira…` item.
@@ -234,7 +235,8 @@ public final class Store: ObservableObject {
                 jira: JiraMonitor? = nil,
                 quota: QuotaReader? = nil,
                 scanner: TranscriptScanner = TranscriptScanner(),
-                branch: ((String) -> String?)? = nil) {
+                branch: ((String) -> String?)? = nil,
+                git: GitStatusMonitor? = nil) {
         if let branch {
             self.gitReader = nil
             self.branchReader = branch
@@ -243,6 +245,7 @@ public final class Store: ObservableObject {
             self.gitReader = reader
             self.branchReader = reader.current(in:)
         }
+        self.gitMonitor = git
         self.prMonitor = prs
         self.jiraMonitor = jira
         self.quotaReader = quota
@@ -256,6 +259,9 @@ public final class Store: ObservableObject {
     /// The branch checked out in a cwd, read every refresh.
     private let branchReader: (String) -> String?
     private let gitReader: GitBranchReader?
+    private let gitMonitor: GitStatusMonitor?
+    private var repoRoots: [String: String?] = [:]
+    private var lastBranch: [String: String?] = [:]
     public var prMonitor: PRMonitor?
     public var jiraMonitor: JiraMonitor?
     /// Decoded issue type icons by URL, kept for the run.
@@ -593,6 +599,22 @@ public final class Store: ObservableObject {
         heads = heads.filter { live.contains($0.key) }
         todos = todos.filter { live.contains($0.key) }
         gitReader?.prune(keeping: Set(list.map(\.cwd)))
+        if let gitMonitor {
+            let cwds = Set(list.map(\.cwd))
+            repoRoots = repoRoots.filter { cwds.contains($0.key) }
+            lastBranch = lastBranch.filter { cwds.contains($0.key) }
+            var roots = Set<String>(), headChanged = Set<String>()
+            for s in list {
+                if repoRoots[s.cwd] == nil { repoRoots[s.cwd] = .some(GitBranch.repoRoot(in: s.cwd)) }
+                guard let root = repoRoots[s.cwd] ?? nil else { continue }
+                roots.insert(root)
+                if let prev = lastBranch[s.cwd], prev != s.branch { headChanged.insert(root) }
+                lastBranch[s.cwd] = .some(s.branch)
+            }
+            gitMonitor.update(roots: roots, headChanged: headChanged, at: now)
+            let snap = gitMonitor.takeSnapshot()
+            for i in list.indices { list[i].git = (repoRoots[list[i].cwd] ?? nil).flatMap { snap[$0] } }
+        }
         activities = activities.filter { live.contains($0.key) }
         for s in list where pids[s.id] != nil && pids[s.id] != s.pid {
             surfaces[s.id] = nil

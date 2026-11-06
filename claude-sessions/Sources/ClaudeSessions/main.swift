@@ -24,7 +24,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Store(dir: $0.appendingPathComponent("sessions"), projects: $0.appendingPathComponent("projects"),
               tasks: $0.appendingPathComponent("tasks"), startHidden: true)
     } ?? Store(startHidden: true, quota: QuotaReader(url: FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".claude/plugins/oh-my-claudecode/.usage-cache-anthropic.json")))
+        .appendingPathComponent(".claude/plugins/oh-my-claudecode/.usage-cache-anthropic.json")),
+                         git: GitStatusMonitor())
     var panels: [String: Panel] = [:]
     var timer: Timer?
     var monitors: [Any] = []
