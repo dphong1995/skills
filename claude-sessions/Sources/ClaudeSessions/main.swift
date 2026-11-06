@@ -208,11 +208,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for p in panels.values {
             if let e = p.state.editing, !store.allows(e) { p.state.editing = nil }
         }
-        playChime()
+        let t = store.transitions, p = store.prChime
+        if t.isEmpty { return playChime(store.chime) }
+        guard NSWorkspace.shared.frontmostApplication?.bundleIdentifier == CmuxJump.bundleID else {
+            return playChime(store.applyAlert(transitions: t, prChime: p, excluding: [], at: Date()))
+        }
+        silentIds(Array(t.keys)) { [weak self] silent in
+            guard let self else { return }
+            playChime(store.applyAlert(transitions: t, prChime: p, excluding: silent, at: Date()))
+        }
     }
 
-    func playChime() {
-        guard let chime = store.chime, !store.muted else { return }
+    /// Calls `then` on main with the ids whose cmux surface is the focused one. Empty on any cmux failure.
+    func silentIds(_ ids: [String], then: @escaping (Set<String>) -> Void) {
+        var surfaces: [String: String] = [:]
+        let group = DispatchGroup()
+        for id in ids {
+            group.enter()
+            resolveSurface(id) { surface in
+                if let surface { surfaces[id] = surface }
+                group.leave()
+            }
+        }
+        group.notify(queue: .main) {
+            guard !surfaces.isEmpty else { return then([]) }
+            DispatchQueue.global().async {
+                let focused = CmuxJump.focusedSurface()?.lowercased()
+                DispatchQueue.main.async {
+                    guard let focused else { return then([]) }
+                    then(Set(surfaces.filter { $0.value.lowercased() == focused }.keys))
+                }
+            }
+        }
+    }
+
+    func playChime(_ chime: Chime?) {
+        guard let chime, !store.muted else { return }
         NSSound(named: chime == .done ? "Glass" : "Funk")?.play()
     }
 

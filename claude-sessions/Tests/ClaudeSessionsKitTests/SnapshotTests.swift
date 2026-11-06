@@ -49,6 +49,7 @@ struct SnapshotTests {
 
         writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "talo6-dct-frontend-d7", cwd: frontend)
         store.refresh(at: t0.addingTimeInterval(1))
+        store.applyAlert(transitions: store.transitions, prChime: store.prChime, excluding: [], at: t0.addingTimeInterval(1))
         render(store, panel, "03-just-finished-peek")
 
         store.refresh(at: t0.addingTimeInterval(7))
@@ -58,6 +59,7 @@ struct SnapshotTests {
         writeSession(dir, "c", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 75, name: "ocr-service-a1", cwd: "/Users/phong/ocr-service")
         writeSession(dir, "d", pid: me, status: "busy", ageSec: 3700, name: "talo-v2-9c", cwd: "/Users/phong/talos-v2")
         store.refresh(at: t0.addingTimeInterval(8))
+        store.applyAlert(transitions: store.transitions, prChime: store.prChime, excluding: [], at: t0.addingTimeInterval(8))
         render(store, panel, "05-mixed-peek")
 
         store.refresh(at: t0.addingTimeInterval(14))

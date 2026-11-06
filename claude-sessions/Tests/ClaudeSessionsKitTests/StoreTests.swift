@@ -30,6 +30,7 @@ import Testing
 
     writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "talo6-dct-frontend-d7", cwd: frontend)
     store.refresh(at: t0.addingTimeInterval(1))
+    store.applyAlert(transitions: store.transitions, prChime: store.prChime, excluding: [], at: t0.addingTimeInterval(1))
     #expect(PanelState().expanded(store))
     #expect(store.chime == .done)
     #expect(store.sessions.first?.id == "a")
@@ -79,6 +80,63 @@ import Testing
     store.refresh(at: t0.addingTimeInterval(31))
     writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "talo6-dct-frontend-d7", cwd: frontend)
     store.refresh(at: t0.addingTimeInterval(32))
+    store.applyAlert(transitions: store.transitions, prChime: store.prChime, excluding: [], at: t0.addingTimeInterval(32))
+    #expect(store.peeking)
+}
+
+@Test func transitionsRecorded() {
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
+    let t0 = Date()
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
+    writeSession(dir, "b", pid: me, status: "busy", ageSec: 0, name: "b", cwd: backend)
+    store.refresh(at: t0)
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    writeSession(dir, "b", pid: me, status: "waiting", ageSec: 0, name: "b", cwd: backend)
+    store.refresh(at: t0.addingTimeInterval(1))
+    #expect(store.transitions == ["a": .done, "b": .needsYou])
+    #expect(!store.peeking)
+    #expect(store.chime == .needsYou)
+    store.refresh(at: t0.addingTimeInterval(2))
+    #expect(store.transitions.isEmpty)
+}
+
+@Test func alertExcludesFocused() {
+    let r = Store.alert(transitions: ["a": .done], prChime: nil, excluding: ["a"])
+    #expect(r.chime == nil)
+    #expect(!r.peek)
+}
+
+@Test func alertKeepsOtherSessions() {
+    let r = Store.alert(transitions: ["a": .needsYou, "b": .done], prChime: nil, excluding: ["a"])
+    #expect(r.chime == .done)
+    #expect(r.peek)
+}
+
+@Test func alertKeepsPRChime() {
+    let r = Store.alert(transitions: ["a": .done], prChime: .needsYou, excluding: ["a"])
+    #expect(r.chime == .needsYou)
+    #expect(!r.peek)
+}
+
+@Test func alertNeedsYouWins() {
+    let r = Store.alert(transitions: ["a": .done, "b": .needsYou], prChime: .done, excluding: [])
+    #expect(r.chime == .needsYou)
+    #expect(r.peek)
+}
+
+@Test func applyAlertPeeks() {
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
+    let t0 = Date()
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: t0)
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: t0.addingTimeInterval(1))
+    let t = t0.addingTimeInterval(1)
+    #expect(store.applyAlert(transitions: store.transitions, prChime: store.prChime, excluding: ["a"], at: t) == nil)
+    #expect(!store.peeking)
+    #expect(store.applyAlert(transitions: store.transitions, prChime: store.prChime, excluding: [], at: t) == .done)
     #expect(store.peeking)
 }
 

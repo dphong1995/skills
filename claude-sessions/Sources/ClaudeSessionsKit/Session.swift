@@ -141,6 +141,26 @@ public final class Store: ObservableObject {
     @Published public var bgOpacity: Double = 0.25
     @Published public var prPrompt: String = PullRequests.defaultPrompt
     public private(set) var chime: Chime?
+    /// Session id → chime for the sessions that finished or started waiting in this refresh.
+    public private(set) var transitions: [String: Chime] = [:]
+    /// The chime of this refresh's PR events, if any.
+    public private(set) var prChime: Chime?
+
+    /// The chime and peek left after dropping the transitions of `excluding`. `.needsYou` wins.
+    public static func alert(transitions: [String: Chime], prChime: Chime?, excluding: Set<String>) -> (chime: Chime?, peek: Bool) {
+        let kept = transitions.filter { !excluding.contains($0.key) }.values
+        let all = Array(kept) + (prChime.map { [$0] } ?? [])
+        let chime: Chime? = all.contains(.needsYou) ? .needsYou : all.isEmpty ? nil : .done
+        return (chime, !kept.isEmpty)
+    }
+
+    /// Applies `alert`: opens the peek when a transition remains and returns the chime to play.
+    @discardableResult
+    public func applyAlert(transitions: [String: Chime], prChime: Chime?, excluding: Set<String>, at date: Date) -> Chime? {
+        let r = Store.alert(transitions: transitions, prChime: prChime, excluding: excluding)
+        if r.peek { peekUntil = date.addingTimeInterval(5) }
+        return r.chime
+    }
 
     public var peeking: Bool { peekUntil.map { now < $0 } ?? false }
 
@@ -385,6 +405,8 @@ public final class Store: ObservableObject {
     public func refresh(at date: Date = Date()) {
         now = date
         chime = nil
+        transitions = [:]
+        prChime = nil
         let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
         var list: [Session] = []
         var sizes: [String: UInt64] = [:]
@@ -465,7 +487,7 @@ public final class Store: ObservableObject {
             if let last = lastStatus[s.id], last != "busy", s.status == "busy" { newUnseen[s.id] = nil }
             if lastStatus[s.id] == "busy" && (s.status == "idle" || s.status == "waiting") {
                 newUnseen[s.id, default: NewMark()].claude = true
-                peekUntil = now.addingTimeInterval(5)
+                transitions[s.id] = s.status == "waiting" ? .needsYou : .done
                 if s.status == "waiting" { chime = .needsYou } else if chime == nil { chime = .done }
             }
             lastStatus[s.id] = s.status
@@ -540,7 +562,8 @@ public final class Store: ObservableObject {
             if prLastSuccess != snap.lastSuccess { prLastSuccess = snap.lastSuccess }
             if !snap.events.isEmpty {
                 peekUntil = now.addingTimeInterval(5)
-                if let c = PullRequests.chime(for: snap.events), chime != .needsYou { chime = c }
+                prChime = PullRequests.chime(for: snap.events)
+                if let c = prChime, chime != .needsYou { chime = c }
             }
         }
         for i in list.indices {
