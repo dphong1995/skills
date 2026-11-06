@@ -25,7 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
               tasks: $0.appendingPathComponent("tasks"), startHidden: true)
     } ?? Store(startHidden: true, quota: QuotaReader(url: FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".claude/plugins/oh-my-claudecode/.usage-cache-anthropic.json")),
-                         git: GitStatusMonitor(), closedStore: .standard)
+                         closedStore: .standard)
     var panels: [String: Panel] = [:]
     let hotKeys = HotKeys()
     var lastNext: (id: String, at: Date)?

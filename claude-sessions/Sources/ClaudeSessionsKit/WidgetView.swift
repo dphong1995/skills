@@ -50,12 +50,6 @@ func markdown(_ s: String) -> AttributedString {
 }
 
 /// The parts of a PR line in order; `prLine` joins them and the row colours the red and green ones.
-/// `  ●n  ↑n` after the subtitle: changed files and unpushed commits, each only when above 0.
-func gitSuffix(_ git: GitCounts?) -> String {
-    guard let git else { return "" }
-    return (git.dirty > 0 ? "  ●\(git.dirty)" : "") + ((git.ahead ?? 0) > 0 ? "  ↑\(git.ahead!)" : "")
-}
-
 private func prParts(_ pr: PRStatus, now: Date, stale: Date?) -> [(text: String, tint: Color?)] {
     var parts: [(String, Color?)] = [("PR #\(pr.ref.id)", nil)]
     if !pr.isOpen {
@@ -598,7 +592,7 @@ public struct WidgetView: View {
                     .accessibilityLabel(statusText(s) + newLabel.joined())
                 VStack(alignment: .leading, spacing: 1) {
                     Text(s.title).font(.system(size: 12.5, weight: .medium)).foregroundStyle(.white).lineLimit(2)
-                    Text(s.subtitle + gitSuffix(s.git)).font(.system(size: 10.5))
+                    Text(s.subtitle).font(.system(size: 10.5))
                         .foregroundStyle(.white.opacity(0.45)).lineLimit(1)
                     if let todo = s.todo {
                         Text(todo.label)
