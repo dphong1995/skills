@@ -532,6 +532,23 @@ struct SnapshotTests {
         render(store, panel, "30-link-list-connect")
     }
 
+    @Test func renderClosed() {
+        let dir = makeTempDir()
+        let store = makeStore(dir: dir)
+        let panel = PanelState()
+        let now = Date()
+        writeSession(dir, "a", pid: me, status: "busy", ageSec: 42, name: "talo6-dct-frontend-d7", cwd: frontend)
+        store.refresh(at: now)
+        store.closed = ClosedSessions([
+            ClosedSession(id: "x", title: "Sửa lỗi đăng nhập", cwd: backend, branch: "feat/login", closedAt: now.addingTimeInterval(-12 * 60)),
+            ClosedSession(id: "y", title: "ocr-service-a1", cwd: "/Users/phong/ocr-service", branch: nil, closedAt: now.addingTimeInterval(-3 * 3600)),
+        ])
+        panel.hovering = true
+        render(store, panel, "closed-1-collapsed")
+        panel.closedOpen = true
+        render(store, panel, "closed-2-open")
+    }
+
     @Test func renderQuota() {
         let dir = makeTempDir()
         let store = makeStore(dir: dir)

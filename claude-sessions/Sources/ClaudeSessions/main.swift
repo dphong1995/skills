@@ -25,7 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
               tasks: $0.appendingPathComponent("tasks"), startHidden: true)
     } ?? Store(startHidden: true, quota: QuotaReader(url: FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".claude/plugins/oh-my-claudecode/.usage-cache-anthropic.json")),
-                         git: GitStatusMonitor())
+                         git: GitStatusMonitor(), closedStore: .standard)
     var panels: [String: Panel] = [:]
     let hotKeys = HotKeys()
     var lastNext: (id: String, at: Date)?
@@ -492,6 +492,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if case .nudgeRabbit(_, let ref) = a {
             guard let monitor = store.prMonitor else { return NSSound.beep() }
             monitor.nudge(ref) { ok in if !ok { NSSound.beep() } }
+            return
+        }
+        if case .resume(let closed) = a {
+            guard !sending.contains(id) else { return NSSound.beep() }
+            sending.insert(id)
+            DispatchQueue.global().async { [weak self] in
+                let ok = closed.resume()
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    self.sending.remove(id)
+                    if ok { return self.store.closed.revive([id]) }
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(closed.shellCommand, forType: .string)
+                    NSSound.beep()
+                }
+            }
             return
         }
         if case .jump = a {

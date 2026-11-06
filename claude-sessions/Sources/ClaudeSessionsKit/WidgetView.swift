@@ -9,6 +9,12 @@ func elapsed(_ since: Date?, _ now: Date) -> String {
     return String(format: "%dh%02d", s / 3600, (s % 3600) / 60)
 }
 
+/// `12p` / `3h` since a session closed.
+func closedAgo(_ since: Date, _ now: Date) -> String {
+    let s = max(0, Int(now.timeIntervalSince(since)))
+    return s < 3600 ? "\(max(1, s / 60))p" : "\(s / 3600)h"
+}
+
 func color(_ status: String) -> Color {
     switch status {
     case "waiting": .red
@@ -152,12 +158,15 @@ public enum WidgetAction: Equatable {
     case openLink(String, URL)
     case askClaude(String, prompt: String)
     case nudgeRabbit(String, PRRef)
+    /// Opens a cmux workspace that resumes a closed session.
+    case resume(ClosedSession)
     /// Opens the token dialog of a service; belongs to no session.
     case connect(Service)
 
     public var sessionId: String {
         switch self {
         case .jump(let id), .approve(let id, _), .deny(let id, _, _), .openLink(let id, _), .askClaude(let id, _), .nudgeRabbit(let id, _): id
+        case .resume(let c): c.id
         case .connect: ""
         }
     }
@@ -331,7 +340,7 @@ public struct WidgetView: View {
             Button("Thoát") { NSApp.terminate(nil) }
         }
         .animation(.spring(response: 0.36, dampingFraction: 0.8), value: expanded)
-        .onChange(of: expanded) { _, now in if !now { panel.openMenus = [] } }
+        .onChange(of: expanded) { _, now in if !now { panel.openMenus = []; panel.closedOpen = false } }
         .animation(.spring(response: 0.36, dampingFraction: 0.8), value: store.sessions.count)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: panel.anchor.alignment)
         .padding(Layout.margin)
@@ -354,6 +363,7 @@ public struct WidgetView: View {
                 Text("Không có session nào").font(.system(size: 12)).foregroundStyle(.white.opacity(0.5))
                     .frame(height: Layout.rowHeight)
             }
+            if !store.closed.items.isEmpty { closedGroup }
         }
         .padding(.horizontal, 10)
         .padding(panel.anchor.up ? .top : .bottom, Layout.listPaddingFar)
@@ -361,7 +371,7 @@ public struct WidgetView: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { h in
             if abs(h - (panel.listHeight ?? 0)) > 0.5 { panel.listHeight = h }
         }
-        let height = min(panel.listHeight ?? (Layout.expanded(store.sessions, open: panel.openMenus).height - Layout.headerHeight), Layout.maxListHeight)
+        let height = min(panel.listHeight ?? (Layout.expanded(store.sessions, open: panel.openMenus, closed: store.closed.items.count, closedOpen: panel.closedOpen).height - Layout.headerHeight), Layout.maxListHeight)
         return Group {
             if snapshotRendering {
                 rows.fixedSize(horizontal: false, vertical: true)
@@ -380,6 +390,38 @@ public struct WidgetView: View {
             panel.noteOrderChange(from: old, to: new)
         }
         .transition(.opacity)
+    }
+
+    private var closedGroup: some View {
+        let items = store.closed.items
+        return VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Image(systemName: panel.closedOpen ? "chevron.down" : "chevron.right").font(.system(size: 9, weight: .bold))
+                Text("Vừa đóng (\(items.count))").font(.system(size: 11, weight: .semibold))
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(.white.opacity(0.6))
+            .padding(.horizontal, 6)
+            .frame(height: Layout.closedRowHeight)
+            .contentShape(Rectangle())
+            .onTapGesture { panel.closedOpen.toggle() }
+            if panel.closedOpen {
+                ForEach(items, id: \.id) { c in
+                    HStack(spacing: 10) {
+                        Text(c.title).font(.system(size: 11.5, weight: .medium)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
+                        Text(c.subtitle).font(.system(size: 10.5)).foregroundStyle(.white.opacity(0.45)).lineLimit(1)
+                        Spacer(minLength: 12)
+                        Text("đóng \(closedAgo(c.closedAt, store.now))").font(.system(size: 11).monospacedDigit())
+                            .foregroundStyle(.white.opacity(0.55)).fixedSize()
+                    }
+                    .padding(.horizontal, 6)
+                    .frame(height: Layout.closedRowHeight)
+                    .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
+                    .contentShape(Rectangle())
+                    .onTapGesture { onAction(.resume(c)) }
+                }
+            }
+        }
     }
 
     private func header(expanded: Bool) -> some View {

@@ -93,9 +93,13 @@ public enum Layout {
             + (open ? CGFloat(s.menuCount) * linkRowHeight + CGFloat(s.menu.count) * linkSectionHeight + (s.menuNeedsJira ? linkRowHeight : 0) : 0)
     }
 
-    static func expanded(_ sessions: [Session], open: Set<String> = []) -> CGSize {
+    static let closedRowHeight: CGFloat = 26
+
+    static func expanded(_ sessions: [Session], open: Set<String> = [], closed: Int = 0, closedOpen: Bool = false) -> CGSize {
         let rows = sessions.isEmpty ? rowHeight : sessions.reduce(0) { $0 + height(of: $1, open: open.contains($1.id)) }
-        return CGSize(width: expandedWidth, height: headerHeight + listPadding + rows + cardGap * CGFloat(max(sessions.count - 1, 0)))
+        let group = closed == 0 ? 0 : cardGap + closedRowHeight * CGFloat(1 + (closedOpen ? closed : 0))
+        let cards = cardGap * CGFloat(max(sessions.count - 1, 0))
+        return CGSize(width: expandedWidth, height: headerHeight + listPadding + rows + cards + group)
     }
 
     static func collapsedWidth(_ store: Store) -> CGFloat {
@@ -104,7 +108,7 @@ public enum Layout {
 
     public static func size(_ store: Store, _ panel: PanelState) -> CGSize {
         guard panel.expanded(store) else { return CGSize(width: collapsedWidth(store), height: collapsed.height) }
-        let h = panel.measuredHeight ?? expanded(store.sessions, open: panel.openMenus).height
+        let h = panel.measuredHeight ?? expanded(store.sessions, open: panel.openMenus, closed: store.closed.items.count, closedOpen: panel.closedOpen).height
         return CGSize(width: expandedWidth, height: min(h, maxExpandedHeight))
     }
 

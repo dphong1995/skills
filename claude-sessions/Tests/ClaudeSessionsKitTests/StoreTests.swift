@@ -1546,3 +1546,38 @@ private func typedJira() -> FakeJira {
     store.refresh(at: Date())
     #expect(store.sessions.map(\.id) == ["live"])
 }
+
+@Test func deadSessionGoesToClosed() {
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir, branch: { _ in "feat/x" })
+    writeSession(dir, "dead", pid: 999_999, status: "idle", ageSec: 10, name: "dead", cwd: "/tmp")
+    store.refresh(at: Date())
+    #expect(store.closed.items.isEmpty)
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 10, name: "frontend", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(store.closed.items.isEmpty)
+    writeSession(dir, "a", pid: 999_999, status: "idle", ageSec: 10, name: "frontend", cwd: frontend)
+    store.refresh(at: Date())
+    let c = store.closed.items.first
+    #expect(c?.id == "a")
+    #expect(c?.title == "frontend")
+    #expect(c?.cwd == frontend)
+    #expect(c?.branch == "feat/x")
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 10, name: "frontend", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(store.closed.items.isEmpty)
+}
+
+@Test func closedPersistsAcrossStores() {
+    let suite = "closed-\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let dir = makeTempDir()
+    let store = Store(dir: dir, projects: makeTempDir(), tasks: makeTempDir(), scanner: TranscriptScanner(queue: nil), branch: { _ in nil }, closedStore: defaults)
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 10, name: "frontend", cwd: frontend)
+    store.refresh(at: Date())
+    writeSession(dir, "a", pid: 999_999, status: "idle", ageSec: 10, name: "frontend", cwd: frontend)
+    store.refresh(at: Date())
+    let again = Store(dir: makeTempDir(), projects: makeTempDir(), tasks: makeTempDir(), scanner: TranscriptScanner(queue: nil), branch: { _ in nil }, closedStore: defaults)
+    #expect(again.closed.items.map(\.id) == ["a"])
+}

@@ -341,3 +341,12 @@ private func prStatus(id: Int, state: String = "OPEN", reviewers: Int = 0, appro
               LinkSection(title: "PR", items: [LinkItem(text: "B", url: url), LinkItem(text: "C", url: url)])]
     #expect(Layout.expanded([s], open: [s.id]).height == Layout.expanded([s]).height + 3 * 22 + 2 * 16)
 }
+
+@Test func closedGroupHeight() {
+    let a = session("a", "idle", "hi")
+    let base = Layout.expanded([a]).height
+    #expect(Layout.expanded([a], closed: 0).height == base)
+    let collapsed = Layout.expanded([a], closed: 2, closedOpen: false).height
+    #expect(collapsed == base + Layout.cardGap + Layout.closedRowHeight)
+    #expect(Layout.expanded([a], closed: 2, closedOpen: true).height == collapsed + 2 * Layout.closedRowHeight)
+}

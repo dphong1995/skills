@@ -15,6 +15,9 @@ public final class PanelState: ObservableObject {
     /// Session ids whose `☰ N` list is expanded; cleared when the widget collapses.
     @Published public var openMenus: Set<String> = []
 
+    /// The `Vừa đóng (N)` group is expanded; cleared when the widget collapses.
+    @Published public var closedOpen = false
+
     /// Session id the mouse is over in the expanded card; drives the hover-dwell that clears a fresh mark.
     @Published public var hoveredRow: String?
 

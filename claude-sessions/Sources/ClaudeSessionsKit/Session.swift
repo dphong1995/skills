@@ -141,6 +141,17 @@ public final class Store: ObservableObject {
     @Published var now = Date()
     /// The OMC usage cache's 5h and weekly quota; nil when there is no reader or no usable file.
     @Published public var quota: Quota?
+    /// Sessions whose process ended, newest first; saved to `closedStore` on every change.
+    @Published public var closed = ClosedSessions() {
+        didSet {
+            guard closed != oldValue, let closedStore else { return }
+            closedStore.set(try? JSONEncoder().encode(closed.items), forKey: Store.closedKey)
+        }
+    }
+    private let closedStore: UserDefaults?
+    private static let closedKey = "closedSessions"
+    /// The live sessions of the previous refresh, as what a closed row needs; nil before the first refresh.
+    private var lastLive: [String: ClosedSession]?
     private let quotaReader: QuotaReader?
     @Published public var peekUntil: Date?
     @Published public var muted = false
@@ -242,7 +253,14 @@ public final class Store: ObservableObject {
                 quota: QuotaReader? = nil,
                 scanner: TranscriptScanner = TranscriptScanner(),
                 branch: ((String) -> String?)? = nil,
-                git: GitStatusMonitor? = nil) {
+                git: GitStatusMonitor? = nil,
+                closedStore: UserDefaults? = nil) {
+        self.closedStore = closedStore
+        if let data = closedStore?.data(forKey: Store.closedKey), let items = try? JSONDecoder().decode([ClosedSession].self, from: data) {
+            var loaded = ClosedSessions(items)
+            loaded.prune(now: Date())
+            closed = loaded
+        }
         if let branch {
             self.gitReader = nil
             self.branchReader = branch
@@ -614,6 +632,14 @@ public final class Store: ObservableObject {
         ]
         if lines != connections { connections = lines }
         let live = Set(list.map(\.id))
+        var nowClosed = closed
+        for (id, c) in lastLive ?? [:] where !live.contains(id) {
+            nowClosed.add(ClosedSession(id: id, title: c.title, cwd: c.cwd, branch: c.branch, closedAt: now), now: now)
+        }
+        nowClosed.revive(live)
+        nowClosed.prune(now: now)
+        if nowClosed != closed { closed = nowClosed }
+        lastLive = Dictionary(list.map { ($0.id, ClosedSession(id: $0.id, title: $0.title, cwd: $0.cwd, branch: $0.branch, closedAt: now)) }, uniquingKeysWith: { $1 })
         cache = cache.filter { live.contains($0.key) }
         buttonCache = buttonCache.filter { live.contains($0.key) }
         urls = urls.filter { live.contains($0.key) }
@@ -760,7 +786,7 @@ public final class Store: ObservableObject {
 
     public func stillValid(_ a: WidgetAction) -> Bool {
         switch a {
-        case .jump, .openLink, .connect, .nudgeRabbit: return true
+        case .jump, .openLink, .connect, .nudgeRabbit, .resume: return true
         case .approve(_, let toolId), .deny(_, let toolId, _): return allows(Editing(id: a.sessionId, kind: .deny, toolId: toolId))
         case .askClaude(let id, _): return sessions.first { $0.id == id }?.canAskClaude == true
         }
