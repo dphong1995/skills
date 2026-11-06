@@ -313,6 +313,12 @@ Trong sandbox thì truyền đường dẫn plugin của Command Line Tools:
 cd ~/.claude/skills-repo/claude-sessions && swift test -Xswiftc -plugin-path -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing
 ```
 
+Test E2E của câu hỏi AskUserQuestion qua Feed chạy tay, mặc định bị bỏ qua: chạy `claude --model haiku` thật trong các workspace cmux tạm nên tốn một ít quota:
+
+```bash
+cd ~/.claude/skills-repo/claude-sessions && CLAUDE_SESSIONS_E2E=1 swift test --filter FeedE2ETests
+```
+
 Đo hiệu năng của widget thật bằng `perf.sh` (cần tắt sandbox, mất khoảng 3 phút):
 
 ```bash

@@ -63,6 +63,7 @@ claude plugin test ~/.claude/skills-repo/mods/main-context-compact
 
 # claude-sessions widget
 cd claude-sessions && swift test   # writes state PNGs to .build/snapshots/
+cd claude-sessions && CLAUDE_SESSIONS_E2E=1 swift test --filter FeedE2ETests   # manual: real `claude --model haiku` in throwaway cmux workspaces, spends a little quota
 bash claude-sessions/perf.sh        # real-app CPU/memory check, ~3 min, run after any widget change
 ```
 
