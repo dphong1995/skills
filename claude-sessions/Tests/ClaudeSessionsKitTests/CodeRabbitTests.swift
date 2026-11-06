@@ -143,7 +143,8 @@ private func rabbit(_ state: String, _ description: String) -> Rabbit? {
         var answeredFacts = known; answeredFacts.allAnswered = true
         var nudgedFacts = answeredFacts; nudgedFacts.nudgePending = true
         let tin: Set<String> = ["{tin}"]
-        #expect(CodeRabbit.resolve(.reviewing, approvers: tin, facts: known) == .reviewing)
+        #expect(CodeRabbit.resolve(.reviewing, approvers: tin, facts: known) == .approved)
+        #expect(CodeRabbit.resolve(.reviewing, approvers: [], facts: known) == .reviewing)
         #expect(CodeRabbit.resolve(.failed, approvers: tin, facts: known) == .approved)
         #expect(CodeRabbit.resolve(.skipped, approvers: tin, facts: known) == .approved)
         #expect(CodeRabbit.resolve(.failed, approvers: [], facts: known) == .failed)

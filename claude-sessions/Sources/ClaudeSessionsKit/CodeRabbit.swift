@@ -137,8 +137,8 @@ enum CodeRabbit {
 
     /// The displayed state from the raw status, the PR's approvers and the comment facts.
     static func resolve(_ status: Rabbit?, approvers: Set<String>, facts: RabbitFacts?) -> Rabbit? {
-        if status == .reviewing { return .reviewing }
         if let u = facts?.rabbitUser, approvers.contains(u) { return .approved }
+        if status == .reviewing { return .reviewing }
         switch status {
         case .failed?, .skipped?: return status
         case .reviewed?, .approved?:

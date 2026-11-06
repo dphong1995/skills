@@ -809,6 +809,16 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         #expect(rabbitOf(m) == .approved)
     }
 
+    /// The #6884 shape: the approve command bumped the INPROGRESS status's updated_on past the summary comment.
+    @Test func approvedWhileStatusInProgress() {
+        let api = fake(open: [prJSON(id: 6884, comments: 1, rabbitApproved: true)])
+        setStatuses(api, rabbitStatus(state: "INPROGRESS", description: "Review queued", created: Self.started, updated: "2026-11-03T03:50:00.000000+00:00"))
+        api.set("/comments", json: ["values": [rabbitComment("**Actionable comments posted: 1**", at: Self.later)]])
+        let m = monitor(api)
+        m.update([target([prRef(6884)])], at: t0)
+        #expect(rabbitOf(m) == .approved)
+    }
+
     /// The #7583 shape: a finding the human answered and CodeRabbit withdrew, then waiting for the approval.
     private func answeredThread(_ api: FakeBitbucket) {
         api.set("/comments", json: ["values": [
