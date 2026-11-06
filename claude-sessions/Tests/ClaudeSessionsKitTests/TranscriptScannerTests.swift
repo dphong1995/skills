@@ -114,6 +114,22 @@ private func link(_ repo: String, _ id: Int) -> String { "https://bitbucket.org/
         #expect(scan(TranscriptScanner(queue: nil), url).tickets.keys.sorted() == ["T6IR-1", "T6IR-3"])
     }
 
+    @Test func notificationTurnInheritsAcrossScans() {
+        let scanner = TranscriptScanner(queue: nil)
+        let url = transcript([userLine("go", origin: "human"), toolUseLine(id: "toolu_A", name: "Agent", input: [:])])
+        _ = scan(scanner, url)
+        append(url, jsonLine(["type": "user", "isCompactSummary": true, "message": ["content": "summary"]]) + "\n")
+        append(url, notificationLine("r", toolUseId: "toolu_A") + "\n")
+        append(url, assistantLine("T6IR-5") + "\n")
+        #expect(scan(scanner, url).tickets.keys.contains("T6IR-5"))
+
+        let raw = #"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"toolu_R","name":"Agent","input":{}}]}}"#
+        append(url, raw + "\n")
+        append(url, notificationLine("r", toolUseId: "toolu_R") + "\n")
+        append(url, assistantLine("T6IR-6") + "\n")
+        #expect(scan(scanner, url).tickets.keys.contains("T6IR-6"))
+    }
+
     @Test func notificationTurnKeepsPRLinks() {
         let url = transcript([userLine("start"), notificationLine("done"), assistantLine("PR \(link("a", 9)) for T6IR-7")])
         let r = scan(TranscriptScanner(queue: nil), url)

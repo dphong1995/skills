@@ -141,20 +141,36 @@ public final class TranscriptScanner {
         return parsedCount
     }
 
-    private static let want = ["\"type\":\"user\"", "\"type\":\"assistant\""].map { Data($0.utf8) }
-    private static let reject = ["\"type\":\"tool_use\"", "\"type\":\"tool_result\"", "\"type\":\"thinking\"",
-                                 "\"isSidechain\":true", "\"isMeta\":true"].map { Data($0.utf8) }
+    private static let userMark = "\"type\":\"user\""
+    private static let assistantMark = "\"type\":\"assistant\""
+    private static let toolUseMark = "\"type\":\"tool_use\""
+    private static let sidechainMark = "\"isSidechain\":true"
+    private static let want = [userMark, assistantMark].map { Data($0.utf8) }
+    private static let reject = [toolUseMark, "\"type\":\"tool_result\"", "\"type\":\"thinking\"",
+                                 sidechainMark, "\"isMeta\":true"].map { Data($0.utf8) }
 
-    private static let toolUseMark = Data("\"type\":\"tool_use\"".utf8)
-    private static let sidechainMark = Data("\"isSidechain\":true".utf8)
-    private static let assistantMark = Data("\"type\":\"assistant\"".utf8)
+    private static let assistantData = Data(assistantMark.utf8)
+    private static let toolUseData = Data(toolUseMark.utf8)
+    private static let sidechainData = Data(sidechainMark.utf8)
+    /// How Claude Code writes a tool_use block's start; the id follows up to the next quote.
+    private static let toolUseIdMark = Data((toolUseMark + ",\"id\":\"").utf8)
 
     /// Remembers the tool_use ids of a main-thread assistant line, so a later report of that agent continues the turn.
     private static func recordToolUse(_ line: Data.SubSequence, into s: inout State) {
-        guard line.range(of: toolUseMark) != nil, line.range(of: assistantMark) != nil,
-              line.range(of: sidechainMark) == nil,
-              let o = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
-              (o["isSidechain"] as? Bool) != true,
+        guard line.range(of: toolUseData) != nil, line.range(of: assistantData) != nil,
+              line.range(of: sidechainData) == nil else { return }
+        var from = line.startIndex
+        var found = false
+        while let mark = line.range(of: toolUseIdMark, in: from..<line.endIndex) {
+            found = true
+            let rest = line[mark.upperBound...]
+            guard let close = rest.firstIndex(of: 0x22) else { return }
+            s.yourToolUses.insert(String(decoding: rest[..<close], as: UTF8.self))
+            from = close
+        }
+        if found { return }
+        // Another key order (not Claude Code's own): parse the line.
+        guard let o = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
               let blocks = (o["message"] as? [String: Any])?["content"] as? [[String: Any]] else { return }
         for b in blocks where b["type"] as? String == "tool_use" {
             if let id = b["id"] as? String { s.yourToolUses.insert(id) }
@@ -200,7 +216,8 @@ public final class TranscriptScanner {
                 s.yourTurn = kind.map { $0 == "human" } ?? true
             }
         }
-        for key in isNotification ? [] : s.yourTurn || summary ? Transcript.ticketKeys(in: clean) : [] {
+        let keys = !isNotification && (s.yourTurn || summary) ? Transcript.ticketKeys(in: clean) : []
+        for key in keys {
             s.counter += 1
             s.result.version += 1
             if var m = s.result.tickets[key] {
