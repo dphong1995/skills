@@ -40,10 +40,10 @@ export const loadDoc = (src, { review }) => {
   return data;
 };
 
-// A note saved before the English protocol: general key `Chung`, intro key `Mở đầu` and `dòng N` lines become `General`, `Intro` and `lines N`.
+// A note saved before the English protocol: general-note key `Chung`, passage/edit-note key `Mở đầu` and `dòng N` lines become `General`, `Intro` and `lines N`.
 export const legacyNote = (n) => ({
   ...n,
-  ...(n.key === 'Chung' ? { key: 'General' } : n.key === 'Mở đầu' ? { key: 'Intro' } : {}),
+  ...(n.kind === 'general' && n.key === 'Chung' ? { key: 'General' } : (n.kind === 'passage' || n.kind === 'edit') && n.key === 'Mở đầu' ? { key: 'Intro' } : {}),
   ...(typeof n.lines === 'string' && /^dòng /.test(n.lines) ? { lines: 'lines ' + n.lines.slice(5) } : {}),
 });
 

@@ -3,7 +3,7 @@ import { short } from './strings.js';
 import { fit, main, say } from './fab.js';
 import { t } from './i18n.js';
 
-// `notes`, `noteBox` and `update` are the review page's note list, box maker and refresh. Installs the Góp ý and Sửa thành buttons that appear by a selection.
+// `notes`, `noteBox` and `update` are the review page's note list, box maker and refresh. Installs the `note` and `editTo` buttons that appear by a selection.
 export const passages = ({ notes, noteBox, update }) => {
   // Comments on a selected passage: the passage gets a mark and a note opens under it. Offsets count the text a passage can be selected in, so a draft marks the same passage again after a reload.
   const SKIP = 'textarea, input, button, svg, [data-note], [data-mmd], [data-prev], [data-diff]';
@@ -112,7 +112,7 @@ export const passages = ({ notes, noteBox, update }) => {
     } else if (kind === 'edit' && r && !sel.isCollapsed) say('warn', t('editOneBlock'));
     return n;
   };
-  // The Góp ý and Sửa thành buttons by a selection, in one box that is placed; mousedown keeps the selection.
+  // The `note` and `editTo` buttons by a selection, in one box that is placed; mousedown keeps the selection.
   const adderBtn = (kind, label, primary) => el('button', { type: 'button', 'data-adder': kind, class: btnCls(primary, true) + ' shadow-lg', onmousedown: (e) => e.preventDefault(), onclick: () => {
     const n = commentSelection(kind);
     if (n) n.ta.focus();

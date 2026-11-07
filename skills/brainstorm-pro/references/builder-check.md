@@ -5,7 +5,7 @@ A fresh agent reads the finished document the way the engineer who will plan and
 ## When
 
 - After the four checks of Phase 5, before Phase 6.
-- Once per document. It re-runs only when a Phase 6 `Sửa` round changed the chosen approach (the pick line in `## Cách làm`); wording edits or added rows in the rejected-alternatives table do not re-run it.
+- Once per document. It re-runs only when a `Decision: Revise` round changed the chosen approach (the pick line in `## Approach` (Cách làm)); wording edits or added rows in the rejected-alternatives table do not re-run it.
 - Never on shortened branches ("just code it", cook's bug-fix shortcut).
 
 ## Invoke

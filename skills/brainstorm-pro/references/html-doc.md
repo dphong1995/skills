@@ -56,9 +56,9 @@ The command prints `ANSWERS <md path>` and then:
 Decision: Approve | Revise
 [§ <section>] <note>            (subsections: "<section> › <subsection>")
 [§ <section> · lines N-M] «<quote>» → <note>      (a selected passage; long quotes cut "head … tail")
-[§ <section> · lines N-M] «<old>» ⇒ «<new>»        (Sửa thành: the whole old text, never cut)
+[§ <section> · lines N-M] «<old>» ⇒ «<new>»        (Change to: the whole old text, never cut)
 [§ General] <note>
-[§ Intro] <note>                 (text before the first ## heading)
+[§ Intro · lines N-M] «<quote>» → <note>   (text before the first ## heading; no section Note button)
 Image #1: <path>
 ```
 

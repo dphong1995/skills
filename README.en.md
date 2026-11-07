@@ -13,6 +13,7 @@ bash ~/.claude/skills-repo/install.sh
 ```
 
 `bash install.sh` opens a menu (needs a terminal). Only `skills` is ticked by default.
+The first `--update` after upgrading from the old installer has no remembered selection yet: it shows the menu with only `skills` ticked (without a terminal it exits with code 2). Pick your items once, e.g. `bash install.sh --only skills,subagent,vietnamese,compact,org-skills`.
 
 | Item | What it installs | Where | Default |
 |---|---|---|---|

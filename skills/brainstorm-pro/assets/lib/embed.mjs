@@ -38,7 +38,7 @@ export const createEmbed = ({ root, src }) => {
     }
     if (b.label == null) b.label = b.file.replace(homedir(), '~') + (b.lines ? `:${b.lines[0]}-${b.lines[1]}` : '');
     if (Buffer.byteLength(content) <= MAX_FILE) files[b.file] = content;
-    else console.error(`${b.file}: over ${MAX_FILE / 1024} KB, shown without "Xem toàn file"`);
+    else console.error(`${b.file}: over ${MAX_FILE / 1024} KB, shown without "View whole file"`);
   };
 
   // Puts the regular file at abs into `files`; false when it is missing, not a file or over the limit (onBig then says so).

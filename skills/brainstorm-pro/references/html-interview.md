@@ -143,20 +143,20 @@ One complete round (every field of a question, `code` with `file`/`lines`, a `ta
 ```json
 {
   "topic": "Retry for failed uploads",
-  "decided": ["Câu 1: chỉ retry lỗi mạng, không retry lỗi 4xx"],
+  "decided": ["Q1: retry only network errors, not 4xx errors"],
   "questions": [
     {
       "id": "q02",
       "n": 2,
-      "stage": "Cách làm",
-      "title": "Retry chạy ở đâu?",
-      "why": "Quyết định retry nằm ở một chỗ hay rải rác, và ai phải sửa khi đổi số lần thử.",
+      "stage": "Approach",
+      "title": "Where does the retry run?",
+      "why": "Decides whether retry lives in one place or is scattered, and who must change code when the attempt count changes.",
       "reversible": false,
-      "reversibleWhy": "Đổi sau này phải sửa mọi nơi gọi upload.",
+      "reversibleWhy": "Changing it later means editing every upload caller.",
       "context": [
-        { "t": "p", "text": "Hôm nay `uploadFile` gọi API một lần và báo lỗi ngay." },
+        { "t": "p", "text": "Today `uploadFile` calls the API once and reports the error at once." },
         { "t": "code", "file": "/Users/phong/.claude/skills-repo/skills/brainstorm-pro/assets/lib/embed.mjs", "lines": [1, 6] },
-        { "t": "table", "head": ["Cách", "Số nơi sửa"], "rows": [["Gateway", "1"], ["Hook", "3"]] }
+        { "t": "table", "head": ["Approach", "Places to change"], "rows": [["Gateway", "1"], ["Hook", "3"]] }
       ],
       "options": [
         {

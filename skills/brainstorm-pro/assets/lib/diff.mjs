@@ -1,4 +1,4 @@
-// Word diff of two texts for the review page's "Xem chỗ đổi" box: [{ t: 'same' | 'del' | 'add', s }].
+// Word diff of two texts for the review page's `showChanges` box: [{ t: 'same' | 'del' | 'add', s }].
 // Same + del parts rebuild `a`, same + add parts rebuild `b`.
 import { alignRows, lcs } from '../page/code.js';
 

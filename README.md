@@ -13,6 +13,7 @@ bash ~/.claude/skills-repo/install.sh
 
 `bash install.sh` mở menu để tick mục cần cài (cần terminal). Chỉ `skills` được tick sẵn. Vị trí clone không
 quan trọng (script tự dò đường dẫn của chính nó) — `~/.claude/skills-repo` chỉ là mặc định gợi ý.
+Lần `--update` đầu tiên sau khi nâng cấp từ bộ cài cũ chưa có file lựa chọn: hiện menu chỉ tick `skills` (không có terminal thì thoát mã 2); hãy chọn mục một lần, ví dụ `bash install.sh --only skills,subagent,vietnamese,compact,org-skills`.
 
 | Mục | Cài gì | Vào đâu | Mặc định |
 |---|---|---|---|

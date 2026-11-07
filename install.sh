@@ -66,6 +66,13 @@ install_entry() {  # $1 = source path, $2 = destination path
   cp -R "$1" "$2"
 }
 
+backup_once() {  # $1 = 1 when the file existed before this run, $2 = the file; copies it once per run
+  if [ "$1" = "1" ] && [ ! -e "$BACKUP/$(basename "$2")" ]; then
+    mkdir -p "$BACKUP"
+    cp "$2" "$BACKUP/$(basename "$2")"
+  fi
+}
+
 # Settings: a fragment from settings/ is merged into $DEST/settings.json. Top-level values are set (env per variable);
 # a hook group is added unless every command in it is already registered for that event.
 merge_settings() {  # $1 = fragment name (settings/<name>.json)
@@ -73,10 +80,7 @@ merge_settings() {  # $1 = fragment name (settings/<name>.json)
   [ -f "$fragment" ] || return 0
   if command -v node >/dev/null 2>&1; then
     local target="$DEST/settings.json"
-    if [ "$HAD_SETTINGS" = "1" ] && [ ! -e "$BACKUP/settings.json" ]; then
-      mkdir -p "$BACKUP"
-      cp "$target" "$BACKUP/settings.json"
-    fi
+    backup_once "$HAD_SETTINGS" "$target"
     mkdir -p "$DEST"
     node - "$fragment" "$target" <<'EOF'
 const fs = require('fs');
@@ -108,10 +112,7 @@ write_block() {  # $1 = block name (claude-md/<name>.md)
   local target="$DEST/CLAUDE.md"
   local begin="<!-- skills-repo: $name -->"
   local end="<!-- /skills-repo: $name -->"
-  if [ "$HAD_CLAUDE_MD" = "1" ] && [ ! -e "$BACKUP/CLAUDE.md" ]; then
-    mkdir -p "$BACKUP"
-    cp "$target" "$BACKUP/CLAUDE.md"
-  fi
+  backup_once "$HAD_CLAUDE_MD" "$target"
   mkdir -p "$DEST"
   tmp="$(mktemp)"
   if [ -f "$target" ] && grep -qxF "$begin" "$target"; then
@@ -267,6 +268,7 @@ run_menu() {
       echo "Nothing is ticked."
       continue
     fi
+    set -f
     for tok in $line; do
       case "$tok" in
         q|Q) exit 0 ;;
@@ -282,6 +284,7 @@ run_menu() {
           ;;
       esac
     done
+    set +f
   done
 }
 
@@ -316,12 +319,14 @@ for ((i = 0; i < COUNT; i++)); do SEL[$i]=0; done
 
 case "$MODE" in
   only)
+    ONLY="${ONLY// /}"
     old_ifs="$IFS"; IFS=','
     set -f; names=($ONLY); set +f
     IFS="$old_ifs"
     bad=""
     for name in ${names[@]+"${names[@]}"}; do
-      if idx="$(index_of "$name")"; then SEL[$idx]=1; else bad="$bad $name"; fi
+      [ -n "$name" ] || continue
+      if idx="$(index_of "$name")"; then SEL[$idx]=1; else bad="$bad \"$name\""; fi
     done
     if [ -n "$bad" ] || ! any_selected; then
       die_usage "Unknown item(s):${bad:- (none given)}"
@@ -354,12 +359,10 @@ esac
 
 # ---- run ----
 mkdir -p "$DEST"
-RAN=()
 for ((i = 0; i < COUNT; i++)); do
   if [ "${SEL[$i]}" = "1" ]; then
     echo "== ${ITEMS[$i]}"
     "install_${ITEMS[$i]//-/_}"
-    RAN+=("${ITEMS[$i]}")
     SUMMARY_INSTALLED="$SUMMARY_INSTALLED ${ITEMS[$i]}"
   fi
 done

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -90,6 +90,19 @@ test('rerun does not duplicate', () => {
   for (let i = 0; i < 2; i++) assert.equal(run(['--only', 'skills,subagent,vietnamese'], { home }).code, 0);
   const s = settings(home);
   for (const ev of Object.keys(s.hooks)) assert.equal(s.hooks[ev].length, 1, ev);
+  const md = claudeMd(home);
+  for (const b of ['web-pages', 'subagent-models', 'language']) assert.equal(count(md, `<!-- skills-repo: ${b} -->`), 1, b);
+});
+
+test('old install then new --only does not duplicate', () => {
+  const home = mkdtempSync(join(tmpdir(), 'skills-install-'));
+  writeFileSync(join(home, 'settings.json'), JSON.stringify(legacy));
+  const only = 'skills,subagent,vietnamese,compact,org-skills';
+  for (let i = 0; i < 2; i++) assert.equal(run(['--only', only], { home }).code, 0);
+  const s = settings(home);
+  for (const ev of Object.keys(legacy.hooks)) {
+    assert.equal(s.hooks[ev].length, 1, ev);
+  }
   const md = claudeMd(home);
   for (const b of ['web-pages', 'subagent-models', 'language']) assert.equal(count(md, `<!-- skills-repo: ${b} -->`), 1, b);
 });

@@ -7,7 +7,7 @@ import { t } from './i18n.js';
 export const images = new Map();
 const IMG_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 const IMG_MAX = 20 * 1024 * 1024;
-const IMG_REF = /\[Image #(\d+)\]/g;
+const IMG_REF = /\[(?:Image|Ảnh) #(\d+)\]/g;
 const imgRefs = (text) => [...new Set([...text.matchAll(IMG_REF)].map((m) => +m[1]))].filter((n) => images.has(n));
 export const imgLines = (text) => imgRefs(text).map((n) => 'Image #' + n + ': ' + images.get(n).path);
 // One thumbnail per reference in the linked boxes (a hidden box does not count, its text is not sent); × removes the reference from the text.

@@ -58,7 +58,7 @@ Anti-Rationalization rows (in addition to `design-flow.md`'s):
   question that is the approval: the candidate fixes as options with a `recommendation` (a single
   candidate → options Approve (Duyệt) / Revise (Cần sửa)) and the 5-line design block in `context`; files that differ
   per candidate go in each option's `means`. A listed fix or Approve starts Step 2, with no chat
-  approval, no `design.md` and no review page. Cần sửa or `Other: <text>` → apply the note to the design block
+  approval, no `design.md` and no review page. Revise (Cần sửa) or `Other: <text>` → apply the note to the design block
   and ask again under a new id.
 - **Topic too large** → decompose into sub-projects; cook only the first.
 - **Scope keeps drifting** → freeze scope explicitly; document drifted items as Open Items.

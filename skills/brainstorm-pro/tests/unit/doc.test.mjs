@@ -74,10 +74,10 @@ describe('reviewRound', () => {
     const o = join(d, 'review.html'), s = join(d, 'doc.md');
     const first = reviewRound(o, s, v1);
     first.save();
-    first.saveNotes([{ kind: 'general', key: 'Chung', text: 'x' }, { kind: 'passage', key: 'Mục', lines: 'dòng 3-5', quote: 'q', text: 't' }, { kind: 'passage', key: 'Mục', lines: 'dòng 7', quote: 'q', text: 't' }, { kind: 'passage', key: 'Mở đầu', lines: 'dòng 1', quote: 'q', text: 't' }]);
+    first.saveNotes([{ kind: 'general', key: 'Chung', text: 'x' }, { kind: 'passage', key: 'Mục', lines: 'dòng 3-5', quote: 'q', text: 't' }, { kind: 'passage', key: 'Mục', lines: 'dòng 7', quote: 'q', text: 't' }, { kind: 'passage', key: 'Mở đầu', lines: 'dòng 1', quote: 'q', text: 't' }, { kind: 'section', key: 'Chung', text: 's' }]);
     const notes = reviewRound(o, s, v2).changes.notes;
-    assert.deepEqual(notes.map((n) => n.key), ['General', 'Mục', 'Mục', 'Intro']);
-    assert.deepEqual(notes.map((n) => n.lines), [undefined, 'lines 3-5', 'lines 7', 'lines 1']);
+    assert.deepEqual(notes.map((n) => n.key), ['General', 'Mục', 'Mục', 'Intro', 'Chung']);
+    assert.deepEqual(notes.map((n) => n.lines), [undefined, 'lines 3-5', 'lines 7', 'lines 1', undefined]);
   });
   it('saveNotes creates a missing state file and keeps the other sources', () => {
     const d = outDir('unit-doc-notes2');

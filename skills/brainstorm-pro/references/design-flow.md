@@ -57,13 +57,13 @@ flowchart TD
     G --> H[Phase 5: Document Self-Review<br/>4 checks]
     H --> I{Issues found?}
     I -->|yes| G
-    I -->|no| BN{Builder check not run yet,<br/>or the pick line in Cách làm changed?}
+    I -->|no| BN{Builder check not run yet,<br/>or the pick line in Approach changed?}
     BN -->|yes| BC[Builder check<br/>fresh agent reads the document] --> BT[Triage; write already-answered<br/>and small items into the document] --> BQ{Questions for the user?}
     BN -->|no| J
     BQ -->|yes| BR[One interview round<br/>update the document] --> BF[4 checks on the changed parts] --> J
     BQ -->|no| BF
     J[Phase 6: User Review Gate<br/>document on a review page, notes per section] --> K{User approves the document?}
-    K -->|Sửa| G
+    K -->|Revise| G
     K -->|approved| L[The next step]
 ```
 
@@ -181,7 +181,7 @@ reason in `recommendation: { option, why }`. In content terms:
 - Cons: ...
 ```
 
-Lead with your recommendation and the reason. If user prefers a non-recommended option, **brutally honest pushback** as the next question on the page (stage `Phản biện`: the risk you see, keep vs. switch) — but accept the user's call if they reconfirm with reason. Once the approach is settled, go on to Phase 4.
+Lead with your recommendation and the reason. If user prefers a non-recommended option, **brutally honest pushback** as the next question on the page (stage `Pushback` (Phản biện): the risk you see, keep vs. switch) — but accept the user's call if they reconfirm with reason. Once the approach is settled, go on to Phase 4.
 
 ---
 
@@ -304,7 +304,7 @@ node ~/.claude/skills/brainstorm-pro/assets/render-interview.mjs <document path>
 
 - `Decision: Approve` → apply any notes to the document, then the next step in the same turn.
 - `Decision: Revise` → edit the document as the notes ask, re-run Phase 5's four checks, show the next round
-  (`review-NN+1.html`). The builder check re-runs only if the round changed the chosen approach (the pick line in `## Cách làm`); wording edits or added rows in the rejected-alternatives table do not.
+  (`review-NN+1.html`). The builder check re-runs only if the round changed the chosen approach (the pick line in `## Approach` (Cách làm)); wording edits or added rows in the rejected-alternatives table do not.
 - Moved to the background after 10 minutes → end the turn with one line; the answer arrives as the
   task's notification. A reply in chat counts the same (stop the serve command).
 - No browser (exit 4) → as `html-doc.md` says: give the document path and a short summary in chat,
