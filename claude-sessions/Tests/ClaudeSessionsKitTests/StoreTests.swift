@@ -786,6 +786,13 @@ private let askX = WidgetAction.askClaude("a", prompt: "x")
     #expect(r.store.stillValid(askX))
 }
 
+@Test func endedWithNoBackgroundIsIdleColor() {
+    let r = ActivityRig([userLine("hi"), assistantLine("done"), turnDurationLine(background: 0)])
+    r.refresh()
+    #expect(r.session?.shownStatus == "idle")
+    #expect(r.session?.colorStatus == "idle")
+}
+
 @Test func backgroundWaitEndsOnNewTurn() {
     let r = ActivityRig([userLine("hi"), assistantLine("done"), turnDurationLine(background: 3)])
     r.refresh()

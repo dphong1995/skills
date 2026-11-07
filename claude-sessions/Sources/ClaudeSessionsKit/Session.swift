@@ -76,8 +76,8 @@ struct Session: Identifiable, Equatable {
 extension Session {
     /// `idle` while only background agents run, else the raw `status`.
     var shownStatus: String { backgroundAgents != nil ? "idle" : status }
-    /// The colour, group and sort order: background agents still running count as running.
-    var colorStatus: String { backgroundAgents != nil ? "busy" : status }
+    /// The colour, group and sort order: only a positive background count counts as running, else `shownStatus`.
+    var colorStatus: String { (backgroundAgents ?? 0) > 0 ? "busy" : shownStatus }
     var title: String { nameSource == "user" ? name : (aiTitle ?? firstPrompt ?? name) }
     var folder: String { ClosedSession.folder(cwd) }
     var subtitle: String { ClosedSession.subtitle(cwd: cwd, branch: branch) }
