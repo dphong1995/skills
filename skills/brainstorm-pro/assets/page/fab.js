@@ -1,5 +1,6 @@
 import { $, el, RING, TEXTAREA, writeClipboard } from './dom.js';
 import { markAnswered } from './leave.js';
+import { t } from './i18n.js';
 
 export const CARD = 'card card-border border-base-300 bg-base-100 px-[18px] py-4 max-[520px]:px-3 max-[520px]:py-3.5 grid gap-3 min-w-0 transition-[border-color,box-shadow] duration-200 motion-reduce:transition-none [&.attention]:border-[var(--color-warning)] [&.attention]:[box-shadow:0_0_0_3px_color-mix(in_oklab,var(--color-warning)_22%,transparent)]';
 // The interview's question cards are the shortcuts' targets, so only they carry the ring (a document card is not one).
@@ -13,7 +14,7 @@ export const fit = (ta) => {
 // The floating bar's message, copy fallback and drafts, used by both modes. Served by render-interview.mjs --serve, a page sends its text to Claude itself; opened as a file, it copies the text for pasting.
 export const sendMode = !!(D && D.send);
 export const fabMsg = el('p', { class: 'alert alert-soft block max-w-[24rem] text-[13px] leading-normal px-2.5 py-1.5 shadow-lg empty:hidden', role: 'status' });
-export const out = el('textarea', { id: 'out', class: TEXTAREA + ' w-[min(26rem,calc(100vw-32px))] font-mono text-[12px] max-h-[40vh] bg-base-200', readonly: true, hidden: true, 'aria-label': 'Nội dung để dán vào Claude' });
+export const out = el('textarea', { id: 'out', class: TEXTAREA + ' w-[min(26rem,calc(100vw-32px))] font-mono text-[12px] max-h-[40vh] bg-base-200', readonly: true, hidden: true, 'aria-label': t('pasteBox') });
 export const say = (kind, ...parts) => {
   if (!kind && !parts.length && !fabMsg.dataset.kind && !fabMsg.firstChild) return;
   fabMsg.dataset.kind = kind || '';

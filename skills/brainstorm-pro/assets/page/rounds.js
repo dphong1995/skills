@@ -1,5 +1,6 @@
 import { el, HL_BOX, NOTE_BTN } from './dom.js';
 import { short } from './strings.js';
+import { t } from './i18n.js';
 
 const DIFF_TINT = { del: 'line-through bg-del', add: 'bg-add' };
 
@@ -23,7 +24,7 @@ export const noteData = (n, general) => {
 export const previousRound = (ch) => {
   const notes = ch.notes || [];
   const shown = new Set();
-  const notesBox = (list) => el('div', { class: HL_BOX, 'data-prev': '' }, el('span', { class: 'text-[12px] font-semibold text-muted', text: 'Góp ý lần trước' }),
+  const notesBox = (list) => el('div', { class: HL_BOX, 'data-prev': '' }, el('span', { class: 'text-[12px] font-semibold text-muted', text: t('prevNotes') }),
     list.map((n) => el('p', { class: 'm-0 text-[13px] whitespace-pre-line wrap-anywhere', text: formatNote(n) })));
   const diffBox = (parts) => el('div', { class: HL_BOX + ' font-mono text-[12.5px] leading-normal whitespace-pre-wrap wrap-anywhere', 'data-diff': '', hidden: true },
     parts.map((p) => el('span', { class: DIFF_TINT[p.t], 'data-t': p.t, text: p.s })));
@@ -35,14 +36,14 @@ export const previousRound = (ch) => {
       const diff = ch.diffs && ch.diffs[key] ? diffBox(ch.diffs[key]) : null;
       const toggle = diff && el('button', { type: 'button', class: NOTE_BTN, onclick: (e) => {
         diff.hidden = !diff.hidden;
-        e.currentTarget.textContent = diff.hidden ? 'Xem chỗ đổi' : 'Ẩn chỗ đổi';
-      } }, 'Xem chỗ đổi');
+        e.currentTarget.textContent = t(diff.hidden ? 'showChanges' : 'hideChanges');
+      } }, t('showChanges'));
       return { toggle, boxes: [old.length ? notesBox(old) : null, diff] };
     },
     // General notes and those of a heading the page no longer has (after every heading was drawn).
     orphans: () => {
       const lost = notes.filter((n) => n.kind === 'general' || !shown.has(n.key));
-      return lost.length ? el('div', { class: 'mt-1 grid gap-0.5', 'data-prev': '' }, el('strong', { text: 'Góp ý lần trước không còn chỗ gắn:' }),
+      return lost.length ? el('div', { class: 'mt-1 grid gap-0.5', 'data-prev': '' }, el('strong', { text: t('prevOrphans') }),
         lost.map((n) => el('p', { class: 'm-0 whitespace-pre-line wrap-anywhere', text: formatNote(n, { head: true }) }))) : null;
     },
   };

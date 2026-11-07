@@ -58,6 +58,7 @@ Decision: Approve | Revise
 [§ <section> · lines N-M] «<quote>» → <note>      (a selected passage; long quotes cut "head … tail")
 [§ <section> · lines N-M] «<old>» ⇒ «<new>»        (Sửa thành: the whole old text, never cut)
 [§ General] <note>
+[§ Intro] <note>                 (text before the first ## heading)
 Image #1: <path>
 ```
 

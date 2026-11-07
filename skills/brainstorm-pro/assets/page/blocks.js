@@ -2,12 +2,13 @@ import { btnCls, CALLOUT, CAPTION, CAP_TEXT, el, FIG, LIST, writeClipboard } fro
 import { alignRows, extLang, hlLines, linesView } from './code.js';
 import { fileButton, showInViewer, zoomButton } from './viewer.js';
 import { inline } from './text.js';
+import { t } from './i18n.js';
 
 const copyButton = (text) => {
   let timer;
   const btn = el('button', { type: 'button', class: btnCls('file', true), onmousedown: (e) => e.preventDefault(), onclick: async () => {
     const ok = await writeClipboard(text);
-    btn.textContent = ok ? 'Đã copy' : 'Không copy được';
+    btn.textContent = t(ok ? 'copied' : 'copyFailedShort');
     clearTimeout(timer);
     timer = setTimeout(() => { btn.textContent = 'Copy'; }, ok ? 1500 : 2000);
   } }, 'Copy');
@@ -32,7 +33,7 @@ export const diffBlock = (b) => {
     const hl = hlLines(texts[k], lang);
     const key = k ? 'b' : 'a';
     return el('div', { class: 'min-w-0' + (k ? ' border-l border-base-300 max-[720px]:border-l-0 max-[720px]:border-t' : '') },
-      el('div', { class: CAPTION }, el('span', { class: CAP_TEXT, text: (k ? 'Sau' : 'Trước') + (s.label ? ' · ' + s.label : '') }), fileButton(s, lang)),
+      el('div', { class: CAPTION }, el('span', { class: CAP_TEXT, text: t(k ? 'after' : 'before') + (s.label ? ' · ' + s.label : '') }), fileButton(s, lang)),
       linesView(rows.map((r) => (r[key] == null ? '' : hl[r[key]])),
         s.lines ? rows.map((r) => (r[key] == null ? null : s.lines[0] + r[key])) : null,
         rows.map((r) => (r[key] == null ? 'pad' : r.same ? null : k ? 'add' : 'del'))));
@@ -66,7 +67,7 @@ export const mermaidBlock = (b) => {
     .catch(() => {
       const left = document.getElementById('d' + id);
       if (left) left.remove();
-      body.prepend(el('p', { class: CALLOUT + ' mb-2', text: 'Không vẽ được sơ đồ (mất mạng hoặc sai cú pháp Mermaid); bên dưới là mã nguồn.' }));
+      body.prepend(el('p', { class: CALLOUT + ' mb-2', text: t('diagramFailed') }));
     });
   return el('figure', { class: FIG + ' block bg-base-100' }, b.label ? el('figcaption', { class: CAPTION }, el('span', { class: CAP_TEXT, text: b.label })) : null, body);
 };
@@ -92,12 +93,12 @@ addEventListener('message', (e) => {
   for (const f of document.querySelectorAll('iframe[data-mock]')) if (f.contentWindow === e.source) f.style.height = Math.min(Math.max(e.data.mockH, 24), 4000) + 'px';
 });
 const mockFrame = (html) => {
-  const f = el('iframe', { sandbox: 'allow-scripts', 'data-mock': '', title: 'Bản phác', class: 'block w-full h-20 border-0' });
+  const f = el('iframe', { sandbox: 'allow-scripts', 'data-mock': '', title: t('mockup'), class: 'block w-full h-20 border-0' });
   f.srcdoc = MOCK_HEAD + html + MOCK_TAIL;
   return f;
 };
 export const mockBlock = (html, label) => {
-  const title = label || 'Bản phác';
+  const title = label || t('mockup');
   // White below the frame too, so a mockup in a taller option row reads as one box.
   return el('figure', { class: FIG + ' bg-base-100 flex flex-col items-stretch justify-start' },
     el('figcaption', { class: CAPTION }, el('span', { class: CAP_TEXT, text: title }),
@@ -118,7 +119,7 @@ export const block = (b) => {
       el('table', { class: 'table table-sm text-[13px] [&_thead]:whitespace-normal [&_th]:align-top [&_td]:align-top' },
         el('thead', {}, el('tr', { class: 'bg-base-200' }, (b.head || []).map((h) => el('th', { class: 'text-base-content' }, inline(h))))),
         el('tbody', {}, (b.rows || []).map((r) => el('tr', {}, r.map((c) => el('td', {}, inline(c))))))));
-    case 'note': return el('div', { class: CALLOUT + ' whitespace-pre-line' }, el('strong', { class: 'text-warning', text: 'Lưu ý: ' }), inline(b.text));
+    case 'note': return el('div', { class: CALLOUT + ' whitespace-pre-line' }, el('strong', { class: 'text-warning', text: t('noteLead') }), inline(b.text));
     default: return b && b.text ? el('p', { class: 'whitespace-pre-line' }, inline(b.text)) : null;
   }
 };

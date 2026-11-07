@@ -7,19 +7,20 @@ import { imageInput, images, imageStrip, imgLines } from './images.js';
 import { shortcuts } from './shortcuts.js';
 import { interviewKeys } from './interview-keys.js';
 import { closeTab, guardLeave } from './leave.js';
+import { t } from './i18n.js';
 
 export const interviewPage = () => {
   const KEYS = 'ABCDEFGHIJ';
   const keyOf = (i) => KEYS[i] || String(i + 1);
-  const OTHER = { id: 'other', label: 'Khác (tự nhập)', means: 'Không phương án nào ở trên đúng ý: gõ phương án của bạn.' };
-  const EXPLAIN = { id: 'explain', label: 'Cần giải thích thêm', means: 'Claude giải thích rõ hơn rồi hỏi lại câu này. Ghi điều bạn chưa rõ vào ô ghi chú.' };
+  const OTHER = { id: 'other', label: t('optOther'), means: t('otherMeans') };
+  const EXPLAIN = { id: 'explain', label: t('optExplain'), means: t('explainMeans') };
   const Q = D.questions;
   const nums = Q.map((q) => q.n);
-  const range = nums.length > 1 ? 'Câu ' + Math.min(...nums) + '–' + Math.max(...nums) : 'Câu ' + (nums[0] ?? '');
+  const range = nums.length > 1 ? t('questionRange', Math.min(...nums), Math.max(...nums)) : t('question', nums[0] ?? '');
 
   guardLeave();
-  document.title = range + ' · ' + (D.topic || 'Phỏng vấn thiết kế');
-  $('#topic').textContent = D.topic || 'Phỏng vấn thiết kế';
+  document.title = range + ' · ' + (D.topic || t('defaultTopic'));
+  $('#topic').textContent = D.topic || t('defaultTopic');
   const navLinks = Q.map((q) => el('a', { href: '#card-' + q.id, class: 'btn btn-xs btn-primary btn-outline font-mono font-medium' }));
   $('#qnav').append(...navLinks);
 
@@ -32,8 +33,8 @@ export const interviewPage = () => {
     const state = el('span', { class: 'badge badge-sm ml-auto normal-case tracking-normal' });
     const inputs = [];
     const optCards = new Map();
-    const otherBox = el('textarea', { id: q.id + '-other', rows: '1', hidden: true, class: TEXTAREA + ' flex-[1_1_18rem]', placeholder: 'Phương án của bạn…', 'aria-label': 'Phương án tự nhập' });
-    const note = el('textarea', { id: q.id + '-note', rows: '1', class: TEXTAREA + ' flex-[1_1_18rem]', placeholder: 'Ghi chú (không bắt buộc): lý do, điều kiện kèm theo, hoặc điều bạn chưa rõ…', 'aria-label': 'Ghi chú cho câu ' + (q.n ?? '') });
+    const otherBox = el('textarea', { id: q.id + '-other', rows: '1', hidden: true, class: TEXTAREA + ' flex-[1_1_18rem]', placeholder: t('yourOption'), 'aria-label': t('yourOptionAria') });
+    const note = el('textarea', { id: q.id + '-note', rows: '1', class: TEXTAREA + ' flex-[1_1_18rem]', placeholder: t('notePlaceholder'), 'aria-label': t('noteAriaQuestion', q.n ?? '') });
     otherBox.addEventListener('input', () => fit(otherBox));
     note.addEventListener('input', () => fit(note));
     const strip = imageStrip([otherBox, note]);
@@ -45,12 +46,12 @@ export const interviewPage = () => {
       el('div', { class: 'flex flex-wrap items-baseline gap-x-2 gap-y-0.5' },
         el('span', { class: 'font-mono font-semibold text-primary', text: keyOf(i) + '.' }),
         el('span', { class: 'font-semibold' }, inline(o.label)),
-        o.id === recId ? el('span', { class: 'badge badge-xs badge-primary font-mono tracking-[.06em] uppercase', text: 'Đề xuất' }) : null,
-        o.effort ? el('span', { class: 'ml-auto text-[12px] text-muted' }, 'Công sức: ', inline(o.effort)) : null),
+        o.id === recId ? el('span', { class: 'badge badge-xs badge-primary font-mono tracking-[.06em] uppercase', text: t('recommended') }) : null,
+        o.effort ? el('span', { class: 'ml-auto text-[12px] text-muted' }, t('effort'), inline(o.effort)) : null),
       o.means ? el('p', {}, inline(o.means)) : null,
       o.mockup ? mockBlock(o.mockup) : null,
       o.code ? codeBlock(o.code) : null,
-      o.example ? el('p', { class: 'text-[13px] bg-base-200 rounded-md px-2 py-1 whitespace-pre-line' }, el('strong', { text: 'Ví dụ: ' }), inline(o.example)) : null,
+      o.example ? el('p', { class: 'text-[13px] bg-base-200 rounded-md px-2 py-1 whitespace-pre-line' }, el('strong', { text: t('example') }), inline(o.example)) : null,
       (o.pros && o.pros.length) || (o.cons && o.cons.length) ? el('ul', { class: 'grid gap-px content-start text-[13px]' },
         (o.pros || []).map((p) => el('li', { class: PC + " before:content-['+'] before:text-[var(--color-success)]" }, inline(p))),
         (o.cons || []).map((c) => el('li', { class: PC + " before:content-['–'] before:text-[var(--color-error)]" }, inline(c)))) : null,
@@ -81,7 +82,7 @@ export const interviewPage = () => {
       const builtin = o === OTHER || o === EXPLAIN;
       const input = el('input', { type: multi ? 'checkbox' : 'radio', name: 'choice-' + q.id, id: q.id + '-opt-' + o.id, value: o.id,
         'aria-label': (builtin ? '' : keyOf(i) + '. ') + plain(o.label) + (o.id === recId ? ' ★' : ''),
-        title: builtin ? o.means : o.id === recId ? 'Claude đề xuất' : null,
+        title: builtin ? o.means : o.id === recId ? t('claudeRecommends') : null,
         class: 'btn btn-sm font-medium checked:font-semibold' + (builtin ? ' btn-dash checked:bg-tint checked:text-[var(--color-primary)] checked:border-[var(--color-primary)]' : '') });
       inputs.push(input);
       input.addEventListener('change', () => {
@@ -97,29 +98,29 @@ export const interviewPage = () => {
 
     const recI = own.findIndex((o) => o.id === recId);
     const hasUndo = q.reversible != null;
-    const undoText = q.reversible ? 'Dễ đổi về sau' : 'Khó đổi về sau';
+    const undoText = t(q.reversible ? 'easyUndo' : 'hardUndo');
     const card = el('article', { class: INTERVIEW_CARD, id: 'card-' + q.id },
       el('header', { class: 'grid gap-1' },
         el('div', { class: 'flex flex-wrap items-center gap-1.5 font-mono tracking-[.06em] uppercase' },
-          el('span', { class: 'badge badge-sm badge-primary badge-outline', text: 'Câu ' + (q.n ?? '') }),
+          el('span', { class: 'badge badge-sm badge-primary badge-outline', text: t('question', q.n ?? '') }),
           q.stage ? el('span', { class: 'badge badge-sm badge-ghost text-muted', text: q.stage }) : null,
           hasUndo ? el('span', { class: 'badge badge-sm normal-case tracking-normal ' + (q.reversible ? 'badge-success badge-outline' : 'badge-warning badge-soft font-semibold'),
             title: q.reversibleWhy || null, text: undoText }) : null,
           state),
         el('h2', { class: 'text-[18px] leading-[1.35] font-bold text-balance' }, inline(q.title))),
       q.why || (hasUndo && q.reversibleWhy) ? el('div', { class: 'alert alert-soft alert-info block text-base-content text-[14px] leading-normal px-3 py-1.5 [&_strong]:text-[var(--color-info)]' },
-        q.why ? el('p', {}, el('strong', { text: 'Vì sao cần chốt: ' }), inline(q.why)) : null,
+        q.why ? el('p', {}, el('strong', { text: t('whyDecide') }), inline(q.why)) : null,
         hasUndo && q.reversibleWhy ? el('p', {}, el('strong', { text: undoText + ': ' }), inline(q.reversibleWhy)) : null) : null,
       q.context && q.context.length ? el('div', { class: 'grid gap-2 min-w-0' }, q.context.map(block)) : null,
       own.length ? el('div', { class: 'grid gap-x-2 gap-y-1.5 grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))]'
         + (own.length === 4 ? ' max-[1060px]:grid-cols-[repeat(auto-fit,minmax(min(100%,22rem),1fr))]' : '') }, own.map(optCard)) : null,
       q.recommendation ? el('p', { class: 'border-l-[3px] border-primary px-2.5 py-0.5' },
-        el('strong', { class: 'text-primary' }, 'Claude đề xuất', ' ' + keyOf(recI) + '. ', inline(own[recI].label), ': '),
+        el('strong', { class: 'text-primary' }, t('claudeRecommends'), ' ' + keyOf(recI) + '. ', inline(own[recI].label), ': '),
         inline(q.recommendation.why)) : null,
       el('div', { class: 'border-t border-dashed border-base-300 pt-2.5 grid gap-2' },
         el('div', { class: 'flex items-baseline gap-2' },
-          el('span', { class: 'font-mono text-[11px] font-medium tracking-[.06em] uppercase text-muted', text: 'Trả lời' }),
-          el('span', { class: 'text-[12px] text-muted', text: multi ? 'chọn một hoặc nhiều' : 'chọn một' })),
+          el('span', { class: 'font-mono text-[11px] font-medium tracking-[.06em] uppercase text-muted', text: t('answerLabel') }),
+          el('span', { class: 'text-[12px] text-muted', text: t(multi ? 'chooseMany' : 'chooseOne') })),
         el('div', { class: 'flex flex-wrap gap-1.5' }, options.map(choice)),
         el('div', { class: 'flex flex-wrap gap-2' }, otherBox, note),
         strip));
@@ -127,7 +128,7 @@ export const interviewPage = () => {
 
     function refresh() {
       const done = inputs.some((i) => i.checked);
-      state.textContent = done ? 'Đã chọn' : 'Chưa chọn';
+      state.textContent = t(done ? 'chosen' : 'notChosen');
       state.classList.toggle('badge-success', done);
       state.classList.toggle('badge-soft', done);
       state.classList.toggle('badge-ghost', !done);
@@ -152,8 +153,8 @@ export const interviewPage = () => {
       rec: recId,
       // null when complete, else what is missing.
       problem: () => {
-        if (!inputs.some((i) => i.checked)) return 'chưa chọn phương án';
-        if (otherInput.checked && !otherBox.value.trim()) return 'chọn "Khác" nhưng chưa gõ phương án';
+        if (!inputs.some((i) => i.checked)) return t('problemNone');
+        if (otherInput.checked && !otherBox.value.trim()) return t('problemOther');
         return null;
       },
       done: () => inputs.some((i) => i.checked),
@@ -186,26 +187,26 @@ export const interviewPage = () => {
   const store = storage('interview-draft:' + location.pathname);
   const save = () => store.set({ ...Object.fromEntries(cards.map((c) => [c.q.id, c.get()])), _img: Object.fromEntries(images) });
 
-  const acceptBtn = el('button', { type: 'button', class: btnCls(), title: 'Chọn phương án Claude đề xuất cho các câu chưa chọn', onclick: () => {
+  const acceptBtn = el('button', { type: 'button', class: btnCls(), title: t('acceptTitle'), onclick: () => {
     const todo = cards.filter((c) => !c.done() && c.rec);
     for (const c of todo) c.pick(c.rec);
-    say('ok', 'Đã chọn theo đề xuất cho ' + todo.length + ' câu. Xem lại rồi ' + (sendMode ? 'gửi.' : 'copy.'));
-  } }, 'Theo đề xuất');
+    say('ok', t('acceptDone', todo.length, sendMode));
+  } }, t('accept'));
 
   function updateFab() {
-    fabCount.textContent = cards.filter((c) => c.done()).length + '/' + Q.length + ' câu';
+    fabCount.textContent = t('questionCount', cards.filter((c) => c.done()).length, Q.length);
     acceptBtn.hidden = !cards.some((c) => !c.done() && c.rec);
     cards.forEach((c, k) => {
       const done = c.done();
       navLinks[k].classList.toggle('btn-outline', !done);
-      navLinks[k].textContent = 'Câu ' + (c.q.n ?? '') + (done ? ' ✓' : '');
+      navLinks[k].textContent = t('question', c.q.n ?? '') + (done ? ' ✓' : '');
     });
     say('');
   }
 
   if (D.decided && D.decided.length) {
     main.append(el('details', { class: 'collapse collapse-arrow bg-base-100 border border-base-300 text-[13px]' },
-      el('summary', { class: 'collapse-title min-h-0 py-1.5 ps-3 font-semibold ' + FOCUS, text: 'Đã chốt trước đó (' + D.decided.length + ')' }),
+      el('summary', { class: 'collapse-title min-h-0 py-1.5 ps-3 font-semibold ' + FOCUS, text: t('decided', D.decided.length) }),
       el('div', { class: 'collapse-content px-3 pb-2' }, el('ul', { class: 'm-0 pl-[2em] grid gap-0.5 list-disc' }, D.decided.map((d) => el('li', {}, inline(d)))))));
   }
   cards = Q.map(questionCard);
@@ -219,7 +220,7 @@ export const interviewPage = () => {
     if (missing) {
       missing.card.classList.add('attention');
       missing.card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      say('warn', 'Câu ' + (missing.q.n ?? '') + ' ' + missing.problem() + '.');
+      say('warn', t('question', missing.q.n ?? '') + ' ' + missing.problem() + '.');
       return null;
     }
     return cards.map((c) => c.text()).join('\n\n');
@@ -227,10 +228,10 @@ export const interviewPage = () => {
   const copyAll = async () => {
     const text = collect();
     if (text == null) return;
-    if (await copyText(text)) sayFor('ok', 'Đã copy ' + cards.length + ' câu trả lời. Dán vào terminal của Claude rồi Enter.', 4000);
-    else say('warn', 'Không copy tự động được: chọn đoạn bên dưới, copy rồi dán vào terminal của Claude.');
+    if (await copyText(text)) sayFor('ok', t('copiedAnswers', cards.length), 4000);
+    else say('warn', t('copyFailed'));
   };
-  const sendBtn = el('button', { type: 'button', class: btnCls('primary'), onclick: () => sendAll() }, 'Gửi câu trả lời', kbd(KEY_HINT, 'kbd-xs'));
+  const sendBtn = el('button', { type: 'button', class: btnCls('primary'), onclick: () => sendAll() }, t('sendAnswers'), kbd(KEY_HINT, 'kbd-xs'));
   const sendAll = async () => {
     const text = collect();
     if (text == null) return;
@@ -238,22 +239,22 @@ export const interviewPage = () => {
     try {
       await postText(text);
       store.set(null);
-      sendBtn.textContent = 'Đã gửi';
-      say('ok', 'Đã gửi cho Claude. Có thể đóng tab này.');
+      sendBtn.textContent = t('sent');
+      say('ok', t('sentToClaude'));
       closeTab();
     } catch (e) {
       sendBtn.disabled = false;
       say('warn', await copyText(text)
-        ? 'Không gửi được (Claude không còn chờ trang này). Đã copy câu trả lời: dán vào terminal của Claude.'
-        : 'Không gửi được và không copy tự động được: chọn đoạn bên dưới, copy rồi dán vào terminal của Claude.');
+        ? t('sendFailedCopied')
+        : t('sendFailedNoCopy'));
     }
   };
   const submit = () => (sendMode ? (sendBtn.disabled ? null : sendAll()) : copyAll());
 
-  document.body.append(el('aside', { class: 'toast toast-end z-10 items-end', 'aria-label': 'Gửi câu trả lời' }, fabMsg, out,
+  document.body.append(el('aside', { class: 'toast toast-end z-10 items-end', 'aria-label': t('sendAnswers') }, fabMsg, out,
     el('div', { class: 'flex items-center gap-1.5 bg-base-100 border border-base-300 rounded-box py-1 pr-1 pl-3 shadow-lg' }, fabCount, acceptBtn,
-      sendMode ? [el('button', { type: 'button', class: btnCls(), title: 'Copy để dán vào terminal', onclick: copyAll }, 'Copy'), sendBtn]
-        : el('button', { type: 'button', class: btnCls('primary'), onclick: copyAll }, 'Copy câu trả lời', kbd(KEY_HINT, 'kbd-xs')))));
+      sendMode ? [el('button', { type: 'button', class: btnCls(), title: t('copyToPaste'), onclick: copyAll }, 'Copy'), sendBtn]
+        : el('button', { type: 'button', class: btnCls('primary'), onclick: copyAll }, t('copyAnswers'), kbd(KEY_HINT, 'kbd-xs')))));
   shortcuts({ targets: () => cards.map((c) => c.card), helpSlot: $('#qnav'), keys: (sc) => interviewKeys(sc, { cards, submit }) });
   updateFab();
 
@@ -261,11 +262,11 @@ export const interviewPage = () => {
   if (draft && cards.some((c) => { const s = draft[c.q.id]; return s && ((s.c || []).length || s.o || s.n); })) {
     for (const [k, v] of Object.entries(draft._img || {})) images.set(+k, v);
     for (const c of cards) if (draft[c.q.id]) c.set(draft[c.q.id]);
-    say('', 'Đã khôi phục câu trả lời đã lưu.', el('button', { type: 'button', class: btnCls('', true) + ' ml-2', onclick: () => {
+    say('', t('restoredAnswers'), el('button', { type: 'button', class: btnCls('', true) + ' ml-2', onclick: () => {
       images.clear();
       for (const c of cards) c.set(null);
       store.set(null);
       say('');
-    } }, 'Xóa nháp'));
+    } }, t('clearDraft')));
   }
 };

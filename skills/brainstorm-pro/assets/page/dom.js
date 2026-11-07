@@ -1,3 +1,4 @@
+import { t } from './i18n.js';
 export const $ = (s, root = document) => root.querySelector(s);
 export const el = (tag, props = {}, ...kids) => {
   const n = document.createElement(tag);
@@ -45,11 +46,11 @@ export const THUMB = 'relative m-0 grid justify-items-center gap-px';
 export const THUMB_IMG = 'block h-16 w-auto max-w-40 object-contain rounded-md border border-base-300 cursor-zoom-in';
 export const THUMB_NUM = 'font-mono text-[11px] text-muted';
 export const THUMB_DEL = 'btn btn-circle btn-xs absolute -top-1.5 -right-1.5 size-5 min-h-0 p-0';
-// A dialog with a box and a backdrop that closes it; closeForm is the Đóng button with its Esc hint.
-export const closeForm = (cls) => el('form', { method: 'dialog', class: cls }, el('button', { class: btnCls() }, 'Đóng', kbd('Esc', 'kbd-xs')));
+// A dialog with a box and a backdrop that closes it; closeForm is the Close button with its Esc hint.
+export const closeForm = (cls) => el('form', { method: 'dialog', class: cls }, el('button', { class: btnCls() }, t('close'), kbd('Esc', 'kbd-xs')));
 export const modal = (boxClass, ...kids) => el('dialog', { class: 'modal' },
   el('div', { class: 'modal-box ' + boxClass }, kids),
-  el('form', { method: 'dialog', class: 'modal-backdrop' }, el('button', { text: 'Đóng' })));
+  el('form', { method: 'dialog', class: 'modal-backdrop' }, el('button', { text: t('close') })));
 // writeText can wait forever for a permission the browser never asks for, so it gets two seconds; then a hidden textarea and execCommand, putting the focus back.
 export const writeClipboard = async (text) => {
   try { await Promise.race([navigator.clipboard.writeText(text), new Promise((_, no) => setTimeout(() => no(new Error('timeout')), 2000))]); return true; }

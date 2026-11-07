@@ -1,12 +1,12 @@
 import { $, closeForm, el, kbd, modal } from './dom.js';
 import { isTyping, keyName, step } from './keys.js';
-
-const GROUPS = ['Điều hướng', 'Thao tác', 'Chung'];
+import { t } from './i18n.js';
 
 // The one keyboard engine of every mode. `targets()` are the items J/K walk, in page order; `level1()` those the digits pick; `owner(node)` the target a node belongs to.
 // `keys(sc)` returns the mode's list of { k, show?, group, label, run, typing? }: k is a keyName() result (or a list of them), typing true lets it run inside a text box.
 // The ring is the data-current attribute on the current target, drawn from the first shortcut on; the `?` dialog is built from the same list.
 export const shortcuts = ({ targets, level1 = targets, owner, keys, helpSlot }) => {
+  const GROUPS = [t('groupNav'), t('groupAct'), t('groupCommon')];
   let started = false;
   let current = null;
   let locked = false;
@@ -65,9 +65,9 @@ export const shortcuts = ({ targets, level1 = targets, owner, keys, helpSlot }) 
       go(all[step(all.indexOf(current), all.length, d)]);
     },
     nav: (next, prev, nth) => [
-      { k: 'j', group: 'Điều hướng', label: next, run: () => sc.move(1) },
-      { k: 'k', group: 'Điều hướng', label: prev, run: () => sc.move(-1) },
-      { k: ['1', '2', '3', '4', '5', '6', '7', '8', '9'], show: '1–9', group: 'Điều hướng', label: nth, run: (k) => go(level1()[+k - 1]) },
+      { k: 'j', group: t('groupNav'), label: next, run: () => sc.move(1) },
+      { k: 'k', group: t('groupNav'), label: prev, run: () => sc.move(-1) },
+      { k: ['1', '2', '3', '4', '5', '6', '7', '8', '9'], show: '1–9', group: t('groupNav'), label: nth, run: (k) => go(level1()[+k - 1]) },
     ],
   };
 
@@ -94,14 +94,14 @@ export const shortcuts = ({ targets, level1 = targets, owner, keys, helpSlot }) 
 
   const toggleHelp = () => { if (help.open) help.close(); else help.showModal(); };
   const list = [...keys(sc),
-    { k: '?', group: 'Chung', label: 'Mở hoặc đóng bảng phím', run: toggleHelp },
-    { k: 'Escape', show: 'Esc', group: 'Chung', label: 'Rời ô đang gõ, hoặc bỏ chọn chữ', typing: true,
+    { k: '?', group: t('groupCommon'), label: t('helpToggle'), run: toggleHelp },
+    { k: 'Escape', show: 'Esc', group: t('groupCommon'), label: t('helpEscape'), typing: true,
       run: () => { if (isTyping(document.activeElement)) document.activeElement.blur(); else getSelection().removeAllRanges(); } }];
   const byKey = new Map(list.filter((x) => x.k != null).flatMap((x) => [].concat(x.k).map((k) => [k, x])));
 
   // One outer grid, so the key column is as wide as the widest key in every group (each group's section and list are subgrids).
   const help = modal('max-w-xl grid gap-3',
-    el('h2', { class: 'text-[16px] font-semibold', text: 'Phím tắt' }),
+    el('h2', { class: 'text-[16px] font-semibold', text: t('shortcuts') }),
     el('div', { class: 'grid grid-cols-[auto_1fr] gap-x-3' }, GROUPS.flatMap((g) => {
       const rows = list.filter((x) => x.group === g);
       return rows.length ? [el('section', { class: 'col-span-2 grid grid-cols-subgrid gap-y-1.5 [&:not(:first-child)]:mt-2' },
@@ -112,7 +112,7 @@ export const shortcuts = ({ targets, level1 = targets, owner, keys, helpSlot }) 
     closeForm('flex justify-end'));
   document.body.append(help);
   // The page says where the button goes (`helpSlot`, an element it is appended to) and may move it later.
-  const helpBtn = el('button', { type: 'button', class: 'btn btn-xs btn-ghost -my-0.5', title: 'Phím tắt', 'aria-label': 'Phím tắt', onclick: toggleHelp }, kbd('?', 'kbd-xs'));
+  const helpBtn = el('button', { type: 'button', class: 'btn btn-xs btn-ghost -my-0.5', title: t('shortcuts'), 'aria-label': t('shortcuts'), onclick: toggleHelp }, kbd('?', 'kbd-xs'));
   helpSlot.append(helpBtn);
 
   document.addEventListener('keydown', (e) => {

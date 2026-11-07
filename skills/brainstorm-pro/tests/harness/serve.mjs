@@ -19,8 +19,9 @@ export const outDir = (name) => {
 };
 
 // bin: 'fakebin' (open succeeds) or 'failbin' (open fails, the script exits 4).
-const run = (src, out, args, { cwd = TESTS, bin = 'fakebin' } = {}) => [process.execPath, [SCRIPT, ...(src ? [src] : []), ...(out ? [out] : []), ...args],
-  { cwd, env: { ...process.env, PATH: join(HERE, bin) + ':' + process.env.PATH } }];
+// The child gets a fixed CLAUDE_HOME (the Vietnamese fixture unless `claudeHome` is given), so the page language never follows the developer's own settings.
+const run = (src, out, args, { cwd = TESTS, bin = 'fakebin', claudeHome = join(FIXTURES, 'claude-home-vi') } = {}) => [process.execPath, [SCRIPT, ...(src ? [src] : []), ...(out ? [out] : []), ...args],
+  { cwd, env: { ...process.env, CLAUDE_HOME: claudeHome, PATH: join(HERE, bin) + ':' + process.env.PATH } }];
 
 // Runs the script to the end without serving (a file page, --open, or an error case).
 export const render = (src, out, args = [], opts) => {

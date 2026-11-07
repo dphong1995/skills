@@ -152,7 +152,7 @@ describe('the served document page', () => {
 });
 
 describe('render-interview.mjs on bad input', () => {
-  const USAGE = 'Usage: node render-interview.mjs <round.json | document.md> <out.html> [--serve | --open]';
+  const USAGE = 'Usage: node render-interview.mjs <round.json | document.md> <out.html> [--serve | --open] [--lang vi|en]';
 
   it('prints the usage and exits 1 without a source, an output or with both --serve and --open', () => {
     const d = caseDir('usage');
@@ -161,6 +161,20 @@ describe('render-interview.mjs on bad input', () => {
       assert.equal(r.code, 1);
       assert.equal(r.stderr.trim(), USAGE);
       assert.equal(r.stdout, '');
+    }
+  });
+
+  it('refuses a --lang other than vi or en with the usage and exit 1, and writes the page language otherwise', () => {
+    const d = caseDir('lang');
+    for (const args of [['--lang', 'fr'], ['--lang']]) {
+      const r = render(FIXTURES + '/doc.md', d + '/x.html', args);
+      assert.equal(r.code, 1);
+      assert.equal(r.stderr.trim(), USAGE);
+    }
+    for (const lang of ['vi', 'en']) {
+      const r = render(FIXTURES + '/doc.md', d + '/' + lang + '.html', ['--lang', lang]);
+      assert.equal(r.code, 0, r.stderr);
+      assert.match(readFileSync(d + '/' + lang + '.html', 'utf8'), new RegExp('"lang":"' + lang + '"'));
     }
   });
 

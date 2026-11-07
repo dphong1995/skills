@@ -9,7 +9,8 @@ and check with `diff -rq -x out <repo skill> <live skill>` (`tests/out/` is outp
 
 | File | Holds |
 |---|---|
-| `assets/render-interview.mjs` | CLI: `<round.json \| doc.md> <out.html> [--serve \| --open]` |
+| `assets/render-interview.mjs` | CLI: `<round.json \| doc.md> <out.html> [--serve \| --open] [--lang vi\|en]` (any other `--lang` value is a usage error, exit 1); puts `lang` into the page data `D` |
+| `assets/lib/lang.mjs` | `pageLang({ flag, env })`: `--lang` wins, else the `language` of `${CLAUDE_HOME:-~/.claude}/settings.json` (lowercased, diacritics stripped; `viet…` or `vi` is `vi`), else `en` |
 | `assets/lib/round.mjs`, `doc.mjs` | Validate a round (`recommendation: { option, why }`, unknown fields refused with a hint); turn a Markdown file into page data and diff review rounds |
 | `assets/lib/diff.mjs` | `wordDiff`: the word diff behind "Xem chỗ đổi" (lines through `alignRows`, words through `lcs`, both from `page/code.js`) |
 | `assets/lib/embed.mjs` | Embed code files, `` `path` `` targets and images (data URIs); `InputError`, which the CLI prints as one stderr line (exit 1), and `readInput(path, src, enc, label?)`, a `readFileSync` whose failure is an `InputError` (`<src>: cannot read <label> (<code>)`) |
@@ -23,6 +24,7 @@ and check with `diff -rq -x out <repo skill> <live skill>` (`tests/out/` is outp
 | `assets/page/rounds.js` | Round 2: previous-notes boxes, "Xem chỗ đổi" toggle and diff box, `formatNote` (one note as a line: the answer text, the previous-notes boxes and the alert) and `noteData` (the `notes` payload) (split out of `doc.js`, which hit the build test's line cap) |
 | `assets/page/fab.js` | Floating bar, `CARD`, `INTERVIEW_CARD`, the status line (`say`, `sayFor`) |
 | `assets/page/leave.js` | `guardLeave()` (beforeunload guard until answered and after user activation; `#` links jump with `location.replace`), `markAnswered()`, `closeTab()` (`fab.js` `copyText` calls `markAnswered()` on a successful copy) |
+| `assets/page/i18n.js` | `STRINGS` (`vi` and `en`, same keys), `setLang(l)`, `t(key, ...args)` (calls a function value, throws on an unknown key). Every fixed string of the chrome lives here; the answer protocol (text sent to Claude) does not. Until `main.js` calls `setLang(D.lang)`, `t()` reads `D.lang`, so modules that build elements at load (`viewer.js`, `fab.js`) get the right language. `shell.html` holds no text: `main.js` sets `<html lang>`, the title, `#topic` and the `#qnav` label |
 | `assets/page/dom.js`, `strings.js`, `text.js`, `code.js` | Class constants, `el()`, `kbd()`, `modal()`, `writeClipboard()` (code block Copy; does not end the leave guard); escaping; inline Markdown; code view helpers, and `lcs(A, B)`, the pure common-subsequence walk under `alignRows` and `wordDiff` |
 | `assets/page/blocks.js`, `viewer.js`, `images.js`, `passages.js` | Context blocks; file viewer (also the Tailwind class carrier); pasted images; selection comments |
 | `assets/page/keys.js`, `shortcuts.js`, `interview-keys.js`, `doc-keys.js` | Key rules; ring, `?` dialog and the key listener; per-mode key tables |
@@ -35,7 +37,7 @@ and check with `diff -rq -x out <repo skill> <live skill>` (`tests/out/` is outp
   (`D`, the injected page data, is taken), and an import cycle fails the build.
 - Imports are one line only: `import { a, b } from './x.js';`. Exports are `export const|let|function|class`;
   no `export default`, `export { }`, `export *`.
-- Pure modules (`strings.js`, `code.js`, `keys.js`) must not touch `document` or `window` at top level:
+- Pure modules (`i18n.js`, `strings.js`, `code.js`, `keys.js`) must not touch `document` or `window` at top level:
   `tests/unit/` imports them in Node, and so may `assets/lib/` (`doc.mjs` and `embed.mjs` take `plain` and `PATH` from
   `strings.js`) and the test harness (`keys.js`'s `isTyping`, injected into the page as source, so it stays
   self-contained). `dom.js` has no top-level DOM access either (only `navigator`, available in Node >= 21), so a pure
@@ -65,6 +67,7 @@ UPDATE_SNAPSHOTS=1 node --test tests/page/snapshot.test.mjs
   `serve()` returns `answers()`, `serveRound2(dir, round1?)` serves a second review round (`round1(server)` may drive round 1 first; it is killed in a `finally`);
   `serve()`'s `done` (so `answers()`) rejects after `opts.timeout` ms (default 20 s), killing the child, with the last stderr lines; a test that races `s.done` against a short sleep is safe; `b.status()`, `b.twSettle()`, `b.leaveDialogs()` (count of accepted beforeunload dialogs; tests assert it).
   One Chrome per test file (a top-level `before`).
+- The harness runs the CLI with `CLAUDE_HOME` = `tests/fixtures/claude-home-vi` (`language: vietnamese`) unless `opts.claudeHome` is given, so the page language never follows the developer's own settings; `tests/page/lang.test.mjs` serves with `args: ['--lang', 'en']` and scans for Vietnamese.
 - After a handled key assert `__keys.at(-1).pagePrevented` (see macOS beeps): the harness would hide a missing `preventDefault`.
 
 ## Keys

@@ -252,7 +252,7 @@ describe('document review page', () => {
       assert.equal(sent.lines.length, 6);
     });
     const state = JSON.parse(readFileSync(dir + '/round2-notes/.review-state.json', 'utf8'));
-    assert.deepEqual(Object.values(state)[0].notes.map((n) => n.kind + ':' + n.key), ['passage:Mở đầu', 'passage:Overview › Goals', 'section:Risks', 'section:Open', 'general:General']);
+    assert.deepEqual(Object.values(state)[0].notes.map((n) => n.kind + ':' + n.key), ['passage:Intro', 'passage:Overview › Goals', 'section:Risks', 'section:Open', 'general:General']);
     assert.equal(Object.values(state)[0].notes[1].quote, QUOTE, 'the full quote is stored');
     await b.goto(await s.url, { ready, doc: true });
     await b.eval(PASSAGE_HELPERS);
@@ -263,7 +263,7 @@ describe('document review page', () => {
     assert.deepEqual(await under('Goals'), ['Góp ý lần trước | «' + QUOTE + '» → why these goals']);
     assert.deepEqual(await under('Design'), []);
     const alert = await b.eval(`document.querySelector('main > .alert [data-prev]').innerText.replace(/\\n+/g, ' | ')`);
-    assert.equal(alert, 'Góp ý lần trước không còn chỗ gắn: | [§ Mở đầu · lines 3] «few plain words» → about the intro | [§ Risks] drop <b>me</b> | [§ General] overall');
+    assert.equal(alert, 'Góp ý lần trước không còn chỗ gắn: | [§ Intro · lines 3] «few plain words» → about the intro | [§ Risks] drop <b>me</b> | [§ General] overall');
     assert.equal(await b.eval(`document.querySelector('main > .alert [data-prev] b')`), null, 'note text is not HTML');
     assert.equal(await b.eval(`document.querySelectorAll('[data-diff]').length`), 1, 'only the section that changed');
     const toggle = `${heading('Open')}.parentElement.querySelector('button')`;

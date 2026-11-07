@@ -1,6 +1,7 @@
 import { btnCls, EDIT_TAG, el, HL_BOX, HL_QUOTE, HL_QUOTE_ROW, MARK, NOTE_BTN } from './dom.js';
 import { short } from './strings.js';
 import { fit, main, say } from './fab.js';
+import { t } from './i18n.js';
 
 // `notes`, `noteBox` and `update` are the review page's note list, box maker and refresh. Installs the Góp ý and Sửa thành buttons that appear by a selection.
 export const passages = ({ notes, noteBox, update }) => {
@@ -63,8 +64,8 @@ export const passages = ({ notes, noteBox, update }) => {
     const first = parts[0].parentElement, last = parts[parts.length - 1].parentElement;
     const s = offsetOf(parts[0], 0), e = offsetOf(parts[parts.length - 1], parts[parts.length - 1].length);
     const [a, b] = [first.closest('[data-l]'), last.closest('[data-l]')].map((x) => x && x.dataset.l.split('-'));
-    const n = noteBox('hl:' + id, kind === 'edit' ? 'Sửa thành…' : 'Góp ý cho đoạn này…', kind === 'edit');
-    n.hl = { id, kind, s, e, text: allText().slice(s, e), quote: quoteOf(parts), key:first.closest('[data-k]') ? first.closest('[data-k]').dataset.k : 'Mở đầu',
+    const n = noteBox('hl:' + id, t(kind === 'edit' ? 'editToPlaceholder' : 'passagePlaceholder'), kind === 'edit');
+    n.hl = { id, kind, s, e, text: allText().slice(s, e), quote: quoteOf(parts), key:first.closest('[data-k]') ? first.closest('[data-k]').dataset.k : 'Intro',
       lines: a && b ? 'lines ' + (a[0] === b[1] ? a[0] : a[0] + '-' + b[1]) : '' };
     if (kind === 'edit') n.empty = () => !n.ta.value.trim() || n.ta.value.trim() === n.hl.quote.trim();
     const marks = () => main.querySelectorAll('mark[data-c="' + id + '"]');
@@ -77,8 +78,8 @@ export const passages = ({ notes, noteBox, update }) => {
     };
     n.hl.box = el('div', { class: HL_BOX, 'data-note': '', 'data-hl': id },
       el('div', { class: HL_QUOTE_ROW },
-        kind === 'edit' ? el('span', { class: EDIT_TAG, text: 'Sửa thành' }) : el('span', { class: HL_QUOTE, text: '«' + short(n.hl.quote) + '»' }),
-        el('button', { type: 'button', class: NOTE_BTN, onclick: remove }, 'Xóa')),
+        kind === 'edit' ? el('span', { class: EDIT_TAG, text: t('editTo') }) : el('span', { class: HL_QUOTE, text: '«' + short(n.hl.quote) + '»' }),
+        el('button', { type: 'button', class: NOTE_BTN, onclick: remove }, t('remove'))),
       n.box);
     // Under the bullet the passage ends in, else after its block (and after the comments already there).
     const li = last.closest('li');
@@ -108,7 +109,7 @@ export const passages = ({ notes, noteBox, update }) => {
     if (n) {
       adders.hidden = true;
       sel.removeAllRanges();
-    } else if (kind === 'edit' && r && !sel.isCollapsed) say('warn', 'Sửa thành chỉ dùng được trong một khối.');
+    } else if (kind === 'edit' && r && !sel.isCollapsed) say('warn', t('editOneBlock'));
     return n;
   };
   // The Góp ý and Sửa thành buttons by a selection, in one box that is placed; mousedown keeps the selection.
@@ -116,8 +117,8 @@ export const passages = ({ notes, noteBox, update }) => {
     const n = commentSelection(kind);
     if (n) n.ta.focus();
   } }, label);
-  const editAdder = adderBtn('edit', 'Sửa thành', '');
-  const adders = el('div', { class: 'absolute z-20 flex gap-1 whitespace-nowrap', 'data-adders': '', hidden: true }, adderBtn('passage', 'Góp ý', 'primary'), editAdder);
+  const editAdder = adderBtn('edit', t('editTo'), '');
+  const adders = el('div', { class: 'absolute z-20 flex gap-1 whitespace-nowrap', 'data-adders': '', hidden: true }, adderBtn('passage', t('note'), 'primary'), editAdder);
   document.body.append(adders);
   let placing = 0;
   const place = () => {

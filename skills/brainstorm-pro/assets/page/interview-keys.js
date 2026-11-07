@@ -1,27 +1,28 @@
 import { KEY_HINT } from './dom.js';
 import { nextWhere } from './keys.js';
 import { say, sendMode } from './fab.js';
+import { t } from './i18n.js';
 
 // The interview page's key list: the cards are the targets, the answer keys act on the current card.
 export const interviewKeys = (sc, { cards, submit }) => {
   const at = () => cards.findIndex((c) => c.card === sc.current());
   const onCard = (f) => (k) => { const c = cards[at()]; if (c) f(c, k); };
   return [
-    ...sc.nav('Câu kế', 'Câu trước', 'Câu thứ n'),
-    { k: 'n', group: 'Điều hướng', label: 'Câu chưa trả lời kế tiếp', run: () => {
+    ...sc.nav(t('navNextQuestion'), t('navPrevQuestion'), t('navNthQuestion')),
+    { k: 'n', group: t('groupNav'), label: t('keyNextUnanswered'), run: () => {
       const i = nextWhere(cards, at(), (c) => !c.done());
-      if (i < 0) say('ok', 'Đã trả lời hết, ' + KEY_HINT + ' để gửi');
+      if (i < 0) say('ok', t('allAnswered', KEY_HINT));
       else sc.go(cards[i].card);
     } },
-    { k: ['a', 'b', 'c', 'd'], show: 'A–D', group: 'Thao tác', label: 'Chọn phương án (câu nhiều lựa chọn: bấm lại để bỏ)', run: onCard((c, k) => c.choose(c.ids[k.charCodeAt(0) - 97])) },
-    { k: 'r', group: 'Thao tác', label: 'Chọn phương án Claude đề xuất', run: onCard((c) => {
-      if (c.rec == null) say('warn', 'Câu này không có đề xuất');
+    { k: ['a', 'b', 'c', 'd'], show: 'A–D', group: t('groupAct'), label: t('keyChoose'), run: onCard((c, k) => c.choose(c.ids[k.charCodeAt(0) - 97])) },
+    { k: 'r', group: t('groupAct'), label: t('keyRecommended'), run: onCard((c) => {
+      if (c.rec == null) say('warn', t('noRecommendation'));
       else c.pick(c.rec);
     }) },
     // Checks the option if it is not yet (a multi card would otherwise toggle it off) and puts the cursor in its box.
-    { k: 'x', group: 'Thao tác', label: 'Khác (tự nhập)', run: onCard((c) => { c.pick('other'); c.otherBox.focus(); }) },
-    { k: 'e', group: 'Thao tác', label: 'Cần giải thích thêm', run: onCard((c) => { c.pick('explain'); c.note.focus(); }) },
-    { k: 'g', group: 'Thao tác', label: 'Ghi chú của câu', run: onCard((c) => c.note.focus()) },
-    { k: 'mod+Enter', show: KEY_HINT, group: 'Thao tác', label: sendMode ? 'Gửi câu trả lời' : 'Copy câu trả lời', typing: true, run: submit },
+    { k: 'x', group: t('groupAct'), label: t('optOther'), run: onCard((c) => { c.pick('other'); c.otherBox.focus(); }) },
+    { k: 'e', group: t('groupAct'), label: t('optExplain'), run: onCard((c) => { c.pick('explain'); c.note.focus(); }) },
+    { k: 'g', group: t('groupAct'), label: t('keyCardNote'), run: onCard((c) => c.note.focus()) },
+    { k: 'mod+Enter', show: KEY_HINT, group: t('groupAct'), label: t(sendMode ? 'sendAnswers' : 'copyAnswers'), typing: true, run: submit },
   ];
 };
