@@ -218,12 +218,12 @@ The text has one block per question, separated by a blank line:
 
 ```
 [q03] <title>
-Chọn: B. <label>            (several: "A. …; B. …"; own answer: "Khác (tự nhập): <text>")
-Ghi chú: <note>             (only when the user wrote one)
-Ảnh #1: <path>              (an image pasted or dropped into a box, `[Ảnh #1]` in the text)
+Pick: B. <label>            (several: "A. …; B. …"; own answer: "Other: <text>")
+Note: <note>               (only when the user wrote one)
+Image #1: <path>            (an image pasted or dropped into a box, `[Image #1]` in the text)
 ```
 
-Read each `Ảnh #N` file before using the answer. `Chọn: Cần giải thích thêm` means the user needs more information on that question (`Ghi chú` may
+Read each `Image #N` file before using the answer. `Pick: Needs explanation` means the user needs more information on that question (`Note` may
 say what is unclear). A reply without `[qNN]` headers is the user answering in their own words:
 match it to the open questions, and ask in chat if it is unclear which question it answers.
 

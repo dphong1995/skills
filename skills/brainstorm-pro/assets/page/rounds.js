@@ -14,7 +14,7 @@ export const formatNote = (n, { head = false, brief = false } = {}) => {
 // A filled note as the server saves it for the next round.
 export const noteData = (n, general) => {
   const text = n.ta.value.trim();
-  if (!n.hl) return n === general ? { kind: 'general', key: 'Chung', text } : { kind: 'section', key: n.key, text };
+  if (!n.hl) return n === general ? { kind: 'general', key: 'General', text } : { kind: 'section', key: n.key, text };
   const at = { key: n.hl.key, lines: n.hl.lines, quote: n.hl.quote };
   return n.hl.kind === 'edit' ? { kind: 'edit', ...at, to: text, text: '' } : { kind: 'passage', ...at, text };
 };

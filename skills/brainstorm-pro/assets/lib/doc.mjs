@@ -40,6 +40,13 @@ export const loadDoc = (src, { review }) => {
   return data;
 };
 
+// A note saved before the English protocol: general key `Chung` and `dòng N` lines become `General` and `lines N`.
+export const legacyNote = (n) => ({
+  ...n,
+  ...(n.key === 'Chung' ? { key: 'General' } : {}),
+  ...(typeof n.lines === 'string' && /^dòng /.test(n.lines) ? { lines: 'lines ' + n.lines.slice(5) } : {}),
+});
+
 const readState = (file) => {
   try { return JSON.parse(readFileSync(file, 'utf8')); } catch (e) { return {}; }
 };
@@ -57,7 +64,7 @@ export const reviewRound = (out, src, md) => {
     changes.changed = [...b.keys()].filter((k) => a.has(k) && a.get(k) !== b.get(k));
     changes.added = [...b.keys()].filter((k) => !a.has(k));
     changes.removed = [...a.keys()].filter((k) => !b.has(k));
-    changes.notes = prev.notes || [];
+    changes.notes = (prev.notes || []).map(legacyNote);
     changes.diffs = Object.fromEntries(changes.changed.map((k) => [k, wordDiff(a.get(k), b.get(k))]));
   }
   state[key] = { round: changes.round, md };

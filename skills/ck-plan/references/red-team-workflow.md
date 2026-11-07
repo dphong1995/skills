@@ -53,7 +53,7 @@ Ask on the interview page:
 
 **If "Let me review each one":**
 Ask about each finding marked Accept on the interview page (up to 4 independent ones per page):
-- Options: "Yes, apply" | "No, reject"; a modification comes back as the page's "Khác (tự nhập)" text
+- Options: "Yes, apply" | "No, reject"; a modification comes back as the page's `Other: <text>` answer
 
 **If the user wrote a modification:**
 Record the modified suggestion. Set disposition to "Accept (modified)" in the Red Team Review table.

@@ -2,13 +2,13 @@ import { el, THUMB, THUMB_DEL, THUMB_IMG, THUMB_NUM } from './dom.js';
 import { say } from './fab.js';
 import { showInViewer } from './viewer.js';
 
-// Images pasted or dropped into a text box: the serve script saves each one and the text gets [Ảnh #N] at the caret. Only references still in the text are sent, as "Ảnh #N: <path>" lines.
+// Images pasted or dropped into a text box: the serve script saves each one and the text gets [Image #N] at the caret. Only references still in the text are sent, as "Image #N: <path>" lines.
 export const images = new Map();
 const IMG_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
 const IMG_MAX = 20 * 1024 * 1024;
-const IMG_REF = /\[Ảnh #(\d+)\]/g;
+const IMG_REF = /\[Image #(\d+)\]/g;
 const imgRefs = (text) => [...new Set([...text.matchAll(IMG_REF)].map((m) => +m[1]))].filter((n) => images.has(n));
-export const imgLines = (text) => imgRefs(text).map((n) => 'Ảnh #' + n + ': ' + images.get(n).path);
+export const imgLines = (text) => imgRefs(text).map((n) => 'Image #' + n + ': ' + images.get(n).path);
 // One thumbnail per reference in the linked boxes (a hidden box does not count, its text is not sent); × removes the reference from the text.
 export const imageStrip = (tas) => {
   const strip = el('div', { class: 'flex flex-wrap gap-1.5 empty:hidden' });
@@ -22,8 +22,9 @@ export const imageStrip = (tas) => {
       el('span', { class: THUMB_NUM, text: '#' + n }),
       el('button', { type: 'button', class: THUMB_DEL, 'aria-label': 'Bỏ ' + title, onclick: () => {
         for (const ta of tas) {
-          if (!ta.value.includes('[' + title + ']')) continue;
-          ta.value = ta.value.split('[' + title + ']').join('');
+          const ref = '[Image #' + n + ']';
+          if (!ta.value.includes(ref)) continue;
+          ta.value = ta.value.split(ref).join('');
           ta.dispatchEvent(new Event('input', { bubbles: true }));
         }
       } }, '×'));
@@ -47,7 +48,7 @@ export const imageInput = (ta, strip) => {
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const { n, path, url } = await r.json();
         images.set(n, { path, url });
-        ta.setRangeText('[Ảnh #' + n + ']', ta.selectionStart, ta.selectionEnd, 'end');
+        ta.setRangeText('[Image #' + n + ']', ta.selectionStart, ta.selectionEnd, 'end');
         ta.dispatchEvent(new Event('input', { bubbles: true }));
       } catch (e) { say('warn', 'Không lưu được ảnh (Claude không còn chờ trang này).'); }
     }

@@ -584,9 +584,9 @@ describe('review document keys', () => {
     await b.choose('s');
     const a = await s.answers();
     assert.equal(a.code, 0);
-    assert.equal(a.lines[0], 'Quyết định: Sửa');
+    assert.equal(a.lines[0], 'Decision: Revise');
     assert.equal(a.lines.length, 4);
-    assert.ok(a.lines.some((l) => l.endsWith('→ goal note')) && a.lines.includes('[§ Design] design note') && a.lines.includes('[§ Chung] general note'));
+    assert.ok(a.lines.some((l) => l.endsWith('→ goal note')) && a.lines.includes('[§ Design] design note') && a.lines.includes('[§ General] general note'));
   });
 
   it('N reaches a note on the intro paragraph, which has no heading above it, and wraps back to it', async () => {
@@ -634,7 +634,7 @@ describe('review document keys', () => {
     await b.press('Enter', { meta: true, shift: true });
     const a = await s.answers();
     assert.equal(a.code, 0);
-    assert.deepEqual(a.lines, ['Quyết định: Duyệt']);
+    assert.deepEqual(a.lines, ['Decision: Approve']);
   });
 
   it('⌘⇧ Enter with a note opens the chooser, and d sends Duyệt with the note', async () => {
@@ -646,7 +646,7 @@ describe('review document keys', () => {
     await b.handled('d');
     const a = await s.answers();
     assert.equal(a.code, 0);
-    assert.deepEqual(a.lines, ['Quyết định: Duyệt', '[§ Chung] one note']);
+    assert.deepEqual(a.lines, ['Decision: Approve', '[§ General] one note']);
   });
 
   it('⌘⇧ Enter after the send went through does not ask again', async () => {

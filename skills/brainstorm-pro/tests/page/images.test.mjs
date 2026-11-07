@@ -13,7 +13,7 @@ before(async () => { b = await launch(); });
 after(async () => { await b.close(); });
 const status = () => b.status();
 const thumbs = (sel) => b.eval(`document.querySelectorAll(${JSON.stringify(sel + ' figure.relative img')}).length`);
-const pathsOf = (stdout) => [...stdout.matchAll(/^Ảnh #(\d+): (.+)$/gm)].map((m) => ({ n: +m[1], path: m[2] }));
+const pathsOf = (stdout) => [...stdout.matchAll(/^Image #(\d+): (.+)$/gm)].map((m) => ({ n: +m[1], path: m[2] }));
 const sendBtn = (re) => b.eval(`[...document.querySelectorAll('aside button')].find((x) => ${re}.test(x.textContent) && x.classList.contains('btn-primary')).click()`);
 const sample = (path) => readFileSync(path).toString('base64');
 
@@ -32,7 +32,7 @@ describe('images on the interview page', () => {
     await b.eval(`(() => { const t = document.querySelector('#q01-note'); t.value = 'ab'; t.dispatchEvent(new Event('input', { bubbles: true })); t.focus(); t.setSelectionRange(1, 1); })()`);
     p1 = await b.eval(`send('#q01-note', 'paste', 'red')`);
     assert.equal(p1.prevented, true);
-    assert.equal(p1.value, 'a[Ảnh #1]b');
+    assert.equal(p1.value, 'a[Image #1]b');
     assert.equal(await thumbs('#card-q01'), 1);
     await b.until(`document.querySelector('#card-q01 figure.relative img').naturalWidth === 40`);
     assert.equal(await b.eval(`document.querySelector('#card-q01 figure.relative img').title === 'Ảnh #1' && document.querySelector('#card-q01 figure.relative span').textContent === '#1'`), true);
@@ -41,7 +41,7 @@ describe('images on the interview page', () => {
   it('a paste into Khác counts only while Khác is chosen', async () => {
     await b.click('#q01-opt-other');
     const p = await b.eval(`send('#q01-other', 'paste', 'green')`);
-    assert.equal(p.value, '[Ảnh #2]');
+    assert.equal(p.value, '[Image #2]');
     assert.equal(await thumbs('#card-q01'), 2);
     await b.click('#q01-opt-a');
     assert.equal(await thumbs('#card-q01'), 1, 'a hidden box adds no thumbnail');
@@ -51,7 +51,7 @@ describe('images on the interview page', () => {
     await b.click('#q02-opt-x');
     const p = await b.eval(`send('#q02-note', 'drop', 'blue')`);
     assert.equal(p.prevented, true);
-    assert.equal(p.value, '[Ảnh #3]');
+    assert.equal(p.value, '[Image #3]');
     assert.equal(await thumbs('#card-q02'), 1);
     await b.click('#card-q02 figure button');
     assert.equal(await b.eval(`document.querySelector('#q02-note').value`), '');
@@ -79,21 +79,21 @@ describe('images on the interview page', () => {
     await b.eval(IMAGE_HELPERS);
     const re = await b.eval(`({ note: document.querySelector('#q01-note').value, t1: document.querySelectorAll('#card-q01 figure.relative img').length,
       ls: localStorage.getItem('interview-draft:' + location.pathname) })`);
-    assert.equal(re.note, 'a[Ảnh #1]b');
+    assert.equal(re.note, 'a[Image #1]b');
     assert.equal(re.t1, 1);
     await b.until(`document.querySelector('#card-q01 figure.relative img').naturalWidth === 40`);
     assert.doesNotMatch(re.ls, /data:image|iVBOR/);
     assert.match(re.ls, /"_img":\{/);
   });
 
-  it('sends one Ảnh line, after its note, for the image still in the text', async () => {
+  it('sends one Image line, after its note, for the image still in the text', async () => {
     await sendBtn('/^Gửi/');
     const r = await s.done;
     assert.equal(r.code, 0);
     const ps = pathsOf(r.stdout);
     assert.deepEqual(ps.map((x) => x.n), [1], 'none for the removed or hidden ones');
-    assert.match(r.stdout, /Ghi chú: a\[Ảnh #1\]b\nẢnh #1: /);
-    assert.deepEqual(parseAnswers(r.stdout).lines.slice(0, 3), ['[q01] Which adder?', 'Chọn: A. Plain add', 'Ghi chú: a[Ảnh #1]b']);
+    assert.match(r.stdout, /Note: a\[Image #1\]b\nImage #1: /);
+    assert.deepEqual(parseAnswers(r.stdout).lines.slice(0, 3), ['[q01] Which adder?', 'Pick: A. Plain add', 'Note: a[Image #1]b']);
     assert.ok(existsSync(ps[0].path));
     assert.equal(sample(ps[0].path), p1.b64, 'the saved file holds the pasted bytes');
     assert.deepEqual(b.unexpectedErrors(), []);
@@ -120,7 +120,7 @@ describe('images on the document page', () => {
     got.a1 = await b.eval(`send(${JSON.stringify(box('Overview'))}, 'paste', 'red')`);
     got.a2 = await b.eval(`send(${JSON.stringify(box('Chung'))}, 'paste', 'green')`);
     got.a3 = await b.eval(`send(${JSON.stringify(box('Design'))}, 'drop', 'blue')`);
-    assert.deepEqual([got.a1, got.a2, got.a3].map((x) => x.value), ['[Ảnh #1]', '[Ảnh #2]', '[Ảnh #3]']);
+    assert.deepEqual([got.a1, got.a2, got.a3].map((x) => x.value), ['[Image #1]', '[Image #2]', '[Image #3]']);
     assert.equal(await b.eval(`document.querySelectorAll('main figure img[title^="Ảnh"]').length`), 3);
   });
 
@@ -134,7 +134,7 @@ describe('images on the document page', () => {
     assert.match(re.ls, /^\{"n":\{.*\},"h":\[\],"img":\{/);
   });
 
-  it('sends the notes in document order, then the Ảnh lines in the same order', async () => {
+  it('sends the notes in document order, then the Image lines in the same order', async () => {
     await sleep(200);
     await sendBtn('/^Gửi/');
     await b.choose('s');
@@ -142,8 +142,8 @@ describe('images on the document page', () => {
     const ps = pathsOf(r.stdout);
     assert.deepEqual(ps.map((x) => x.n), [1, 3, 2]);
     assert.equal(ps.every((x) => sample(x.path) === got['a' + x.n].b64), true, 'bytes equal');
-    assert.deepEqual(parseAnswers(r.stdout).lines.slice(0, 4), ['Quyết định: Sửa', '[§ Overview] [Ảnh #1]', '[§ Design] [Ảnh #3]', '[§ Chung] [Ảnh #2]']);
-    assert.match(r.stdout, /\[§ Chung\] \[Ảnh #2\]\nẢnh #1: /);
+    assert.deepEqual(parseAnswers(r.stdout).lines.slice(0, 4), ['Decision: Revise', '[§ Overview] [Image #1]', '[§ Design] [Image #3]', '[§ General] [Image #2]']);
+    assert.match(r.stdout, /\[§ General\] \[Image #2\]\nImage #1: /);
   });
 });
 

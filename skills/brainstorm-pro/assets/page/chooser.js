@@ -9,8 +9,8 @@ export const sendChooser = ({ count, send, busy }) => {
   const choose = (decision) => { dialog.close(); send(decision); };
   const dialog = modal('max-w-sm grid gap-3', title,
     el('div', { class: 'flex gap-2' },
-      el('button', { type: 'button', class: btnCls() + ' btn-success', onclick: () => choose('Duyệt') }, 'Duyệt', kbd('D', 'kbd-xs')),
-      el('button', { type: 'button', class: btnCls('primary'), onclick: () => choose('Sửa') }, 'Cần sửa', kbd('S', 'kbd-xs'))),
+      el('button', { type: 'button', class: btnCls() + ' btn-success', onclick: () => choose('Approve') }, 'Duyệt', kbd('D', 'kbd-xs')),
+      el('button', { type: 'button', class: btnCls('primary'), onclick: () => choose('Revise') }, 'Cần sửa', kbd('S', 'kbd-xs'))),
     el('span', { class: 'text-[13px] text-muted', text: 'Duyệt: Claude áp dụng góp ý rồi đi tiếp. Cần sửa: Claude sửa rồi cho bạn xem lần 2.' }));
   dialog.firstElementChild.setAttribute('tabindex', '-1');
   dialog.firstElementChild.setAttribute('autofocus', '');
@@ -18,7 +18,7 @@ export const sendChooser = ({ count, send, busy }) => {
     const k = keyName(e);
     if (k !== 'd' && k !== 's') return;
     e.preventDefault();
-    choose(k === 'd' ? 'Duyệt' : 'Sửa');
+    choose(k === 'd' ? 'Approve' : 'Revise');
   });
   document.body.append(dialog);
   return (decision) => {
@@ -27,7 +27,7 @@ export const sendChooser = ({ count, send, busy }) => {
     if (n) {
       title.textContent = 'Gửi ' + n + ' góp ý như:';
       dialog.showModal();
-    } else if (decision === 'Duyệt') send('Duyệt');
+    } else if (decision === 'Approve') send('Approve');
     else say('warn', 'Chưa có góp ý: tô đen một đoạn rồi bấm "Góp ý", bấm "Góp ý" ở mục cần sửa, hoặc ghi vào Góp ý chung cuối trang.');
   };
 };

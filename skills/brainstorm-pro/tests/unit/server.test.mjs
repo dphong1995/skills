@@ -68,12 +68,12 @@ describe('the served interview page', () => {
   });
 
   it('prints ANSWERS <source> and the text, then exits 0', async () => {
-    const r = await post('answers', 'application/json', JSON.stringify({ text: '  [q01] Which?\nChọn: A. Plain add\n ' }));
+    const r = await post('answers', 'application/json', JSON.stringify({ text: '  [q01] Which?\nPick: A. Plain add\n ' }));
     assert.equal(r.status, 200);
     assert.deepEqual(await r.json(), { ok: true });
     const done = await s.done;
     assert.equal(done.code, 0);
-    assert.equal(done.stdout, `${join(dir, 'cases/serve/page.html')}\nServing ${origin + base}\nANSWERS ${round}\n[q01] Which?\nChọn: A. Plain add\n`);
+    assert.equal(done.stdout, `${join(dir, 'cases/serve/page.html')}\nServing ${origin + base}\nANSWERS ${round}\n[q01] Which?\nPick: A. Plain add\n`);
   });
 });
 
@@ -87,11 +87,11 @@ describe('the served document page', () => {
     const page = await (await fetch(url.href)).text();
     assert.ok(page.includes('"review":true'));
     assert.ok(readFileSync(d + '/review-01.html', 'utf8').includes('"review":true'), 'the written file is the review page too');
-    const r = await post(url, { text: 'Quyết định: Duyệt' });
+    const r = await post(url, { text: 'Decision: Approve' });
     assert.equal(r.status, 200);
     const done = await s.done;
     assert.equal(done.code, 0);
-    assert.deepEqual(parseAnswers(done.stdout), { src: FIXTURES + '/doc.md', lines: ['Quyết định: Duyệt'] });
+    assert.deepEqual(parseAnswers(done.stdout), { src: FIXTURES + '/doc.md', lines: ['Decision: Approve'] });
   });
 
   const stateOf = (d) => JSON.parse(readFileSync(d + '/.review-state.json', 'utf8'));
@@ -101,15 +101,15 @@ describe('the served document page', () => {
     const s = serve(FIXTURES + '/doc.md', d + '/review-01.html');
     const url = new URL(await s.url);
     const good = [{ kind: 'section', key: 'Design', text: 'a' },
-      { kind: 'passage', key: 'Overview', lines: 'dòng 5', quote: 'q', text: 'b' },
-      { kind: 'edit', key: 'Overview', lines: 'dòng 5', quote: 'q', to: 'z', text: '' }];
+      { kind: 'passage', key: 'Overview', lines: 'lines 5', quote: 'q', text: 'b' },
+      { kind: 'edit', key: 'Overview', lines: 'lines 5', quote: 'q', to: 'z', text: '' }];
     const bad = [null, 'x', 5, [], { kind: 'section', key: 'k' }, { kind: 1, key: 'k', text: 't' }, { kind: 'section', key: 'k', text: 't', lines: 3 },
       { kind: 'other', key: 'k', text: 't' }, { kind: 'edit', key: 'k', quote: 'q', text: '' }, { kind: 'edit', key: 'k', quote: 'q', to: 5, text: '' }];
-    assert.equal((await post(url, { text: 'Quyết định: Sửa', notes: [...bad, ...good] })).status, 200);
+    assert.equal((await post(url, { text: 'Decision: Revise', notes: [...bad, ...good] })).status, 200);
     const done = await s.done;
     assert.equal(done.code, 0);
     assert.equal(done.stderr, '');
-    assert.deepEqual(parseAnswers(done.stdout), { src: FIXTURES + '/doc.md', lines: ['Quyết định: Sửa'] });
+    assert.deepEqual(parseAnswers(done.stdout), { src: FIXTURES + '/doc.md', lines: ['Decision: Revise'] });
     assert.deepEqual(Object.values(stateOf(d))[0].notes, good);
   });
 
@@ -119,19 +119,19 @@ describe('the served document page', () => {
     const url = new URL(await s.url);
     rmSync(d + '/.review-state.json');
     mkdirSync(d + '/.review-state.json');
-    assert.equal((await post(url, { text: 'Quyết định: Duyệt', notes: [{ kind: 'general', key: 'Chung', text: 'a' }] })).status, 200);
+    assert.equal((await post(url, { text: 'Decision: Approve', notes: [{ kind: 'general', key: 'General', text: 'a' }] })).status, 200);
     const done = await s.done;
     assert.equal(done.code, 0);
     assert.match(done.stderr, /^Could not save the review notes: .+\n$/);
     assert.equal(done.stderr.trim().split('\n').length, 1);
-    assert.deepEqual(parseAnswers(done.stdout).lines, ['Quyết định: Duyệt']);
+    assert.deepEqual(parseAnswers(done.stdout).lines, ['Decision: Approve']);
   });
 
   it('a review POST whose notes are not an array leaves the state as written', async () => {
     const d = caseDir('notes-none');
     const s = serve(FIXTURES + '/doc.md', d + '/review-01.html');
     const url = new URL(await s.url);
-    assert.equal((await post(url, { text: 'Quyết định: Duyệt', notes: 'nope' })).status, 200);
+    assert.equal((await post(url, { text: 'Decision: Approve', notes: 'nope' })).status, 200);
     await s.done;
     assert.equal(Object.values(stateOf(d))[0].notes, undefined);
   });

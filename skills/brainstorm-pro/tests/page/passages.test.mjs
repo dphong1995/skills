@@ -71,7 +71,7 @@ describe('highlight comments on the review page', () => {
   it('the first image paste into a comment makes Tailwind rewrite nothing', async () => {
     await b.twReset();
     const r = await b.eval(`send('[data-hl="${ids.bullet}"] textarea', 'paste', 'red')`);
-    assert.equal(r.value, 'c-bullet[Ảnh #1]'.replace('c-bullet', r.value.slice(0, 8)), r.value);
+    assert.equal(r.value, 'c-bullet[Image #1]'.replace('c-bullet', r.value.slice(0, 8)), r.value);
     await b.until(`document.querySelectorAll('[data-hl="${ids.bullet}"] figure img[title="Ảnh #1"]').length === 1`);
     await sleep(500);
     assert.equal(await b.twWrites(), 0, 'the first image must not rebuild the stylesheet');
@@ -216,20 +216,20 @@ describe('highlight comments on the review page', () => {
     const out = parseAnswers(r.stdout).lines;
     const quoteLong = /«(.*)»/.exec(out[7] || '');
     assert.deepEqual(out.slice(0, 7), [
-      'Quyết định: Sửa',
-      `[§ Overview › Goals · dòng ${lineOf('second goal bullet')}] «second goal bullet» → c-bullet[Ảnh #1]`,
-      `[§ Design · dòng ${lineOf('| beta')}] «second role» → c-table`,
-      `[§ Design · dòng ${fenceOf('const second')}] «second =» → c-code`,
-      `[§ Design › Components · dòng ${lineOf('A paragraph under')}] «paragraph under the components» → c-para`,
-      `[§ Design › Components · dòng ${lineOf('A paragraph under')}] «paragraph under the components» → c-second`,
+      'Decision: Revise',
+      `[§ Overview › Goals · lines ${lineOf('second goal bullet')}] «second goal bullet» → c-bullet[Image #1]`,
+      `[§ Design · lines ${lineOf('| beta')}] «second role» → c-table`,
+      `[§ Design · lines ${fenceOf('const second')}] «second =» → c-code`,
+      `[§ Design › Components · lines ${lineOf('A paragraph under')}] «paragraph under the components» → c-para`,
+      `[§ Design › Components · lines ${lineOf('A paragraph under')}] «paragraph under the components» → c-second`,
       '[§ Risks] c-section',
     ]);
-    assert.ok(out[7].startsWith(`[§ Risks · dòng ${lineOf('A long risk paragraph')}] «`), out[7]);
+    assert.ok(out[7].startsWith(`[§ Risks · lines ${lineOf('A long risk paragraph')}] «`), out[7]);
     assert.ok(quoteLong && quoteLong[1].length <= 95 && /^long risk paragraph with .+ … .+ to Claude$/.test(quoteLong[1]), 'a long quote is cut as head … tail: ' + (quoteLong && quoteLong[1]));
     assert.ok(out[7].endsWith('→ c-long'));
-    assert.equal(out[8], `[§ Open · dòng ${lineOf('The first open question')}-${lineOf('The second open question')}] «first open question stays here. The second open question» → c-cross`);
-    assert.equal(out[9], '[§ Chung] c-general');
-    assert.match(out[10], /^Ảnh #1: .+\/passages\/main\/images\/review-01-1\.png$/);
+    assert.equal(out[8], `[§ Open · lines ${lineOf('The first open question')}-${lineOf('The second open question')}] «first open question stays here. The second open question» → c-cross`);
+    assert.equal(out[9], '[§ General] c-general');
+    assert.match(out[10], /^Image #1: .+\/passages\/main\/images\/review-01-1\.png$/);
     assert.equal(out.length, 11);
     assert.equal(out.some((l) => l.includes('c-outer')), false);
   });
@@ -251,7 +251,7 @@ describe('highlight comments on the review page', () => {
     await b.eval(`[...document.querySelectorAll('aside button')].find((x) => x.textContent.startsWith('Duyệt')).click()`);
     await b.choose('d');
     const r = await s.done;
-    assert.deepEqual(parseAnswers(r.stdout).lines, ['Quyết định: Duyệt', `[§ Overview › Goals · dòng ${lineOf('first goal bullet')}] «first goal bullet» → small one`]);
+    assert.deepEqual(parseAnswers(r.stdout).lines, ['Decision: Approve', `[§ Overview › Goals · lines ${lineOf('first goal bullet')}] «first goal bullet» → small one`]);
   });
 
   const LONG = 'long risk paragraph with inline code and bold words and then many more plain words so that a selection across it is cut when quoted back to Claude';
@@ -352,12 +352,12 @@ describe('highlight comments on the review page', () => {
     const r = await s.done;
     const out = parseAnswers(r.stdout).lines;
     assert.deepEqual(out, [
-      'Quyết định: Sửa',
-      `[§ Overview › Goals · dòng ${lineOf('second goal bullet')}] «second goal bullet» ⇒ «second goal bullet, reworded»`,
-      `[§ Design · dòng ${fenceOf('const first')}] «first = 1;`,
+      'Decision: Revise',
+      `[§ Overview › Goals · lines ${lineOf('second goal bullet')}] «second goal bullet» ⇒ «second goal bullet, reworded»`,
+      `[§ Design · lines ${fenceOf('const first')}] «first = 1;`,
       'const second = » ⇒ «first = 5;',
       'const second = 6;»',
-      `[§ Risks · dòng ${lineOf('A long risk paragraph')}] «${LONG}» ⇒ «changed text»`,
+      `[§ Risks · lines ${lineOf('A long risk paragraph')}] «${LONG}» ⇒ «changed text»`,
     ]);
   });
 });

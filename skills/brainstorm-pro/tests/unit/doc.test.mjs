@@ -55,7 +55,7 @@ describe('reviewRound', () => {
   it('gives round 2 the saved notes and a word diff of each changed section only', () => {
     const d = outDir('unit-doc-notes');
     const o = join(d, 'review.html'), f = join(d, '.review-state.json'), s = join(d, 'doc.md');
-    const notes = [{ kind: 'section', key: 'Edit', text: 'why old?' }, { kind: 'general', key: 'Chung', text: 'ok' }];
+    const notes = [{ kind: 'section', key: 'Edit', text: 'why old?' }, { kind: 'general', key: 'General', text: 'ok' }];
     const first = reviewRound(o, s, v1);
     assert.equal(first.changes.notes, undefined);
     first.save();
@@ -69,14 +69,24 @@ describe('reviewRound', () => {
     assert.equal(JSON.parse(readFileSync(f, 'utf8'))[resolve(s)].notes, undefined, 'round 2 starts without notes');
     assert.deepEqual(reviewRound(o, s, v2).changes.notes, []);
   });
+  it('round 2 reads legacy Chung and dòng state', () => {
+    const d = outDir('unit-doc-legacy');
+    const o = join(d, 'review.html'), s = join(d, 'doc.md');
+    const first = reviewRound(o, s, v1);
+    first.save();
+    first.saveNotes([{ kind: 'general', key: 'Chung', text: 'x' }, { kind: 'passage', key: 'Mục', lines: 'dòng 3-5', quote: 'q', text: 't' }, { kind: 'passage', key: 'Mục', lines: 'dòng 7', quote: 'q', text: 't' }]);
+    const notes = reviewRound(o, s, v2).changes.notes;
+    assert.deepEqual(notes.map((n) => n.key), ['General', 'Mục', 'Mục']);
+    assert.deepEqual(notes.map((n) => n.lines), [undefined, 'lines 3-5', 'lines 7']);
+  });
   it('saveNotes creates a missing state file and keeps the other sources', () => {
     const d = outDir('unit-doc-notes2');
     const o = join(d, 'review.html'), f = join(d, '.review-state.json');
     reviewRound(o, join(d, 'other.md'), v1).save();
     const r = reviewRound(o, join(d, 'a.md'), v1);
-    r.saveNotes([{ kind: 'general', key: 'Chung', text: 'x' }]);
+    r.saveNotes([{ kind: 'general', key: 'General', text: 'x' }]);
     const all = JSON.parse(readFileSync(f, 'utf8'));
-    assert.deepEqual(all[resolve(d, 'a.md')], { round: 1, md: v1, notes: [{ kind: 'general', key: 'Chung', text: 'x' }] });
+    assert.deepEqual(all[resolve(d, 'a.md')], { round: 1, md: v1, notes: [{ kind: 'general', key: 'General', text: 'x' }] });
     assert.equal(all[resolve(d, 'other.md')].round, 1);
   });
   it('keeps a state per source', () => {

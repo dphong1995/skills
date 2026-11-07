@@ -139,8 +139,8 @@ export const interviewPage = () => {
     }
 
     const labelOf = (input) => {
-      if (input.value === 'other') return 'Khác (tự nhập): ' + otherBox.value.trim();
-      if (input.value === 'explain') return 'Cần giải thích thêm';
+      if (input.value === 'other') return 'Other: ' + otherBox.value.trim();
+      if (input.value === 'explain') return 'Needs explanation';
       const i = options.findIndex((o) => o.id === input.value);
       return keyOf(i) + '. ' + options[i].label;
     };
@@ -158,8 +158,8 @@ export const interviewPage = () => {
       },
       done: () => inputs.some((i) => i.checked),
       text: () => {
-        const lines = ['[' + q.id + '] ' + q.title, 'Chọn: ' + inputs.filter((i) => i.checked).map(labelOf).join('; ')];
-        if (note.value.trim()) lines.push('Ghi chú: ' + note.value.trim());
+        const lines = ['[' + q.id + '] ' + q.title, 'Pick: ' + inputs.filter((i) => i.checked).map(labelOf).join('; ')];
+        if (note.value.trim()) lines.push('Note: ' + note.value.trim());
         lines.push(...imgLines((otherInput.checked ? otherBox.value : '') + '\n' + note.value));
         return lines.join('\n');
       },

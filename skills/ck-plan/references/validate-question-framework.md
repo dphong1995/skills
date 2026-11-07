@@ -14,7 +14,7 @@
 
 - Each question must have 2-4 concrete options
 - Give each question a recommendation
-- The page adds "Khác (tự nhập)" for the user's own answer
+- The page adds an "Other" choice (comes back as `Other: <text>`) for the user's own answer
 - Questions should surface implicit decisions
 
 ## Example Questions

@@ -34,8 +34,8 @@ export const docKeys = (sc, review) => {
     } },
     { k: 'e', group: 'Thao tác', label: 'Sửa thành cho đoạn đang chọn', run: () => { const n = commentSelection('edit'); if (n) focusBox(n); } },
     { k: 'g', group: 'Thao tác', label: 'Góp ý chung', run: () => { const n = general(); if (n) focusBox(n); } },
-    { k: 'mod+Enter', show: KEY_HINT, group: 'Thao tác', label: 'Gửi góp ý (có góp ý: chọn Duyệt / Cần sửa)', typing: true, run: () => submit('Sửa') },
-    { k: 'mod+shift+Enter', show: KEY_HINT_SHIFT, group: 'Thao tác', label: 'Duyệt (có góp ý: chọn Duyệt / Cần sửa)', typing: true, run: () => submit('Duyệt') },
+    { k: 'mod+Enter', show: KEY_HINT, group: 'Thao tác', label: 'Gửi góp ý (có góp ý: chọn Duyệt / Cần sửa)', typing: true, run: () => submit('Revise') },
+    { k: 'mod+shift+Enter', show: KEY_HINT_SHIFT, group: 'Thao tác', label: 'Duyệt (có góp ý: chọn Duyệt / Cần sửa)', typing: true, run: () => submit('Approve') },
     { show: 'D / S', group: 'Thao tác', label: 'Trong khung gửi: Duyệt / Cần sửa' },
   ];
 };

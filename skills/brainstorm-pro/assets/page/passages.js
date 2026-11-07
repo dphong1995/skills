@@ -65,7 +65,7 @@ export const passages = ({ notes, noteBox, update }) => {
     const [a, b] = [first.closest('[data-l]'), last.closest('[data-l]')].map((x) => x && x.dataset.l.split('-'));
     const n = noteBox('hl:' + id, kind === 'edit' ? 'Sửa thành…' : 'Góp ý cho đoạn này…', kind === 'edit');
     n.hl = { id, kind, s, e, text: allText().slice(s, e), quote: quoteOf(parts), key:first.closest('[data-k]') ? first.closest('[data-k]').dataset.k : 'Mở đầu',
-      lines: a && b ? 'dòng ' + (a[0] === b[1] ? a[0] : a[0] + '-' + b[1]) : '' };
+      lines: a && b ? 'lines ' + (a[0] === b[1] ? a[0] : a[0] + '-' + b[1]) : '' };
     if (kind === 'edit') n.empty = () => !n.ta.value.trim() || n.ta.value.trim() === n.hl.quote.trim();
     const marks = () => main.querySelectorAll('mark[data-c="' + id + '"]');
     const remove = () => {

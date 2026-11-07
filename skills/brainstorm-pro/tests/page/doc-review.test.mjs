@@ -81,7 +81,7 @@ describe('document review page', () => {
     assert.equal(await b.eval('window.__closed'), 1);
     assert.equal(await b.eval(GUARDED), false);
     assert.equal(r.src, DOC);
-    assert.deepEqual(r.lines, ['Quyết định: Sửa', '[§ Overview › Goals] tighten goals', '[§ Design] add a diagram', '[§ Chung] looks fine']);
+    assert.deepEqual(r.lines, ['Decision: Revise', '[§ Overview › Goals] tighten goals', '[§ Design] add a diagram', '[§ General] looks fine']);
   });
 
   it('Sửa with no note warns and sends nothing; Duyệt then sends the bare decision', async () => {
@@ -93,7 +93,7 @@ describe('document review page', () => {
     await b.eval(`${bar('Duyệt')}.click()`);
     const r = await s.answers();
     assert.equal(r.code, 0);
-    assert.deepEqual(r.lines, ['Quyết định: Duyệt']);
+    assert.deepEqual(r.lines, ['Decision: Approve']);
     await b.until(`${STATUS}.startsWith('Đã gửi: Duyệt')`);
     assert.equal(await b.eval('window.__closed'), 1);
   });
@@ -112,7 +112,7 @@ describe('document review page', () => {
     await b.press('Enter', { meta: true });
     await b.choose('s');
     const r = await s.answers();
-    assert.deepEqual(r.lines, ['Quyết định: Sửa', '[§ Risks] kept note']);
+    assert.deepEqual(r.lines, ['Decision: Revise', '[§ Risks] kept note']);
     await b.until(`${STATUS}.startsWith('Đã gửi 1 góp ý cho Claude.')`);
   });
 
@@ -126,7 +126,7 @@ describe('document review page', () => {
     await b.handled('d');
     const r = await s.answers();
     assert.equal(r.code, 0);
-    assert.deepEqual(r.lines, ['Quyết định: Duyệt', '[§ Design] add a diagram']);
+    assert.deepEqual(r.lines, ['Decision: Approve', '[§ Design] add a diagram']);
   });
 
   it('s in the chooser sends Sửa', async () => {
@@ -135,7 +135,7 @@ describe('document review page', () => {
     await b.press('Enter', { meta: true });
     await b.choose('s');
     const r = await s.answers();
-    assert.deepEqual(r.lines, ['Quyết định: Sửa', '[§ Design] add a diagram']);
+    assert.deepEqual(r.lines, ['Decision: Revise', '[§ Design] add a diagram']);
   });
 
   it('Enter in the chooser sends nothing and Esc closes it and returns focus to the note', async () => {
@@ -172,7 +172,7 @@ describe('document review page', () => {
     assert.equal(await Promise.race([s.done, sleep(300)]), undefined);
     await b.press('Enter', { meta: true, shift: true });
     const r = await s.answers();
-    assert.deepEqual(r.lines, ['Quyết định: Duyệt']);
+    assert.deepEqual(r.lines, ['Decision: Approve']);
   });
 
   it('a file page asks the chooser first, then copies with the chosen decision', async () => {
@@ -185,7 +185,7 @@ describe('document review page', () => {
     await b.press('Enter', { meta: true });
     await b.choose('d');
     await b.until(`window.__copied !== null`);
-    assert.equal(await b.eval('window.__copied'), 'Quyết định: Duyệt\n[§ Design] add a diagram');
+    assert.equal(await b.eval('window.__copied'), 'Decision: Approve\n[§ Design] add a diagram');
     s.kill();
   });
 
@@ -219,7 +219,7 @@ describe('document review page', () => {
     assert.equal(await b.eval('history.length'), len, 'the Đã sửa link jumps without a new history entry');
     await b.eval(`${bar('Duyệt')}.click()`);
     const a = await s.answers();
-    assert.deepEqual(a.lines, ['Quyết định: Duyệt']);
+    assert.deepEqual(a.lines, ['Decision: Approve']);
     const state = JSON.parse(readFileSync(dir + '/round2/.review-state.json', 'utf8'));
     assert.deepEqual(Object.values(state).map((v) => v.round), [2]);
     assert.deepEqual(b.unexpectedErrors(), []);
@@ -252,7 +252,7 @@ describe('document review page', () => {
       assert.equal(sent.lines.length, 6);
     });
     const state = JSON.parse(readFileSync(dir + '/round2-notes/.review-state.json', 'utf8'));
-    assert.deepEqual(Object.values(state)[0].notes.map((n) => n.kind + ':' + n.key), ['passage:Mở đầu', 'passage:Overview › Goals', 'section:Risks', 'section:Open', 'general:Chung']);
+    assert.deepEqual(Object.values(state)[0].notes.map((n) => n.kind + ':' + n.key), ['passage:Mở đầu', 'passage:Overview › Goals', 'section:Risks', 'section:Open', 'general:General']);
     assert.equal(Object.values(state)[0].notes[1].quote, QUOTE, 'the full quote is stored');
     await b.goto(await s.url, { ready, doc: true });
     await b.eval(PASSAGE_HELPERS);
@@ -263,7 +263,7 @@ describe('document review page', () => {
     assert.deepEqual(await under('Goals'), ['Góp ý lần trước | «' + QUOTE + '» → why these goals']);
     assert.deepEqual(await under('Design'), []);
     const alert = await b.eval(`document.querySelector('main > .alert [data-prev]').innerText.replace(/\\n+/g, ' | ')`);
-    assert.equal(alert, 'Góp ý lần trước không còn chỗ gắn: | [§ Mở đầu · dòng 3] «few plain words» → about the intro | [§ Risks] drop <b>me</b> | [§ Chung] overall');
+    assert.equal(alert, 'Góp ý lần trước không còn chỗ gắn: | [§ Mở đầu · lines 3] «few plain words» → about the intro | [§ Risks] drop <b>me</b> | [§ General] overall');
     assert.equal(await b.eval(`document.querySelector('main > .alert [data-prev] b')`), null, 'note text is not HTML');
     assert.equal(await b.eval(`document.querySelectorAll('[data-diff]').length`), 1, 'only the section that changed');
     const toggle = `${heading('Open')}.parentElement.querySelector('button')`;

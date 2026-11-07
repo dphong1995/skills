@@ -193,6 +193,17 @@ describe('interview page', () => {
     assert.equal(await b.eval('window.__closed'), 0);
   });
 
+  it('writes Other and Needs explanation in the English protocol', async () => {
+    await fresh();
+    await b.click('#q01-opt-other');
+    await b.eval(`(() => { const t = document.querySelector('#q01-other'); t.value = 'my own'; t.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+    await b.click('#q02-opt-explain');
+    await b.eval(COPY_OK);
+    await b.eval(`[...document.querySelectorAll('aside button')].find((x) => x.textContent === 'Copy').click()`);
+    await b.until(`${STATUS}.startsWith('Đã copy 2 câu trả lời')`);
+    assert.equal(await b.eval('window.__copied'), '[q01] Which adder?\nPick: Other: my own\n\n[q02] Which extras?\nPick: Needs explanation');
+  });
+
   it('falls back to copying when the server is gone', async () => {
     await fresh();
     s.kill();
@@ -207,7 +218,7 @@ describe('interview page', () => {
     assert.equal(await b.eval('window.__closed'), 0);
     assert.equal(await b.eval(`[...document.querySelectorAll('aside button')].find((x) => x.textContent.startsWith('Gửi')).disabled`), false, 'the send button works again');
     const text = await b.eval(`document.querySelector('#out').value`);
-    assert.equal(text, '[q01] Which adder?\nChọn: B. Checked add\n\n[q02] Which extras?\nChọn: A. Extra X');
+    assert.equal(text, '[q01] Which adder?\nPick: B. Checked add\n\n[q02] Which extras?\nPick: A. Extra X');
   });
 
   it('closes its tab after sending and then stops asking', async () => {

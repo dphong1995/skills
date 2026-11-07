@@ -276,8 +276,8 @@ foreground `Bash` call with `timeout: 600000`:
 node ~/.claude/skills/brainstorm-pro/assets/render-interview.mjs <document path> <scratchpad>/review-{slug}/review-NN.html --serve
 ```
 
-- `Quyết định: Duyệt` → apply any notes to the document, then the next step in the same turn.
-- `Quyết định: Sửa` → edit the document as the notes ask, re-run Phase 5's four checks, show the next round
+- `Decision: Approve` → apply any notes to the document, then the next step in the same turn.
+- `Decision: Revise` → edit the document as the notes ask, re-run Phase 5's four checks, show the next round
   (`review-NN+1.html`). The builder check re-runs only if the round changed the chosen approach (the pick line in `## Cách làm`); wording edits or added rows in the rejected-alternatives table do not.
 - Moved to the background after 10 minutes → end the turn with one line; the answer arrives as the
   task's notification. A reply in chat counts the same (stop the serve command).

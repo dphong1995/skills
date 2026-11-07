@@ -233,20 +233,20 @@ export const docPage = (doc) => {
 
   if (review) {
     guardLeave();
-    const approveBtn = el('button', { type: 'button', class: btnCls() + ' btn-success', onclick: () => submit('Duyệt') }, sendMode ? 'Duyệt' : 'Copy: Duyệt', kbd(KEY_HINT_SHIFT, 'kbd-xs max-sm:hidden'));
-    const changeBtn = el('button', { type: 'button', class: btnCls('primary'), onclick: () => submit('Sửa') }, sendMode ? 'Gửi góp ý' : 'Copy góp ý', kbd(KEY_HINT, 'kbd-xs max-sm:hidden'));
+    const approveBtn = el('button', { type: 'button', class: btnCls() + ' btn-success', onclick: () => submit('Approve') }, sendMode ? 'Duyệt' : 'Copy: Duyệt', kbd(KEY_HINT_SHIFT, 'kbd-xs max-sm:hidden'));
+    const changeBtn = el('button', { type: 'button', class: btnCls('primary'), onclick: () => submit('Revise') }, sendMode ? 'Gửi góp ý' : 'Copy góp ý', kbd(KEY_HINT, 'kbd-xs max-sm:hidden'));
     const send = async (decision) => {
       if (approveBtn.disabled) return;
       const list = filled();
       const data = list.map((n) => noteData(n, general));
-      const t = ['Quyết định: ' + decision, ...data.map((d) => formatNote(d, { head: true, brief: true })),
+      const t = ['Decision: ' + decision, ...data.map((d) => formatNote(d, { head: true, brief: true })),
         ...imgLines(list.map((n) => n.ta.value).join('\n'))].join('\n');
       if (sendMode) {
         approveBtn.disabled = changeBtn.disabled = true;
         try {
           await postText(t, data);
           store.set(null);
-          say('ok', (decision === 'Duyệt' ? 'Đã gửi: Duyệt.' : 'Đã gửi ' + data.length + ' góp ý cho Claude.') + ' Có thể đóng tab này.');
+          say('ok', (decision === 'Approve' ? 'Đã gửi: Duyệt.' : 'Đã gửi ' + data.length + ' góp ý cho Claude.') + ' Có thể đóng tab này.');
           closeTab();
           return;
         } catch (e) { approveBtn.disabled = changeBtn.disabled = false; }
