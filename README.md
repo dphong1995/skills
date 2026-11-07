@@ -290,6 +290,10 @@ git add hud && git commit -m "..." && git push
 App macOS nhỏ (SwiftUI, Swift package), hiện các session Claude Code đang mở trên máy trong một
 widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouTube fullscreen).
 
+![Widget Claude sessions](claude-sessions/docs/images/07-mixed-hover.png)
+
+Ảnh demo từng tính năng: [claude-sessions/README.md](claude-sessions/README.md).
+
 - Đọc `~/.claude/sessions/*.json` mỗi giây, file mà mỗi session Claude Code tự ghi: `status` là `busy`
   (đang chạy), `waiting` (`waitingFor`: `permission prompt` → chờ duyệt, còn lại → chờ trả lời) hoặc
   `idle` (xong, chờ bạn). Bỏ qua tiến trình đã chết và các lần chạy `claude -p` / SDK (`entrypoint` bắt đầu bằng

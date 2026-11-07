@@ -14,8 +14,10 @@ private let outDir: URL = {
 @MainActor
 private func render(_ store: Store, _ panel: PanelState, _ name: String) {
     let view = ZStack {
-        LinearGradient(colors: [Color(red: 0.25, green: 0.3, blue: 0.45), Color(red: 0.1, green: 0.12, blue: 0.2)],
-                       startPoint: .top, endPoint: .bottom)
+        if ProcessInfo.processInfo.environment["SNAPSHOT_TRANSPARENT"] == nil {
+            LinearGradient(colors: [Color(red: 0.25, green: 0.3, blue: 0.45), Color(red: 0.1, green: 0.12, blue: 0.2)],
+                           startPoint: .top, endPoint: .bottom)
+        }
         WidgetView(store: store, panel: panel)
     }
     .frame(width: Layout.canvas.width, height: Layout.canvas.height)
