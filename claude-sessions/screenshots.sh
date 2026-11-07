@@ -20,7 +20,7 @@ for n in "${names[@]}"; do
     echo "missing snapshot: $n" >&2
     exit 1
   fi
-  magick ".build/snapshots/$n.png" -trim +repage "docs/images/$n.png"
+  magick ".build/snapshots/$n.png" -trim +repage -strip -define png:exclude-chunks=date,time "docs/images/$n.png"
 done
 
 for f in docs/images/*.png; do
