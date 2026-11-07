@@ -470,7 +470,7 @@ private func approvableStore() -> (Store, URL, URL, URL) {
     store.refresh(at: Date())
     let s = store.sessions[0]
     #expect(s.title == "chạy test")
-    #expect(s.subtitle == "talo6-dct-frontend · main")
+    #expect(s.subtitle == "talo6-dct-frontend")
     #expect(s.lastReply == nil)
 }
 
@@ -577,12 +577,13 @@ private func approvableStore() -> (Store, URL, URL, URL) {
     _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine("x"), assistantLine("y")])
     writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend, updatedAt: t0)
     store.refresh(at: t0)
-    #expect(store.sessions[0].subtitle.hasSuffix("· main"))
+    #expect(store.sessions[0].subtitle == "talo6-dct-frontend")
 
     heads[frontend] = "feat"
     writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend, updatedAt: t0.addingTimeInterval(1))
     store.refresh(at: t0.addingTimeInterval(1))
-    #expect(store.sessions[0].subtitle.hasSuffix("· feat"))
+    #expect(store.sessions[0].subtitle == "talo6-dct-frontend")
+    #expect(store.sessions[0].branch == "feat")
 }
 
 @Test func branchComesFromCwdNotTranscript() {
@@ -593,7 +594,7 @@ private func approvableStore() -> (Store, URL, URL, URL) {
     writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
     store.refresh(at: Date())
     store.refresh(at: Date())
-    #expect(store.sessions[0].subtitle == "talo6-dct-frontend · master")
+    #expect(store.sessions[0].subtitle == "talo6-dct-frontend")
     #expect(labels(store) == [])
 }
 

@@ -21,13 +21,10 @@ public struct ClosedSession: Equatable, Codable {
     }
 
     var folder: String { Self.folder(cwd) }
-    var subtitle: String { Self.subtitle(cwd: cwd, branch: branch) }
+    var subtitle: String { folder }
 
-    /// The folder name of `cwd`, followed by ` · <branch>` when there is one; shared with `Session`.
+    /// The folder name of `cwd`; shared with `Session`.
     static func folder(_ cwd: String) -> String { (cwd as NSString).lastPathComponent }
-    static func subtitle(cwd: String, branch: String?) -> String {
-        branch.map { "\(folder(cwd)) · \($0)" } ?? folder(cwd)
-    }
 
     /// What the user can paste into a terminal when cmux cannot open the workspace.
     public var shellCommand: String {

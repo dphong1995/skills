@@ -705,25 +705,22 @@ public struct WidgetView: View {
                     .accessibilityLabel(statusText(s) + newLabel.joined())
                 VStack(alignment: .leading, spacing: 1) {
                     Text(s.title).font(.system(size: 12.5, weight: .medium)).foregroundStyle(.white).lineLimit(2)
-                    Text(s.subtitle).font(.system(size: 10.5))
-                        .foregroundStyle(.white.opacity(0.45)).lineLimit(1)
+                    HStack(spacing: 0) {
+                        Text(s.subtitle).lineLimit(1).truncationMode(.tail)
+                        if s.agentCount > 0 {
+                            Text(" · 🤖×\(s.agentCount)").lineLimit(1).fixedSize()
+                                .help(s.agents.joined(separator: "\n"))
+                        }
+                    }
+                    .font(.system(size: 10.5)).foregroundStyle(.white.opacity(0.45))
                     if let todo = s.todo {
                         Text(todo.label)
                             .font(.system(size: 11)).foregroundStyle(.white.opacity(0.7))
                             .lineLimit(1).truncationMode(.tail)
                     }
                     if let a = s.activity {
-                        HStack(spacing: 6) {
-                            Text("▸ \(a)").lineLimit(1).truncationMode(.tail)
-                            if !s.agents.isEmpty {
-                                Text("🤖×\(s.agents.count)").lineLimit(1).fixedSize()
-                                    .help(s.agents.joined(separator: "\n"))
-                            }
-                        }
-                        .font(.system(size: 11)).foregroundStyle(.white.opacity(0.6))
-                    }
-                    if let n = s.backgroundAgents, n > 0 {
-                        Text("🤖×\(n) agent nền").font(.system(size: 11)).foregroundStyle(.white.opacity(0.6)).lineLimit(1)
+                        Text("▸ \(a)").font(.system(size: 11)).foregroundStyle(.white.opacity(0.6))
+                            .lineLimit(1).truncationMode(.tail)
                     }
                     if s.question == nil, s.isFinished, let reply = s.replyText {
                         Text(reply).font(.system(size: 11)).foregroundStyle(.white.opacity(0.75))

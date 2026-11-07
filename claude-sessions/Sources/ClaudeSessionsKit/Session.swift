@@ -80,7 +80,9 @@ extension Session {
     var colorStatus: String { (backgroundAgents ?? 0) > 0 ? "busy" : shownStatus }
     var title: String { nameSource == "user" ? name : (aiTitle ?? firstPrompt ?? name) }
     var folder: String { ClosedSession.folder(cwd) }
-    var subtitle: String { ClosedSession.subtitle(cwd: cwd, branch: branch) }
+    var subtitle: String { folder }
+    /// Running subagents, foreground and background (the two are never non-zero together).
+    var agentCount: Int { agents.count + (backgroundAgents ?? 0) }
     var menuCount: Int { menu.reduce(0) { $0 + $1.items.count } }
     /// Shown as done or waiting, including a main turn that ended while background agents still run.
     var isFinished: Bool { shownStatus == "idle" || status == "waiting" }
