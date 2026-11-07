@@ -75,8 +75,8 @@ cook/
 ## Version
 
 5.10.0 - Step 2 reads ck-plan's plan-writing.md (templates, step rules, shared self-review); Step 3 and the fix prompts get plan.md's Global Constraints; Step 5 Section A checks the Review Focus lines; tasks and sync-back follow the step checkboxes
-5.9.0 - Steps 3-6 borrow from superpowers subagent-driven-development: implementer report contract with status, orchestrator commits per phase and per fix batch, a review package reviewers read once (no test re-runs), a subagent boundary line plus SUBAGENT-STOP, `## Claude tự quyết` in the final report; Step 6 asks only about push
-5.8.0 - Step 1 reads the shared `brainstorm-pro/references/design-flow.md`; adds the playback card, the builder check and the Nguồn column
+5.9.0 - Steps 3-6 borrow from superpowers subagent-driven-development: implementer report contract with status, orchestrator commits per phase and per fix batch, a review package reviewers read once (no test re-runs), a subagent boundary line plus SUBAGENT-STOP, `## Claude's calls` (Claude tự quyết) in the final report; Step 6 asks only about push
+5.8.0 - Step 1 reads the shared `brainstorm-pro/references/design-flow.md`; adds the playback card, the builder check and the Source (Nguồn) column
 5.7.0 - Step 5 sized by the diff (one reviewer for a small diff, two for a large one); re-reviews scoped to the fix
 5.6.3 - Step 5 has one severity scale, agent 1's: a cleanup finding gates only when agent 2 labels it OUT-OF-LENS and it grades Critical/High; the old Critical Issues list that made DRY, performance and architecture findings critical is gone
 5.6.2 - Implementation, testing, fix-application and finalize subagents are dispatched with `model: "sonnet"` (no exception for hard fixes), matching the always-on `subagent-models` rule

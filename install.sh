@@ -319,7 +319,7 @@ for ((i = 0; i < COUNT; i++)); do SEL[$i]=0; done
 
 case "$MODE" in
   only)
-    ONLY="${ONLY// /}"
+    ONLY="${ONLY//[[:space:]]/}"
     old_ifs="$IFS"; IFS=','
     set -f; names=($ONLY); set +f
     IFS="$old_ifs"

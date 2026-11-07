@@ -48,9 +48,9 @@ flowchart TD
     B --> C{Round cap or scope clear?}
     C -->|need more| B
     C -->|new fork surfaced| R
-    C -->|clear| P[Thẻ phát lại<br/>one card, before Phase 3]
-    P -->|Đúng| D[Phase 3: Propose 2-3 Approaches]
-    P -->|Sai hoặc thiếu| FX[Fix the understanding<br/>mini re-explore; ask more on a new gap] --> FC{Thing to build changed?}
+    C -->|clear| P[Playback card<br/>one card, before Phase 3]
+    P -->|Right| D[Phase 3: Propose 2-3 Approaches]
+    P -->|Wrong or missing| FX[Fix the understanding<br/>mini re-explore; ask more on a new gap] --> FC{Thing to build changed?}
     FC -->|yes| P
     FC -->|no| D
     D --> G[Phase 4: Write the Document<br/>the design, in sections]

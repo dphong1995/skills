@@ -23,9 +23,9 @@ export const imageStrip = (tas) => {
       el('span', { class: THUMB_NUM, text: '#' + n }),
       el('button', { type: 'button', class: THUMB_DEL, 'aria-label': t('removeImage', title), onclick: () => {
         for (const ta of tas) {
-          const ref = '[Image #' + n + ']';
-          if (!ta.value.includes(ref)) continue;
-          ta.value = ta.value.split(ref).join('');
+          const ref = new RegExp('\\[(?:Image|Ảnh) #' + n + '\\]', 'g');
+          if (!ref.test(ta.value)) continue;
+          ta.value = ta.value.replace(ref, '');
           ta.dispatchEvent(new Event('input', { bubbles: true }));
         }
       } }, '×'));

@@ -2,7 +2,7 @@
 
 Interview questions are shown as a local HTML page in the user's browser, one round at a time. The
 render script serves the page from a foreground command and waits; the user answers there and
-presses "Gửi câu trả lời", the script prints every answer of the round and exits (the page then closes its tab), and the answers
+presses "Send answers" (Gửi câu trả lời), the script prints every answer of the round and exits (the page then closes its tab), and the answers
 come back as the command's output in the same turn, at the cost of asking in the terminal.
 Copy-and-paste into the chat stays as the fallback. Nothing is published and nothing is polled.
 
@@ -62,7 +62,7 @@ included, to a new `round-NN.html`; never reuse a path for different questions.
 - `root`: optional absolute directory that repo-relative paths resolve against (inline file paths,
   `img` files). Defaults to the directory the script runs in.
 - `topic`: the brainstorm topic, the same in every round.
-- `decided`: the decisions settled so far, one short line each (`Câu 1: …`). Empty in round 1.
+- `decided`: the decisions settled so far, one short line each (`Q1: …`). Empty in round 1.
 - `questions`: one object per question:
 
 | Field | Content |
@@ -73,7 +73,7 @@ included, to a new `round-NN.html`; never reuse a path for different questions.
 | `why` | What changes depending on the answer: what gets built differently, what it rules in or out. 1-2 sentences. |
 | `reversible`, `reversibleWhy` | `true` when a wrong pick is cheap to change later (a message, a label, a config value, a test), `false` when it is costly (data shape or migration, public API, contract with BE, anything users start depending on). `reversibleWhy`: one short line saying what changing it later would take. Shown as a "Easy to change later / Hard to change later" badge (Dễ đổi / Khó đổi về sau) so the user spends their time on the costly ones. |
 | `context` | Blocks (see below): how it works today, with scout evidence (`file:line`, existing component or table names); a concrete scenario of the situation the decision is about; every term the options use, explained in plain words. A `table` when options differ along the same axes. |
-| `options` | 2-4 entries. Each: `id`, `label` (2-6 words), `means` (what concretely happens / what the user would see), `example` (one concrete case played through this option), `pros`, `cons` (short lists), `effort` (e.g. `thấp`, `1 file FE`). Optional `code`: a code block (same fields as below, without `t`) showing this option's shape, when options differ in code. Optional `mockup`: HTML for a wireframe of this option's screen (below), when the question is about a screen. Give every option the same optional parts so they line up. |
+| `options` | 2-4 entries. Each: `id`, `label` (2-6 words), `means` (what concretely happens / what the user would see), `example` (one concrete case played through this option), `pros`, `cons` (short lists), `effort` (e.g. `low`, `1 file FE`). Optional `code`: a code block (same fields as below, without `t`) showing this option's shape, when options differ in code. Optional `mockup`: HTML for a wireframe of this option's screen (below), when the question is about a screen. Give every option the same optional parts so they line up. |
 | `multi` | `true` only when several options can hold together. |
 | `recommendation` | `{ "option": "<option id>", "why": "…" }`: the pick and why it wins here, tied to the evidence in `context`. Omit the whole field when there is no pick. |
 
@@ -103,7 +103,7 @@ Context blocks (`t` is the type):
 Code blocks are syntax-highlighted (highlight.js from cdnjs; plain text when offline) and have a Copy button in the caption:
 - Existing code → `{t:"code", file, lines:[from, to]}` with `file` an absolute path. The script
   cuts the snippet from the file (no `text`), numbers its lines, labels it with the path and range,
-  and embeds the whole file (up to 512 KB) behind a "Xem toàn file" button that opens it with the
+  and embeds the whole file (up to 512 KB) behind a "View whole file" (Xem toàn file) button that opens it with the
   range highlighted. The script rejects a relative path or a range outside the file.
 - Anything else (a proposed change, a data shape, an ASCII flow) → `{t:"code", text, label, lang}`.
   `label` says what it shows (`job result after the change`). Add `file` (no `lines`) to also
@@ -113,7 +113,7 @@ Code blocks are syntax-highlighted (highlight.js from cdnjs; plain text when off
 - Keep a snippet to the lines that matter; the full file is one click away.
 - A change to existing code → `{t:"diff", label, before, after}`: two columns, before on the left
   and after on the right, rows lined up, removed and added lines tinted. Each side is a code block
-  without `t`; usually `before: {file, lines}` (real line numbers, "Xem toàn file") and
+  without `t`; usually `before: {file, lines}` (real line numbers, "View whole file") and
   `after: {text, lang}` with the same indentation.
 - A flow, a sequence or a state machine with several steps or branches →
   `{t:"mermaid", text, label}` (Mermaid syntax, drawn by Mermaid from cdnjs; the source shows as
@@ -122,7 +122,7 @@ Code blocks are syntax-highlighted (highlight.js from cdnjs; plain text when off
 
 Pictures of screens:
 - A screenshot → `{t:"img", file, label, alt}`: png, jpg, gif, webp or svg, at most 3 MB (resize a
-  copy with `sips --resampleWidth 1600 <image> --out <copy>`). Shown up to 480px tall; "Phóng to"
+  copy with `sips --resampleWidth 1600 <image> --out <copy>`). Shown up to 480px tall; "Zoom" (Phóng to)
   or a click shows it full size. Use only an image that exists as a file (a downloaded Jira
   attachment, a screenshot saved by browser tools).
 - A layout to compare → `{t:"mockup", html, label}` in `context` for the current screen, and
@@ -161,37 +161,37 @@ One complete round (every field of a question, `code` with `file`/`lines`, a `ta
       "options": [
         {
           "id": "A",
-          "label": "Retry trong gateway",
-          "means": "Gateway tự thử lại tối đa 3 lần.",
-          "example": "Mất mạng 2 giây: người dùng không thấy lỗi.",
-          "pros": ["Một chỗ", "Mọi nơi gọi đều được"],
-          "cons": ["Khó tắt cho một nơi riêng"],
+          "label": "Retry in the gateway",
+          "means": "The gateway retries up to 3 times.",
+          "example": "Network drops for 2 seconds: the user sees no error.",
+          "pros": ["One place", "Every caller is covered"],
+          "cons": ["Hard to turn off for one caller"],
           "effort": "1 file FE",
           "code": { "text": "await withRetry(() => post(url, body), 3);", "label": "gateway", "lang": "typescript" }
         },
         {
           "id": "B",
-          "label": "Retry trong hook",
-          "means": "Hook `useUpload` bọc lời gọi bằng retry.",
-          "example": "Chỉ trang upload tự thử lại.",
-          "pros": ["Tắt được từng nơi"],
-          "cons": ["Lặp ở 3 hook"],
+          "label": "Retry in the hook",
+          "means": "The `useUpload` hook wraps the call in a retry.",
+          "example": "Only the upload page retries.",
+          "pros": ["Can be turned off per caller"],
+          "cons": ["Repeated in 3 hooks"],
           "effort": "3 file FE",
           "code": { "text": "retry(() => upload(file), { times: 3 });", "label": "hook", "lang": "typescript" }
         },
         {
           "id": "C",
-          "label": "Không retry",
-          "means": "Giữ nguyên, người dùng bấm lại.",
-          "example": "Mất mạng: hiện lỗi, bấm Thử lại.",
-          "pros": ["Không đổi code"],
-          "cons": ["Người dùng tự xử lý"],
-          "effort": "không",
-          "code": { "text": "await post(url, body);", "label": "hiện tại", "lang": "typescript" }
+          "label": "No retry",
+          "means": "Leave as is; the user clicks again.",
+          "example": "Network drops: an error shows, the user clicks Retry.",
+          "pros": ["No code change"],
+          "cons": ["The user handles it"],
+          "effort": "none",
+          "code": { "text": "await post(url, body);", "label": "current", "lang": "typescript" }
         }
       ],
       "multi": false,
-      "recommendation": { "option": "A", "why": "Gateway là chỗ duy nhất mọi lời gọi đi qua (`embed.mjs:1-6` cho thấy chỉ có một đường vào)." }
+      "recommendation": { "option": "A", "why": "The gateway is the only place every call passes through (`embed.mjs:1-6` shows a single entry point)." }
     }
   ]
 }

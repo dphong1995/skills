@@ -16,7 +16,7 @@ be delegated. Sub-agents are allowed only as research helpers in 1A/1B and the b
 |---|---|
 | 1A Deep Scout | Phase 1 |
 | 1B Best-Practice Research | Phase 1.5 |
-| 1C Q&A Loop (incl. the "Thẻ phát lại" playback card) | Phase 2 |
+| 1C Q&A Loop (incl. the playback card) | Phase 2 |
 | 1D Propose 2-3 Approaches | Phase 3 |
 | 1E Design on a review page (write, self-review + builder check, user review gate) | Phases 4–6 |
 
@@ -45,7 +45,7 @@ Anti-Rationalization rows (in addition to `design-flow.md`'s):
 - `✓ Step 1B: Research [done - N sources | skipped - <reason>]`
 - `✓ Step 1C: Q&A complete - [N] rounds, playback ok`
 - `✓ Step 1D: Approach selected - [name]`
-- `✓ Step 1E: Design approved - [N] sections, [M] acceptance criteria, [K] review rounds, builder check: N câu — A đã có, M nhỏ, K hỏi bạn`
+- `✓ Step 1E: Design approved - [N] sections, [M] acceptance criteria, [K] review rounds, builder check: N questions — A already answered, M minor, K for you` (written in the user's language; Vietnamese: `N câu — A đã có, M nhỏ, K hỏi bạn`)
 
 `design.md` is not a `spec.md` handoff: no ck-plan, and the plan files land next to it.
 

@@ -101,7 +101,7 @@ flowchart TD
     subgraph S1[Step 1: Design — brainstorm-pro flow, interactive, orchestrator-run]
       direction TB
       C1[1A: Deep Scout] --> C2[1B: Best-Practice Research<br/>conditional]
-      C2 --> C3[1C: Q&A Loop — one round at a time<br/>on an HTML question page, answers sent back, thẻ phát lại]
+      C2 --> C3[1C: Q&A Loop — one round at a time<br/>on an HTML question page, answers sent back, playback card]
       C3 --> C4[1D: Propose 2-3 Approaches]
       C4 --> C5[1E: design.md on a review page<br/>builder check, notes per section, Approve]
     end
@@ -141,14 +141,14 @@ The review (Step 5) is **sized by the diff** (workflow-steps.md § Step 5: one r
 
 **Always enforced:**
 - **Testing:** 100% pass required (a failure confirmed on the Step 3 start commit excepted, `references/workflow-steps.md` § Step 4)
-- **Code Review:** after the reviewers report, dedup, apply the findings worth applying and record which you skipped and why in the final report's `## Claude tự quyết` — do not stop to ask permission first
+- **Code Review:** after the reviewers report, dedup, apply the findings worth applying and record which you skipped and why in the final report's `## Claude's calls` (Claude tự quyết) — do not stop to ask permission first
 - **Commits:** one commit per phase and per fix batch, made by the orchestrator, never squashed (`references/workflow-steps.md` § Report check, status and commit)
 - **Re-verify after cleanup:** any applied cleanup fix is followed by the test command AND the project's own verification gate, i.e. whatever command its CLAUDE.md declares must stay green (`pnpm verify` in talos-v2). A quality pass that ships a regression is worse than no quality pass
 - **Finalize (MANDATORY - never skip):**
   1. `executor` subagent → run full plan sync-back (all completed tasks/steps across all `phase-XX-*.md`, not only current phase), then update `plan.md` status/progress
   2. `writer` subagent → update `./docs` if changes warrant; the prompt carries the Report contract, then the `references/subagent-patterns.md` § Every prompt lines, and its files are committed
   3. `TaskUpdate` → mark all Claude Tasks complete after sync-back verification (or `TodoWrite` if Task tools unavailable)
-  4. Ask on the interview page (`../brainstorm-pro/references/html-interview.md`), not in chat, whether to push; the orchestrator pushes, never squashes. Then the final report with `## Claude tự quyết` (`references/workflow-steps.md` § Final report)
+  4. Ask on the interview page (`../brainstorm-pro/references/html-interview.md`), not in chat, whether to push; the orchestrator pushes, never squashes. Then the final report with `## Claude's calls` (`references/workflow-steps.md` § Final report)
 
 ## Required Subagents (MANDATORY)
 

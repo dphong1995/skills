@@ -24,7 +24,7 @@ design stage only. Summary:
 |---|---|---|
 | 1A Deep Scout | CLAUDE.md + rules, related dirs/features, cross-repo, docs, user memory. Produce reuse opportunities / conflict risks / open questions. | Orchestrator; `document-specialist`/`Explore` sub-agents optional for parallel reading (conclusions with citations, not file dumps) |
 | 1B Best-Practice Research | Conditional — only if no in-repo precedent AND well-trodden externally AND a real design fork. Orienting pass by default. | Orchestrator; `document-specialist` / context7 / WebSearch optional |
-| 1C Q&A Loop | ONE round at a time (one question, or up to 4 independent ones) on a local HTML question page (`../brainstorm-pro/references/html-interview.md`): full card, multi-choice + recommendation, answers sent back from the page (or pasted), mini re-explore between rounds, ≥1 brutal-honesty pushback, a playback card ("Thẻ phát lại", no recommendation) before the approaches. **Cap 8 rounds.** | Orchestrator only |
+| 1C Q&A Loop | ONE round at a time (one question, or up to 4 independent ones) on a local HTML question page (`../brainstorm-pro/references/html-interview.md`): full card, multi-choice + recommendation, answers sent back from the page (or pasted), mini re-explore between rounds, ≥1 brutal-honesty pushback, a playback card (Vietnamese: "Thẻ phát lại", no recommendation) before the approaches. **Cap 8 rounds.** | Orchestrator only |
 | 1D Approaches | 2-3 approaches with pros/cons/effort, recommendation first — the last question on the interview page. | Orchestrator only |
 | 1E Design review | The design written to `<plan-dir>/design.md` (brainstorm-pro's spec structure), self-reviewed + builder check, shown on a review page (`--serve`) — **notes per section, then Approve (Duyệt)**. | Orchestrator; builder check agent (`../brainstorm-pro/references/builder-check.md`) |
 
@@ -113,7 +113,7 @@ Report the plan overview with its phases and continue straight to implementation
 
 Before dispatching phase 1, for every repo the plan touches, record and write down literally (shell variables do not survive between calls): `git rev-parse HEAD` (the Step 3 start commit — Step 5's size check needs it when the work is committed on the base branch itself), `git status --porcelain --untracked-files=all` (the files with changes from before this run), and `git hash-object <file>` for each of those files that exists as a regular file (record a deleted one as `deleted`).
 
-Cook commits on the current branch. If the user's rules forbid committing on it (e.g. `master`), first create the branch their rules name with `git switch -c <branch>` (it changes no file) and record that in `## Claude tự quyết`. Rules with no name pattern → `<ticket>-<slug>` (`<slug>` = the plan dir name without its date and ticket; no ticket → `<slug>` alone). A name that exists locally or on the remote → add `-2` (then `-3`, …). Cook never switches to an existing branch.
+Cook commits on the current branch. If the user's rules forbid committing on it (e.g. `master`), first create the branch their rules name with `git switch -c <branch>` (it changes no file) and record that in `## Claude's calls`. Rules with no name pattern → `<ticket>-<slug>` (`<slug>` = the plan dir name without its date and ticket; no ticket → `<slug>` alone). A name that exists locally or on the remote → add `-2` (then `-3`, …). Cook never switches to an existing branch.
 
 **Dispatch rules:**
 - **One sub-agent per phase.** Read the `phase-XX-*.md` file, extract scope/files/acceptance criteria, embed verbatim into the sub-agent prompt; paste plan.md's Global Constraints first (§ Report contract, **Global Constraints** paragraph).
@@ -140,7 +140,7 @@ Step 3 prompt, every fix prompt in Steps 4 and 5, and the revert agent's prompt,
 `## Global Constraints (apply to every change you make)`, then the phase file content (or the fix
 brief). A plan without the section (older plans) gets nothing pasted.
 
-For a fix batch, revert or docs agent, its prompt stands in for the phase file: the findings (Step 5) or the failing tests (Step 4), the change to undo, or "docs updated, or none needed: <why>" are its Done-when items. It owns every file it lists in `Files changed`, minus pre-run files, the plan root and `<plan-dir>` (the **Commit** rules in § Report check, status and commit) and forbidden paths; an unlisted changed file is not committed and is recorded in `## Claude tự quyết`. Order for every prompt cook writes: plan.md's Global Constraints first (Step 3, fix and revert prompts, per the **Global Constraints** paragraph), then the task, then the Report contract (where used), then the two § Every prompt lines.
+For a fix batch, revert or docs agent, its prompt stands in for the phase file: the findings (Step 5) or the failing tests (Step 4), the change to undo, or "docs updated, or none needed: <why>" are its Done-when items. It owns every file it lists in `Files changed`, minus pre-run files, the plan root and `<plan-dir>` (the **Commit** rules in § Report check, status and commit) and forbidden paths; an unlisted changed file is not committed and is recorded in `## Claude's calls`. Order for every prompt cook writes: plan.md's Global Constraints first (Step 3, fix and revert prompts, per the **Global Constraints** paragraph), then the task, then the Report contract (where used), then the two § Every prompt lines.
 
 ```
 ## Report contract (required)
@@ -166,16 +166,16 @@ Needs: <BLOCKED: what stops you and the split or context you propose;
 
 **Check** — the moment an agent returns, before any commit:
 - `STATUS` must be present and every Done-when item must carry evidence. An item with no evidence, marked "not done", or a failing `Tests` line means the phase is not done.
-- Exception: a test that already fails on the base. The implementer reports DONE_WITH_CONCERNS with the test name and the reason. Accept it when neither the test file nor the code the test covers is in the phase's diff. Step 4's `test-engineer` confirms it on the base, and the orchestrator records it in `## Claude tự quyết`.
+- Exception: a test that already fails on the base. The implementer reports DONE_WITH_CONCERNS with the test name and the reason. Accept it when neither the test file nor the code the test covers is in the phase's diff. Step 4's `test-engineer` confirms it on the base, and the orchestrator records it in `## Claude's calls`.
 - Re-hash each pre-run file outside the plan root that exists as a regular file (`git hash-object`; a deleted one counts as `deleted`) and compare with the baseline: the hashes recorded at the start of Step 3. After each check the current hashes become the new baseline. Keep the Step 3 start hashes as a separate start record that never moves.
 - Compare `Files changed` with `git status --porcelain --untracked-files=all`, after removing the pre-run file list, the plan dir (`<plan-dir>`, wherever the plan root is) and the files other returned phases listed (for a fix batch, revert or docs agent, ownership is as in § Report contract):
-  - A file the phase changed without listing it (seen in porcelain, or for a pre-run file by a hash change since the last check) belongs to the phase whose ownership covers it (including owners still running); with no single owner it is not committed and is recorded in `## Claude tự quyết`.
+  - A file the phase changed without listing it (seen in porcelain, or for a pre-run file by a hash change since the last check) belongs to the phase whose ownership covers it (including owners still running); with no single owner it is not committed and is recorded in `## Claude's calls`.
   - A file outside the phase's ownership: if no other phase owns it, commit it with the phase and record it. If another phase owns it, do not commit it; a fresh agent reconciles before Step 4.
 
 **Status handling:** every re-dispatch below is a fresh agent of the same type and model with the original task, what is done, and the new input, as for a `PARTIAL` report (`subagent-patterns.md` § Agent Tool Pattern); never `SendMessage`. Each status names only its new input.
 - **DONE:** commit.
-- **DONE_WITH_CONCERNS:** a concern about correctness or scope → a fresh agent fixes it before the commit. Any other concern → commit, then pass the concern to the reviewer (Implementer reports) and to `## Claude tự quyết`.
-- **BLOCKED:** never retry unchanged. Split the phase, or dispatch a fresh agent with more context. When splitting, write the new phase files and `plan.md` rows the way Step 2 adds a phase, `TaskCreate` the new phases and then `TaskUpdate` the original task to status `deleted` (`TodoWrite`: remove the item), tell each new agent which partial edits already in the tree belong to it, and record the split in `## Claude tự quyết`.
+- **DONE_WITH_CONCERNS:** a concern about correctness or scope → a fresh agent fixes it before the commit. Any other concern → commit, then pass the concern to the reviewer (Implementer reports) and to `## Claude's calls`.
+- **BLOCKED:** never retry unchanged. Split the phase, or dispatch a fresh agent with more context. When splitting, write the new phase files and `plan.md` rows the way Step 2 adds a phase, `TaskCreate` the new phases and then `TaskUpdate` the original task to status `deleted` (`TodoWrite`: remove the item), tell each new agent which partial edits already in the tree belong to it, and record the split in `## Claude's calls`.
 - **NEEDS_CONTEXT:** see below.
 - **Not done:** re-dispatch with the gap as the new input.
 - Partial edits of an unfinished phase stay uncommitted; the fresh agent continues from them.
@@ -183,8 +183,8 @@ Needs: <BLOCKED: what stops you and the split or context you propose;
 **NEEDS_CONTEXT:**
 - If the design or plan answers it: re-dispatch with the answer and its source.
 - Otherwise, by how hard the decision is to change:
-  - **Hard to change** — what the interview card would mark `reversible: false` (`../brainstorm-pro/references/html-interview.md`, card fields: data shape or migration, public API or contract with BE, anything users depend on), and anything hard to undo after a push: ask the user on the interview page. Dispatch every phase that does not depend on the answer BEFORE serving the page; dependent phases wait. After the answer, re-dispatch with the answer. The user's answer is not a `## Claude tự quyết` row.
-  - **Everything else:** Claude rules, records it in `## Claude tự quyết`, and dispatches a fresh agent with the ruling.
+  - **Hard to change** — what the interview card would mark `reversible: false` (`../brainstorm-pro/references/html-interview.md`, card fields: data shape or migration, public API or contract with BE, anything users depend on), and anything hard to undo after a push: ask the user on the interview page. Dispatch every phase that does not depend on the answer BEFORE serving the page; dependent phases wait. After the answer, re-dispatch with the answer. The user's answer is not a `## Claude's calls` row.
+  - **Everything else:** Claude rules, records it in `## Claude's calls`, and dispatches a fresh agent with the ruling.
 
 **Commit** — the orchestrator makes one commit per phase as soon as it passes the check; phases returning together are committed in phase-number order:
 
@@ -196,7 +196,7 @@ git -C <repo> commit -m "<subject>" -- <file> …
 - Where the user's rules require a commit identity for a repo, add `-c user.name=… -c user.email=…` accordingly.
 - On an `index.lock` error, wait a few seconds and retry. Never delete the lock file.
 - Afterwards the phase's files are gone from `git status --porcelain --untracked-files=all`.
-- A check that leaves nothing to commit (a phase that edits only pre-run files or files outside git, a check-only phase): the phase is `complete` once the check passes; record the reason in `## Claude tự quyết`.
+- A check that leaves nothing to commit (a phase that edits only pre-run files or files outside git, a check-only phase): the phase is `complete` once the check passes; record the reason in `## Claude's calls`.
 - A phase that touches several repos gets one commit per repo.
 - Subjects: `<ticket> - Phase N: <phase title>` (`Phase N: <phase title>` without a ticket; the ticket comes from the plan frontmatter or the branch name; follow the user's commit-message rules), `<ticket> - Fix test failures`, `<ticket> - Fix review findings (cycle N)`, `<ticket> - Revert <finding summary>`, `<ticket> - Apply review cleanup` (a cleanup-only batch), `<ticket> - Update docs`. The Step 4 fix batch, the Step 5 fix batch, the revert agent's change and the Step 6 docs are committed the same way.
 - Cook's commits need no per-commit confirmation; only the push is asked (§ Step 6).
@@ -207,7 +207,7 @@ git -C <repo> commit -m "<subject>" -- <file> …
 
 - **MUST** spawn a testing subagent: `Agent(subagent_type="test-engineer", prompt="<test command(s) + verification gate, per the bullets below>", description="Run tests")`. The prompt tells it to run the test command(s) and the project's verification gate (what its CLAUDE.md declares: lint, typecheck, `pnpm verify`, ...), and to report each command verbatim with pass/fail counts and the failing tests.
 - It also re-runs on the Step 3 start commit any test an implementer reported as already failing, in a temporary detached worktree (`git worktree add --detach <scratch dir> <commit>`), never by switching the main checkout, and removes the worktree afterwards. Link or install the repo's dependencies there the way its CLAUDE.md or worktree setup says (e.g. symlink `node_modules`), and confirm only when the same assertion fails on the base.
-- A test confirmed failing on the Step 3 start commit is exempt from the 100% rule here and in § After applying, and is recorded in `## Claude tự quyết`; if it passes on the base, it is a regression from this run and is treated as a failure (`debugger`).
+- A test confirmed failing on the Step 3 start commit is exempt from the 100% rule here and in § After applying, and is recorded in `## Claude's calls`; if it passes on the base, it is a regression from this run and is treated as a failure (`debugger`).
 - If failures: **MUST** spawn `debugger` subagent → fix dispatch → repeat. Fix dispatches (`debugger`/`executor`) end with <Report contract block, verbatim>; the orchestrator commits them (`<ticket> - Fix test failures`).
 - This report is the reviewers' evidence (§ Review package).
 - Tests cover happy path, edge cases, errors.
@@ -297,7 +297,7 @@ You are read-only: do not change the working tree, the index, HEAD or any branch
 
 - For the cleanup reviewer, Lens R's search counts as a named risk. The `Reuse searched:` line stays.
 - Give a reviewer only the plan, the package, the implementer reports and the evidence, as they are. Never tell a reviewer which findings are known, what to skip, or how severe something is.
-- Settle every `⚠️ CANNOT VERIFY` line yourself, before bucketing, by reading code or running one command. A confirmed problem becomes a finding in the bucket its severity puts it in; anything else goes to `## Claude tự quyết`.
+- Settle every `⚠️ CANNOT VERIFY` line yourself, before bucketing, by reading code or running one command. A confirmed problem becomes a finding in the bucket its severity puts it in; anything else goes to `## Claude's calls`.
 
 ### Dispatch 1/2 — compliance + bugs (gating)
 
@@ -449,7 +449,7 @@ Wait for every reviewer, then split the findings. This split is the whole point 
 |--------|--------|--------|
 | **Blocking** | Section A any ❌ | **Non-overridable.** Dispatch a fix sub-agent or abort. Nothing else. |
 | **Blocking** | Section B Critical or High | Dispatch a fix sub-agent, cycle++ |
-| **Non-blocking** | Section B Medium / Low | Apply what is worth applying; record each skip and why in `## Claude tự quyết` |
+| **Non-blocking** | Section B Medium / Low | Apply what is worth applying; record each skip and why in `## Claude's calls` |
 | **Non-blocking** | Agent 2, or the Cleanup section of the single reviewer (all four lenses) | Same — apply-or-skip-with-reason. **Never** blocks Step 6, **never** increments the cycle counter |
 
 **Dedup across every report before applying.** The cleanup reviewer has already collapsed its own four lenses; do not undo that by re-splitting its merged findings. Findings pointing at the same line or the same mechanism collapse into one; when a cleanup lens and Section B overlap, keep Section B's (it carries the severity that drives the gate). When you skip a cleanup finding for behaviour change or scope and it carries a `Fallback:`, judge the fallback on its own.
@@ -464,7 +464,7 @@ Cleanup edits change working code, so the step is NOT done when the fixes land:
 
 1. Re-run Step 4's test command. Must be back to 100%.
 2. Run the project's own verification gate if it declares one — the command its CLAUDE.md says must stay green (`pnpm verify` in talos-v2). Lint + typecheck + unit tests passing is **not** the same thing; a repo-level gate catches invariant violations that neither reviewer sees.
-3. If either fails, the cleanup caused it. Dispatch a fresh agent (ending with <Report contract block, verbatim>) that undoes only the offending finding's change rather than layering a fix on it; commit it as `<ticket> - Revert <finding summary>`; record the finding as skipped in `## Claude tự quyết`.
+3. If either fails, the cleanup caused it. Dispatch a fresh agent (ending with <Report contract block, verbatim>) that undoes only the offending finding's change rather than layering a fix on it; commit it as `<ticket> - Revert <finding summary>`; record the finding as skipped in `## Claude's calls`.
 
 Skipping this is how a "quality pass" ships a regression. `simplify` on its own has no verification phase — that gap is closed here, not inherited.
 
@@ -527,8 +527,8 @@ in its file is ticked (a file with no box: when its task is complete). Re-read t
 3. Use `TaskUpdate` to mark Claude Tasks complete after sync-back confirmation.
 4. Onboarding check (API keys, env vars).
 5. Commit the files the writer lists under `Files changed` (`<ticket> - Update docs`, § Report check, status and commit), never the plan root or `<plan-dir>` (the **Commit** rules in § Report check, status and commit).
-6. Ask on the interview page (`../brainstorm-pro/references/html-interview.md`), not in chat: one question per repo on the same page, "Push nhánh `<branch>` lên `<remote>`?" with options Push / Chưa push; the context of each is its own `git log --oneline <base>..HEAD`. On a branch the user's rules forbid pushing (e.g. `master`), the question says so and recommends Chưa push.
-7. If the user chose Push: when the user's push rules require fetching and merging the target branch first, the orchestrator does that (the only git commands that change file content that cook runs: the fetch + merge, and `git merge --abort` on a conflict); the merge commit uses the same commit identity as § Commit. If the merge refuses to start (uncommitted or staged changes in its way, an untracked file it would overwrite), do not stash or clean, and do not retry on your own: do not push; ask on the interview page with git's message, options `Đã dọn xong, thử lại` (run the fetch + merge once more) / `Chưa push`. On a conflict (after `git merge --abort`) ask the same two options. After a merge, dispatch `test-engineer` with the § Step 4 prompt and push only if it is green. If not green, do not push: report "not pushed" in the final report, with the failing tests and whether each also fails on the target branch. Push per the user's push rules. No squash.
+6. Ask on the interview page (`../brainstorm-pro/references/html-interview.md`), not in chat: one question per repo on the same page, "Push branch `<branch>` to `<remote>`?" with options Push / Not yet (Vietnamese: "Push nhánh … lên …?", Push / Chưa push); the context of each is its own `git log --oneline <base>..HEAD`. On a branch the user's rules forbid pushing (e.g. `master`), the question says so and recommends Not yet.
+7. If the user chose Push: when the user's push rules require fetching and merging the target branch first, the orchestrator does that (the only git commands that change file content that cook runs: the fetch + merge, and `git merge --abort` on a conflict); the merge commit uses the same commit identity as § Commit. If the merge refuses to start (uncommitted or staged changes in its way, an untracked file it would overwrite), do not stash or clean, and do not retry on your own: do not push; ask on the interview page with git's message, options `Cleaned up, retry` (run the fetch + merge once more) / `Not yet` (Vietnamese: `Đã dọn xong, thử lại` / `Chưa push`). On a conflict (after `git merge --abort`) ask the same two options. After a merge, dispatch `test-engineer` with the § Step 4 prompt and push only if it is green. If not green, do not push: report "not pushed" in the final report, with the failing tests and whether each also fails on the target branch. Push per the user's push rules. No squash.
 
 **Output:** `✓ Step 6: Finalized - [N] subagents - sync-back done - [K] commits - [pushed | not pushed]`
 
@@ -537,10 +537,18 @@ in its file is ticked (a file with no box: when its task is complete). Re-read t
 The final report goes in chat, in the user's language. It has the `✓ Step N` lines, the commit list, and:
 
 ```markdown
-## Claude tự quyết
-| Bước | Đã quyết | Vì sao | Sai thì sửa gì |
+## Claude's calls
+| Step | Decided | Why | If wrong, fix by |
 |---|---|---|---|
 ```
+
+The heading, the column names and the "None" line are written in the user's language; the Vietnamese names:
+
+| English | Vietnamese |
+|---|---|
+| Claude's calls | Claude tự quyết |
+| Step / Decided / Why / If wrong, fix by | Bước / Đã quyết / Vì sao / Sai thì sửa gì |
+| None | Không có |
 
 Sources of the rows:
 - Choices the plan made that the design did not (Step 2, only when cook wrote the plan).
@@ -556,7 +564,7 @@ Sources of the rows:
 - DONE_WITH_CONCERNS concerns that were not fixed.
 - Branch creation (§ Step 3).
 
-With no rows, write "Không có".
+With no rows, write "None" (Không có).
 
 ## Workflow Summary
 

@@ -43,4 +43,6 @@ Sort each reported question into one of three groups:
 
 Update the document with the answers, re-run the four checks of Phase 5 on the changed parts, then go to Phase 6. Report one line:
 
-`✓ Builder check: N câu — A đã có, M nhỏ, K hỏi bạn`
+`✓ Builder check: N questions — A already answered, M minor, K for you`
+
+(written in the user's language; Vietnamese: `N câu — A đã có, M nhỏ, K hỏi bạn`)

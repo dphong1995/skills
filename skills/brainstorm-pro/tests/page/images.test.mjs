@@ -53,8 +53,9 @@ describe('images on the interview page', () => {
     assert.equal(p.prevented, true);
     assert.equal(p.value, '[Image #3]');
     assert.equal(await thumbs('#card-q02'), 1);
+    await b.eval(`(() => { const t = document.querySelector('#q02-note'); t.value = '[Ảnh #3]'; t.dispatchEvent(new Event('input', { bubbles: true })); })()`);
     await b.click('#card-q02 figure button');
-    assert.equal(await b.eval(`document.querySelector('#q02-note').value`), '');
+    assert.equal(await b.eval(`document.querySelector('#q02-note').value`), '', 'a legacy [Ảnh #N] ref goes too');
     assert.equal(await thumbs('#card-q02'), 0);
   });
 

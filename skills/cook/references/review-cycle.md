@@ -13,7 +13,7 @@ Step 5 dispatches one review sub-agent (small diff) or two in one message (large
 **Non-gating — from agent 2, or the Cleanup section of the single reviewer (reuse + simplification + efficiency + altitude, already collapsed across its own lenses):**
 - Findings carry `file`, `line`, `summary`, and the concrete cost — **no severity**, because they are not bugs. They are applied or skipped with a stated reason, and they **never** gate Step 6 or increment the cycle counter.
 
-Done means Section A = all ✅ **and** Section B = no Critical / no High. Remaining Medium/Low findings and all cleanup findings are applied or explicitly skipped, each skip with its reason recorded in the final report's `## Claude tự quyết` (`workflow-steps.md` § Final report) — then re-verified (see `workflow-steps.md` § After applying).
+Done means Section A = all ✅ **and** Section B = no Critical / no High. Remaining Medium/Low findings and all cleanup findings are applied or explicitly skipped, each skip with its reason recorded in the final report's `## Claude's calls` (Claude tự quyết) (`workflow-steps.md` § Final report) — then re-verified (see `workflow-steps.md` § After applying).
 
 ## Cycle (max 3 cycles)
 
@@ -65,7 +65,7 @@ LOOP:
        → apply the warnings/suggestions/cleanup findings that are genuinely
          worth applying, re-run tests + the project verification gate,
          PROCEED, and record each skipped finding and its reason in
-         `## Claude tự quyết` (behaviour change, out of diff scope, breaks a
+         `## Claude's calls` (behaviour change, out of diff scope, breaks a
          documented invariant, false positive)
 
   5. IF cycle >= 3 AND blocking issues remain:
