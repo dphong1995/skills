@@ -367,3 +367,17 @@ private func prStatus(id: Int, state: String = "OPEN", reviewers: Int = 0, appro
     s.questionLive = false
     #expect(Layout.height(of: s) == Layout.rowHeight + Layout.questionFallbackHeight)
 }
+
+@Test func backgroundAgentsAddLine() {
+    var s = session("a", "idle", "hi")
+    let base = Layout.height(of: s)
+    s.backgroundAgents = 2
+    #expect(Layout.height(of: s) == base + Layout.todoHeight)
+}
+
+@Test func backgroundZeroAddsNoLine() {
+    var s = session("a", "idle", "hi")
+    let base = Layout.height(of: s)
+    s.backgroundAgents = 0
+    #expect(Layout.height(of: s) == base)
+}

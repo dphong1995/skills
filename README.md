@@ -245,7 +245,7 @@ widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouT
 - Đọc `~/.claude/sessions/*.json` mỗi giây, file mà mỗi session Claude Code tự ghi: `status` là `busy`
   (đang chạy), `waiting` (`waitingFor`: `permission prompt` → chờ duyệt, còn lại → chờ trả lời) hoặc
   `idle` (xong, chờ bạn). Bỏ qua tiến trình đã chết. Không cần hook hay mod.
-  `busy` mà lượt chính đã kết thúc còn agent nền đang chạy (dòng `turn_duration` cuối của transcript có `pendingBackgroundAgentCount`/`pendingWorkflowCount`) thì hiện `chờ N agent nền` với màu `đang chạy` (xanh), tính vào nhóm `đang chạy` và xếp cùng nhóm đó, nhưng vẫn hiện câu trả lời cuối và cho `Nhờ Claude` như dòng `xong`; có dòng user/assistant chính mới thì lại là `đang chạy`.
+  `busy` mà lượt chính đã kết thúc còn agent nền đang chạy (dòng `turn_duration` cuối của transcript có `pendingBackgroundAgentCount`/`pendingWorkflowCount`) thì hiện `chờ N agent nền` (thẻ có thêm một dòng `🤖×N agent nền` khi N > 0) với màu `đang chạy` (xanh), tính vào nhóm `đang chạy` và xếp cùng nhóm đó, nhưng vẫn hiện câu trả lời cuối và cho `Nhờ Claude` như dòng `xong`; có dòng user/assistant chính mới thì lại là `đang chạy`.
 - Thu gọn: viên nhỏ rộng 126 pt, không có chữ "Claude", chỉ có chấm trạng thái + số session theo màu (đỏ chờ, cam xong, xanh đang chạy); khi có session có tin mới thì nhóm vàng `✦ N` hiện đầu tiên.
 - Rê chuột vào thì mở danh sách rộng 760 pt (header chỉ có các nhóm `● n` bên phải; mỗi dòng có tiêu đề, `thư mục · nhánh`, chấm màu trạng thái, thời gian). Session vừa chuyển từ đang chạy
   sang xong/chờ thì widget tự mở 5 giây.

@@ -109,6 +109,7 @@ public enum Layout {
             base = s.isFinished && s.lastReply != nil ? replyRowHeight : rowHeight
         }
         return base + (s.todo != nil ? todoHeight : 0) + (s.activity != nil ? todoHeight : 0)
+            + ((s.backgroundAgents ?? 0) > 0 ? todoHeight : 0)
             + (s.title.count > 60 ? 16 : 0) + (s.menu.isEmpty ? 0 : 22) + s.prs.reduce(0) { $0 + ($1.isOpen ? 22 : 18) }
             + (open ? CGFloat(s.menuCount) * linkRowHeight + CGFloat(s.menu.count) * linkSectionHeight + (s.menuNeedsJira ? linkRowHeight : 0) : 0)
     }

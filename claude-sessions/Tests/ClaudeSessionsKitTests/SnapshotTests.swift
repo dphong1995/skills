@@ -179,6 +179,18 @@ struct SnapshotTests {
         render(store, panel, "19-agents")
     }
 
+    @Test func renderBackgroundAgents() {
+        let dir = makeTempDir(), projects = makeTempDir()
+        let store = makeStore(dir: dir, projects: projects)
+        let panel = PanelState()
+        _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine("hi"), assistantLine("Đã sửa xong, đang chờ agent nền chạy test."), turnDurationLine(background: 2), ""])
+        writeSession(dir, "a", pid: me, status: "busy", ageSec: 90, name: "talo6-dct-frontend-d7", cwd: frontend)
+        store.refresh(at: Date())
+        #expect(store.sessions.first?.backgroundAgents == 2)
+        panel.hovering = true
+        render(store, panel, "35-background-agents")
+    }
+
     @Test func renderScroll() {
         let dir = makeTempDir(), projects = makeTempDir()
         let store = makeStore(dir: dir, projects: projects)

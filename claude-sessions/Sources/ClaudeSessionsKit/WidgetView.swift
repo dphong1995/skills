@@ -722,6 +722,9 @@ public struct WidgetView: View {
                         }
                         .font(.system(size: 11)).foregroundStyle(.white.opacity(0.6))
                     }
+                    if let n = s.backgroundAgents, n > 0 {
+                        Text("🤖×\(n) agent nền").font(.system(size: 11)).foregroundStyle(.white.opacity(0.6)).lineLimit(1)
+                    }
                     if s.question == nil, s.isFinished, let reply = s.replyText {
                         Text(reply).font(.system(size: 11)).foregroundStyle(.white.opacity(0.75))
                             .lineLimit(4).truncationMode(.tail)
