@@ -1,32 +1,66 @@
 # Claude Code skills — brainstorm-pro / ck-plan / cook / routing-bug-fixes-to-cook
 
+English readers: see [README.en.md](README.en.md) for the install part.
+
 Bộ skill thiết kế → lập kế hoạch → triển khai cho Claude Code, kèm các subagent mà chúng dispatch.
 
-## Cài trên máy mới
+## Cài đặt
 
 ```bash
 git clone git@github.com:dphong1995/skills.git ~/.claude/skills-repo
 bash ~/.claude/skills-repo/install.sh
 ```
 
-`install.sh` copy nội dung vào `~/.claude/skills/`, `~/.claude/agents/`, `~/.claude/hooks/` và `~/.claude/mods/`, ghi các
-khối quy tắc `claude-md/` vào `~/.claude/CLAUDE.md` (xem mục "Quy tắc luôn bật") và trộn
-`settings/settings.json` vào `~/.claude/settings.json` (xem mục "Settings và hook"). Vị trí clone không quan
-trọng (script tự dò đường dẫn của chính nó) — `~/.claude/skills-repo` chỉ là mặc định gợi ý.
+`bash install.sh` mở menu để tick mục cần cài (cần terminal). Chỉ `skills` được tick sẵn. Vị trí clone không
+quan trọng (script tự dò đường dẫn của chính nó) — `~/.claude/skills-repo` chỉ là mặc định gợi ý.
+
+| Mục | Cài gì | Vào đâu | Mặc định |
+|---|---|---|---|
+| `skills` | 4 skill + 19 agent + khối quy tắc `web-pages` + tool todo (`settings/skills.json`) | `~/.claude/skills/`, `~/.claude/agents/`, `~/.claude/CLAUDE.md`, `~/.claude/settings.json` | tick |
+| `subagent` | khối quy tắc `subagent-models` + hook `subagent-context-guard` (nên cài cùng `cook`) | `~/.claude/hooks/`, `~/.claude/CLAUDE.md`, `~/.claude/settings.json` | không |
+| `vietnamese` | khối quy tắc `language` + hook `reply-language` + `language: "vietnamese"` | `~/.claude/hooks/`, `~/.claude/CLAUDE.md`, `~/.claude/settings.json` | không |
+| `compact` | mod `main-context-compact` + `CLAUDE_CODE_PLUGIN_DIRS` | `~/.claude/mods/`, `~/.claude/settings.json` | không |
+| `org-skills` | `skillOverrides` tắt các skill org không dùng cho code | `~/.claude/settings.json` | không |
+| `cmux` | settings của cmux (`cmux/install.sh`) | `~/.config/cmux/`, `~/Library/Application Support/com.cmuxterm.app/` | không |
+| `hud` | OMC HUD (`hud/install.sh`) | `~/.claude/hud/`, `~/.claude/settings.json` | không |
+| `widget` | widget ClaudeSessions: build rồi thay app đang chạy (cần macOS + `swift`) | `~/Applications/ClaudeSessions.app` | không |
+
+Cờ dòng lệnh (lỗi cách dùng thoát với mã 2 và không cài gì):
+
+- `bash install.sh --list`: in các mục rồi thoát.
+- `bash install.sh --only a,b`: cài đúng các mục này (cộng vào lựa chọn đã nhớ).
+- `bash install.sh --all`: cài cả 8 mục.
+- `bash install.sh --update`: cài lại lựa chọn đã nhớ.
+
+Lựa chọn được nhớ trong `~/.claude/.skills-repo-selection` (mỗi dòng một tên mục). Bỏ tick một mục ở lần
+cài sau **không gỡ gì khỏi máy**, chỉ là lần này không cài nó; muốn gỡ thì xoá tay (xem từng mục bên dưới).
+
+`install.sh` copy nội dung vào `~/.claude/skills/`, `~/.claude/agents/`, `~/.claude/hooks/` và `~/.claude/mods/`, ghi
+các khối quy tắc `claude-md/` vào `~/.claude/CLAUDE.md` (xem mục "Quy tắc luôn bật") và trộn các
+`settings/<mục>.json` vào `~/.claude/settings.json` (xem mục "Settings và hook").
 
 File cùng tên đang có sẵn sẽ được **chuyển vào `~/.claude/backups/skills-install-<timestamp>/`**
 trước khi ghi đè, không bị xoá. Skill/agent khác không nằm trong repo này thì không bị đụng tới.
 
 Khởi động lại Claude Code sau khi cài.
 
-## Cập nhật
+Cập nhật:
 
 ```bash
-cd ~/.claude/skills-repo && git pull && bash install.sh
+cd ~/.claude/skills-repo && git pull && bash install.sh --update
 ```
 
 Đây là chế độ **copy**, không phải symlink — `git pull` xong phải chạy lại `install.sh` thì thay đổi
 mới có hiệu lực.
+
+## Ngôn ngữ
+
+Không cài `vietnamese` thì spec, plan và các trang (phỏng vấn, duyệt) theo ngôn ngữ của người dùng, còn chrome
+của trang (nút, nhãn, hướng dẫn) là tiếng Anh. Cài `vietnamese` thì như trước: mọi tin nhắn cho người dùng bằng
+tiếng Việt. Trang tự chọn `vi` hoặc `en` theo khoá `language` trong `~/.claude/settings.json` (bỏ dấu, viết
+thường, chứa `viet` hoặc bằng `vi` → `vi`; còn lại, hoặc không đọc được file → `en`); `--lang vi|en` ép một
+ngôn ngữ. Câu trả lời gửi ngược từ trang luôn dùng nhãn tiếng Anh (`Pick:`, `Note:`, `Decision: Approve`, ...)
+dù trang hiển thị tiếng gì.
 
 ## Quy tắc luôn bật trong `~/.claude/CLAUDE.md`
 
@@ -38,13 +72,13 @@ Khối nằm trong CLAUDE.md riêng của máy, không nằm trong repo dự án
 code về. Sửa quy tắc trong repo (`claude-md/`) chứ không sửa trong CLAUDE.md: lần cài sau sẽ ghi đè
 đoạn giữa hai dòng đánh dấu.
 
-- `web-pages.md`: câu hỏi cho người dùng đi trang phỏng vấn HTML; file Markdown đưa người dùng đọc
+- `web-pages.md` (mục `skills`): câu hỏi cho người dùng đi trang phỏng vấn HTML; file Markdown đưa người dùng đọc
   hoặc duyệt (spec, thiết kế của cook, plan, draft ticket, báo cáo) mở bằng trang web dựng từ file
   md (`render-interview.mjs <file.md> … --serve | --open`).
-- `language.md`: mọi tin nhắn cho người dùng viết bằng tiếng Việt (cả dòng báo tiến độ, tin nhắn
+- `language.md` (mục `vietnamese`): mọi tin nhắn cho người dùng viết bằng tiếng Việt (cả dòng báo tiến độ, tin nhắn
   sau compact, khi chuyển tiếp tài liệu tiếng Anh); tiếng Anh chỉ ở memory, commit, prompt cho
   subagent, nội dung cho Jira/PR.
-- `subagent-models.md`: subagent thực thi (executor, test-engineer, debugger, code-simplifier, writer,
+- `subagent-models.md` (mục `subagent`): subagent thực thi (executor, test-engineer, debugger, code-simplifier, writer,
   git-master, general-purpose làm việc) luôn chạy `model: "sonnet"`; subagent chỉ review (red-team,
   code-reviewer của cook, critic, architect, verifier, security-reviewer) chạy `model: "opus"`, kể cả
   khi skill ghi model khác. Báo cáo bắt đầu bằng `PARTIAL` thì giao phần còn lại cho agent mới (không
@@ -52,31 +86,31 @@ code về. Sửa quy tắc trong repo (`claude-md/`) chứ không sửa trong CL
 
 ## Settings và hook
 
-`settings/settings.json` được trộn vào `~/.claude/settings.json` (cần `node`): khoá ở cấp cao nhất
+Mỗi mục có một mảnh `settings/<mục>.json` được trộn vào `~/.claude/settings.json` (cần `node`): khoá ở cấp cao nhất
 được ghi đè (riêng `env` được trộn từng biến, biến khác của máy giữ nguyên), một nhóm hook được thêm nếu lệnh của nó chưa có cho event đó; phần còn lại của file giữ
 nguyên, file cũ được sao lưu trước. Chạy lại `install.sh` không tạo hook trùng.
 
-- `"language": "vietnamese"`: setting có sẵn của Claude Code, đưa ngôn ngữ trả lời vào system prompt.
-- `env.CLAUDE_CODE_ENABLE_TODO_TOOLS: "1"`: bật các tool todo/task của Claude Code (`TaskCreate`, `TaskUpdate`,
+- Mục `vietnamese` (`settings/vietnamese.json`), `"language": "vietnamese"`: setting có sẵn của Claude Code, đưa ngôn ngữ trả lời vào system prompt.
+- Mục `skills` (`settings/skills.json`), `env.CLAUDE_CODE_ENABLE_TODO_TOOLS: "1"`: bật các tool todo/task của Claude Code (`TaskCreate`, `TaskUpdate`,
   ...), mà các skill dùng để theo dõi từng mục checklist trong phiên.
-- Hook `Stop` chạy `hooks/reply-language.mjs` (copy vào `~/.claude/hooks/`): khi câu trả lời cuối là
+- Mục `vietnamese` (`settings/vietnamese.json`), hook `Stop` chạy `hooks/reply-language.mjs` (copy vào `~/.claude/hooks/`): khi câu trả lời cuối là
   văn xuôi tiếng Anh (bỏ qua code, blockquote, đường dẫn; câu dưới 8 chữ bỏ qua), nó chặn một lần
   để Claude viết lại bằng tiếng Việt. Tắt bằng `/hooks` hoặc xoá nhóm hook đó trong
-  `~/.claude/settings.json`.
-- Hook `PostToolUse` chạy `hooks/subagent-context-guard.mjs`: khi context của một subagent vượt ngưỡng
+  `~/.claude/settings.json`, và xoá khỏi `settings/vietnamese.json` của repo (nếu không lần cài sau thêm lại).
+- Mục `subagent` (`settings/subagent.json`), hook `PostToolUse` chạy `hooks/subagent-context-guard.mjs`: khi context của một subagent vượt ngưỡng
   (Sonnet 200k, Opus 300k) nó nhắc đúng một lần để subagent làm xong bước đang dở rồi trả báo cáo bắt
   đầu bằng `PARTIAL`; orchestrator giao phần còn lại cho agent mới. Main thread không bị đụng tới. Tắt
   bằng `/hooks` hoặc xoá nhóm hook đó trong `~/.claude/settings.json`, và phải xoá luôn khỏi
-  `settings/settings.json` của repo, vì `install.sh` chỉ thêm nhóm hook chứ không bao giờ xoá, nên chạy
+  `settings/subagent.json` của repo, vì `install.sh` chỉ thêm nhóm hook chứ không bao giờ xoá, nên chạy
   lại sẽ thêm nó trở lại. Test: `node --test 'hooks/tests/*.test.mjs'` (dạng thư mục lỗi trên Node 24).
-- `"skillOverrides"`: tắt 38 skill `anthropic-skills:*` của org không dùng cho code (marketing, sales,
+- Mục `org-skills` (`settings/org-skills.json`), `"skillOverrides"`: tắt 38 skill `anthropic-skills:*` của org không dùng cho code (marketing, sales,
   RFP, regulatory, ...), vì danh sách skill được nhét vào context của mọi agent; danh sách rút từ khoảng
   30k xuống khoảng 21k ký tự, tức khoảng 2,3k token mỗi lượt gọi.
   Giữ lại 10 skill: `built-in-browser`, `chrome-browser`, `deep-research`, `docs`, `docx`,
   `google-workspace`, `pdf`, `pptx`, `skill-creator`, `xlsx`. Bật lại một skill bằng cách xoá dòng của nó
-  trong `settings/settings.json` của repo rồi chạy `install.sh` (không sửa ở `~/.claude/settings.json`
+  trong `settings/org-skills.json` của repo rồi chạy `install.sh --only org-skills` (không sửa ở `~/.claude/settings.json`
   vì `install.sh` ghi đè khoá `skillOverrides`).
-- Mod `mods/main-context-compact` (nạp qua `env.CLAUDE_CODE_PLUGIN_DIRS`): tự compact context của main
+- Mục `compact` (`settings/compact.json`), mod `mods/main-context-compact` (nạp qua `env.CLAUDE_CODE_PLUGIN_DIRS`): tự compact context của main
   thread. Các ngưỡng so với con số HUD/status line (input + cache token của API), cao hơn `/context`
   khoảng 15–20k. Hết lượt mà context ≥ 300k thì compact (bỏ qua nếu bạn tự ngắt lượt); trước một request
   của main mà context ≥ 400k thì dừng lượt (kèm một dòng tiếng Việt), compact rồi gửi prompt CONTINUE để
@@ -86,10 +120,10 @@ nguyên, file cũ được sao lưu trước. Chạy lại `install.sh` không t
   thread, subagent vẫn dùng `subagent-context-guard`; phiên headless (`claude -p`) không bị đụng tới.
   Đổi các con số ở `/config` →
   main-context-compact (lưu trong `pluginConfigs` của `~/.claude/settings.json`). Tắt: xoá
-  `CLAUDE_CODE_PLUGIN_DIRS` trong `~/.claude/settings.json` và trong `settings/settings.json` của repo,
+  `CLAUDE_CODE_PLUGIN_DIRS` trong `~/.claude/settings.json` và trong `settings/compact.json` của repo,
   nếu không lần `install.sh` sau sẽ đặt lại. Muốn nạp thêm thư mục plugin khác thì thêm
-  vào `env.CLAUDE_CODE_PLUGIN_DIRS` trong `settings/settings.json` của repo, ngăn cách bằng `:`, rồi chạy
-  `install.sh` (giá trị chỉ sửa ở `~/.claude/settings.json` sẽ bị thay ở lần cài sau). Sau mỗi lần cập nhật
+  vào `env.CLAUDE_CODE_PLUGIN_DIRS` trong `settings/compact.json` của repo, ngăn cách bằng `:`, rồi chạy
+  `install.sh --only compact` (giá trị chỉ sửa ở `~/.claude/settings.json` sẽ bị thay ở lần cài sau). Sau mỗi lần cập nhật
   Claude Code chạy `claude plugin validate ~/.claude/mods/main-context-compact` và
   `claude plugin test ~/.claude/skills-repo/mods/main-context-compact`.
 
@@ -129,12 +163,19 @@ mods/                 main-context-compact: mod tự compact context của main 
 
 claude-md/            Khối quy tắc luôn bật, install.sh giữ trong ~/.claude/CLAUDE.md (xem mục bên trên)
 
-cmux/                 Settings của cmux (không thuộc install.sh ở trên, xem mục cmux bên dưới)
+settings/             5 mảnh settings, mỗi mục một file: skills.json, subagent.json, vietnamese.json,
+                      compact.json, org-skills.json (xem mục Settings và hook)
 
-hud/                  Statusline OMC HUD (không thuộc install.sh ở trên, xem mục OMC HUD bên dưới)
+cmux/                 Settings của cmux (mục `cmux` của install.sh, xem mục cmux bên dưới)
 
-claude-sessions/      Widget macOS hiện các session Claude Code đang chạy (không thuộc install.sh ở trên, xem mục
+hud/                  Statusline OMC HUD (mục `hud` của install.sh, xem mục OMC HUD bên dưới)
+
+claude-sessions/      Widget macOS hiện các session Claude Code đang chạy (mục `widget` của install.sh, xem mục
                       Widget Claude sessions bên dưới)
+
+tests/                Test của install.sh (`node --test 'tests/*.test.mjs'`, chạy từ thư mục gốc repo)
+
+README.en.md          Phần cài đặt bằng tiếng Anh; phải khớp mục "Cài đặt" của file này
 ```
 
 Chuỗi thiết kế: `brainstorm-pro` → `ck-plan` → `cook` chạy liền mạch, không dừng hỏi ở giữa (trừ
@@ -156,9 +197,11 @@ các gate tương tác trong phase design của brainstorm-pro/cook; từ cook S
   - Bug fix: once the root cause is confirmed, invoke the `routing-bug-fixes-to-cook` skill before writing the fix.
   ```
   Skill này dùng chế độ Step 1 rút gọn của `cook`, nên phải cài cùng bản `cook` trong repo.
-- `install.sh` merge `settings/settings.json` vào `~/.claude/settings.json` (`env` theo từng biến, các
+- **`cook` nên cài cùng `subagent`.** Quy tắc model của subagent và hook `PARTIAL` nằm ở mục `subagent`;
+  thiếu thì cook vẫn chạy nhưng không có hai thứ đó.
+- `install.sh` merge các `settings/<mục>.json` đã chọn vào `~/.claude/settings.json` (`env` theo từng biến, các
   key khác bị ghi đè, nhóm hook được thêm vào), ghi các khối trong `claude-md/`, cài `mods/` và đặt
-  `CLAUDE_CODE_PLUGIN_DIRS`, nhưng không đụng tới plugin từ marketplace (`enabledPlugins`). Riêng
+  `CLAUDE_CODE_PLUGIN_DIRS` (mục `compact`), nhưng không đụng tới plugin từ marketplace (`enabledPlugins`). Riêng
   `hud/install.sh` ghi 2 key `statusLine`, `omcHud`.
 
 ## cmux
@@ -173,8 +216,10 @@ cmux không tự sync settings giữa các máy, nên repo giữ bản copy củ
 Cài trên máy mới (file đang có được giữ lại dạng `<file>.<timestamp>.bak`):
 
 ```bash
-bash ~/.claude/skills-repo/cmux/install.sh
+bash ~/.claude/skills-repo/install.sh --only cmux
 ```
+
+`bash ~/.claude/skills-repo/cmux/install.sh` vẫn chạy riêng được.
 
 Đẩy thay đổi ngược lên repo:
 
@@ -209,8 +254,10 @@ Cài trên máy mới (file đang có được giữ lại dạng `<file>.<times
 `omc.<timestamp>.bak`; `settings.json` chỉ bị thay 2 key trên, các key khác giữ nguyên):
 
 ```bash
-bash ~/.claude/skills-repo/hud/install.sh
+bash ~/.claude/skills-repo/install.sh --only hud
 ```
+
+`bash ~/.claude/skills-repo/hud/install.sh` vẫn chạy riêng được.
 
 Lên bản OMC mới: cập nhật plugin trên một máy có nó, rồi
 
@@ -294,8 +341,10 @@ widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouT
 Cài (cần Command Line Tools: `xcode-select --install`), build ra `~/Applications/ClaudeSessions.app`:
 
 ```bash
-bash ~/.claude/skills-repo/claude-sessions/build.sh && open ~/Applications/ClaudeSessions.app
+bash ~/.claude/skills-repo/install.sh --only widget
 ```
+
+Installer build xong thì tắt app đang chạy và mở lại bản mới. `bash ~/.claude/skills-repo/claude-sessions/build.sh && open ~/Applications/ClaudeSessions.app` vẫn chạy riêng được (tắt app đang chạy trước khi `open`, nếu không bản cũ vẫn chạy).
 
 App tự đăng ký chạy khi đăng nhập. Nếu macOS đòi duyệt (app ký ad-hoc, có thể hỏi lại sau mỗi lần build) thì bật ở System Settings → General → Login Items.
 
