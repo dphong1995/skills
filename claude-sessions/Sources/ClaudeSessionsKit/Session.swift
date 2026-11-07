@@ -76,6 +76,8 @@ struct Session: Identifiable, Equatable {
 extension Session {
     /// `idle` while only background agents run, else the raw `status`.
     var shownStatus: String { backgroundAgents != nil ? "idle" : status }
+    /// The colour, group and sort order: background agents still running count as running.
+    var colorStatus: String { backgroundAgents != nil ? "busy" : status }
     var title: String { nameSource == "user" ? name : (aiTitle ?? firstPrompt ?? name) }
     var folder: String { ClosedSession.folder(cwd) }
     var subtitle: String { ClosedSession.subtitle(cwd: cwd, branch: branch) }
@@ -725,7 +727,7 @@ public final class Store: ObservableObject {
         if !shownCommands.isSubset(of: openTools) { shownCommands.formIntersection(openTools) }
 
         func rank(_ s: Session) -> Int {
-            switch s.shownStatus { case "waiting": 0; case "idle": 1; case "busy": 2; default: 3 }
+            switch s.colorStatus { case "waiting": 0; case "idle": 1; case "busy": 2; default: 3 }
         }
         list.sort { (rank($0), $0.title) < (rank($1), $1.title) }
         if list != sessions { sessions = list }

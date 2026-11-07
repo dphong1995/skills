@@ -769,6 +769,7 @@ private let askX = WidgetAction.askClaude("a", prompt: "x")
     r.refresh()
     #expect(r.session?.backgroundAgents == 3)
     #expect(r.session?.shownStatus == "idle")
+    #expect(r.session?.colorStatus == "busy")
     #expect(r.activity == nil)
     #expect(r.store.stillValid(askX))
 }

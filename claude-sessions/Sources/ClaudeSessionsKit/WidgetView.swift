@@ -445,7 +445,7 @@ public struct WidgetView: View {
     }
 
     private func groups(expanded: Bool, dot: CGFloat, gap: CGFloat) -> some View {
-        let counts = Dictionary(grouping: store.sessions, by: \.shownStatus).mapValues(\.count)
+        let counts = Dictionary(grouping: store.sessions, by: \.colorStatus).mapValues(\.count)
         let newCount = store.newCount
         return HStack(spacing: gap) {
             if let q = store.quota {
@@ -701,7 +701,7 @@ public struct WidgetView: View {
         let markedShown = Set(s.prs.map(\.ref)).intersection(mark?.prs ?? [])
         return VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 10) {
-                Circle().fill(color(s.shownStatus)).frame(width: 8, height: 8)
+                Circle().fill(color(s.colorStatus)).frame(width: 8, height: 8)
                     .accessibilityLabel(statusText(s) + newLabel.joined())
                 VStack(alignment: .leading, spacing: 1) {
                     Text(s.title).font(.system(size: 12.5, weight: .medium)).foregroundStyle(.white).lineLimit(2)
