@@ -20,14 +20,14 @@ through subagents. You cannot talk to its author or to the user, and you were to
 the document is your whole requirement.
 
 Read CLAUDE.md in [REPO_ROOTS], then [DOCUMENT_PATH]. You may open files the document cites to check
-a claim. Do not explore further and do not redesign. Treat every row of "## Quyết định" as settled,
-whoever made it. The document is in Vietnamese; answer in English.
+a claim. Do not explore further and do not redesign. Treat every row of "## Decisions" (Quyết định) as settled,
+whoever made it. The document is in the user's language (the `language` setting when set, else the language the user writes in), with section names per `design-flow.md` § Phase 4; answer in English.
 
 Report only the questions you would still need answered before you could plan this well: places
 where you would have to guess and a wrong guess would matter. For each give the question, the
 section it comes from, and why the answer changes the plan. Rank them by importance.
 
-Skip what "## Còn mở" leaves open on purpose, anything you could reasonably decide yourself, and
+Skip what "## Open items" (Còn mở) leaves open on purpose, anything you could reasonably decide yourself, and
 wording nitpicks. If nothing important is left, say "nothing important left".
 ```
 
@@ -35,9 +35,9 @@ wording nitpicks. If nothing important is left, say "nothing important left".
 
 Sort each reported question into one of three groups:
 
-1. **Already answered** in the conversation, the scout or the code: write the answer into the document; set Nguồn by who decided it.
-2. **Small**: a reasonable builder could decide it without changing what gets built. Decide it yourself and add a `## Quyết định` row with Nguồn `Claude`.
-3. **Yours (the user's)**: only the user can answer and the answer changes what gets built. Ask them in one interview round on the question page (`~/.claude/skills/brainstorm-pro/references/html-interview.md`, full cards as in Phase 2): at most 4 independent questions. Any beyond 4 go to `## Còn mở` with their options; so does a question that depends on another one's answer, unless, given that answer, it still changes what gets built — then ask it in one more round.
+1. **Already answered** in the conversation, the scout or the code: write the answer into the document; set Source (Nguồn) by who decided it.
+2. **Small**: a reasonable builder could decide it without changing what gets built. Decide it yourself and add a `## Decisions` row with Source `Claude`.
+3. **Yours (the user's)**: only the user can answer and the answer changes what gets built. Ask them in one interview round on the question page (`~/.claude/skills/brainstorm-pro/references/html-interview.md`, full cards as in Phase 2): at most 4 independent questions. Any beyond 4 go to `## Open items` with their options; so does a question that depends on another one's answer, unless, given that answer, it still changes what gets built — then ask it in one more round.
 
 ## After
 

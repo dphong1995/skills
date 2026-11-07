@@ -24,29 +24,29 @@ the page's viewer, as on the interview page; Markdown links to local files resol
 link), `###` subsections, tables, fenced code with a language, `mermaid` fences, `- [ ]` task lists.
 Raw HTML in the Markdown shows as text.
 
-Write a document that goes on a page in Vietnamese, the user's language, even where the project's
-other documents are English: headings, prose, tables. Code, identifiers, file paths, commands and
+Write a document that goes on a page in the user's language (the `language` setting when set, else the language the user writes in), even where the project's
+other documents are in another language: headings, prose, tables. Code, identifiers, file paths, commands and
 text meant for Jira or a PR stay as they are (in a ticket draft, the ticket text stays English and
-the notes around it are Vietnamese).
+the notes around it are in the user's language).
 
 Keep one `review-<slug>/` directory per document and number the pages: each served round is
 compared with the one before (state in `review-<slug>/.review-state.json`), so the page says
-`lần N`, lists the sections changed, added and removed, and badges them.
+`Round N` (`lần N`, Vietnamese), lists the sections changed, added and removed, and badges them.
 
-On a served page every `##` and `###` heading has a **Góp ý** button and a **Góp ý chung** box
-closes the page; selecting text shows a **Góp ý** button that marks the passage and opens a note
-under it; next to it, for a selection inside one block, **Sửa thành** opens a box to type the replacement
-text (an unchanged box counts as empty); code blocks have a Copy button; the bar has **Duyệt** and **Gửi góp ý**
+On a served page every `##` and `###` heading has a **Note** (Góp ý) button and a **General notes** (Góp ý chung) box
+closes the page; selecting text shows a **Note** button that marks the passage and opens a note
+under it; next to it, for a selection inside one block, **Change to** (Sửa thành) opens a box to type the replacement
+text (an unchanged box counts as empty); code blocks have a Copy button; the bar has **Approve** (Duyệt) and **Send notes** (Gửi góp ý)
 (Cmd/Ctrl+Enter). With at least one note, every send (either button, `⌘Enter`, `⌘⇧Enter`) first asks in a dialog:
-**Duyệt** (`D`: apply the notes and go on) or **Cần sửa** (`S`: revise and show again), no default, `Enter` does
-nothing; with no notes Duyệt sends at once. Note boxes take pasted or
-dropped images (`[Image #N]`). Notes autosave in the browser. A sent Duyệt or Gửi góp ý closes the tab. Before
+**Approve** (`D`: apply the notes and go on) or **Revise** (Cần sửa; `S`: revise and show again), no default, `Enter` does
+nothing; with no notes Approve sends at once. Note boxes take pasted or
+dropped images (`[Image #N]`). Notes autosave in the browser. A sent Approve or Send notes closes the tab. Before
 an answer is sent or copied, closing or reloading the tab asks first (the browser's own dialog, shown only after
 the user has clicked or typed on the page).
-Keys: `J`/`K` move between headings, `C` comments the selection (or the current section), `E` is Sửa thành, `G` the general
-box, `⌘Enter` sends, `⌘⇧Enter` is Duyệt (with notes the chooser opens first), `D`/`S` choose inside the chooser, `?` lists them all.
-From round 2 the page shows the notes of the previous round under their sections ("Góp ý lần trước"; general notes and
-those whose section is gone in the "Lần N" alert) and a **Xem chỗ đổi** toggle with a word diff of what changed.
+Keys: `J`/`K` move between headings, `C` comments the selection (or the current section), `E` is Change to, `G` the general
+box, `⌘Enter` sends, `⌘⇧Enter` is Approve (with notes the chooser opens first), `D`/`S` choose inside the chooser, `?` lists them all.
+From round 2 the page shows the notes of the previous round under their sections ("Previous notes" (Góp ý lần trước); general notes and
+those whose section is gone in the "Round N" alert) and a **Show changes** (Xem chỗ đổi) toggle with a word diff of what changed.
 
 ## Reading the answer
 

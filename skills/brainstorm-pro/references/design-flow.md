@@ -32,7 +32,7 @@ Run Phases 1–6 below as written. Do nothing the next step does (invoking a ski
 | "Research the best practice first, then scout" | Scout first — the repo may already solve it (reuse beats research) and you'd research the wrong stack. Best-practice research is Phase 1.5, AFTER scout. |
 | "Deep-dive the pattern now, before Q&A" | If WHAT is still fuzzy you may deep-dive a direction the user descopes. Orient lightly; deep-dive only a real, still-open fork. |
 | "The design is all in the document now, so the review can be skipped" | The document IS what the user approves, section by section on the review page (Phase 6). Writing it is not approving it. |
-| "Duyệt came with notes, they can wait for the plan" | Notes sent with Duyệt are small fixes: apply them to the document before the next step. |
+| "Approve came with notes, they can wait for the plan" | Notes sent with Approve are small fixes: apply them to the document before the next step. |
 | "No open questions left, so nothing to wait for" | Having no *questions* is why you write the document. It is not permission to hand it off. The user reviews the artifact, not your confidence in it. |
 | "Self-review found nothing, so the builder check adds nothing" | You wrote it from the conversation; you cannot see what it leaves out. The builder can. |
 | "The picks are on the page, so the user knows what I understood" | Picks are answers, not your understanding of why. Play it back once before Phase 3. |
@@ -134,7 +134,7 @@ The scope-fixing question (Q0) and the Phase 3 approach pick are asked the same 
 
 **Rules:**
 - ONE round per page — one question, or up to 4 independent ones (no answer can change another's options or relevance). Open it, wait for the answers, then open the next. A question that depends on an answer waits for the next round
-- 2-4 suggested options per question with **your recommendation** clearly marked (the playback card excepted), plus a **"Khác (tự nhập)" option on every question** for the user's own answer (the page adds it; in the chat fallback, list it yourself)
+- 2-4 suggested options per question with **your recommendation** clearly marked (the playback card excepted), plus a **"Other (type your own)" (Khác (tự nhập)) option on every question** for the user's own answer (the page adds it; in the chat fallback, list it yourself)
 - Each question targets the **biggest current gap** in your understanding
 - After each answer, decide: do I need to re-explore the code? If yes, mini-explore (1-3 actions) BEFORE the next question
 - Brutal honesty injection: at least once during the loop, challenge the user's framing or preferred direction with a "what if X were not true?" question
@@ -151,10 +151,10 @@ The scope-fixing question (Q0) and the Phase 3 approach pick are asked the same 
 
 **Scope check (continuous):** if the request describes 3+ independent subsystems (e.g. "platform with chat, billing, analytics"), STOP and help decompose into sub-projects. Each sub-project gets its own brainstorm cycle.
 
-### Thẻ phát lại (playback card)
+### Playback card
 
 - **When:** the goal and scope are clear, right before Phase 3. A round holding only this card.
-- **Card:** `stage: "Phát lại"`, `title`: "Tôi đang hiểu việc cần làm như dưới đây. Đúng chưa?". `context`: 200-300 words — what is to be built, for whom, why, and what is in and out of scope (ideas dropped included). Only what the user said is attributed to the user; every guess is marked **(đoán)**. Options `A. Đúng` / `B. Sai hoặc thiếu` (the user notes where it is wrong). Fields: `id`, `n`, `stage`, `title`, `context`, `options` (`id`, `label` only); no `why`, `reversible` or `recommendation`.
+- **Card:** `stage: "Playback"`, `title`: "Here is what I understand you want built. Is that right?" (in the user's language; Vietnamese: `stage: "Phát lại"`, "Tôi đang hiểu việc cần làm như dưới đây. Đúng chưa?"). `context`: 200-300 words — what is to be built, for whom, why, and what is in and out of scope (ideas dropped included). Only what the user said is attributed to the user; every guess is marked **(guess)** (Vietnamese: **(đoán)**). Options `A. Right` / `B. Wrong or missing` (Vietnamese: `A. Đúng` / `B. Sai hoặc thiếu`) (the user notes where it is wrong). Fields: `id`, `n`, `stage`, `title`, `context`, `options` (`id`, `label` only); no `why`, `reversible` or `recommendation`.
 - **Reading the answer:** A → Phase 3. B → fix your understanding (a mini re-explore if needed); ask more if the note opens a new gap; play it back again only if the thing to build changed; then Phase 3.
 - **Skipped** on shortened branches ("just code it", cook's bug-fix shortcut): they do not run Phase 2.
 
@@ -194,57 +194,83 @@ The design goes straight into the file; it is not walked through in chat. Scale 
 **Document structure** (a Google-style design doc with the bottom line first; the reader decides from the
 first two sections whether to skim or read closely):
 ```markdown
-# Spec: <chủ đề>
+# Spec: <topic>
 
-## Tóm tắt
-- **Thay đổi:** what the user or system gets, in one line
-- **Cách làm:** the chosen approach, in one line
-- **Công sức:** phases, repos, size
-- **Còn cần bạn quyết:** what needs the user, or "không"
+## Summary
+- **Change:** what the user or system gets, in one line
+- **Approach:** the chosen approach, in one line
+- **Effort:** phases, repos, size
+- **Needs your call:** what needs the user, or "none"
 
-## Cần bạn xem kỹ
+## Look closely
 1-3 places that most need the reader's judgement: hard-to-reverse choices, risks, assumptions.
 
-## Bối cảnh
+## Context
 Today, with `file:line` evidence and the scout's reuse findings; no solution yet.
 
-## Mục tiêu / Không làm
+## Goals / Non-goals
 
-## Quyết định
+## Decisions
 The interview's picks and the calls made without asking, one row each:
 
-| Câu | Chọn | Nguồn |
+| Question | Pick | Source |
 |---|---|---|
-| question | the pick | bạn / Claude |
+| question | the pick | you / Claude |
 
-## Cách làm
-The chosen approach and why, then a "Phương án đã loại" table (each alternative, including
-"không làm", with one reason it lost).
+## Approach
+The chosen approach and why, then a "Rejected alternatives" table (each alternative, including
+"do nothing", with one reason it lost).
 
-## Thiết kế
-### Kiến trúc              (a Mermaid diagram when there are 3+ parts)
-### Thành phần / File      (create/modify, what changes, what it reuses)
-### Luồng dữ liệu / Kiểu   (shapes, not full code; cite file:line)
-### Truy vết AC         (only for Story/Epic work: the table of `~/.claude/skills/brainstorm-pro/references/jira-snapshot.md` § Traceability table; AC text English, verbatim)
+## Design
+### Architecture              (a Mermaid diagram when there are 3+ parts)
+### Components / Files        (create/modify, what changes, what it reuses)
+### Data flow / Types         (shapes, not full code; cite file:line)
+### AC traceability           (only for Story/Epic work: the table of `~/.claude/skills/brainstorm-pro/references/jira-snapshot.md` § Traceability table; AC text English, verbatim)
 
-## Rủi ro & xử lý lỗi
+## Risks & error handling
 
-## Kiểm thử & triển khai
+## Testing & rollout
 
-## Tiêu chí hoàn thành
+## Done criteria
 - [ ] Concrete, testable items
 
-## Còn mở
+## Open items
 - Genuinely deferred decisions (with options to revisit)
 
-## Phụ lục: File thay đổi
+## Appendix: Changed files
 FE: ...
 BE: ...
 ```
 
-**Nguồn column:** `bạn` = the user picked it, on the page or in chat, including with the "Theo đề xuất" button. `Claude` = you decided without asking. A `Claude` row that is hard to change later also goes in `## Cần bạn xem kỹ`.
+**Section names.** The names above are the English names; cook, ck-plan, the builder check and the Jira snapshot cite them. Write the headings (and the table's column headers and `Source` values) in the user's language (the `language` setting when set, else the language the user writes in), using the Vietnamese names below when that language is Vietnamese. The page reads `##` headings generically, so any language works.
 
-Write the document in Vietnamese: the user reads it on the review page. Code, identifiers, file paths,
+| English name | Vietnamese name |
+|---|---|
+| Spec: <topic> | Spec: <chủ đề> |
+| Summary | Tóm tắt |
+| Change / Approach / Effort / Needs your call | Thay đổi / Cách làm / Công sức / Còn cần bạn quyết (value "none" → "không") |
+| Look closely | Cần bạn xem kỹ |
+| Context | Bối cảnh |
+| Goals / Non-goals | Mục tiêu / Không làm |
+| Decisions | Quyết định |
+| Question / Pick / Source | Câu / Chọn / Nguồn |
+| `you` / `Claude` | `bạn` / `Claude` |
+| Approach | Cách làm |
+| Rejected alternatives | Phương án đã loại |
+| Design | Thiết kế |
+| Architecture | Kiến trúc |
+| Components / Files | Thành phần / File |
+| Data flow / Types | Luồng dữ liệu / Kiểu |
+| AC traceability | Truy vết AC |
+| Risks & error handling | Rủi ro & xử lý lỗi |
+| Testing & rollout | Kiểm thử & triển khai |
+| Done criteria | Tiêu chí hoàn thành |
+| Open items | Còn mở |
+| Appendix: Changed files | Phụ lục: File thay đổi |
+
+**Source column:** `you` (`bạn`) = the user picked it, on the page or in chat, including with the "Use recommendations" (Theo đề xuất) button. `Claude` = you decided without asking. A `Claude` row that is hard to change later also goes in `## Look closely`.
+
+Write the document in the user's language: the user reads it on the review page. Code, identifiers, file paths,
 commands and text meant for Jira or a PR stay as they are. Each section opens with its conclusion.
 Keep code short and cite `file:line`: the review page opens the file.
 
@@ -286,7 +312,7 @@ node ~/.claude/skills/brainstorm-pro/assets/render-interview.mjs <document path>
 
 ### What does NOT satisfy this gate
 
-The only things that open it are the user's **Duyệt** on the document's review page, or their approving
+The only things that open it are the user's **Approve (Duyệt)** on the document's review page, or their approving
 reply in chat, in this conversation, after the document file exists. None of the following count — each is a real way this gate has been
 skipped by mistake:
 
@@ -343,7 +369,7 @@ Why bad: scout would reveal `TypeORM` instantly. Wastes a round.
 - [ ] 2-3 approaches presented with trade-offs + recommendation
 - [ ] Document written to the path the caller gave
 - [ ] Document self-review completed (4 checks)
-- [ ] Document shown on its review page (`--serve`); notes applied; the user approved it — you can quote the Duyệt or the reply
+- [ ] Document shown on its review page (`--serve`); notes applied; the user approved it — you can quote the Approve or the reply
 - [ ] Playback card asked before Phase 3
 - [ ] Builder check ran and was triaged
-- [ ] `## Quyết định` has the Nguồn column and the hard-to-change `Claude` rows are in `## Cần bạn xem kỹ`
+- [ ] `## Decisions` has the Source column and the hard-to-change `Claude` rows are in `## Look closely`

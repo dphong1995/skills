@@ -19,7 +19,7 @@ What the flow does:
 
 - Deep scout before any question; best-practice research right after it when warranted; brutal honesty and pushback on the premise; terminal at `ck-plan`.
 - Interview rounds on a local HTML page that sends the answers back to Claude (copy-and-paste as the fallback): one question, or up to 4 independent ones, per round; multi-choice with a recommendation; mid-stream re-explore when an answer reveals a new direction.
-- A playback card before the approaches, a spec self-review (4 checks), a builder check by a fresh agent, a Nguồn column in `## Quyết định`, and the user's review gate before the plan.
+- A playback card before the approaches, a spec self-review (4 checks), a builder check by a fresh agent, a Source column in `## Decisions`, and the user's review gate before the plan.
 
 ## Start here
 
@@ -42,7 +42,7 @@ This gate is a **precondition on implementation, not a ban on it.** Once it is s
 Do NOT invoke any implementation skill, write any code, scaffold any project, or take any implementation action until you have:
 1. Written the design as the spec, in sections, and self-reviewed it
 2. Shown the spec on its review page, where every section takes the user's notes
-3. The user has approved the written spec (Duyệt on the page, or an approving reply in chat)
+3. The user has approved the written spec (Approve (Duyệt) on the page, or an approving reply in chat)
 
 This applies to EVERY project regardless of perceived simplicity. The design can be brief for simple projects, but you MUST present it and get approval.
 
@@ -56,7 +56,7 @@ This applies to EVERY project regardless of perceived simplicity. The design can
 
 ## Phase 7: Terminal — Invoke ck-plan (which runs on into cook)
 
-**Precondition: Phase 6 passed — the user approved the spec (Duyệt on its review page, or a reply in
+**Precondition: Phase 6 passed — the user approved the spec (Approve on its review page, or a reply in
 chat).** If you cannot point to that answer, you are not in Phase 7. Go back and ask.
 
 Once user approves the spec, invoke the `ck-plan` skill immediately (`Skill` tool, `skill: "ck-plan"`) — same turn, no confirmation prompt.

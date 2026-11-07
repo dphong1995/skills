@@ -56,8 +56,8 @@ Anti-Rationalization rows (in addition to `design-flow.md`'s):
 - **Bug fix handed off by `routing-bug-fixes-to-cook`** (root cause confirmed) → same collapse, with
   the investigation as the scout: Q&A only for a genuinely open question, then ONE interview-page
   question that is the approval: the candidate fixes as options with a `recommendation` (a single
-  candidate → options Duyệt / Cần sửa) and the 5-line design block in `context`; files that differ
-  per candidate go in each option's `means`. A listed fix or Duyệt starts Step 2, with no chat
+  candidate → options Approve (Duyệt) / Revise (Cần sửa)) and the 5-line design block in `context`; files that differ
+  per candidate go in each option's `means`. A listed fix or Approve starts Step 2, with no chat
   approval, no `design.md` and no review page. Cần sửa or `Other: <text>` → apply the note to the design block
   and ask again under a new id.
 - **Topic too large** → decompose into sub-projects; cook only the first.
@@ -68,6 +68,6 @@ Anti-Rationalization rows (in addition to `design-flow.md`'s):
 ## Design Step Checklist
 
 - [ ] Every item of the `design-flow.md` checklist is ticked
-- [ ] `<plan-dir>/design.md` written in Vietnamese (with its Tiêu chí hoàn thành), self-reviewed, approved on its review page
+- [ ] `<plan-dir>/design.md` written in the user's language (the `language` setting when set, else the language the user writes in) (with its Done criteria (Tiêu chí hoàn thành)), self-reviewed, approved on its review page
 - [ ] No implementation code written during Step 1
 - [ ] No `spec.md` written and no handoff to `ck-plan` — Step 2 continues in this run

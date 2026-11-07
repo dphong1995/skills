@@ -68,10 +68,10 @@ included, to a new `round-NN.html`; never reuse a path for different questions.
 | Field | Content |
 |---|---|
 | `id`, `n` | `q03` and `3`. Ids run on across rounds in the order asked. |
-| `stage` | Short tag for the kind of gap: Mục tiêu / Phạm vi / Ràng buộc / Tiêu chí xong / Cách làm / Phản biện / Phát lại. |
+| `stage` | Short tag for the kind of gap, in the user's language: Goal / Scope / Constraints / Done criteria / Approach / Pushback / Playback (Vietnamese: Mục tiêu / Phạm vi / Ràng buộc / Tiêu chí xong / Cách làm / Phản biện / Phát lại). |
 | `title` | The decision in one plain sentence. No jargon the user would have to look up. |
 | `why` | What changes depending on the answer: what gets built differently, what it rules in or out. 1-2 sentences. |
-| `reversible`, `reversibleWhy` | `true` when a wrong pick is cheap to change later (a message, a label, a config value, a test), `false` when it is costly (data shape or migration, public API, contract with BE, anything users start depending on). `reversibleWhy`: one short line saying what changing it later would take. Shown as a "Dễ đổi / Khó đổi về sau" badge so the user spends their time on the costly ones. |
+| `reversible`, `reversibleWhy` | `true` when a wrong pick is cheap to change later (a message, a label, a config value, a test), `false` when it is costly (data shape or migration, public API, contract with BE, anything users start depending on). `reversibleWhy`: one short line saying what changing it later would take. Shown as a "Easy to change later / Hard to change later" badge (Dễ đổi / Khó đổi về sau) so the user spends their time on the costly ones. |
 | `context` | Blocks (see below): how it works today, with scout evidence (`file:line`, existing component or table names); a concrete scenario of the situation the decision is about; every term the options use, explained in plain words. A `table` when options differ along the same axes. |
 | `options` | 2-4 entries. Each: `id`, `label` (2-6 words), `means` (what concretely happens / what the user would see), `example` (one concrete case played through this option), `pros`, `cons` (short lists), `effort` (e.g. `thấp`, `1 file FE`). Optional `code`: a code block (same fields as below, without `t`) showing this option's shape, when options differ in code. Optional `mockup`: HTML for a wireframe of this option's screen (below), when the question is about a screen. Give every option the same optional parts so they line up. |
 | `multi` | `true` only when several options can hold together. |
@@ -88,11 +88,11 @@ The page shows the options side by side, lined up part by part (`means`, `mockup
 `pros`/`cons`), so give every option the same fields and keep them short and parallel. The
 recommendation sits under the options, above the answer strip; a click on an option's card picks
 it like its button in the strip. Nothing is preselected, but a
-"Theo đề xuất" button on the floating bar picks the `recommendation.option` on every unanswered
+"Use recommendations" (Theo đề xuất) button on the floating bar picks the `recommendation.option` on every unanswered
 question, and the top bar links to each question with its answered state.
 
-The answer strip adds two choices after yours on every question: "Khác (tự nhập)" with its own text
-box, and "Cần giải thích thêm". Never add either to `options`. The copy button refuses until every
+The answer strip adds two choices after yours on every question: "Other (type your own)" (Khác (tự nhập)) with its own text
+box, and "Needs more explanation" (Cần giải thích thêm). Never add either to `options`. The copy button refuses until every
 question on the page has a choice.
 
 Context blocks (`t` is the type):
@@ -244,4 +244,4 @@ into the spec (or cook's `design.md`) as usual. When the questions came from a p
 No browser to open (a remote session; the serve command exits 4 with "Could not open a browser") →
 ask in chat instead, one round per message, with the
 same fields in Markdown: title, why, context, options with means / example / pros / cons / effort,
-recommendation, and always a last option "Khác (tự nhập)" for the user's own answer.
+recommendation, and always a last option "Other (type your own)" for the user's own answer.

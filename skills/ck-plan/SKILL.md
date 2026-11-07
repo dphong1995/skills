@@ -135,7 +135,7 @@ Skip the auto-handoff **only** when:
 - this skill was invoked as a subcommand (`archive`, `red-team`, `validate`).
 
 In those cases, print `/cook {absolute-plan-path}/plan.md` as the suggested next step instead. When
-the chain stops at a plan the user asked for (planning only), write `plan.md` in Vietnamese (they
+the chain stops at a plan the user asked for (planning only), write `plan.md` in the user's language (the `language` setting when set, else the language the user writes in) (they
 read it on a page; phase files stay as usual; section headings and the `None.` / `None found
 (checked: …)` markers stay in English, because cook reads them by name) and open it for them
 (`../brainstorm-pro/references/html-doc.md`):

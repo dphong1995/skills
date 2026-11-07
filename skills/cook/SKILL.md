@@ -103,7 +103,7 @@ flowchart TD
       C1[1A: Deep Scout] --> C2[1B: Best-Practice Research<br/>conditional]
       C2 --> C3[1C: Q&A Loop — one round at a time<br/>on an HTML question page, answers sent back, thẻ phát lại]
       C3 --> C4[1D: Propose 2-3 Approaches]
-      C4 --> C5[1E: design.md on a review page<br/>builder check, notes per section, Duyệt]
+      C4 --> C5[1E: design.md on a review page<br/>builder check, notes per section, Approve]
     end
     C5 --> D[Step 2: Plan — orchestrator writes plan files itself<br/>from the approved design block, NOT a spec, NO sub-agent]
     D --> F

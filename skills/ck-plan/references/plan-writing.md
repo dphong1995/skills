@@ -27,7 +27,7 @@ Frontmatter (`output-standards.md`), then in this order:
   Each line's test is a step in the owning phase. With none: `None found (checked: <what you considered>)`.
 - `## Phases`: the table (`plan-organization.md` § Plan Creation).
 - `## Dependencies`
-- `## AC Traceability`: only when the spec or design has "Truy vết AC". Copy AC, Text and Status
+- `## AC Traceability`: only when the spec or design has an "AC traceability" section (Truy vết AC). Copy AC, Text and Status
   verbatim and fill Where with the owning phase file; format:
   `../brainstorm-pro/references/jira-snapshot.md` § Traceability table.
 - Cook adds `## Acceptance Criteria` and `## Open Items` (`../cook/references/workflow-steps.md` § Step 2).
@@ -100,7 +100,7 @@ Run after writing the plan, in every mode (fast included), before red team, vali
 handoff. Re-read the plan with the spec (or design) beside it. Fix what you find in the plan files;
 no second pass. A spec requirement with no phase gets a phase or a step.
 
-1. **Coverage**: every requirement and every Tiêu chí hoàn thành / Acceptance Criteria item of the
+1. **Coverage**: every requirement and every Done criteria (Tiêu chí hoàn thành) / Acceptance Criteria item of the
    spec or design maps to a phase; every `in scope` AC Traceability row names a phase and is listed
    in that phase's Success Criteria.
 2. **Step scan**: every step lets the executor write exactly one reasonable thing: no line that

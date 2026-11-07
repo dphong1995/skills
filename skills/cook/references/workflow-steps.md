@@ -26,7 +26,7 @@ design stage only. Summary:
 | 1B Best-Practice Research | Conditional — only if no in-repo precedent AND well-trodden externally AND a real design fork. Orienting pass by default. | Orchestrator; `document-specialist` / context7 / WebSearch optional |
 | 1C Q&A Loop | ONE round at a time (one question, or up to 4 independent ones) on a local HTML question page (`../brainstorm-pro/references/html-interview.md`): full card, multi-choice + recommendation, answers sent back from the page (or pasted), mini re-explore between rounds, ≥1 brutal-honesty pushback, a playback card ("Thẻ phát lại", no recommendation) before the approaches. **Cap 8 rounds.** | Orchestrator only |
 | 1D Approaches | 2-3 approaches with pros/cons/effort, recommendation first — the last question on the interview page. | Orchestrator only |
-| 1E Design review | The design written to `<plan-dir>/design.md` (brainstorm-pro's spec structure), self-reviewed + builder check, shown on a review page (`--serve`) — **notes per section, then Duyệt**. | Orchestrator; builder check agent (`../brainstorm-pro/references/builder-check.md`) |
+| 1E Design review | The design written to `<plan-dir>/design.md` (brainstorm-pro's spec structure), self-reviewed + builder check, shown on a review page (`--serve`) — **notes per section, then Approve (Duyệt)**. | Orchestrator; builder check agent (`../brainstorm-pro/references/builder-check.md`) |
 
 **This step is interactive.** The "no approval stops" rule does NOT apply here — it starts at Step 2.
 
@@ -74,10 +74,10 @@ Concretely that means:
 | Cook concept | Goes into |
 |---|---|
 | Approved design (`design.md`, already in the plan dir) | `plan.md` links it right after `## Overview` (`Design: [design.md](./design.md)`) — never copy it in |
-| Acceptance criteria (`design.md` § Tiêu chí hoàn thành, verbatim) | `plan.md` `## Acceptance Criteria` — Step 5 Section A verifies against it, so it is the authoritative contract |
+| Acceptance criteria (`design.md` § Done criteria (Tiêu chí hoàn thành), verbatim) | `plan.md` `## Acceptance Criteria` — Step 5 Section A verifies against it, so it is the authoritative contract |
 | Per-phase "Done when" | that phase file's **Success Criteria** section |
 | Per-phase file ownership | that phase file's **Related Code Files** section — must be disjoint across phases marked parallel |
-| AC traceability (design.md § Truy vết AC, when 1A saved stories) | plan.md `## AC Traceability`: AC, Text and Status copied verbatim, Where = the owning phase file; that phase's **Success Criteria** lists its row ids |
+| AC traceability (design.md § AC traceability (Truy vết AC), when 1A saved stories) | plan.md `## AC Traceability`: AC, Text and Status copied verbatim, Where = the owning phase file; that phase's **Success Criteria** lists its row ids |
 | Open Items | `plan.md` `## Open Items` |
 
 Scope/file-ownership/Success-Criteria blocks are passed **verbatim** into each Step 3 sub-agent
@@ -97,7 +97,7 @@ prompt, so write them to be read by an agent with no other context.
 - Size phases per `../ck-plan/references/plan-writing.md` § Sizing phases.
 - Plans are local working artifacts — write them, never commit them.
 
-**Plan self-review (orchestrator, no user gate):** run `../ck-plan/references/plan-writing.md` § Self-Review, plus one cook-only check: `plan.md` has `## Acceptance Criteria` matching design.md § Tiêu chí hoàn thành. Fix issues inline (plan files only — never production code). Report its result in the Output line below, not as a separate line.
+**Plan self-review (orchestrator, no user gate):** run `../ck-plan/references/plan-writing.md` § Self-Review, plus one cook-only check: `plan.md` has `## Acceptance Criteria` matching design.md § Done criteria. Fix issues inline (plan files only — never production code). Report its result in the Output line below, not as a separate line.
 
 **Output:** `✓ Step 2: Plan created - [N] phases - ck-plan format - self-review [clean | K fixes]`
 
@@ -322,7 +322,7 @@ Agent(
   ## Return TWO sections — both required, no exceptions
 
   ### Section A — Plan Compliance
-  For every § Acceptance Criteria checkbox in plan.md (or spec.md's § Tiêu chí hoàn thành /
+  For every § Acceptance Criteria checkbox in plan.md (or spec.md's § Done criteria /
   Acceptance Criteria if present)
   AND every phase "Done when" item:
   AND, when plan.md has a § AC Traceability table, every row whose Status is `in scope`:
@@ -534,7 +534,7 @@ in its file is ticked (a file with no box: when its task is complete). Re-read t
 
 ### Final report
 
-The final report goes in chat, in Vietnamese. It has the `✓ Step N` lines, the commit list, and:
+The final report goes in chat, in the user's language. It has the `✓ Step N` lines, the commit list, and:
 
 ```markdown
 ## Claude tự quyết

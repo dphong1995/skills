@@ -70,10 +70,10 @@ One line per issue:
 Orchestrator, after the report:
 - `error` → stop and ask on the interview page (retry, drop the story, or go on without it). Never
   go on as if the story had no AC.
-- `no AC` → list the story under the spec's "Còn mở"; never invent criteria.
+- `no AC` → list the story under the spec's "Open items" (Còn mở); never invent criteria.
 
 ## Traceability table
-The spec (`### Truy vết AC` under `## Thiết kế`), cook's `design.md` and `plan.md`
+The spec (`### AC traceability` (Truy vết AC) under `## Design` (Thiết kế)), cook's `design.md` and `plan.md`
 (`## AC Traceability`) carry this table. The AC text stays English and verbatim.
 
 | AC | Text (verbatim) | Where | Status |
