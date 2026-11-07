@@ -504,7 +504,8 @@ public final class Store: ObservableObject {
                 )
                 parsed.nameSource = o["nameSource"] as? String
                 base = parsed
-                spare = (o["spare"] as? Bool) == true
+                // Skipped like a spare: `claude -p` / SDK runs (entrypoint `sdk-*`) are not sessions the user opened.
+                spare = (o["spare"] as? Bool) == true || (o["entrypoint"] as? String)?.hasPrefix("sdk-") == true
                 sessionJSON[file] = (stamp, base, spare)
             }
             // Liveness is checked every refresh: a dead pid drops the row even when the file is unchanged.

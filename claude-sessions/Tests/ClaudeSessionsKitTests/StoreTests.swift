@@ -20,6 +20,18 @@ import Testing
     #expect(!store.peeking)
 }
 
+/// `claude -p` runs (plugins' side calls, scripts) are not sessions the user opened: no card, no count and so never a closed row.
+@Test func headlessSessionsAreIgnored() {
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
+    writeSession(dir, "cli", pid: me, status: "busy", ageSec: 5, name: "app-1", cwd: frontend, entrypoint: "cli")
+    writeSession(dir, "old", pid: me, status: "busy", ageSec: 5, name: "app-2", cwd: backend)
+    writeSession(dir, "side", pid: me, status: "busy", ageSec: 5, name: "te-side-x", cwd: "/tmp/te-side-x", entrypoint: "sdk-cli")
+    writeSession(dir, "ts", pid: me, status: "busy", ageSec: 5, name: "sdk", cwd: "/tmp/sdk", entrypoint: "sdk-ts")
+    store.refresh(at: Date())
+    #expect(Set(store.sessions.map(\.id)) == ["cli", "old"])
+}
+
 @Test func busyToIdlePeeks() {
     let dir = makeTempDir()
     let store = makeStore(dir: dir)

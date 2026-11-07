@@ -23,11 +23,12 @@ func repo(_ head: String) -> URL {
     return d
 }
 
-func writeSession(_ dir: URL, _ file: String, pid: Int32, status: String, waitingFor: String? = nil, ageSec: Double, name: String, cwd: String, updatedAt: Date? = nil, nameSource: String? = nil) {
+func writeSession(_ dir: URL, _ file: String, pid: Int32, status: String, waitingFor: String? = nil, ageSec: Double, name: String, cwd: String, updatedAt: Date? = nil, nameSource: String? = nil, entrypoint: String? = nil) {
     var o: [String: Any] = ["pid": pid, "sessionId": file, "name": name, "cwd": cwd, "status": status,
                             "statusUpdatedAt": (updatedAt?.timeIntervalSince1970 ?? Date().timeIntervalSince1970 - ageSec) * 1000]
     if let waitingFor { o["waitingFor"] = waitingFor }
     if let nameSource { o["nameSource"] = nameSource }
+    if let entrypoint { o["entrypoint"] = entrypoint }
     try! JSONSerialization.data(withJSONObject: o).write(to: dir.appendingPathComponent("\(file).json"))
 }
 
