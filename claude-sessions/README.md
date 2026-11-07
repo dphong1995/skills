@@ -9,8 +9,6 @@ Widget macOS nổi luôn nằm trên cùng, hiện các session Claude Code đan
 ### Danh sách mở rộng
 Rê chuột vào viên thì mở danh sách các session, mỗi thẻ có tiêu đề, thư mục, chấm màu trạng thái và thời gian. Header gom số session theo nhóm màu.
 
-![Danh sách mở rộng](docs/images/07-mixed-hover.png)
-
 ### Viên thu gọn
 Khi không rê chuột, widget chỉ là một viên nhỏ với chấm trạng thái và số session theo màu (đỏ chờ, cam xong, xanh đang chạy); nhóm vàng `✦` là session có tin mới.
 
@@ -96,6 +94,8 @@ swift test       # trong claude-sessions/
 bash perf.sh     # đo hiệu năng bản thật, cần tắt sandbox
 ```
 
+Cờ `-plugin-path` khi chạy trong sandbox và test E2E: xem [README gốc](../README.md#widget-claude-sessions).
+
 ## Cập nhật ảnh
 
 Ảnh minh hoạ sinh từ snapshot test; chạy lại khi UI đổi:
@@ -105,6 +105,8 @@ bash claude-sessions/screenshots.sh
 # trong Bash sandbox của Claude Code:
 bash claude-sessions/screenshots.sh -Xswiftc -plugin-path -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing
 ```
+
+`closed-2-open` và `quota-3-high-forecast` có giờ theo đồng hồ thật nên đổi mỗi lần chạy lại.
 
 ## Chi tiết
 

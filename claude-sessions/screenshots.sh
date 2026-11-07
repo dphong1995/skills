@@ -11,22 +11,21 @@ names=(
   34-mark-both quota-3-high-forecast closed-2-open
 )
 
+command -v magick >/dev/null || { echo "magick (ImageMagick) not found" >&2; exit 1; }
+
 rm -rf .build/snapshots
 SNAPSHOT_TRANSPARENT=1 swift test --filter SnapshotTests "$@"
 
-mkdir -p docs/images
+missing=0
 for n in "${names[@]}"; do
   if [ ! -f ".build/snapshots/$n.png" ]; then
     echo "missing snapshot: $n" >&2
-    exit 1
+    missing=1
   fi
-  magick ".build/snapshots/$n.png" -trim +repage -strip -define png:exclude-chunks=date,time "docs/images/$n.png"
 done
+[ "$missing" = 0 ] || exit 1
 
-for f in docs/images/*.png; do
-  [ -e "$f" ] || continue
-  b=$(basename "$f" .png)
-  keep=0
-  for n in "${names[@]}"; do [ "$n" = "$b" ] && keep=1; done
-  [ "$keep" = 1 ] || rm "$f"
+rm -rf docs/images && mkdir -p docs/images
+for n in "${names[@]}"; do
+  magick ".build/snapshots/$n.png" -trim +repage -strip -define png:exclude-chunks=date,time "docs/images/$n.png"
 done
