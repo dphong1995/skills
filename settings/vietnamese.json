@@ -1,0 +1,16 @@
+{
+  "language": "vietnamese",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node ~/.claude/hooks/reply-language.mjs",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
