@@ -27,6 +27,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         .appendingPathComponent(".claude/plugins/oh-my-claudecode/.usage-cache-anthropic.json")),
                          closedStore: .standard)
     var panels: [String: Panel] = [:]
+    /// Per panel: ticks spent off the active Space since it was last on it; absent until it has been on it once.
+    var offSpaceTicks: [String: Int] = [:]
     let hotKeys = HotKeys()
     var lastNext: HotKeys.Cycle?
     var timer: Timer?
@@ -107,6 +109,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for (uuid, p) in panels where !keyed.contains(where: { $0.uuid == uuid }) {
             p.window.close()
             panels[uuid] = nil
+            offSpaceTicks[uuid] = nil
         }
 
         var origins = UserDefaults.standard.dictionary(forKey: "pillOrigins") as? [String: [Double]] ?? [:]
@@ -333,6 +336,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 p.window.orderFrontRegardless()
             }
         }
+        rebuildPanelsOffSpace()
+    }
+
+    /// A `.canJoinAllSpaces` panel should always be on the active Space, but after a long run the WindowServer can drop it
+    /// from every Space while `isVisible` stays true; reordering or resetting `collectionBehavior` does not bring it back,
+    /// a new window does. Only a panel seen on the active Space counts, so a Space a new window cannot join either (the
+    /// lock screen) costs one rebuild, not one every few seconds.
+    func rebuildPanelsOffSpace() {
+        var dropped = false
+        for (uuid, p) in panels where !store.hidden && p.window.isVisible {
+            if p.window.isOnActiveSpace { offSpaceTicks[uuid] = 0; continue }
+            guard let n = offSpaceTicks[uuid] else { continue }
+            offSpaceTicks[uuid] = n + 1
+            guard n + 1 >= 3 else { continue }
+            p.window.close()
+            panels[uuid] = nil
+            offSpaceTicks[uuid] = nil
+            dropped = true
+        }
+        if dropped { syncPanels() }
     }
 
     /// Calls `then` on main with the session's cmux surface: the cached one, else the result of a `cmux sessions` lookup.
