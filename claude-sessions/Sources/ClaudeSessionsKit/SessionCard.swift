@@ -100,16 +100,21 @@ extension WidgetView {
             .onExitCommand { panel.editing = nil }
     }
 
+    /// Whether `Dừng` was clicked once within the last 3 s.
+    func stopArmed(_ s: Session) -> Bool {
+        panel.stopArmed[s.id].map { store.now.timeIntervalSince($0) < 3 } ?? false
+    }
+
     /// `Trả lời…` on a finished session, `Dừng` (two clicks within 3 s) on a busy one; both need the session to be in cmux.
     @ViewBuilder
     func quickButton(_ s: Session) -> some View {
         let inCmux = !store.surfaceMisses.contains(s.id)
         Group {
             if s.canAskClaude {
-                PillButton(title: "Trả lời…") { panel.editing = Store.Editing(id: s.id, kind: .reply) }
+                IconButton(symbol: Theme.Symbols.reply, help: "Trả lời…") { panel.editing = Store.Editing(id: s.id, kind: .reply) }
             } else if s.shownStatus == "busy" {
-                let armed = panel.stopArmed[s.id].map { store.now.timeIntervalSince($0) < 3 } ?? false
-                PillButton(title: armed ? "Bấm lần nữa để dừng" : "Dừng") {
+                IconButton(symbol: Theme.Symbols.stop, help: "Dừng (bấm hai lần)",
+                           tint: stopArmed(s) ? Theme.Colors.status("waiting") : nil) {
                     // The click compares with the real time: `store.now` only ticks once a second.
                     if panel.stopArmed[s.id].map({ Date().timeIntervalSince($0) < 3 }) ?? false {
                         panel.stopArmed[s.id] = nil
@@ -155,13 +160,21 @@ extension WidgetView {
         let claudeNew = mark?.claude == true
         var newLabel = claudeNew ? [", mới: Claude"] : []
         newLabel += (mark?.prs ?? []).sorted { $0.id < $1.id }.map { ", mới: PR #\($0.id)" }
+        let statusColor = Theme.Colors.status(s.colorStatus)
+        let armed = s.shownStatus == "busy" && !s.canAskClaude && stopArmed(s)
         let markedShown = Set(s.prs.map(\.ref)).intersection(mark?.prs ?? [])
         return VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 10) {
-                Circle().fill(color(s.colorStatus)).frame(width: 8, height: 8)
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: Theme.Symbols.status(s)).font(Theme.Fonts.label)
+                    .foregroundStyle(statusColor).frame(width: 14)
                     .accessibilityLabel(statusText(s) + newLabel.joined())
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(s.title).font(Theme.Fonts.title).foregroundStyle(Theme.Colors.primaryText).lineLimit(2)
+                    HStack(alignment: .firstTextBaseline, spacing: Theme.Space.gap) {
+                        (claudeNew ? Text(Image(systemName: Theme.Symbols.fresh)).foregroundStyle(Theme.Colors.fresh) + Text(" ") + Text(s.title) : Text(s.title))
+                            .font(Theme.Fonts.title).foregroundStyle(Theme.Colors.primaryText).lineLimit(2)
+                        Tag(statusText(s), tint: statusColor)
+                            .fixedSize()
+                    }
                     HStack(spacing: 0) {
                         Text(s.subtitle).lineLimit(1).truncationMode(.tail)
                         if s.agentCount > 0 {
@@ -176,9 +189,11 @@ extension WidgetView {
                     }
                     .font(Theme.Fonts.meta).foregroundStyle(Theme.Colors.tertiaryText)
                     if let todo = s.todo {
-                        Text(todo.label)
-                            .font(Theme.Fonts.small).foregroundStyle(Theme.Colors.secondaryText)
-                            .lineLimit(1).truncationMode(.tail)
+                        HStack(spacing: 4) {
+                            Image(systemName: Theme.Symbols.todo).font(Theme.Fonts.meta)
+                            Text(todo.label).lineLimit(1).truncationMode(.tail)
+                        }
+                        .font(Theme.Fonts.small).foregroundStyle(Theme.Colors.secondaryText)
                     }
                     if let a = s.activity {
                         HStack(spacing: 4) {
@@ -192,16 +207,20 @@ extension WidgetView {
                             .lineLimit(4).truncationMode(.tail)
                     }
                 }
-                Spacer(minLength: 12)
-                Text(elapsed(s.since, store.now)).font(Theme.Fonts.body.monospacedDigit())
-                    .foregroundStyle(Theme.Colors.secondaryText).frame(minWidth: 36, alignment: .trailing)
-                quickButton(s)
+                Spacer(minLength: 0)
+                VStack(alignment: .trailing, spacing: 2) {
+                    if armed {
+                        Text("bấm lại").font(Theme.Fonts.metaStrong).foregroundStyle(Theme.Colors.status("waiting"))
+                    } else {
+                        Text(elapsed(s.since, store.now)).font(Theme.Fonts.body.monospacedDigit())
+                            .foregroundStyle(Theme.Colors.secondaryText)
+                    }
+                    quickButton(s)
+                }
+                .frame(width: Theme.Space.rightColumn, alignment: .trailing)
             }
             .padding(.horizontal, 6).padding(.vertical, 3)
             .background(claudeNew ? Theme.Colors.fresh.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 6))
-            .overlay(alignment: .leading) {
-                if claudeNew { Capsule().fill(Theme.Colors.fresh).frame(width: 3).padding(.vertical, 3) }
-            }
             .padding(.horizontal, -6).padding(.vertical, -3)
             .contentShape(Rectangle())
             .onTapGesture { onAction(.jump(s.id)) }
@@ -225,8 +244,8 @@ extension WidgetView {
                     }
                     menuButton(s)
                 }
-                .padding(.leading, 18)
-                if panel.openMenus.contains(s.id) { linkList(s).padding(.leading, 18) }
+                .padding(.leading, Theme.Space.indent)
+                if panel.openMenus.contains(s.id) { linkList(s).padding(.leading, Theme.Space.indent) }
             }
             ForEach(s.prs, id: \.ref) { pr in
                 let prNew = markedShown.contains(pr.ref)
@@ -255,22 +274,24 @@ extension WidgetView {
                 .padding(.horizontal, 4)
                 .background(prNew ? Theme.Colors.freshPR.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 5))
                 .padding(.horizontal, -4)
-                .padding(.leading, 18)
+                .padding(.leading, Theme.Space.indent)
             }
             if let pending = s.pending {
-                approvalBlock(s, pending).padding(.leading, 18)
+                approvalBlock(s, pending).padding(.leading, Theme.Space.indent)
             }
             if let q = s.question {
-                questionBlock(s, q).padding(.leading, 18)
+                questionBlock(s, q).padding(.leading, Theme.Space.indent)
             }
             if let editing, editing != .answer {
-                editor(s, editing).padding(.leading, 18)
+                editor(s, editing).padding(.leading, Theme.Space.indent)
             }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
         .frame(minHeight: Layout.rowHeight)
-        .background(Theme.Colors.card, in: RoundedRectangle(cornerRadius: 8))
+        .background(Theme.Colors.card)
+        .overlay(alignment: .leading) { Rectangle().fill(statusColor).frame(width: 3) }
+        .clipShape(RoundedRectangle(cornerRadius: 8))
         .onHover { panel.noteRowHover(s.id, inside: $0) }
     }
 }

@@ -29,7 +29,7 @@ public enum Layout {
     static let expandedWidth: CGFloat = 760
     static let canvas = CGSize(width: expandedWidth + margin * 2, height: 640)
     static var maxExpandedHeight: CGFloat { canvas.height - 2 * margin }
-    static let rowHeight: CGFloat = 36
+    static let rowHeight: CGFloat = 50
     /// How long the mouse must rest on a fresh row before its mark clears.
     static let seenDwell: Duration = .seconds(1)
     static let replyRowHeight: CGFloat = 92
@@ -109,7 +109,7 @@ public enum Layout {
             base = s.isFinished && s.lastReply != nil ? replyRowHeight : rowHeight
         }
         return base + (s.todo != nil ? todoHeight : 0) + (s.activity != nil ? todoHeight : 0)
-            + (s.title.count > 60 ? 16 : 0) + (s.menu.isEmpty ? 0 : 22) + s.prs.reduce(0) { $0 + ($1.isOpen ? 22 : 18) }
+            + (s.title.count > 48 ? 16 : 0) + (s.menu.isEmpty ? 0 : 22) + s.prs.reduce(0) { $0 + ($1.isOpen ? 22 : 18) }
             + (open ? CGFloat(s.menuCount) * linkRowHeight + CGFloat(s.menu.count) * linkSectionHeight + (s.menuNeedsJira ? linkRowHeight : 0) : 0)
     }
 

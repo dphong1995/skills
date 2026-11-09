@@ -82,6 +82,6 @@ import Testing
 }
 
 @Test func todoLabel() {
-    #expect(Todo(done: 1, total: 3, current: "Phase 2").label == "☑ 1/3 · Phase 2")
-    #expect(Todo(done: 1, total: 3, current: nil).label == "☑ 1/3")
+    #expect(Todo(done: 1, total: 3, current: "Phase 2").label == "1/3 · Phase 2")
+    #expect(Todo(done: 1, total: 3, current: nil).label == "1/3")
 }

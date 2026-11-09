@@ -557,6 +557,23 @@ struct SnapshotTests {
         render(store, panel, "reply-2-editor")
     }
 
+    @Test func renderCardStates() {
+        let dir = makeTempDir(), projects = makeTempDir()
+        let store = makeStore(dir: dir, projects: projects)
+        let panel = PanelState()
+        _ = writeTranscript(projects, cwd: frontend, id: "bg", lines: [userLine("hi"), assistantLine("Đang chờ agent nền."), turnDurationLine(background: 2), ""])
+        writeSession(dir, "perm", pid: me, status: "waiting", waitingFor: "permission prompt", ageSec: 20, name: "card-permission", cwd: backend)
+        writeSession(dir, "ask", pid: me, status: "waiting", ageSec: 40, name: "card-question", cwd: backend)
+        writeSession(dir, "done", pid: me, status: "idle", ageSec: 3700, name: "card-done", cwd: backend)
+        writeSession(dir, "run", pid: me, status: "busy", ageSec: 90, name: "card-running", cwd: backend)
+        writeSession(dir, "bg", pid: me, status: "busy", ageSec: 120, name: "card-bg-agents", cwd: frontend)
+        writeSession(dir, "fresh", pid: me, status: "idle", ageSec: 5, name: "card-fresh", cwd: backend)
+        store.unseen["fresh"] = NewMark(claude: true)
+        store.refresh(at: Date())
+        panel.hovering = true
+        render(store, panel, "40-card-states")
+    }
+
     @Test func renderStopArmed() {
         let dir = makeTempDir()
         let store = makeStore(dir: dir)

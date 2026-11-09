@@ -55,21 +55,31 @@ private func session(_ id: String, _ status: String, _ text: String?) -> Session
 }
 
 @Test func rowHeights() {
-    #expect(Layout.height(of: session("a", "busy", "hi")) == 36)
+    #expect(Layout.height(of: session("a", "busy", "hi")) == 50)
     #expect(Layout.height(of: session("a", "idle", "hi")) == 92)
-    #expect(Layout.height(of: session("a", "idle", nil)) == 36)
+    #expect(Layout.height(of: session("a", "idle", nil)) == 50)
     var longTitle = session("a", "busy", nil)
     longTitle.firstPrompt = String(repeating: "x", count: 100)
-    #expect(Layout.height(of: longTitle) == 52)
+    #expect(Layout.height(of: longTitle) == 66)
     var withTodo = session("a", "busy", nil)
     withTodo.todo = Todo(done: 1, total: 4, current: "x")
-    #expect(Layout.height(of: withTodo) == CGFloat(36 + 15))
+    #expect(Layout.height(of: withTodo) == CGFloat(50 + 15))
     var withActivity = session("a", "busy", nil)
     withActivity.activity = "Bash: ls"
-    #expect(Layout.height(of: withActivity) == CGFloat(36 + 15))
+    #expect(Layout.height(of: withActivity) == CGFloat(50 + 15))
     var withLinks = session("a", "idle", "hi")
     withLinks.menu = [LinkSection(title: "PR", items: [LinkItem(text: "PR #1", url: URL(string: "https://x.y/pull/1")!)])]
     #expect(Layout.height(of: withLinks) == CGFloat(92 + 22))
+}
+
+@Test func titleWrapThreshold() {
+    let short = session("a", "busy", nil)
+    var fifty = short
+    fifty.firstPrompt = String(repeating: "x", count: 50)
+    var fortyEight = short
+    fortyEight.firstPrompt = String(repeating: "x", count: 48)
+    #expect(Layout.height(of: fifty) == Layout.height(of: short) + 16)
+    #expect(Layout.height(of: fortyEight) == Layout.height(of: short))
 }
 
 @Test func heightCountsMenuRowWithoutLinks() {
@@ -77,12 +87,12 @@ private func session(_ id: String, _ status: String, _ text: String?) -> Session
     s.menu = [LinkSection(title: "PR", items: [LinkItem(text: "PR #1  ·  mở", url: URL(string: "https://x.y/pull/1")!)])]
     s.prs = [prStatus(id: 1)]
     #expect(s.links.isEmpty)
-    #expect(Layout.height(of: s) == CGFloat(36 + 22 + 22))
+    #expect(Layout.height(of: s) == CGFloat(50 + 22 + 22))
 }
 
 @Test func expandedSumsHeights() {
-    #expect(Layout.expanded([session("a", "busy", nil), session("b", "idle", "hi")]).height == CGFloat(178))
-    #expect(Layout.expanded([]).height == CGFloat(82))
+    #expect(Layout.expanded([session("a", "busy", nil), session("b", "idle", "hi")]).height == CGFloat(192))
+    #expect(Layout.expanded([]).height == CGFloat(96))
 }
 
 @Test func expandedAddsCardGaps() {

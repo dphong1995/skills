@@ -76,6 +76,7 @@ enum Theme {
         static let radioOn = "largecircle.fill.circle"
         static let reply = "arrowshape.turn.up.left"
         static let stop = "stop.fill"
+        static let todo = "checklist"
 
         static func status(_ s: Session) -> String {
             if s.status == "waiting" { return s.isPermissionPrompt ? "exclamationmark.triangle.fill" : "questionmark.circle.fill" }

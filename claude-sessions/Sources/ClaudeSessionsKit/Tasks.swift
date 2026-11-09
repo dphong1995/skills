@@ -6,7 +6,7 @@ struct Todo: Equatable {
     let current: String?
 
     var label: String {
-        let n = "☑ \(done)/\(total)"
+        let n = "\(done)/\(total)"
         return current.map { "\(n) · \($0)" } ?? n
     }
 }

@@ -74,6 +74,57 @@ struct StatusTag: View {
     }
 }
 
+/// A 24x24 rounded icon button; `tint` replaces the field fill (the armed `Dừng`).
+struct IconButton: View {
+    let symbol: String
+    let help: String
+    var tint: Color? = nil
+    let action: () -> Void
+
+    init(symbol: String, help: String, tint: Color? = nil, action: @escaping () -> Void) {
+        self.symbol = symbol
+        self.help = help
+        self.tint = tint
+        self.action = action
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(Theme.Fonts.small)
+                .foregroundStyle(Theme.Colors.primaryText)
+                .frame(width: 24, height: 24)
+                .background(RoundedRectangle(cornerRadius: 6).fill(tint ?? Theme.Colors.field))
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .accessibilityLabel(help)
+    }
+}
+
+/// A small capsule label; with `tint` it is tinted and its text brightened like `StatusTag`.
+struct Tag: View {
+    let text: String
+    var symbol: String? = nil
+    var tint: Color? = nil
+
+    init(_ text: String, symbol: String? = nil, tint: Color? = nil) {
+        self.text = text
+        self.symbol = symbol
+        self.tint = tint
+    }
+
+    var body: some View {
+        let textColor = tint.map { Color(nsColor: NSColor($0).blended(withFraction: 0.35, of: .white) ?? .white) } ?? Theme.Colors.secondaryText
+        HStack(spacing: 3) {
+            if let symbol { Image(systemName: symbol).font(Theme.Fonts.micro) }
+            Text(text).lineLimit(1)
+        }
+        .font(Theme.Fonts.metaStrong).foregroundStyle(textColor)
+        .padding(.horizontal, 7).padding(.vertical, 2)
+        .background(Capsule().fill(tint?.opacity(0.2) ?? Theme.Colors.field))
+    }
+}
+
 /// One line of the inline menu list.
 final class RowHover: ObservableObject { @Published var on = false }
 
