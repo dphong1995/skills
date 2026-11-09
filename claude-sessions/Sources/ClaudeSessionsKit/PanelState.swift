@@ -50,11 +50,11 @@ public final class PanelState: ObservableObject {
 
     public enum HotkeyToggle: Equatable { case open, close, keyboard }
 
-    /// What the open hotkey does given the panels that are open: nothing open opens one with the keyboard; one opened by the hotkey
-    /// or already in keyboard mode closes; one opened by hover only switches to keyboard mode.
+    /// What the open hotkey does given the panels that are open: nothing open opens one with the keyboard; one in keyboard mode closes;
+    /// any other open one (hover, or pinned after keyboard mode ended) switches to keyboard mode.
     public static func hotkeyToggle(open: [PanelState]) -> HotkeyToggle {
         if open.isEmpty { return .open }
-        return open.contains { $0.keyboard || $0.pinnedOpen } ? .close : .keyboard
+        return open.contains { $0.keyboard } ? .close : .keyboard
     }
 
     /// One mouse tick: updates the pin and returns whether the card should be hovered. A pinned card the mouse entered closes on the

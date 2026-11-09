@@ -216,10 +216,10 @@ private func press(_ key: String, _ store: Store, _ panel: PanelState, code: UIn
     #expect(PanelState.hotkeyToggle(open: []) == .open)
 }
 
-@Test func hotkeyClosesAPinnedOrKeyboardCard() {
+@Test func hotkeyClosesOnlyAKeyboardCard() {
     let pinned = PanelState()
     pinned.hovering = true; pinned.pinnedOpen = true
-    #expect(PanelState.hotkeyToggle(open: [pinned]) == .close)
+    #expect(PanelState.hotkeyToggle(open: [pinned]) == .keyboard)
     let typing = PanelState()
     typing.hovering = true; typing.keyboard = true
     #expect(PanelState.hotkeyToggle(open: [typing]) == .close)

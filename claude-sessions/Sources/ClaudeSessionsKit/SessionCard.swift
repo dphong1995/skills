@@ -12,7 +12,7 @@ func statusText(_ s: Session) -> String {
 }
 
 /// The parts of a PR line in order; `prLine` joins their text and the row renders each as a `Tag`.
-/// `dropRank` is 0 for a part that stays; a part with rank r is dropped once the row has to drop r tags (higher ranks go first).
+/// `dropRank` is 0 for a part that stays; a part with rank r is dropped once the row has to drop r tags (lower ranks go first).
 func prParts(_ pr: PRStatus, now: Date, stale: Date?) -> [(text: String, symbol: String?, tint: Color?, dropRank: Int)] {
     var parts: [(String, String?, Color?, Int)] = [("PR #\(pr.ref.id)", Theme.Symbols.pr, nil, 0)]
     if !pr.isOpen {
@@ -120,9 +120,9 @@ extension WidgetView {
         let outsideCmux = "Chỉ dùng được trong cmux"
         Group {
             if s.canAskClaude {
-                IconButton(symbol: Theme.Symbols.reply, help: inCmux ? "Trả lời…" : outsideCmux) { panel.editing = Store.Editing(id: s.id, kind: .reply) }
+                IconButton(symbol: Theme.Symbols.reply, help: "Trả lời…") { panel.editing = Store.Editing(id: s.id, kind: .reply) }
             } else if s.shownStatus == "busy" {
-                IconButton(symbol: Theme.Symbols.stop, help: inCmux ? "Dừng (bấm hai lần)" : outsideCmux,
+                IconButton(symbol: Theme.Symbols.stop, help: "Dừng (bấm hai lần)",
                            tint: stopArmed(s) ? Theme.Colors.status("waiting") : nil) {
                     // The click compares with the real time: `store.now` only ticks once a second.
                     if panel.stopArmed[s.id].map({ Date().timeIntervalSince($0) < 3 }) ?? false {
@@ -135,6 +135,8 @@ extension WidgetView {
             }
         }
         .disabled(!inCmux).opacity(inCmux ? 1 : Theme.Opacity.disabled)
+        // Outside the disabled subtree: macOS shows no tooltip on a disabled control.
+        .help(inCmux ? (s.canAskClaude ? "Trả lời…" : "Dừng (bấm hai lần)") : outsideCmux)
     }
 
     /// Menu count: toggles the inline list of every ticket and PR of the session.

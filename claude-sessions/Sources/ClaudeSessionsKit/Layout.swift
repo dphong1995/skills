@@ -107,15 +107,16 @@ public enum Layout {
 
     /// `block` is what the card shows for the session's question (`Store.blockStates`); without it the form shows while the question is live and supported.
     static func height(of s: Session, open: Bool = false, block: Feed.BlockState? = nil) -> CGFloat {
+        let isReply = s.question == nil && s.isFinished && s.lastReply != nil
         let base: CGFloat
         if let q = s.question {
             let form = (block ?? (s.questionLive && Feed.supports(q) ? .form : .fallback)) == .form
             base = rowHeight + (form ? questionBlockHeight(q) : questionFallbackHeight)
         } else {
-            base = s.isFinished && s.lastReply != nil ? replyRowHeight : rowHeight
+            base = isReply ? replyRowHeight : rowHeight
         }
         let textGrowth = (s.todo != nil ? todoHeight : 0) + (s.activity != nil ? todoHeight : 0) + (s.title.count > titleWrapCount ? titleWrapHeight : 0)
-        let slack = base == replyRowHeight ? 0 : headTextSlack
+        let slack = isReply ? 0 : headTextSlack
         return base + max(0, textGrowth - slack)
             + (s.menu.isEmpty ? 0 : 22) + s.prs.reduce(0) { $0 + ($1.isOpen ? 22 : 18) }
             + (open ? CGFloat(s.menuCount) * linkRowHeight + CGFloat(s.menu.count) * linkSectionHeight + (s.menuNeedsJira ? linkRowHeight : 0) : 0)

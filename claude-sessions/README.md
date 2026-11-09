@@ -7,7 +7,7 @@ Widget macOS nổi luôn nằm trên cùng, hiện các session Claude Code đan
 ## Tính năng
 
 ### Danh sách mở rộng
-Rê chuột vào viên thì mở danh sách các session, mỗi thẻ có icon trạng thái, tiêu đề kèm tag trạng thái (`chờ duyệt`, `chờ trả lời`, `xong`, `đang chạy`, `chờ N agent nền`), thư mục, vạch màu ở mép trái và cột phải cố định gồm thời gian và nút icon nhanh. Header gom số session theo nhóm màu và hiện quota `5h` / `Tuần` dạng thanh; PR hiện thành các tag có icon. Câu hỏi của Claude hiện thành danh sách đánh số, mỗi đáp án có mô tả luôn hiện; `Cho phép` và `Gửi` màu xanh lá.
+Rê chuột vào viên thì mở danh sách các session, mỗi thẻ có icon trạng thái, tiêu đề kèm tag trạng thái (`chờ duyệt`, `chờ trả lời`, `xong`, `đang chạy`, `chờ N agent nền`), thư mục, vạch màu ở mép trái và cột phải cố định gồm thời gian và nút icon nhanh. Header gom số session theo nhóm màu và hiện quota `5h` / `Tuần` dạng thanh ở bên phải, ngay trước số session (thanh `5h` kèm `reset HH:mm` hoặc dự báo `hết ~HH:mm` màu đỏ, rồi tới thanh `Tuần`); PR hiện thành các tag có icon. Câu hỏi của Claude hiện thành danh sách đánh số, mỗi đáp án có mô tả luôn hiện; `Cho phép` và `Gửi` màu xanh lá.
 
 ### Phím tắt bàn phím
 Bấm phím tắt mở widget (`⌃⌥Space`) thì thẻ được chọn bằng vòng viền trắng và điều khiển bằng bàn phím:
@@ -23,10 +23,10 @@ Bấm phím tắt mở widget (`⌃⌥Space`) thì thẻ được chọn bằng 
 | `⌘↩` | gửi câu trả lời khi mọi câu hỏi đã có lựa chọn |
 | `Esc` | đang gõ: thôi gõ; không gõ: đóng widget và trả phím cho app trước |
 
-Phím không áp dụng cho thẻ đang chọn thì kêu beep; phím không gán thì đi tiếp tới app đang dùng. Chế độ bàn phím chỉ bật khi bấm phím tắt mở widget (bấm khi widget đang mở do rê chuột thì chuyển sang chế độ bàn phím thay vì đóng, và giữ mở cho đến khi bấm `Esc`, bấm lại phím tắt, hoặc bấm sang app khác; chuột rời khung không làm nó đóng); chỉ rê chuột thì không bao giờ lấy phím, và rê chuột vào widget khi đang gõ ở terminal không cướp phím.
+Phím không áp dụng cho thẻ đang chọn thì kêu beep; phím không gán thì đi tiếp tới app đang dùng. Chế độ bàn phím chỉ bật khi bấm phím tắt mở widget (bấm khi widget đang mở do rê chuột thì chuyển sang chế độ bàn phím thay vì đóng; thẻ đóng khi bấm lại phím tắt, bấm `Esc`, hoặc chuột rời khung nếu chuột đã vào nó, còn thẻ mở bằng phím tắt mà chuột chưa vào thì giữ mở đến khi bấm phím tắt; bấm sang app khác chỉ kết thúc chế độ bàn phím, bấm phím tắt lần nữa (ví dụ sau khi `↩` nhảy sang cmux) thì bật lại); chỉ rê chuột thì không bao giờ lấy phím, và rê chuột vào widget khi đang gõ ở terminal không cướp phím.
 
 ### Viên thu gọn
-Khi không rê chuột, widget chỉ là một viên nhỏ với số session theo nhóm: số session chờ nằm trong huy hiệu đỏ đặc, các nhóm khác (cam xong, xanh đang chạy) là chấm màu với số mờ hơn; nhóm vàng có icon sparkle là session có tin mới. Khi quota 5h từ 80% trở lên, viên rộng thêm để hiện `5h N%`.
+Khi không rê chuột, widget chỉ là một viên nhỏ với số session theo nhóm: số session chờ nằm trong huy hiệu đỏ đặc, các nhóm khác (cam xong, xanh đang chạy) là chấm màu với số mờ hơn; nhóm vàng có icon sparkle là session có tin mới. Khi quota 5h hoặc quota tuần (lấy số lớn hơn) từ 80% trở lên, viên rộng thêm để hiện `N%`.
 
 ![Viên thu gọn](docs/images/06-mixed-collapsed.png)
 
