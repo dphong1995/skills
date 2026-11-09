@@ -362,7 +362,7 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         let m = overriddenMonitor(fake(open: [prJSON(id: 7571, comments: 1)]))
         let snap = m.takeSnapshot()
         #expect(rabbitOf(m) == .reviewed(findings: 1))
-        #expect(CodeRabbit.label(.reviewed(findings: 1)) == "🐰 1 góp ý")
+        #expect(CodeRabbit.label(.reviewed(findings: 1)) == "1 góp ý")
         #expect(snap.events == [.rabbitNeedsYou])
     }
 
@@ -562,7 +562,7 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         #expect(api.requests(containing: "/statuses") == n + 1)
         let snap = m.takeSnapshot()
         #expect(snap.prs["s"]?.first?.rabbit == .approved)
-        #expect(CodeRabbit.label(.approved) == "🐰 đã duyệt")
+        #expect(CodeRabbit.label(.approved) == "đã duyệt")
         #expect(snap.events == [.approved, .rabbitDone]) // the account's approval is also a PR approval event
     }
 

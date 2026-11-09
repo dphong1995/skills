@@ -19,7 +19,6 @@ struct PillLabel: View {
     var icon: NSImage? = nil
     /// Reserves a 14x14 slot for the icon even while `icon` is nil, so labels line up.
     var showsIcon = false
-    var dot: Color? = nil
 
     var body: some View {
         HStack(spacing: 5) {
@@ -31,7 +30,6 @@ struct PillLabel: View {
             }
             if let symbol { Image(systemName: symbol).font(Theme.Fonts.meta).imageScale(.small) }
             Text(title)
-            if let dot { Circle().fill(dot).frame(width: 6, height: 6) }
         }
         .font(Theme.Fonts.smallStrong).foregroundStyle(textColor)
         .padding(.horizontal, 9).padding(.vertical, 3)
@@ -46,12 +44,11 @@ struct PillButton: View {
     var symbol: String? = nil
     var icon: NSImage? = nil
     var showsIcon = false
-    var dot: Color? = nil
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            PillLabel(title: title, fill: fill, textColor: textColor, symbol: symbol, icon: icon, showsIcon: showsIcon, dot: dot)
+            PillLabel(title: title, fill: fill, textColor: textColor, symbol: symbol, icon: icon, showsIcon: showsIcon)
         }
         .buttonStyle(.plain)
     }

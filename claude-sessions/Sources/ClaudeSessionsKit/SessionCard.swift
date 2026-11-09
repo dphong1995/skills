@@ -11,19 +11,19 @@ func statusText(_ s: Session) -> String {
     }
 }
 
-/// The parts of a PR line in order; `prLine` joins them and the row colours the red and green ones.
-func prParts(_ pr: PRStatus, now: Date, stale: Date?) -> [(text: String, tint: Color?)] {
-    var parts: [(String, Color?)] = [("PR #\(pr.ref.id)", nil)]
+/// The parts of a PR line in order; `prLine` joins their text and the row renders each as a `Tag`.
+func prParts(_ pr: PRStatus, now: Date, stale: Date?) -> [(text: String, symbol: String?, tint: Color?)] {
+    var parts: [(String, String?, Color?)] = [("PR #\(pr.ref.id)", Theme.Symbols.pr, nil)]
     if !pr.isOpen {
-        parts.append((pr.stateWord, nil))
+        parts.append((pr.stateWord, nil, toneColor(pr.tone)))
         return parts
     }
-    if pr.changesRequested > 0 { parts.append(("✗ \(pr.changesRequested) yêu cầu sửa", .red)) }
-    if pr.reviewers > 0 { parts.append(("✓ \(pr.approved)/\(pr.reviewers)", pr.approved > 0 ? .green : nil)) }
-    if let rabbit = pr.rabbit { parts.append((CodeRabbit.label(rabbit), nil)) }
-    if pr.comments > 0 { parts.append(("💬 \(pr.comments)", nil)) }
-    if let c = pr.lastOther { parts.append(("\(c.name) \(elapsed(c.at, now))", nil)) }
-    if let stale { parts.append(("cũ \(elapsed(stale, now))", nil)) }
+    if pr.changesRequested > 0 { parts.append(("\(pr.changesRequested) yêu cầu sửa", "xmark", .red)) }
+    if pr.reviewers > 0 { parts.append(("\(pr.approved)/\(pr.reviewers)", "checkmark", pr.approved > 0 ? .green : nil)) }
+    if let rabbit = pr.rabbit { parts.append((CodeRabbit.label(rabbit), Theme.Symbols.rabbit, nil)) }
+    if pr.comments > 0 { parts.append(("\(pr.comments)", Theme.Symbols.comments, nil)) }
+    if let c = pr.lastOther { parts.append(("\(c.name) \(elapsed(c.at, now))", "person", nil)) }
+    if let stale { parts.append(("cũ \(elapsed(stale, now))", "clock", nil)) }
     return parts
 }
 
@@ -31,15 +31,22 @@ func prLine(_ pr: PRStatus, now: Date, stale: Date?) -> String {
     prParts(pr, now: now, stale: stale).map(\.text).joined(separator: " · ")
 }
 
-func prAttributed(_ pr: PRStatus, now: Date, stale: Date?) -> AttributedString {
-    var out = AttributedString()
-    for (i, p) in prParts(pr, now: now, stale: stale).enumerated() {
-        if i > 0 { out += AttributedString(" · ") }
-        var a = AttributedString(p.text)
-        if let tint = p.tint { a.foregroundColor = tint }
-        out += a
+/// The `PR #id` tag: underlined while hovered.
+struct PRIdTag: View {
+    let text: String
+    let symbol: String?
+    let help: String
+    let onOpen: () -> Void
+    @StateObject private var hover = RowHover()
+
+    var body: some View {
+        Tag(text, symbol: symbol)
+            .underline(hover.on)
+            .contentShape(Rectangle())
+            .onHover { hover.on = $0 }
+            .onTapGesture(perform: onOpen)
+            .help(help)
     }
-    return out
 }
 
 extension WidgetView {
@@ -133,7 +140,7 @@ extension WidgetView {
     func menuButton(_ s: Session) -> some View {
         let open = panel.openMenus.contains(s.id)
         let hiddenMark = store.unseen[s.id]?.prs.subtracting(s.prs.map(\.ref)).isEmpty == false
-        return PillButton(title: "\(s.menuCount)", fill: open ? Theme.Colors.active : Theme.Colors.field, symbol: Theme.Symbols.menu, dot: hiddenMark ? Theme.Colors.freshPR : nil) {
+        return PillButton(title: "\(s.menuCount)", fill: open ? Theme.Colors.active : hiddenMark ? Theme.Colors.freshPR.opacity(0.35) : Theme.Colors.field, symbol: Theme.Symbols.menu) {
             if open { panel.openMenus.remove(s.id) } else { panel.openMenus.insert(s.id) }
         }
     }
@@ -162,6 +169,8 @@ extension WidgetView {
         newLabel += (mark?.prs ?? []).sorted { $0.id < $1.id }.map { ", mới: PR #\($0.id)" }
         let statusColor = Theme.Colors.status(s.colorStatus)
         let armed = s.shownStatus == "busy" && !s.canAskClaude && stopArmed(s)
+        // The title text column: the 14pt status icon plus the 10pt gap of the head.
+        let textColumn: CGFloat = 14 + 10
         let markedShown = Set(s.prs.map(\.ref)).intersection(mark?.prs ?? [])
         return VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .top, spacing: 10) {
@@ -220,43 +229,55 @@ extension WidgetView {
                 .frame(width: Theme.Space.rightColumn, alignment: .trailing)
             }
             .padding(.horizontal, 6).padding(.vertical, 3)
-            .background(claudeNew ? Theme.Colors.fresh.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 6))
             .padding(.horizontal, -6).padding(.vertical, -3)
             .contentShape(Rectangle())
             .onTapGesture { onAction(.jump(s.id)) }
             if !s.menu.isEmpty {
                 HStack(spacing: 6) {
+                    if !s.links.isEmpty {
+                        ViewThatFits(in: .horizontal) {
+                            ForEach(Array(stride(from: min(s.links.count, 5), through: 1, by: -1)), id: \.self) { k in
+                                HStack(spacing: 6) {
+                                    ForEach(s.links.prefix(k), id: \.url) { link in
+                                        let titled = link.help != nil
+                                        PillButton(title: link.label,
+                                                   fill: titled ? toneColor(link.tone)?.opacity(0.25) ?? Theme.Colors.field : Theme.Colors.field,
+                                                   symbol: titled ? nil : Theme.Symbols.link,
+                                                   icon: titled ? link.iconURL.flatMap { store.issueIcons[$0] } : nil, showsIcon: titled) { onAction(.openLink(s.id, link.url)) }
+                                            .help(link.help ?? "")
+                                    }
+                                }
+                                .fixedSize(horizontal: true, vertical: false)
+                            }
+                            Color.clear.frame(width: 0, height: 0)
+                        }
+                    }
+                    menuButton(s)
+                }
+                .padding(.leading, textColumn)
+                if panel.openMenus.contains(s.id) { linkList(s).padding(.leading, textColumn) }
+            }
+            ForEach(s.prs, id: \.ref) { pr in
+                let prNew = markedShown.contains(pr.ref)
+                let parts = prParts(pr, now: store.now, stale: store.prStale ? store.prLastSuccess : nil)
+                HStack(spacing: 6) {
+                    if prNew { Image(systemName: Theme.Symbols.fresh).font(Theme.Fonts.small).foregroundStyle(Theme.Colors.freshPR) }
                     ViewThatFits(in: .horizontal) {
-                        ForEach(Array(stride(from: min(s.links.count, 5), through: 1, by: -1)), id: \.self) { k in
-                            HStack(spacing: 6) {
-                                ForEach(s.links.prefix(k), id: \.url) { link in
-                                    let titled = link.help != nil
-                                    PillButton(title: link.label,
-                                               symbol: titled ? nil : Theme.Symbols.link,
-                                               icon: titled ? link.iconURL.flatMap { store.issueIcons[$0] } : nil, showsIcon: titled,
-                                               dot: titled ? toneColor(link.tone) ?? Theme.Colors.secondaryText : nil) { onAction(.openLink(s.id, link.url)) }
-                                        .help(link.help ?? "")
+                        // Drop the stale tag first, then the last-other tag, when space runs out.
+                        ForEach([0, 1, 2], id: \.self) { drop in
+                            let shown = parts.filter { !(drop >= 1 && $0.symbol == "clock") && !(drop >= 2 && $0.symbol == "person") }
+                            HStack(spacing: 4) {
+                                ForEach(Array(shown.enumerated()), id: \.offset) { i, p in
+                                    if i == 0 {
+                                        PRIdTag(text: p.text, symbol: p.symbol, help: pr.title ?? "") { onAction(.openLink(s.id, pr.url)) }
+                                    } else {
+                                        Tag(p.text, symbol: p.symbol, tint: p.tint)
+                                    }
                                 }
                             }
                             .fixedSize(horizontal: true, vertical: false)
                         }
-                        Color.clear.frame(width: 0, height: 0)
                     }
-                    menuButton(s)
-                }
-                .padding(.leading, Theme.Space.indent)
-                if panel.openMenus.contains(s.id) { linkList(s).padding(.leading, Theme.Space.indent) }
-            }
-            ForEach(s.prs, id: \.ref) { pr in
-                let prNew = markedShown.contains(pr.ref)
-                let prText = Text(prAttributed(pr, now: store.now, stale: store.prStale ? store.prLastSuccess : nil))
-                HStack(spacing: 6) {
-                    (prNew ? Text(Image(systemName: Theme.Symbols.fresh)).foregroundStyle(Theme.Colors.freshPR) + Text(" ") + prText : prText)
-                        .font(Theme.Fonts.small).foregroundStyle(Theme.Colors.secondaryText)
-                        .lineLimit(1).truncationMode(.tail)
-                        .contentShape(Rectangle())
-                        .onTapGesture { onAction(.openLink(s.id, pr.url)) }
-                        .help(pr.title ?? "")
                     Spacer(minLength: 0)
                     if pr.isOpen {
                         if pr.rabbit == .awaitingApproval {
@@ -274,22 +295,23 @@ extension WidgetView {
                 .padding(.horizontal, 4)
                 .background(prNew ? Theme.Colors.freshPR.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 5))
                 .padding(.horizontal, -4)
-                .padding(.leading, Theme.Space.indent)
+                .padding(.leading, textColumn)
             }
             if let pending = s.pending {
-                approvalBlock(s, pending).padding(.leading, Theme.Space.indent)
+                approvalBlock(s, pending).padding(.leading, textColumn)
             }
             if let q = s.question {
-                questionBlock(s, q).padding(.leading, Theme.Space.indent)
+                questionBlock(s, q).padding(.leading, textColumn)
             }
             if let editing, editing != .answer {
-                editor(s, editing).padding(.leading, Theme.Space.indent)
+                editor(s, editing).padding(.leading, textColumn)
             }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
         .frame(minHeight: Layout.rowHeight)
         .background(Theme.Colors.card)
+        .background(claudeNew ? Theme.Colors.fresh.opacity(0.08) : .clear)
         .overlay(alignment: .leading) { Rectangle().fill(statusColor).frame(width: 3) }
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .onHover { panel.noteRowHover(s.id, inside: $0) }

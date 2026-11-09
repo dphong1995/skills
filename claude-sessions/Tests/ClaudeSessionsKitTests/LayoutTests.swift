@@ -309,8 +309,8 @@ private func prStatus(id: Int, state: String = "OPEN", reviewers: Int = 0, appro
     let now = Date(timeIntervalSince1970: 1_800_000_000)
     let pr = prStatus(id: 7571, reviewers: 5, changes: 1, comments: 23,
                       lastOther: PRComment(name: "Tin Tran", at: now - 180))
-    #expect(prLine(pr, now: now, stale: now - 420) == "PR #7571 · ✗ 1 yêu cầu sửa · ✓ 0/5 · 💬 23 · Tin Tran 3m · cũ 7m")
-    #expect(prLine(pr, now: now, stale: nil) == "PR #7571 · ✗ 1 yêu cầu sửa · ✓ 0/5 · 💬 23 · Tin Tran 3m")
+    #expect(prLine(pr, now: now, stale: now - 420) == "PR #7571 · 1 yêu cầu sửa · 0/5 · 23 · Tin Tran 3m · cũ 7m")
+    #expect(prLine(pr, now: now, stale: nil) == "PR #7571 · 1 yêu cầu sửa · 0/5 · 23 · Tin Tran 3m")
     #expect(prLine(prStatus(id: 9), now: now, stale: nil) == "PR #9")
     #expect(prLine(prStatus(id: 7567, state: "MERGED", reviewers: 2), now: now, stale: nil) == "PR #7567 · đã merge")
     #expect(prLine(prStatus(id: 7567, state: "DECLINED"), now: now, stale: nil) == "PR #7567 · đã đóng")
@@ -338,10 +338,10 @@ private func prStatus(id: Int, state: String = "OPEN", reviewers: Int = 0, appro
     let now = Date(timeIntervalSince1970: 1_800_000_000)
     var pr = prStatus(id: 9)
     pr.rabbit = .reviewed(findings: 2)
-    #expect(prLine(pr, now: now, stale: nil) == "PR #9 · 🐰 2 góp ý")
+    #expect(prLine(pr, now: now, stale: nil) == "PR #9 · 2 góp ý")
     var closed = prStatus(id: 9, state: "MERGED")
     closed.rabbit = .reviewed(findings: 2)
-    #expect(!prLine(closed, now: now, stale: nil).contains("🐰"))
+    #expect(!prLine(closed, now: now, stale: nil).contains("góp ý"))
 }
 
 @Test func expandedHeightGrowsWithOpenList() {
