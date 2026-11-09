@@ -80,5 +80,8 @@ Pass test globs quoted; a bare directory argument fails on Node 24. Test output 
 ## Conventions
 
 - Skill, agent, reference and code text is English; `README.md` and user-facing page strings are Vietnamese.
+- claude-sessions widget: every clickable control gives the user visible feedback on click (sending/sent/failed state
+  on the control or its row), not only a beep on failure or a state change that shows up later. Applies to new and
+  changed buttons (`Nhờ Claude`, `Nhắc duyệt`, ...); a button with an async effect shows its in-flight and result state.
 - Commit subjects: imperative sentence, no prefix (e.g. "Add a mod that compacts the main thread at its own
   threshold"); plan-driven work uses "Phase N: ...".
