@@ -2,10 +2,8 @@ import Testing
 import Foundation
 @testable import ClaudeSessionsKit
 
-private func data(_ values: [[String: Any]]) -> Data { try! JSONSerialization.data(withJSONObject: ["values": values]) }
-
 private func rabbit(_ state: String, _ description: String) -> Rabbit? {
-    CodeRabbit.state(fromStatuses: data([rabbitStatus(state: state, description: description)]), commit: "abc123")?.rabbit
+    CodeRabbit.state(fromValues: [rabbitStatus(state: state, description: description)], commit: "abc123")?.rabbit
 }
 
 @Suite struct CodeRabbitTests {
@@ -23,15 +21,15 @@ private func rabbit(_ state: String, _ description: String) -> Rabbit? {
         #expect(rabbit("SUCCESSFUL", "Review completed") == .reviewed(findings: nil))
 
         let other: [String: Any] = ["key": "pipelines", "name": "Pipeline", "state": "SUCCESSFUL", "commit": ["hash": "abc123"]]
-        #expect(CodeRabbit.state(fromStatuses: data([other]), commit: "abc123") == nil)
+        #expect(CodeRabbit.state(fromValues: [other], commit: "abc123") == nil)
         let old = rabbitStatus(description: "Review completed", commit: "old999")
-        #expect(CodeRabbit.state(fromStatuses: data([old]), commit: "abc123") == nil)
+        #expect(CodeRabbit.state(fromValues: [old], commit: "abc123") == nil)
     }
 
     @Test func newestStatusWins() {
         let older = rabbitStatus(state: "INPROGRESS", description: "Review in progress", created: "2026-11-03T03:00:00.000000+00:00")
         let newer = rabbitStatus(description: "Review completed", created: "2026-11-03T04:00:00.000000+00:00")
-        let s = CodeRabbit.state(fromStatuses: data([older, newer]), commit: "abc123")
+        let s = CodeRabbit.state(fromValues: [older, newer], commit: "abc123")
         #expect(s?.rabbit == .reviewed(findings: nil))
         #expect(s?.since == Date(timeIntervalSince1970: 1_793_678_400))
     }
@@ -39,32 +37,32 @@ private func rabbit(_ state: String, _ description: String) -> Rabbit? {
     @Test func inProgressSinceIsUpdatedOn() {
         let s = rabbitStatus(state: "INPROGRESS", description: "Review in progress", created: "2026-11-03T03:00:00.000000+00:00",
                              updated: "2026-11-03T04:00:00.000000+00:00")
-        #expect(CodeRabbit.state(fromStatuses: data([s]), commit: "abc123")?.since == Date(timeIntervalSince1970: 1_793_678_400))
+        #expect(CodeRabbit.state(fromValues: [s], commit: "abc123")?.since == Date(timeIntervalSince1970: 1_793_678_400))
     }
 
     @Test func createdOnlyIgnoresEditedSummary() {
         let since = Date(timeIntervalSince1970: 1_793_678_400)
         var edited = rabbitComment("**Actionable comments posted: 2**", at: "2026-11-03T03:00:00.000000+00:00")
         edited["updated_on"] = "2026-11-03T04:05:00.000000+00:00"
-        #expect(CodeRabbit.findings(fromComments: data([edited]), since: since) == .count(2))
-        #expect(CodeRabbit.findings(fromComments: data([edited]), since: since, createdOnly: true) == .stale)
+        #expect(CodeRabbit.findings(fromValues: [edited], since: since) == 2)
+        #expect(CodeRabbit.findings(fromValues: [edited], since: since, createdOnly: true) == nil)
         let fresh = rabbitComment("**Actionable comments posted: 2**", at: "2026-11-03T04:05:00.000000+00:00")
-        #expect(CodeRabbit.findings(fromComments: data([fresh]), since: since, createdOnly: true) == .count(2))
+        #expect(CodeRabbit.findings(fromValues: [fresh], since: since, createdOnly: true) == 2)
     }
 
     @Test func findingsFromSummary() {
         let since = Date(timeIntervalSince1970: 1_793_678_400) // 2026-11-03T04:00:00Z
         let summary = rabbitComment("**Actionable comments posted: 2**", at: "2026-11-03T04:05:00.000000+00:00")
         let inline = rabbitComment("nit: rename this", at: "2026-11-03T04:06:00.000000+00:00")
-        #expect(CodeRabbit.findings(fromComments: data([inline, summary]), since: since) == .count(2))
+        #expect(CodeRabbit.findings(fromValues: [inline, summary], since: since) == 2)
 
         let none = rabbitComment("No actionable comments were generated in the recent review.", at: "2026-11-03T04:05:00.000000+00:00")
-        #expect(CodeRabbit.findings(fromComments: data([none]), since: since) == .count(0))
+        #expect(CodeRabbit.findings(fromValues: [none], since: since) == 0)
 
         let stale = rabbitComment("**Actionable comments posted: 2**", at: "2026-11-03T03:00:00.000000+00:00")
-        #expect(CodeRabbit.findings(fromComments: data([stale]), since: since) == .stale)
-        #expect(CodeRabbit.findings(fromComments: data([]), since: since) == .notFound)
-        #expect(CodeRabbit.findings(fromComments: data([inline]), since: since) == .notFound)
+        #expect(CodeRabbit.findings(fromValues: [stale], since: since) == nil)
+        #expect(CodeRabbit.findings(fromValues: [], since: since) == nil)
+        #expect(CodeRabbit.findings(fromValues: [inline], since: since) == nil)
     }
 
     @Test func labels() {
@@ -161,16 +159,16 @@ private func rabbit(_ state: String, _ description: String) -> Rabbit? {
 
     @Test func hidesAskClaudeTable() {
         let none = RabbitThreads(pending: 0, total: 3), empty = RabbitThreads(pending: 0, total: 0), some = RabbitThreads(pending: 2, total: 5)
-        #expect(CodeRabbit.hidesAskClaude(.awaitingApproval, threads: none))
-        #expect(CodeRabbit.hidesAskClaude(.nudged, threads: none))
-        #expect(CodeRabbit.hidesAskClaude(.approved, threads: none))
-        #expect(CodeRabbit.hidesAskClaude(.reviewed(findings: 0), threads: empty))
-        #expect(!CodeRabbit.hidesAskClaude(.reviewed(findings: 5), threads: some))
-        #expect(!CodeRabbit.hidesAskClaude(.reviewing, threads: none))
-        #expect(!CodeRabbit.hidesAskClaude(.awaitingApproval, threads: nil))
-        #expect(!CodeRabbit.hidesAskClaude(.failed, threads: none))
-        #expect(!CodeRabbit.hidesAskClaude(.skipped, threads: none))
-        #expect(!CodeRabbit.hidesAskClaude(nil, threads: none))
+        #expect(CodeRabbit.hidesAskClaude(.awaitingApproval, threads: none, othersPending: false))
+        #expect(CodeRabbit.hidesAskClaude(.nudged, threads: none, othersPending: false))
+        #expect(CodeRabbit.hidesAskClaude(.approved, threads: none, othersPending: false))
+        #expect(CodeRabbit.hidesAskClaude(.reviewed(findings: 0), threads: empty, othersPending: false))
+        #expect(!CodeRabbit.hidesAskClaude(.reviewed(findings: 5), threads: some, othersPending: false))
+        #expect(!CodeRabbit.hidesAskClaude(.reviewing, threads: none, othersPending: false))
+        #expect(!CodeRabbit.hidesAskClaude(.awaitingApproval, threads: nil, othersPending: false))
+        #expect(!CodeRabbit.hidesAskClaude(.failed, threads: none, othersPending: false))
+        #expect(!CodeRabbit.hidesAskClaude(.skipped, threads: none, othersPending: false))
+        #expect(!CodeRabbit.hidesAskClaude(nil, threads: none, othersPending: false))
     }
 
     @Test func resolveOrder() {
@@ -268,19 +266,19 @@ private func rabbit(_ state: String, _ description: String) -> Rabbit? {
 
     @Test func approvalFailedFromComment() {
         let v = derived(statuses: [reviewed], comments: [approveCommand, failedComment], now: 60)
-        #expect(v.rabbit == .approvalFailed(reason: "approval failed"))
+        #expect(v.rabbit == .approvalFailed(reason: "Comments resolved, but approval failed."))
     }
 
     @Test func approvalFailedCommentSurvivesApproveStatusUpdate() {
         let status = rabbitStatus(description: "Approve command performed: Comments resolved.", created: Self.at(-600), updated: Self.at(60))
         let v = derived(statuses: [status], comments: [approveCommand, failedComment], now: 90)
-        #expect(v.rabbit == .approvalFailed(reason: "approval failed"))
+        #expect(v.rabbit == .approvalFailed(reason: "Comments resolved, but approval failed."))
     }
 
     @Test func approvalFailedCommentClearedByNewReview() {
         let fresh = rabbitStatus(description: "Review completed", created: Self.at(120))
         let v = derived(statuses: [reviewed, fresh], comments: [approveCommand, failedComment], now: 150)
-        #expect(v.rabbit != .approvalFailed(reason: "approval failed"))
+        #expect(v.rabbit == .awaitingApproval)
     }
 
     @Test func newerCommandSupersedesApprovalFailed() {
@@ -325,12 +323,15 @@ private func rabbit(_ state: String, _ description: String) -> Rabbit? {
         #expect(!pending([humanReply(id: 1, parent: nil, uuid: "{a}", "note", at: Self.at(0))]))
         #expect(!pending([humanReply(id: 1, parent: nil, uuid: "{r}", "@coderabbitai review", at: Self.at(0))]))
         #expect(!pending([r], me: nil))
+        // The CodeRabbit account's own unmarked comments are not a reviewer's.
+        let bot = rabbitComment("summary", at: Self.at(-10))
+        #expect(!pending([bot, humanReply(id: 1, parent: nil, uuid: "{tin}", "reply from the bot account", at: Self.at(0))]))
     }
 
     @Test func hidesAskClaudeKeepsButtonForOthers() {
         let none = RabbitThreads(pending: 0, total: 0)
-        #expect(CodeRabbit.hidesAskClaude(.awaitingApproval, threads: none))
+        #expect(CodeRabbit.hidesAskClaude(.awaitingApproval, threads: none, othersPending: false))
         #expect(!CodeRabbit.hidesAskClaude(.awaitingApproval, threads: none, othersPending: true))
-        #expect(CodeRabbit.hidesAskClaude(.approvalFailed(reason: "x"), threads: none))
+        #expect(CodeRabbit.hidesAskClaude(.approvalFailed(reason: "x"), threads: none, othersPending: false))
     }
 }

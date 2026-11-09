@@ -2340,13 +2340,13 @@
     "total" : 0
   },
   "talo6-dct-backend#7593" : {
-    "hidesAskClaude" : true,
+    "hidesAskClaude" : false,
     "label" : "đã duyệt",
     "pending" : 0,
     "total" : 3
   },
   "talo6-dct-backend#7593\/noApprovers" : {
-    "hidesAskClaude" : true,
+    "hidesAskClaude" : false,
     "label" : "chờ duyệt",
     "pending" : 0,
     "total" : 3

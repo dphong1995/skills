@@ -36,4 +36,6 @@ enum ISODate {
     static func date(_ s: String) -> Date? {
         fractional.date(from: s) ?? plain.date(from: s)
     }
+
+    static func string(from d: Date) -> String { fractional.string(from: d) }
 }

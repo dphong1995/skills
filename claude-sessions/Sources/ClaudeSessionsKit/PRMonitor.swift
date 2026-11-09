@@ -79,9 +79,10 @@ public final class PRMonitor {
     private var summaries: [PRRef: (commit: String?, value: [String: Any])] = [:]
     /// When each PR's `/statuses` was last fetched successfully (paces the slow poll after the window).
     private var statusesAt: [PRRef: Date] = [:]
+    /// When each PR's full `/comments` was last fetched successfully (paces the slow poll while threads are pending).
     private var commentsAt: [PRRef: Date] = [:]
-    /// Per PR: the newest approve command and the `now` of the cycle that first saw it.
-    private var commandSeen: [PRRef: (command: Date, at: Date)] = [:]
+    /// Per PR: the clock of the cycle `nudge` posted its approve command in; the 600 s nudge timeout never starts before it.
+    private var nudgedAt: [PRRef: Date] = [:]
     /// PRs whose first `/comments` fetch failed and is still owed.
     private var commentsOwed = Set<PRRef>()
     private var headSeen: [PRRef: (commit: String?, at: Date)] = [:]
@@ -160,7 +161,7 @@ public final class PRMonitor {
         headSeen = headSeen.filter { used.contains($0.key) }
         statusesAt = statusesAt.filter { used.contains($0.key) }
         commentsAt = commentsAt.filter { used.contains($0.key) }
-        commandSeen = commandSeen.filter { used.contains($0.key) }
+        nudgedAt = nudgedAt.filter { used.contains($0.key) }
         statusesFetched.formIntersection(used)
         commentsOwed.formIntersection(used)
         hidden.formIntersection(used)
@@ -206,10 +207,17 @@ public final class PRMonitor {
                 publish()
                 return false
             }
-            // Stamped with the clock of the last cycle, the one `now` is compared against.
-            let posted: [String: Any] = ["id": -1, "user": ["uuid": me ?? ""], "created_on": ISO8601DateFormatter().string(from: nudgedAt),
+            // Stamped with the clock of the last cycle, the one `now` is compared against, and after the newest status so
+            // that status cannot end the nudge at once.
+            var stamped = nudgedAt
+            if let updated = CodeRabbit.newestStatus(in: statusValues[ref] ?? [], commit: statuses[ref]?.commit)
+                .flatMap({ ($0["updated_on"] as? String).flatMap(ISODate.date) }) {
+                stamped = max(stamped, updated.addingTimeInterval(0.001))
+            }
+            let posted: [String: Any] = ["id": -1, "user": ["uuid": me ?? ""], "created_on": ISODate.string(from: stamped),
                                          "content": ["raw": "@coderabbitai approve"], "deleted": false]
             commentValues[ref, default: []].append(posted)
+            self.nudgedAt[ref] = nudgedAt
             if let pr = statuses[ref] { statuses[ref]?.rabbit = derive(pr, ref, now: nudgedAt).rabbit }
             lastCycle = nil
             publish()
@@ -231,15 +239,11 @@ public final class PRMonitor {
 
     private func derive(_ pr: PRStatus, _ ref: PRRef, now: Date) -> RabbitView {
         let summary = summaries[ref].flatMap { $0.commit == pr.commit ? $0.value : nil }
-        let comments = commentValues[ref]
-        if let command = comments.flatMap({ CodeRabbit.facts(from: $0).command }), commandSeen[ref]?.command != command {
-            commandSeen[ref] = (command, now)
-        }
-        return CodeRabbit.derive(RabbitInputs(commit: pr.commit, statuses: statusValues[ref], comments: comments, summary: summary,
-                                              approvers: pr.approvers, me: me, author: pr.author, commandSeen: commandSeen[ref]?.at), now: now)
+        return CodeRabbit.derive(RabbitInputs(commit: pr.commit, statuses: statusValues[ref], comments: commentValues[ref], summary: summary,
+                                              approvers: pr.approvers, me: me, author: pr.author, nudgedAt: nudgedAt[ref]), now: now)
     }
 
-    /// Sets the four rabbit fields from the raw data kept for `ref`; the thread counts stay nil until a comments fetch succeeded.
+    /// Sets the five rabbit fields from the raw data kept for `ref`; the thread counts stay nil until a comments fetch succeeded.
     private func applyRabbit(_ pr: inout PRStatus, _ ref: PRRef, now: Date) {
         let v = derive(pr, ref, now: now)
         pr.rabbit = v.rabbit
@@ -384,7 +388,10 @@ public final class PRMonitor {
                 // A missing CodeRabbit status (after the window) and a finished review (a later approval or
                 // failure) are still looked for, at a slow rate.
                 var reviewed = false
-                if case .reviewed? = prev?.rabbitStatus { reviewed = true }
+                switch prev?.rabbitStatus {
+                case .reviewed?, .approvalFailed?: reviewed = true
+                default: break
+                }
                 let slowPoll = (reviewed || (!inWindow && prev?.rabbitStatus == nil))
                     && statusesAt[ref].map { now.timeIntervalSince($0) >= Self.statusesSlowPoll } ?? true
                 if prev == nil || prev?.commit != pr.commit
@@ -394,7 +401,8 @@ public final class PRMonitor {
                         statusesAt[ref] = now
                         let values = decode(d)?["values"] as? [[String: Any]] ?? []
                         statusValues[ref] = values
-                        if let r = CodeRabbit.state(fromValues: values, commit: pr.commit)?.rabbit {
+                        // Derived against derived: a failed approval a newer command supersedes is `reviewed` on both sides.
+                        if let r = derive(pr, ref, now: now).status {
                             rabbitFinished = CodeRabbit.isFinal(r) && !(prev?.commit == pr.commit && CodeRabbit.kind(prev?.rabbitStatus) == CodeRabbit.kind(r))
                         }
                     } else if prev != nil {

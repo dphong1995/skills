@@ -8,12 +8,6 @@ private func loadJSON(_ name: String) -> Any {
     try! JSONSerialization.jsonObject(with: Data(contentsOf: fixtures.appendingPathComponent(name)))
 }
 
-private func parseDate(_ s: String) -> Date? {
-    let f = ISO8601DateFormatter()
-    f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    return f.date(from: s) ?? ISO8601DateFormatter().date(from: s)
-}
-
 /// Feeds one recorded PR through a `PRMonitor` and records what the card would show.
 func replayOutcome(_ pr: [String: Any]) -> [String: Any] {
     let repo = pr["repo"] as! String
@@ -21,12 +15,13 @@ func replayOutcome(_ pr: [String: Any]) -> [String: Any] {
     let comments = pr["comments"] as! [[String: Any]]
     let statuses = pr["statuses"] as! [[String: Any]]
     let newest = (comments + statuses).flatMap { [$0["created_on"], $0["updated_on"]] }
-        .compactMap { ($0 as? String).flatMap(parseDate) }.max() ?? Date(timeIntervalSince1970: 1_800_000_000)
+        .compactMap { ($0 as? String).flatMap(ISODate.date) }.max() ?? Date(timeIntervalSince1970: 1_800_000_000)
     let now = newest.addingTimeInterval(60)
 
     var open = prJSON(id: id, repo: repo, state: "OPEN", comments: pr["commentCount"] as! Int)
     open["source"] = ["branch": ["name": "b"], "repository": ["full_name": repo], "commit": ["hash": pr["commit"] as! String]]
     open["participants"] = pr["participants"]
+    open["author"] = ["uuid": pr["author"] as! String]
     let api = fake(open: [open])
     api.set("/2.0/user", json: ["uuid": pr["author"] as! String])
     api.set("/pullrequests/\(id)/statuses", json: ["values": statuses])
@@ -39,7 +34,7 @@ func replayOutcome(_ pr: [String: Any]) -> [String: Any] {
     if let shown {
         if let rabbit = shown.rabbit { out["label"] = CodeRabbit.label(rabbit, threads: shown.rabbitThreads) }
         if let t = shown.rabbitThreads { out["pending"] = t.pending; out["total"] = t.total }
-        out["hidesAskClaude"] = CodeRabbit.hidesAskClaude(shown.rabbit, threads: shown.rabbitThreads)
+        out["hidesAskClaude"] = CodeRabbit.hidesAskClaude(shown.rabbit, threads: shown.rabbitThreads, othersPending: shown.rabbitOthersPending)
     }
     return out
 }

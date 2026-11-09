@@ -454,7 +454,7 @@ struct SnapshotTests {
         let pr0 = store.sessions.first { $0.id == "b" }!.prs[0]
         #expect(pr0.rabbitThreads == nil)
         #expect(pr0.rabbit == .reviewed(findings: nil))
-        #expect(!CodeRabbit.hidesAskClaude(pr0.rabbit, threads: pr0.rabbitThreads))
+        #expect(!CodeRabbit.hidesAskClaude(pr0.rabbit, threads: pr0.rabbitThreads, othersPending: pr0.rabbitOthersPending))
         render(store, panel, "52-pr-counts-unknown")
     }
 
@@ -466,7 +466,7 @@ struct SnapshotTests {
         store.refresh(at: Date())
         let pr0 = store.sessions.first { $0.id == "b" }!.prs[0]
         #expect(pr0.rabbitThreads == RabbitThreads(pending: 0, total: 1))
-        #expect(CodeRabbit.hidesAskClaude(pr0.rabbit, threads: pr0.rabbitThreads))
+        #expect(CodeRabbit.hidesAskClaude(pr0.rabbit, threads: pr0.rabbitThreads, othersPending: pr0.rabbitOthersPending))
         render(store, panel, "53-pr-all-done")
     }
 

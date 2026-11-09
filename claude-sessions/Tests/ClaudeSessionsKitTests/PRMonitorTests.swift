@@ -1096,6 +1096,85 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         #expect(done.api.requests(containing: "/comments") == k)
     }
 
+    @Test func oldUnansweredCommandIsAwaitingWithoutChime() {
+        let api = fake(open: [prJSON(id: 7583, comments: 4, rabbitApproved: false)])
+        setStatuses(api, rabbitStatus(description: "Review completed", created: Self.started))
+        answeredThread(api)
+        var values = (try! JSONSerialization.jsonObject(with: api.get("/comments")) as! [String: Any])["values"] as! [[String: Any]]
+        values.insert(humanReply(id: 5, parent: nil, "@coderabbitai approve", at: ISODate.string(from: t0 - 7200), inline: false), at: 0)
+        api.set("/comments", json: ["values": values])
+        let m = monitor(api)
+        m.update([target([prRef(7583)])], at: t0)
+        let first = m.takeSnapshot()
+        #expect(first.prs["s"]?.first?.rabbit == .awaitingApproval)
+        m.update([target([prRef(7583)])], at: t0 + 601)
+        let later = m.takeSnapshot()
+        #expect(later.prs["s"]?.first?.rabbit == .awaitingApproval)
+        #expect(!later.events.contains(.rabbitDone))
+    }
+
+    @Test func nudgeTimesOutFromItsOwnPost() {
+        let api = fake()
+        let m = awaitingMonitor(api)
+        m.nudge(prRef(7583)) { _ in }
+        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7583, comments: 4, rabbitApproved: false)]])
+        api.set("/comments", json: ["values": [humanReply(id: 5, parent: nil, "@coderabbitai approve", at: ISODate.string(from: t0), inline: false),
+                                              rabbitComment("**Actionable comments posted: 1**", at: Self.c1),
+                                              rabbitInline(id: 1, "nit", at: Self.c1),
+                                              humanReply(id: 2, parent: 1, "won't fix", at: Self.c2),
+                                              rabbitInline(id: 3, "withdrawn", at: Self.c3, parent: 1)]])
+        m.update([target([prRef(7583)])], at: t0 + 599)
+        #expect(rabbitOf(m) == .nudged)
+        // 601 s after the post, and past the 45 s cycle interval since the +599 s cycle.
+        m.update([target([prRef(7583)])], at: t0 + 646)
+        #expect(rabbitOf(m) == .awaitingApproval)
+        var again: Bool?
+        m.nudge(prRef(7583)) { again = $0 }
+        #expect(again == true)
+        #expect(api.posts.count == 2)
+    }
+
+    @Test func supersededStatusFailureDoesNotRefetchComments() {
+        let api = fake(open: [prJSON(id: 7583, comments: 4, rabbitApproved: false)])
+        setStatuses(api, rabbitStatus(description: "Approve command performed: Approval skipped: durable Cloud recovery is unavailable", created: Self.later))
+        api.set("/comments", json: ["values": [
+            humanReply(id: 5, parent: nil, "@coderabbitai approve", at: "2026-11-04T10:10:00.000000+00:00", inline: false),
+            rabbitComment("**Actionable comments posted: 1**", at: Self.c1),
+            rabbitInline(id: 1, "nit", at: Self.c1),
+            humanReply(id: 2, parent: 1, "won't fix", at: Self.c2),
+            rabbitInline(id: 3, "withdrawn", at: Self.c3, parent: 1)]])
+        let m = monitor(api)
+        m.update([target([prRef(7583)])], at: t0)
+        let n = api.requests(containing: "/comments")
+        let s = api.requests(containing: "/statuses")
+        m.update([target([prRef(7583)])], at: t0 + 301)
+        #expect(api.requests(containing: "/statuses") == s + 1)
+        #expect(api.requests(containing: "/comments") == n)
+    }
+
+    @Test func commentFailureChimesOnceAndReasonChangeStaysSilent() {
+        let api = fake(open: [prJSON(id: 7571, comments: 1)])
+        setStatuses(api, rabbitStatus(description: "Review completed", created: Self.started))
+        let m = monitor(api)
+        m.update([target([prRef(7571)])], at: t0)
+        _ = m.takeSnapshot()
+        func failure(_ text: String, count: Int) {
+            api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7571, comments: count)]])
+            api.set("/comments", json: ["values": [rabbitComment(text, at: Self.c2),
+                                                  humanReply(id: 5, parent: nil, "@coderabbitai approve", at: Self.c1, inline: false)]])
+        }
+        failure("Comments resolved, but approval failed.", count: 2)
+        m.update([target([prRef(7571)])], at: t0 + 61)
+        let first = m.takeSnapshot()
+        #expect(first.prs["s"]?.first?.rabbit == .approvalFailed(reason: "Comments resolved, but approval failed."))
+        #expect(first.events == [.rabbitNeedsYou])
+        failure("Approval failed: CodeRabbit is unavailable.", count: 3)
+        m.update([target([prRef(7571)])], at: t0 + 122)
+        let second = m.takeSnapshot()
+        #expect(second.prs["s"]?.first?.rabbit == .approvalFailed(reason: "Approval failed: CodeRabbit is unavailable."))
+        #expect(second.events.isEmpty)
+    }
+
     @Test func authorParsed() {
         var pr = prJSON(id: 7571)
         pr["author"] = ["uuid": "{author}"]
