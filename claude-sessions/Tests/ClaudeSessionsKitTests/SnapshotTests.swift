@@ -256,6 +256,19 @@ struct SnapshotTests {
         render(store, panel, "21-collapsed-two-digits")
     }
 
+    @Test func renderCollapsedBadgeTwoDigits() {
+        let dir = makeTempDir()
+        let store = makeStore(dir: dir)
+        let panel = PanelState()
+        for i in 0..<12 { writeSession(dir, "w\(i)", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 5, name: "w\(i)", cwd: frontend) }
+        for i in 0..<10 { writeSession(dir, "i\(i)", pid: me, status: "idle", ageSec: 5, name: "i\(i)", cwd: frontend) }
+        for i in 0..<11 { writeSession(dir, "b\(i)", pid: me, status: "busy", ageSec: 5, name: "b\(i)", cwd: frontend) }
+        store.refresh(at: Date())
+        store.quota = Quota(fiveHour: 97, fiveHourReset: Date().addingTimeInterval(7200), weekly: 40,
+                            weeklyReset: Date().addingTimeInterval(5 * 86400), updated: Date(), forecast: nil)
+        render(store, panel, "41-collapsed-badge")
+    }
+
     private func newMarkStore(_ dir: URL, waiting: Int, idle: Int, busy: Int) -> Store {
         let store = makeStore(dir: dir)
         for i in 0..<waiting { writeSession(dir, "w\(i)", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 5, name: "w\(i)", cwd: frontend) }

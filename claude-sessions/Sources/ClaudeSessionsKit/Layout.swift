@@ -42,7 +42,7 @@ public enum Layout {
     static var maxListHeight: CGFloat { maxExpandedHeight - headerHeight }
     public static let collapsed = CGSize(width: 126, height: headerHeight)
     /// Extra pill width for the `N%` quota group.
-    static let quotaPillExtra: CGFloat = 44
+    static let quotaPillExtra: CGFloat = 58
     /// Background opacity of the expanded card; the last of `bgOpacities`.
     static let cardOpacity: Double = 0.92
     public static let bgOpacities: [Double] = [0, 0.25, 0.5, 0.75, cardOpacity]

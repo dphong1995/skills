@@ -59,6 +59,10 @@ enum Theme {
         static let gap: CGFloat = 6
         static let indent: CGFloat = 22
         static let rightColumn: CGFloat = 64
+        static let quotaBarWidth: CGFloat = 48
+        static let quotaBarHeight: CGFloat = 4
+        static let badgeH: CGFloat = 6
+        static let badgeV: CGFloat = 1
     }
 
     enum Symbols {
@@ -66,6 +70,7 @@ enum Theme {
         static let rabbit = "hare"
         static let agents = "cpu"
         static let fresh = "sparkle"
+        static let warning = "exclamationmark.triangle.fill"
         static let menu = "list.bullet"
         static let activity = "chevron.right"
         static let link = "arrow.up.right"

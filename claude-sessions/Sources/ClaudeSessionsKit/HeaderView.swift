@@ -5,8 +5,11 @@ extension WidgetView {
     func header(expanded: Bool) -> some View {
         Group {
             if expanded {
-                groups(expanded: true, dot: 3, gap: 7)
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                HStack(spacing: Theme.Space.gap) {
+                    if let q = store.quota { quotaBars(q) }
+                    Spacer(minLength: Theme.Space.gap)
+                    groups(expanded: true, dot: 3, gap: 7, showQuota: false)
+                }
             } else {
                 // Two-digit counts fall back to the tight spacing.
                 ViewThatFits(in: .horizontal) {
@@ -20,16 +23,16 @@ extension WidgetView {
         .padding(.horizontal, expanded ? 18 : 12)
     }
 
-    func groups(expanded: Bool, dot: CGFloat, gap: CGFloat) -> some View {
+    func groups(expanded: Bool, dot: CGFloat, gap: CGFloat, showQuota: Bool = true) -> some View {
         let counts = Dictionary(grouping: store.sessions, by: \.colorStatus).mapValues(\.count)
         let newCount = store.newCount
         return HStack(spacing: gap) {
-            if let q = store.quota {
-                if expanded {
-                    quotaGroup(q)
-                } else if let p = q.pillPercent {
-                    Text("\(p)%").font(Theme.Fonts.count.monospacedDigit()).foregroundStyle(quotaColor(p)).fixedSize()
+            if showQuota, !expanded, let p = store.quota?.pillPercent {
+                HStack(spacing: 3) {
+                    Text("5h").font(Theme.Fonts.meta).foregroundStyle(Theme.Colors.tertiaryText)
+                    Text("\(p)%").font(Theme.Fonts.count.monospacedDigit()).foregroundStyle(quotaColor(p))
                 }
+                .fixedSize()
             }
             if newCount > 0 {
                 HStack(spacing: dot) {
@@ -46,9 +49,18 @@ extension WidgetView {
             }
             ForEach(["waiting", "idle", "busy"], id: \.self) { st in
                 if let n = counts[st] {
-                    HStack(spacing: dot) {
-                        Circle().fill(color(st)).frame(width: 6, height: 6)
-                        Text("\(n)").font(Theme.Fonts.count.monospacedDigit()).foregroundStyle(Theme.Colors.primaryText).fixedSize()
+                    if st == "waiting" {
+                        Text("\(n)")
+                            .font(Theme.Fonts.count.monospacedDigit())
+                            .foregroundStyle(Color.white)
+                            .padding(.horizontal, Theme.Space.badgeH).padding(.vertical, Theme.Space.badgeV)
+                            .background(Capsule().fill(color(st)))
+                            .fixedSize()
+                    } else {
+                        HStack(spacing: dot) {
+                            Circle().fill(color(st)).frame(width: 6, height: 6)
+                            Text("\(n)").font(Theme.Fonts.count.monospacedDigit()).foregroundStyle(Theme.Colors.secondaryText).fixedSize()
+                        }
                     }
                 }
             }
@@ -69,20 +81,39 @@ extension WidgetView {
         return f
     }()
 
-    func quotaGroup(_ q: Quota) -> some View {
+    func quotaBar(_ label: String, _ percent: Int) -> some View {
+        HStack(spacing: 4) {
+            Text(label).font(Theme.Fonts.meta).foregroundStyle(Theme.Colors.tertiaryText)
+            ZStack(alignment: .leading) {
+                Capsule().fill(Theme.Colors.field)
+                Capsule().fill(quotaColor(percent))
+                    .frame(width: Theme.Space.quotaBarWidth * CGFloat(min(max(percent, 0), 100)) / 100)
+            }
+            .frame(width: Theme.Space.quotaBarWidth, height: Theme.Space.quotaBarHeight)
+            Text("\(percent)%").font(Theme.Fonts.metaStrong.monospacedDigit()).foregroundStyle(quotaColor(percent))
+        }
+    }
+
+    func quotaBars(_ q: Quota) -> some View {
         let stale = q.isStale(now: store.now)
         let t = Self.clock
-        return HStack(spacing: 4) {
-            Text("5h \(q.fiveHour)%").foregroundStyle(quotaColor(q.fiveHour))
-            Text("· \(t.string(from: q.fiveHourReset))")
-            if let f = q.forecast { Text("→ \(t.string(from: f))") }
-            Text("· tuần \(q.weekly)%").foregroundStyle(quotaColor(q.weekly))
-            if stale { Text("cũ") }
+        return HStack(spacing: Theme.Space.gap + 2) {
+            quotaBar("5h", q.fiveHour)
+            quotaBar("Tuần", q.weekly)
+            if let f = q.forecast {
+                HStack(spacing: 3) {
+                    Image(systemName: Theme.Symbols.warning)
+                    Text("hết ~\(t.string(from: f))")
+                }
+                .font(Theme.Fonts.metaStrong.monospacedDigit())
+                .foregroundStyle(Theme.Colors.status("waiting"))
+            } else {
+                Text("reset \(t.string(from: q.fiveHourReset))")
+                    .font(Theme.Fonts.meta.monospacedDigit()).foregroundStyle(Theme.Colors.tertiaryText)
+            }
+            if stale { Text("cũ").font(Theme.Fonts.meta).foregroundStyle(Theme.Colors.tertiaryText) }
         }
-        .font(Theme.Fonts.smallStrong.monospacedDigit())
-        .foregroundStyle(Theme.Colors.secondaryText)
         .lineLimit(1).fixedSize()
         .opacity(stale ? Theme.Opacity.stale : 1)
-        .padding(.trailing, 6)
     }
 }
