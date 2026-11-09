@@ -14,6 +14,26 @@ struct RabbitFacts: Equatable {
     var nudgePending: Bool
 }
 
+/// The raw data `derive` reads; `statuses` and `comments` are nil until fetched.
+struct RabbitInputs {
+    var commit: String?
+    var statuses: [[String: Any]]?
+    var comments: [[String: Any]]?
+    /// The newest summary comment seen for `commit`, kept for when `comments` no longer holds it.
+    var summary: [String: Any]?
+    var approvers: Set<String>
+    var me: String?
+}
+
+struct RabbitView: Equatable {
+    /// The displayed state.
+    var rabbit: Rabbit?
+    /// The state from the statuses and summary alone.
+    var status: Rabbit?
+    var since: Date?
+    var threads: RabbitThreads?
+}
+
 enum CodeRabbit {
     static let marker = "coderabbit.ai/#html-comment"
 
@@ -31,6 +51,10 @@ enum CodeRabbit {
     static func state(fromStatuses data: Data, commit: String?) -> (rabbit: Rabbit, since: Date)? {
         guard let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let values = o["values"] as? [[String: Any]] else { return nil }
+        return state(fromValues: values, commit: commit)
+    }
+
+    static func state(fromValues values: [[String: Any]], commit: String?) -> (rabbit: Rabbit, since: Date)? {
         let newest = values.filter { v in
             guard isStatus(v) else { return false }
             guard let commit, let hash = (v["commit"] as? [String: Any])?["hash"] as? String else { return true }
@@ -67,22 +91,53 @@ enum CodeRabbit {
     static func findings(fromComments data: Data, since: Date, createdOnly: Bool = false) -> Findings {
         guard let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let values = o["values"] as? [[String: Any]] else { return .notFound }
-        for v in values where (v["deleted"] as? Bool) != true && isComment(v) {
-            let raw = raw(v)
-            let count: Int
-            let ns = raw as NSString
-            if let m = actionable.firstMatch(in: raw, range: NSRange(location: 0, length: ns.length)),
-               let n = Int(ns.substring(with: m.range(at: 1))) {
-                count = n
-            } else if raw.contains("No actionable comments") {
-                count = 0
-            } else {
-                continue
-            }
+        return findings(fromValues: values, since: since, createdOnly: createdOnly)
+    }
+
+    /// The finding count of a summary comment, nil for any other comment.
+    private static func summaryCount(_ v: [String: Any]) -> Int? {
+        guard (v["deleted"] as? Bool) != true && isComment(v) else { return nil }
+        let raw = raw(v)
+        let ns = raw as NSString
+        if let m = actionable.firstMatch(in: raw, range: NSRange(location: 0, length: ns.length)),
+           let n = Int(ns.substring(with: m.range(at: 1))) {
+            return n
+        }
+        return raw.contains("No actionable comments") ? 0 : nil
+    }
+
+    /// The first (newest, in `sort=-created_on` order) summary comment of `values`.
+    static func newestSummary(in values: [[String: Any]]) -> [String: Any]? {
+        values.first { summaryCount($0) != nil }
+    }
+
+    static func findings(fromValues values: [[String: Any]], since: Date, createdOnly: Bool = false) -> Findings {
+        for v in values {
+            guard let count = summaryCount(v) else { continue }
             let dates = (createdOnly ? ["created_on"] : ["created_on", "updated_on"]).compactMap { stamp(v, $0) }
             return dates.contains { $0 >= since } ? .count(count) : .stale
         }
         return .notFound
+    }
+
+    /// Pure: the same inputs always give the same view.
+    static func derive(_ i: RabbitInputs, now: Date) -> RabbitView {
+        let facts = i.comments.map(facts(from:))
+        var status: Rabbit?
+        var since: Date?
+        if let values = i.statuses, let fresh = state(fromValues: values, commit: i.commit) {
+            since = fresh.since
+            let pool = (i.comments ?? []) + (i.summary.map { [$0] } ?? [])
+            var r = fresh.rabbit
+            if r == .reviewing {
+                // The summary is out; the status lags behind it.
+                if case .count(let n) = findings(fromValues: pool, since: fresh.since, createdOnly: true) { r = .reviewed(findings: n) }
+            } else if case .reviewed = r {
+                if case .count(let n) = findings(fromValues: pool, since: fresh.since) { r = .reviewed(findings: n) }
+            }
+            status = r
+        }
+        return RabbitView(rabbit: resolve(status, approvers: i.approvers, facts: facts), status: status, since: since, threads: facts?.threads)
     }
 
     static func label(_ r: Rabbit, threads: RabbitThreads? = nil) -> String {

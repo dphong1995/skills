@@ -194,4 +194,47 @@ private func rabbit(_ state: String, _ description: String) -> Rabbit? {
         #expect(CodeRabbit.resolve(nil, approvers: tin, facts: known) == .approved)
         #expect(CodeRabbit.resolve(nil, approvers: [], facts: known) == nil)
     }
+
+    private static let since = "2026-11-03T04:00:00.000000+00:00"
+    private static let now = Date(timeIntervalSince1970: 1_793_682_000)
+
+    private func inputs(_ status: [String: Any], comments: [[String: Any]]? = nil, summary: [String: Any]? = nil) -> RabbitInputs {
+        RabbitInputs(commit: "abc123", statuses: [status], comments: comments, summary: summary, approvers: [], me: nil)
+    }
+
+    @Test func deriveReviewingWithFreshSummaryIsReviewed() {
+        let status = rabbitStatus(state: "INPROGRESS", description: "Review in progress", created: Self.since)
+        let summary = rabbitComment("**Actionable comments posted: 2**", at: "2026-11-03T04:01:00.000000+00:00")
+        let v = CodeRabbit.derive(inputs(status, summary: summary), now: Self.now)
+        #expect(v.rabbit == .reviewed(findings: 2))
+        #expect(v.status == .reviewed(findings: 2))
+    }
+
+    @Test func deriveIgnoresSummaryBeforeSince() {
+        let status = rabbitStatus(state: "INPROGRESS", description: "Review in progress", created: Self.since)
+        let summary = rabbitComment("**Actionable comments posted: 2**", at: "2026-11-03T03:59:00.000000+00:00")
+        let v = CodeRabbit.derive(inputs(status, summary: summary), now: Self.now)
+        #expect(v.rabbit == .reviewing)
+    }
+
+    @Test func deriveUsesCachedSummaryWhenCommentsLackIt() {
+        let status = rabbitStatus(description: "Review completed", created: Self.since)
+        let summary = rabbitComment("**Actionable comments posted: 8**", at: "2026-11-03T04:01:00.000000+00:00")
+        let v = CodeRabbit.derive(inputs(status, comments: [], summary: summary), now: Self.now)
+        #expect(v.rabbit == .reviewed(findings: 8))
+    }
+
+    @Test func deriveWithoutCommentsHasNoThreads() {
+        let status = rabbitStatus(description: "Review completed", created: Self.since)
+        let v = CodeRabbit.derive(inputs(status), now: Self.now)
+        #expect(v.threads == nil)
+        #expect(v.rabbit == .reviewed(findings: nil))
+    }
+
+    @Test func deriveIsPure() {
+        let status = rabbitStatus(description: "Review completed", created: Self.since)
+        let summary = rabbitComment("**Actionable comments posted: 1**", at: "2026-11-03T04:01:00.000000+00:00")
+        let i = inputs(status, comments: [summary])
+        #expect(CodeRabbit.derive(i, now: Self.now) == CodeRabbit.derive(i, now: Self.now))
+    }
 }
