@@ -184,6 +184,7 @@ extension WidgetView {
                             .font(Theme.Fonts.title).foregroundStyle(Theme.Colors.primaryText).lineLimit(2)
                         Tag(statusText(s), tint: statusColor)
                             .fixedSize()
+                            .alignmentGuide(.firstTextBaseline) { $0[.firstTextBaseline] + Theme.Space.statusTagLift }
                     }
                     HStack(spacing: 0) {
                         Text(s.subtitle).lineLimit(1).truncationMode(.tail)

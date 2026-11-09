@@ -68,6 +68,8 @@ enum Theme {
         static let badgeH: CGFloat = 6
         static let badgeV: CGFloat = 1
         static let selectionRing: CGFloat = 1.5
+        /// Raises the baseline-aligned status tag so its pill centres on the larger title text.
+        static let statusTagLift: CGFloat = 1.5
     }
 
     enum Symbols {
