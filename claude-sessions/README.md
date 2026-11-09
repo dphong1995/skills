@@ -71,7 +71,7 @@ Mỗi PR của session có một dòng với số yêu cầu sửa, số ngườ
 ![Dòng PR](docs/images/22-pr-lines.png)
 
 ### CodeRabbit
-PR hiện trạng thái review của CodeRabbit; khi đang chờ duyệt có nút `Nhắc duyệt` (icon con thỏ).
+PR hiện trạng thái review của CodeRabbit; khi còn thread góp ý chưa được trả lời, tag là `còn X/N` (ví dụ `còn 2/5`). Hết thread thì `chờ duyệt` kèm nút `Nhắc duyệt` (icon con thỏ) và nút `Nhờ Claude` ẩn.
 
 ![CodeRabbit](docs/images/31-pr-awaiting-approval.png)
 

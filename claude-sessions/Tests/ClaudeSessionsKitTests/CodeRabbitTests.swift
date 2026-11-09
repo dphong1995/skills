@@ -138,9 +138,44 @@ private func rabbit(_ state: String, _ description: String) -> Rabbit? {
         #expect(CodeRabbit.facts(from: answered + [gone]).allAnswered)
     }
 
+    @Test func factsCountsThreads() {
+        let f = CodeRabbit.facts(from: [
+            rabbitInline(id: 1, "a", at: Self.t1),
+            rabbitInline(id: 4, "b", at: Self.t1), humanReply(id: 5, parent: 4, "ok", at: Self.t2), rabbitInline(id: 6, "done", at: Self.t3, parent: 4),
+            rabbitInline(id: 7, "c", at: Self.t1), humanReply(id: 8, parent: 7, "why", at: Self.t3)])
+        #expect(f.threads == 3 && f.pending == 2 && !f.allAnswered)
+    }
+
+    @Test func factsDeletedRootNotCounted() {
+        var gone = rabbitInline(id: 9, "nit", at: Self.t1)
+        gone["deleted"] = true
+        let f = CodeRabbit.facts(from: answered + [gone])
+        #expect(f.threads == 1 && f.pending == 0)
+    }
+
+    @Test func labelRemaining() {
+        #expect(CodeRabbit.label(.reviewed(findings: 5), threads: RabbitThreads(pending: 2, total: 5)) == "còn 2/5")
+        #expect(CodeRabbit.label(.reviewed(findings: 5), threads: RabbitThreads(pending: 0, total: 0)) == "5 góp ý")
+        #expect(CodeRabbit.label(.reviewed(findings: 5), threads: nil) == "5 góp ý")
+    }
+
+    @Test func hidesAskClaudeTable() {
+        let none = RabbitThreads(pending: 0, total: 3), empty = RabbitThreads(pending: 0, total: 0), some = RabbitThreads(pending: 2, total: 5)
+        #expect(CodeRabbit.hidesAskClaude(.awaitingApproval, threads: none))
+        #expect(CodeRabbit.hidesAskClaude(.nudged, threads: none))
+        #expect(CodeRabbit.hidesAskClaude(.approved, threads: none))
+        #expect(CodeRabbit.hidesAskClaude(.reviewed(findings: 0), threads: empty))
+        #expect(!CodeRabbit.hidesAskClaude(.reviewed(findings: 5), threads: some))
+        #expect(!CodeRabbit.hidesAskClaude(.reviewing, threads: none))
+        #expect(!CodeRabbit.hidesAskClaude(.awaitingApproval, threads: nil))
+        #expect(!CodeRabbit.hidesAskClaude(.failed, threads: none))
+        #expect(!CodeRabbit.hidesAskClaude(.skipped, threads: none))
+        #expect(!CodeRabbit.hidesAskClaude(nil, threads: none))
+    }
+
     @Test func resolveOrder() {
-        let known = RabbitFacts(rabbitUser: "{tin}", allAnswered: false, nudgePending: false)
-        var answeredFacts = known; answeredFacts.allAnswered = true
+        let known = RabbitFacts(rabbitUser: "{tin}", threads: 1, pending: 1, nudgePending: false)
+        var answeredFacts = known; answeredFacts.pending = 0
         var nudgedFacts = answeredFacts; nudgedFacts.nudgePending = true
         let tin: Set<String> = ["{tin}"]
         #expect(CodeRabbit.resolve(.reviewing, approvers: tin, facts: known) == .approved)
@@ -149,7 +184,7 @@ private func rabbit(_ state: String, _ description: String) -> Rabbit? {
         #expect(CodeRabbit.resolve(.skipped, approvers: tin, facts: known) == .approved)
         #expect(CodeRabbit.resolve(.failed, approvers: [], facts: known) == .failed)
         #expect(CodeRabbit.resolve(.skipped, approvers: [], facts: answeredFacts) == .skipped)
-        let unknown = RabbitFacts(rabbitUser: nil, allAnswered: true, nudgePending: false)
+        let unknown = RabbitFacts(rabbitUser: nil, threads: 1, pending: 0, nudgePending: false)
         #expect(CodeRabbit.resolve(.reviewed(findings: 2), approvers: [], facts: unknown) == .reviewed(findings: 2))
         #expect(CodeRabbit.resolve(.approved, approvers: [], facts: nil) == .approved)
         #expect(CodeRabbit.resolve(.reviewed(findings: 2), approvers: [], facts: answeredFacts) == .awaitingApproval)

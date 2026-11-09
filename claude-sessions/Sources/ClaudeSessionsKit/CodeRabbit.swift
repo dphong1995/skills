@@ -5,8 +5,12 @@ public enum Rabbit: Equatable { case reviewing, reviewed(findings: Int?), approv
 struct RabbitFacts: Equatable {
     /// uuid of the author of the newest marked comment.
     var rabbitUser: String?
+    /// CodeRabbit inline threads (a live top-level inline comment and its descendants).
+    var threads: Int
+    /// Threads not answered: no human reply, or the newest comment is not CodeRabbit's.
+    var pending: Int
     /// Every top-level inline CodeRabbit finding has been answered.
-    var allAnswered: Bool
+    var allAnswered: Bool { pending == 0 }
     /// The newest approve command is newer than every top-level CodeRabbit comment.
     var nudgePending: Bool
 }
@@ -82,7 +86,8 @@ enum CodeRabbit {
         return .notFound
     }
 
-    static func label(_ r: Rabbit) -> String {
+    static func label(_ r: Rabbit, threads: RabbitThreads? = nil) -> String {
+        if case .reviewed = r, let t = threads, t.total > 0, t.pending > 0 { return "còn \(t.pending)/\(t.total)" }
         switch r {
         case .reviewing: return "đang review"
         case .reviewed(let n?) where n > 0: return "\(n) góp ý"
@@ -92,6 +97,15 @@ enum CodeRabbit {
         case .failed: return "lỗi"
         case .awaitingApproval: return "chờ duyệt"
         case .nudged: return "đang nhắc"
+        }
+    }
+
+    /// `Nhờ Claude` has nothing to ask while CodeRabbit is done and every thread is answered.
+    static func hidesAskClaude(_ r: Rabbit?, threads: RabbitThreads?) -> Bool {
+        guard let threads, threads.pending == 0 else { return false }
+        switch r {
+        case .reviewed?, .awaitingApproval?, .nudged?, .approved?: return true
+        default: return false
         }
     }
 
@@ -115,16 +129,17 @@ enum CodeRabbit {
 
         var children: [Int: [[String: Any]]] = [:]
         for v in live { if let p = parent(v) { children[p, default: []].append(v) } }
-        let allAnswered = marked.filter { $0["inline"] != nil && parent($0) == nil }.allSatisfy { root in
+        let roots = marked.filter { $0["inline"] != nil && parent($0) == nil }
+        let pending = roots.filter { root in
             var thread = [root]
             var i = 0
             while i < thread.count {
                 if let id = thread[i]["id"] as? Int { thread += children[id] ?? [] }
                 i += 1
             }
-            guard thread.contains(where: { !isComment($0) }), let newest = thread.max(by: { created($0) < created($1) }) else { return false }
-            return isComment(newest)
-        }
+            guard thread.contains(where: { !isComment($0) }), let newest = thread.max(by: { created($0) < created($1) }) else { return true }
+            return !isComment(newest)
+        }.count
 
         let command = live.filter { v in
             let r = raw(v)
@@ -132,7 +147,7 @@ enum CodeRabbit {
         }.map(created).max()
         let topLevel = marked.filter { parent($0) == nil && $0["inline"] == nil }.map(created).max()
         let nudgePending = command.map { c in topLevel.map { c > $0 } ?? true } ?? false
-        return RabbitFacts(rabbitUser: rabbitUser, allAnswered: allAnswered, nudgePending: nudgePending)
+        return RabbitFacts(rabbitUser: rabbitUser, threads: roots.count, pending: pending, nudgePending: nudgePending)
     }
 
     /// The displayed state from the raw status, the PR's approvers and the comment facts.

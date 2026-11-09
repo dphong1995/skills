@@ -21,7 +21,7 @@ func prParts(_ pr: PRStatus, now: Date, stale: Date?) -> [(text: String, symbol:
     }
     if pr.changesRequested > 0 { parts.append(("\(pr.changesRequested) yêu cầu sửa", Theme.Symbols.changesRequested, .red, 0)) }
     if pr.reviewers > 0 { parts.append(("\(pr.approved)/\(pr.reviewers)", Theme.Symbols.approved, pr.approved > 0 ? .green : nil, 0)) }
-    if let rabbit = pr.rabbit { parts.append((CodeRabbit.label(rabbit), Theme.Symbols.rabbit, nil, 0)) }
+    if let rabbit = pr.rabbit { parts.append((CodeRabbit.label(rabbit, threads: pr.rabbitThreads), Theme.Symbols.rabbit, nil, 0)) }
     if pr.comments > 0 { parts.append(("\(pr.comments)", Theme.Symbols.comments, nil, 0)) }
     if let c = pr.lastOther { parts.append(("\(c.name) \(elapsed(c.at, now))", Theme.Symbols.person, nil, 2)) }
     if let stale { parts.append(("cũ \(elapsed(stale, now))", Theme.Symbols.clock, nil, 1)) }
@@ -304,12 +304,16 @@ extension WidgetView {
                         }
                         let canAsk = s.canAskClaude
                         let askSend = store.sendState(SendKey(session: s.id, kind: .askClaude, pr: pr.ref))
-                        PillButton(title: "Nhờ Claude", send: askSend) {
-                            onAction(.askClaude(s.id, prompt: PullRequests.prompt(store.prPrompt, url: pr.url, id: pr.ref.id), pr: pr.ref))
+                        if !CodeRabbit.hidesAskClaude(pr.rabbit, threads: pr.rabbitThreads) {
+                            PillButton(title: "Nhờ Claude", send: askSend) {
+                                onAction(.askClaude(s.id, prompt: PullRequests.prompt(store.prPrompt, url: pr.url, id: pr.ref.id), pr: pr.ref))
+                            }
+                            .disabled(!canAsk && askSend == nil)
+                            .opacity(canAsk || askSend != nil ? 1 : Theme.Opacity.disabled)
+                            .help(canAsk ? "" : "Chỉ gửi được khi Claude đã xong lượt")
+                        } else if let askSend {
+                            SentLine(state: askSend)
                         }
-                        .disabled(!canAsk && askSend == nil)
-                        .opacity(canAsk || askSend != nil ? 1 : Theme.Opacity.disabled)
-                        .help(canAsk ? "" : "Chỉ gửi được khi Claude đã xong lượt")
                     }
                 }
                 .padding(.horizontal, 4)

@@ -734,6 +734,19 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         #expect(snap.events.isEmpty)
     }
 
+    @Test func rabbitThreadsFilled() {
+        let api = fake(open: [prJSON(id: 7571, comments: 1)])
+        setStatuses(api, rabbitStatus(description: "Review completed", created: Self.started))
+        api.routes["/comments"] = .failure(.transport)
+        let m = monitor(api)
+        m.update([target([prRef(7571)])], at: t0)
+        #expect(m.takeSnapshot().prs["s"]?.first?.rabbitThreads == nil)
+
+        api.set("/comments", json: ["values": pendingFinding(count: 2, at: Self.later)])
+        m.update([target([prRef(7571)])], at: t0 + 61)
+        #expect(m.takeSnapshot().prs["s"]?.first?.rabbitThreads == RabbitThreads(pending: 1, total: 1))
+    }
+
     @Test func statusesNotPolledForeverWithoutRabbit() {
         let api = fake(open: [prJSON(id: 7571, comments: 1)])
         let m = monitor(api)

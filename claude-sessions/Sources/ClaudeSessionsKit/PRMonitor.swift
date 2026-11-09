@@ -342,6 +342,7 @@ public final class PRMonitor {
             pr.lastOther = prev?.lastOther
             pr.rabbitStatus = prev?.rabbitStatus
             pr.rabbitSince = prev?.rabbitSince
+            pr.rabbitThreads = prev?.rabbitThreads
             var rabbitFinished = false
             var firstStatuses = false
             if pr.isOpen {
@@ -388,7 +389,11 @@ public final class PRMonitor {
                     }
                     commentsOwed.remove(ref)
                     if let c = PullRequests.lastOther(fromComments: d, me: me) { pr.lastOther = c }
-                    if let values = decode(d)?["values"] as? [[String: Any]] { rabbitFacts[ref] = CodeRabbit.facts(from: values) }
+                    if let values = decode(d)?["values"] as? [[String: Any]] {
+                        let facts = CodeRabbit.facts(from: values)
+                        rabbitFacts[ref] = facts
+                        pr.rabbitThreads = RabbitThreads(pending: facts.pending, total: facts.threads)
+                    }
                     if pr.rabbitStatus == .reviewing, let since = pr.rabbitSince,
                        case .count(let n) = CodeRabbit.findings(fromComments: d, since: since, createdOnly: true) {
                         pr.rabbitStatus = .reviewed(findings: n) // the summary is out; the status lags behind it
