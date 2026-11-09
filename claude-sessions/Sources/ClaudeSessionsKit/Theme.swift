@@ -14,6 +14,7 @@ enum Theme {
         static let tertiaryText = Color.white.opacity(0.50)
         static let active = Color.white.opacity(0.22)
         static let selected = Color.white.opacity(0.32)
+        static let selectionRing = Color.white.opacity(0.60)
         static let primaryAction = Color(red: 0x30 / 255, green: 0xD1 / 255, blue: 0x58 / 255)
         static let onPrimary = Color.black
         static let fresh = Color.yellow
@@ -63,6 +64,7 @@ enum Theme {
         static let quotaBarHeight: CGFloat = 4
         static let badgeH: CGFloat = 6
         static let badgeV: CGFloat = 1
+        static let selectionRing: CGFloat = 1.5
     }
 
     enum Symbols {

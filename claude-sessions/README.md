@@ -7,7 +7,23 @@ Widget macOS nổi luôn nằm trên cùng, hiện các session Claude Code đan
 ## Tính năng
 
 ### Danh sách mở rộng
-Rê chuột vào viên thì mở danh sách các session, mỗi thẻ có tiêu đề, thư mục, chấm màu trạng thái và thời gian. Header gom số session theo nhóm màu.
+Rê chuột vào viên thì mở danh sách các session, mỗi thẻ có tiêu đề, thư mục, chấm màu trạng thái và thời gian. Header gom số session theo nhóm màu và hiện quota 5 giờ / tuần; mỗi thẻ có thẻ trạng thái (`chờ duyệt`, `xong`, `đang chạy`...) và thẻ PR, và huy hiệu đỏ ở viên thu gọn đếm session đang chờ. Câu hỏi của Claude hiện thành danh sách đánh số.
+
+### Phím tắt bàn phím
+Bấm phím tắt mở widget (`⌃⌥Space`) thì thẻ được chọn bằng vòng viền trắng và điều khiển bằng bàn phím:
+
+| Phím | Việc làm |
+|---|---|
+| `↑` / `↓` | chọn thẻ trước / sau |
+| `↩` | nhảy tới pane cmux của thẻ (widget vẫn mở) |
+| `A` | cho phép (chỉ khi thẻ chờ duyệt và lệnh đã hiện đủ) |
+| `D` | mở ô lý do từ chối |
+| `R` | mở ô trả lời (session xong, chạy trong cmux) |
+| `1`-`9` | chọn đáp án thứ n của câu hỏi (đánh số liên tục qua các câu hỏi) |
+| `⌘↩` | gửi câu trả lời khi mọi câu hỏi đã có lựa chọn |
+| `Esc` | đang gõ: thôi gõ; không gõ: đóng widget và trả phím cho app trước |
+
+Phím không áp dụng cho thẻ đang chọn thì kêu beep. Chế độ bàn phím chỉ bật khi bấm phím tắt mở widget (bấm khi widget đang mở do rê chuột thì chuyển sang chế độ bàn phím thay vì đóng); rê chuột vào widget khi đang gõ ở terminal không cướp phím.
 
 ### Viên thu gọn
 Khi không rê chuột, widget chỉ là một viên nhỏ với chấm trạng thái và số session theo màu (đỏ chờ, cam xong, xanh đang chạy); nhóm vàng `✦` là session có tin mới.

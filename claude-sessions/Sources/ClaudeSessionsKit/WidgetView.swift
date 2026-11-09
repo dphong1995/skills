@@ -190,6 +190,12 @@ public struct WidgetView: View {
             Button("Thoát") { NSApp.terminate(nil) }
         }
         .animation(.spring(response: 0.36, dampingFraction: 0.8), value: expanded)
+        .onChange(of: panel.keyboard) { _, on in
+            if let m = panel.keyMonitor { NSEvent.removeMonitor(m); panel.keyMonitor = nil }
+            // Keyboard mode starts on the first card and forgets the selection when it ends.
+            panel.selected = on ? store.sessions.first?.id : nil
+            if on { panel.keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { handleKey($0) } }
+        }
         .onChange(of: expanded) { _, now in if !now { panel.openMenus = []; panel.closedOpen = false; panel.pruneQuestions(live: store.sessions.compactMap(\.question)) } }
         .animation(.spring(response: 0.36, dampingFraction: 0.8), value: store.sessions.count)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: panel.anchor.alignment)
@@ -227,7 +233,13 @@ public struct WidgetView: View {
                 rows.fixedSize(horizontal: false, vertical: true)
                     .frame(maxHeight: Layout.maxListHeight, alignment: panel.anchor.up ? .bottom : .top).clipped()
             } else {
-                ScrollView(.vertical) { rows }.frame(height: height)
+                ScrollViewReader { proxy in
+                    ScrollView(.vertical) { rows }
+                        .onChange(of: panel.selected) { _, id in
+                            if let id { withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(id) } }
+                        }
+                }
+                .frame(height: height)
             }
         }
         .task(id: panel.dwellTarget(in: store)) {
@@ -238,8 +250,50 @@ public struct WidgetView: View {
         }
         .onChange(of: store.sessions.map(\.id)) { old, new in
             panel.noteOrderChange(from: old, to: new)
+            panel.reconcileSelection(old: old, new: new)
         }
         .transition(.opacity)
+    }
+
+    /// Keyboard mode: handles the key table on the selected card; returns nil when the event is consumed.
+    private func handleKey(_ e: NSEvent) -> NSEvent? {
+        guard panel.keyboard, panel.editing == nil, (e.window as? WidgetPanel)?.state === panel else { return e }
+        let ids = store.sessions.map(\.id)
+        let flags = e.modifierFlags.intersection([.command, .control, .option])
+        if e.keyCode == 53 {
+            panel.pinnedOpen = false; panel.pinnedEntered = false; panel.hovering = false; panel.keyboard = false
+            return nil
+        }
+        if e.keyCode == 126 || e.keyCode == 125 {
+            guard flags.isEmpty else { return e }
+            panel.moveSelection(e.keyCode == 126 ? -1 : 1, ids: ids)
+            return nil
+        }
+        let isReturn = e.keyCode == 36 || e.keyCode == 76
+        let key = isReturn ? "\r" : (e.charactersIgnoringModifiers ?? "").lowercased()
+        guard isReturn || flags.isEmpty, isReturn || key.count == 1 else { return e }
+        guard let id = panel.selected, let s = store.sessions.first(where: { $0.id == id }) else { NSSound.beep(); return nil }
+        let inCmux = !store.surfaceMisses.contains(id)
+        let form: FeedQuestion? = s.question.flatMap { store.blockState(of: s) == .form ? $0 : nil }
+        switch key {
+        case "\r" where flags == .command:
+            if let q = form, Feed.complete(q, answers: panel.answers[q.requestId] ?? [], other: panel.others[q.requestId] ?? [:]) { sendAnswer(s, q) } else { NSSound.beep() }
+        case "\r" where flags.isEmpty:
+            onAction(.jump(id))
+        case "a" where flags.isEmpty:
+            if let p = s.approvable, case .one(let one)? = s.pending, p.toolId == one.toolId {
+                let fit = Layout.commandFit(one.text)
+                if fit == .short || (fit == .long && store.shownCommands.contains(one.toolId)) { onAction(.approve(id, toolId: p.toolId)) } else { NSSound.beep() }
+            } else { NSSound.beep() }
+        case "d" where flags.isEmpty:
+            if let p = s.approvable { panel.editing = Store.Editing(id: id, kind: .deny, toolId: p.toolId) } else { NSSound.beep() }
+        case "r" where flags.isEmpty:
+            if s.canAskClaude && inCmux { panel.editing = Store.Editing(id: id, kind: .reply) } else { NSSound.beep() }
+        default:
+            guard flags.isEmpty, let n = Int(key), (1...9).contains(n) else { return e }
+            if let q = form, let hit = PanelState.optionAt(q, number: n) { panel.pick(q, hit.question, hit.label) } else { NSSound.beep() }
+        }
+        return nil
     }
 
     private var closedGroup: some View {
@@ -319,5 +373,5 @@ public final class DragHostingView<V: View>: NSHostingView<V> {
 public final class WidgetPanel: NSPanel {
     public override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
     public weak var state: PanelState?
-    public override var canBecomeKey: Bool { state?.editing != nil }
+    public override var canBecomeKey: Bool { state?.editing != nil || state?.keyboard == true }
 }

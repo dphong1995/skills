@@ -313,6 +313,11 @@ extension WidgetView {
         .background(Theme.Colors.card)
         .background(claudeNew ? Theme.Colors.fresh.opacity(0.08) : .clear)
         .overlay(alignment: .leading) { Rectangle().fill(statusColor).frame(width: 3) }
+        .overlay {
+            if panel.keyboard && panel.selected == s.id {
+                RoundedRectangle(cornerRadius: 8).stroke(Theme.Colors.selectionRing, lineWidth: Theme.Space.selectionRing)
+            }
+        }
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .onHover { panel.noteRowHover(s.id, inside: $0) }
     }

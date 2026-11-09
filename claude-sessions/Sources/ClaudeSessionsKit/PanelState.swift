@@ -32,7 +32,37 @@ public final class PanelState: ObservableObject {
     /// The `Khác…` field that was opened, same key form: only that question shows its field.
     @Published public var otherKey: String?
 
+    /// Opened or switched to by the hotkey: the panel is key and the arrow keys move `selected`.
+    @Published public var keyboard = false
+    @Published public var selected: String?
+    /// The local keyDown monitor installed while `keyboard` is on.
+    public var keyMonitor: Any?
+
     public init() {}
+
+    /// Moves `selected` by `delta` within `ids`, clamped at both ends; no selection yet picks the first.
+    public func moveSelection(_ delta: Int, ids: [String]) {
+        guard let cur = selected, let i = ids.firstIndex(of: cur) else { selected = ids.first; return }
+        selected = ids[max(0, min(ids.count - 1, i + delta))]
+    }
+
+    /// Keeps `selected` valid after the id order changed: a vanished id gives way to the one at its index, else the last, else nothing.
+    public func reconcileSelection(old: [String], new: [String]) {
+        guard let cur = selected, !new.contains(cur) else { return }
+        guard let i = old.firstIndex(of: cur), !new.isEmpty else { selected = new.last; return }
+        selected = new[min(i, new.count - 1)]
+    }
+
+    /// The question index and label for digit key `number`, counted continuously across the questions.
+    public static func optionAt(_ q: FeedQuestion, number: Int) -> (question: Int, label: String)? {
+        var n = number
+        guard n >= 1 else { return nil }
+        for (i, item) in q.questions.enumerated() {
+            if n <= item.options.count { return (i, item.options[n - 1].label) }
+            n -= item.options.count
+        }
+        return nil
+    }
 
     /// Picks `label` for question `i`: replaces the pick of a single-select question (and drops its Other text), toggles it in a multi-select one.
     public func pick(_ q: FeedQuestion, _ i: Int, _ label: String) {

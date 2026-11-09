@@ -83,14 +83,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         window.contentView = host
 
-        state.$editing.sink { [weak self, weak window] e in
+        state.$editing.sink { [weak self, weak window, weak state] e in
             guard let window else { return }
             // @Published fires before the value is stored, so defer until canBecomeKey sees it.
             DispatchQueue.main.async { [weak self] in
                 guard let store = self?.store else { return }
                 if e != nil {
                     if !store.hidden { window.makeKey() }
-                } else if window.isKeyWindow && !store.hidden {
+                } else if window.isKeyWindow && !store.hidden && state?.keyboard != true {
                     // resignKey() is only a callback; reordering the panel is what hands key status back.
                     window.orderOut(nil)
                     window.orderFrontRegardless()
@@ -98,8 +98,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }.store(in: &p.cancellables)
         NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification, object: window)
-            .sink { [weak state] _ in state?.editing = nil }
+            .sink { [weak state] _ in state?.editing = nil; state?.keyboard = false }
             .store(in: &p.cancellables)
+        state.$keyboard.sink { [weak self, weak window] on in
+            guard let window else { return }
+            DispatchQueue.main.async { [weak self] in
+                guard let store = self?.store, !store.hidden else { return }
+                if on {
+                    window.makeKey()
+                } else if window.isKeyWindow {
+                    window.orderOut(nil)
+                    window.orderFrontRegardless()
+                }
+            }
+        }.store(in: &p.cancellables)
         if !store.hidden { window.orderFrontRegardless() }
         return p
     }
@@ -241,16 +253,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Closes any open card; otherwise opens and pins the one on the screen with the mouse.
     func toggleOpen() {
         guard !store.hidden else { return }
-        if panels.values.contains(where: { $0.state.pinnedOpen || $0.state.hovering }) {
-            for p in panels.values { p.state.pinnedOpen = false; p.state.pinnedEntered = false; p.state.hovering = false }
+        let open = panels.values.filter { $0.state.pinnedOpen || $0.state.hovering }
+        if open.contains(where: { $0.state.keyboard }) {
+            for p in panels.values { p.state.pinnedOpen = false; p.state.pinnedEntered = false; p.state.hovering = false; p.state.keyboard = false }
+            return
+        }
+        if let p = open.first {
+            // Opened by hover: the hotkey takes the keyboard instead of closing.
+            enterKeyboard(p)
             return
         }
         let mouse = NSEvent.mouseLocation
         guard let p = panels.values.first(where: { $0.screen.contains(mouse) }) ?? panels.values.first else { return NSSound.beep() }
         p.state.pinnedOpen = true
         p.state.pinnedEntered = false
+        enterKeyboard(p)
         trackMouse()
     }
+
+    func enterKeyboard(_ p: Panel) { p.state.keyboard = true }
 
     /// Jumps to the session that has waited longest; repeated presses within 5 s move on. Sessions outside cmux are skipped.
     func jumpToNextWaiting() {
@@ -627,6 +648,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 p.state.hovering = want
                 if want { store.peekUntil = nil }
             }
+            if !p.state.hovering && p.state.keyboard && p.state.editing == nil { p.state.keyboard = false }
             if !inside && p.state.hoveredRow != nil { p.state.hoveredRow = nil }
             // Only the card takes clicks, also while pinned open or editing: the rest of the canvas must reach the app beneath.
             if p.window.ignoresMouseEvents == inside { p.window.ignoresMouseEvents = !inside }
