@@ -247,13 +247,13 @@ private func approvableStore() -> (Store, URL, URL, URL) {
 @Test func askClaudeValidOnlyWhenIdle() {
     let dir = makeTempDir()
     let store = makeStore(dir: dir)
-    let ask = WidgetAction.askClaude("a", prompt: "x")
+    let ask = WidgetAction.askClaude("a", prompt: "x", pr: testPR)
     for (status, waitingFor, ok) in [("idle", nil, true), ("busy", nil, false), ("waiting", "input needed", false), ("waiting", "permission prompt", false)] as [(String, String?, Bool)] {
         writeSession(dir, "a", pid: me, status: status, waitingFor: waitingFor, ageSec: 0, name: "a", cwd: frontend)
         store.refresh(at: Date())
         #expect(store.stillValid(ask) == ok)
     }
-    #expect(!store.stillValid(.askClaude("zzz", prompt: "x")))
+    #expect(!store.stillValid(.askClaude("zzz", prompt: "x", pr: testPR)))
 }
 
 @Test func replyNeedsIdle() {
@@ -291,10 +291,10 @@ private func approvableStore() -> (Store, URL, URL, URL) {
     _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine("hi"), assistantLine("done"), turnDurationLine(background: 1)])
     writeSession(dir, "a", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 0, name: "a", cwd: frontend)
     store.refresh(at: Date())
-    #expect(!store.stillValid(.askClaude("a", prompt: "x")))
+    #expect(!store.stillValid(.askClaude("a", prompt: "x", pr: testPR)))
     writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
     store.refresh(at: Date())
-    #expect(store.stillValid(.askClaude("a", prompt: "x")))
+    #expect(store.stillValid(.askClaude("a", prompt: "x", pr: testPR)))
 }
 
 @Test func askClaudeInvalidWhenBusyEndedThenWaiting() {
@@ -303,10 +303,10 @@ private func approvableStore() -> (Store, URL, URL, URL) {
     _ = writeTranscript(projects, cwd: frontend, id: "a", lines: [userLine("hi"), assistantLine("done"), turnDurationLine(background: 1)].map { $0 + "\n" })
     writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
     store.refresh(at: Date())
-    #expect(store.stillValid(.askClaude("a", prompt: "x")))
+    #expect(store.stillValid(.askClaude("a", prompt: "x", pr: testPR)))
     writeSession(dir, "a", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 0, name: "a", cwd: frontend)
     store.refresh(at: Date())
-    #expect(!store.stillValid(.askClaude("a", prompt: "x")))
+    #expect(!store.stillValid(.askClaude("a", prompt: "x", pr: testPR)))
 }
 
 @Test func allowsFalseWhenSessionGone() {
@@ -775,7 +775,7 @@ func activitySurvivesDuplicateSessionIdOrder(busyFile: String, idleFile: String)
     #expect(r.session?.agents == [])
 }
 
-private let askX = WidgetAction.askClaude("a", prompt: "x")
+private let askX = WidgetAction.askClaude("a", prompt: "x", pr: testPR)
 
 @Test func backgroundWaitShown() {
     let r = ActivityRig([userLine("hi"), bash("swift test"), assistantLine("done"), turnDurationLine(background: 3, workflows: 0)])
@@ -1812,3 +1812,53 @@ private func feedStore(_ items: [[String: Any]]) -> (Store, URL, FakeFeedTranspo
     #expect(!store.stillValid(ok))
     #expect(!store.allows(Store.Editing(id: "a", kind: .answer)))
 }
+
+// MARK: - send feedback
+
+@Test func beginSendBlocksSameSession() {
+    let store = makeStore(dir: makeTempDir())
+    #expect(store.beginSend(SendKey(session: "s1", kind: .reply)))
+    #expect(!store.beginSend(SendKey(session: "s1", kind: .stop)))
+    #expect(store.beginSend(SendKey(session: "s2", kind: .stop)))
+}
+
+@Test func finishSendShowsThreeSeconds() {
+    let store = makeStore(dir: makeTempDir())
+    let t0 = Date()
+    store.refresh(at: t0)
+    let k = SendKey(session: "s1", kind: .approve)
+    #expect(store.beginSend(k, at: t0))
+    #expect(store.sendState(k) == .sending)
+    store.finishSend(k, ok: true, at: t0)
+    store.refresh(at: t0.addingTimeInterval(2))
+    #expect(store.sendState(k) == .sent)
+    store.refresh(at: t0.addingTimeInterval(3))
+    #expect(store.sendState(k) == nil)
+    let f = SendKey(session: "s1", kind: .deny)
+    store.finishSend(f, ok: false, at: t0)
+    store.refresh(at: t0.addingTimeInterval(1))
+    #expect(store.sendState(f) == .failed)
+    // Finished sends no longer block the session.
+    #expect(store.beginSend(SendKey(session: "s1", kind: .reply)))
+}
+
+@Test func sendTimesOutToFailed() {
+    let store = makeStore(dir: makeTempDir())
+    let t0 = Date()
+    store.refresh(at: t0)
+    let k = SendKey(session: "s1", kind: .reply)
+    #expect(store.beginSend(k, at: t0))
+    store.refresh(at: t0.addingTimeInterval(14))
+    #expect(store.sendState(k) == .sending)
+    store.refresh(at: t0.addingTimeInterval(15))
+    #expect(store.sendState(k) == .failed)
+    #expect(store.beginSend(SendKey(session: "s1", kind: .stop)))
+}
+
+@Test func sendKeyDistinguishesPR() {
+    let a = SendKey(session: "s", kind: .askClaude, pr: PRRef(workspace: "w", repo: "r", id: 1))
+    let b = SendKey(session: "s", kind: .askClaude, pr: PRRef(workspace: "w", repo: "r", id: 2))
+    #expect(a != b)
+}
+
+private let testPR = PRRef(workspace: "w", repo: "r", id: 1)

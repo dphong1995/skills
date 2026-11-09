@@ -557,6 +557,65 @@ struct SnapshotTests {
         render(store, panel, "closed-2-open")
     }
 
+    @Test func prRowShowsSentState() {
+        let dir = makeTempDir(), projects = makeTempDir()
+        let api = FakeBitbucket()
+        let repo = "t6engineering/talo6-dct-backend"
+        api.set("/2.0/user", json: ["uuid": "{me}"])
+        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7583, repo: repo, comments: 0)]])
+        api.set("/statuses", json: ["values": []])
+        api.set("/comments", json: ["values": []])
+        let pr = "https://bitbucket.org/\(repo)/pull-requests/7583"
+        _ = writeTranscript(projects, cwd: backend, id: "b", lines: [userLine("Xem " + pr), assistantLine("Đã push, xem " + pr), ""])
+        writeSession(dir, "b", pid: me, status: "idle", ageSec: 30, name: "talo6-dct-backend-3f", cwd: backend)
+        let store = makeStore(dir: dir, projects: projects, prs: PRMonitor(api: api, queue: nil, remote: { _ in nil }))
+        let panel = PanelState()
+        panel.hovering = true
+        let t0 = Date()
+        store.refresh(at: t0)
+        let ask = SendKey(session: "b", kind: .askClaude, pr: prRef(7583))
+        #expect(store.beginSend(ask, at: t0))
+        store.refresh(at: t0.addingTimeInterval(1))
+        render(store, panel, "50-send-sending")
+        store.finishSend(ask, ok: true, at: t0.addingTimeInterval(1))
+        store.refresh(at: t0.addingTimeInterval(2))
+        #expect(store.sendState(ask) == .sent)
+        render(store, panel, "51-send-sent")
+        store.finishSend(ask, ok: false, at: t0.addingTimeInterval(2))
+        render(store, panel, "52-send-failed")
+    }
+
+    @Test func approvalReplacedBySentLine() {
+        let dir = makeTempDir()
+        let store = makeStore(dir: dir)
+        let panel = PanelState()
+        writeSession(dir, "a", pid: me, status: "busy", ageSec: 5, name: "talo6-dct-frontend-d7", cwd: frontend)
+        let t0 = Date()
+        store.refresh(at: t0)
+        let k = SendKey(session: "a", kind: .approve)
+        store.finishSend(k, ok: true, at: t0)
+        #expect(store.sendState(k) == .sent)
+        panel.hovering = true
+        render(store, panel, "53-approval-sent-line")
+    }
+
+    @Test func closedRowShowsOpening() {
+        let dir = makeTempDir()
+        let store = makeStore(dir: dir)
+        let panel = PanelState()
+        let now = Date()
+        store.refresh(at: now)
+        store.closed = ClosedSessions([
+            ClosedSession(id: "x", title: "Sửa lỗi đăng nhập", cwd: backend, branch: "feat/login", closedAt: now.addingTimeInterval(-12 * 60)),
+            ClosedSession(id: "y", title: "ocr-service-a1", cwd: "/Users/phong/ocr-service", branch: nil, closedAt: now.addingTimeInterval(-3 * 3600)),
+        ])
+        #expect(store.beginSend(SendKey(session: "x", kind: .resume), at: now))
+        store.finishSend(SendKey(session: "y", kind: .resume), ok: false, at: now)
+        panel.hovering = true
+        panel.closedOpen = true
+        render(store, panel, "54-closed-opening")
+    }
+
     @Test func renderReply() {
         let dir = makeTempDir()
         let store = makeStore(dir: dir)

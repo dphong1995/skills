@@ -44,13 +44,38 @@ struct PillButton: View {
     var symbol: String? = nil
     var icon: NSImage? = nil
     var showsIcon = false
+    /// While non-nil the pill shows the state of its send instead of its own title and colours.
+    var send: SendState? = nil
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            PillLabel(title: title, fill: fill, textColor: textColor, symbol: symbol, icon: icon, showsIcon: showsIcon)
+            switch send {
+            case nil:
+                PillLabel(title: title, fill: fill, textColor: textColor, symbol: symbol, icon: icon, showsIcon: showsIcon)
+            case .sending?:
+                PillLabel(title: "Đang gửi…").opacity(Theme.Opacity.disabled)
+            case .sent?:
+                PillLabel(title: "Đã gửi ✓", fill: Theme.Colors.primaryAction, textColor: Theme.Colors.onPrimary)
+            case .failed?:
+                PillLabel(title: "Lỗi — bấm thử lại", fill: .red, textColor: .white)
+            }
         }
         .buttonStyle(.plain)
+        .disabled(send == .sending)
+    }
+}
+
+/// One-line placeholder where a send button vanished (the approval block, `Nhắc duyệt`) while its result still shows.
+struct SentLine: View {
+    let state: SendState
+
+    var body: some View {
+        switch state {
+        case .sending: Text("Đang gửi…").font(Theme.Fonts.small).foregroundStyle(Theme.Colors.secondaryText)
+        case .sent: Text("Đã gửi ✓").font(Theme.Fonts.small).foregroundStyle(Theme.Colors.primaryAction)
+        case .failed: Text("Lỗi — bấm thử lại").font(Theme.Fonts.small).foregroundStyle(.red)
+        }
     }
 }
 
@@ -59,23 +84,33 @@ struct IconButton: View {
     let symbol: String
     let help: String
     var tint: Color? = nil
+    /// While non-nil the icon shows the state of its send: spinner, checkmark or red tint.
+    var send: SendState? = nil
     let action: () -> Void
 
-    init(symbol: String, help: String, tint: Color? = nil, action: @escaping () -> Void) {
+    init(symbol: String, help: String, tint: Color? = nil, send: SendState? = nil, action: @escaping () -> Void) {
         self.symbol = symbol
         self.help = help
         self.tint = tint
+        self.send = send
         self.action = action
     }
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: symbol).font(Theme.Fonts.small)
-                .foregroundStyle(Theme.Colors.primaryText)
-                .frame(width: 24, height: 24)
-                .background(RoundedRectangle(cornerRadius: 6).fill(tint ?? Theme.Colors.field))
+            Group {
+                switch send {
+                case .sending?: ProgressView().controlSize(.mini)
+                case .sent?: Image(systemName: Theme.Symbols.approved).font(Theme.Fonts.small)
+                case nil, .failed?: Image(systemName: symbol).font(Theme.Fonts.small)
+                }
+            }
+            .foregroundStyle(Theme.Colors.primaryText)
+            .frame(width: 24, height: 24)
+            .background(RoundedRectangle(cornerRadius: 6).fill(send == .failed ? Color.red.opacity(0.6) : tint ?? Theme.Colors.field))
         }
         .buttonStyle(.plain)
+        .disabled(send == .sending)
         .help(help)
         .accessibilityLabel(help)
     }

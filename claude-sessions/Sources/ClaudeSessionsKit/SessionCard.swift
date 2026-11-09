@@ -67,10 +67,13 @@ extension WidgetView {
                         jumpLine("Lệnh dài, bấm để duyệt trong cmux", s)
                     } else if full {
                         HStack(spacing: 6) {
-                            PillButton(title: "Cho phép", fill: Theme.Colors.primaryAction, textColor: Theme.Colors.onPrimary) {
+                            PillButton(title: "Cho phép", fill: Theme.Colors.primaryAction, textColor: Theme.Colors.onPrimary,
+                                       send: store.sendState(SendKey(session: s.id, kind: .approve))) {
                                 onAction(.approve(s.id, toolId: p.toolId))
                             }
-                            PillButton(title: "Từ chối…") { panel.editing = Store.Editing(id: s.id, kind: .deny, toolId: p.toolId) }
+                            PillButton(title: "Từ chối…", send: store.sendState(SendKey(session: s.id, kind: .deny))) {
+                                panel.editing = Store.Editing(id: s.id, kind: .deny, toolId: p.toolId)
+                            }
                         }
                     } else {
                         PillButton(title: "Xem đủ") { store.shownCommands.insert(p.toolId) }
@@ -118,12 +121,22 @@ extension WidgetView {
     func quickButton(_ s: Session) -> some View {
         let inCmux = !store.surfaceMisses.contains(s.id)
         let outsideCmux = "Chỉ dùng được trong cmux"
+        let replySend = store.sendState(SendKey(session: s.id, kind: .reply)), stopSend = store.sendState(SendKey(session: s.id, kind: .stop))
+        // Whichever of the two sent last; the slot flips between the buttons as the session goes idle and busy.
+        let slotSend: SendState? = {
+            switch (replySend, stopSend) {
+            case (let r?, let st?): return (store.sends[SendKey(session: s.id, kind: .reply)]?.at ?? .distantPast) >= (store.sends[SendKey(session: s.id, kind: .stop)]?.at ?? .distantPast) ? r : st
+            case (let r?, nil): return r
+            case (nil, let st?): return st
+            case (nil, nil): return nil
+            }
+        }()
         Group {
             if s.canAskClaude {
-                IconButton(symbol: Theme.Symbols.reply, help: "Trả lời…") { panel.editing = Store.Editing(id: s.id, kind: .reply) }
+                IconButton(symbol: Theme.Symbols.reply, help: "Trả lời…", send: slotSend) { panel.editing = Store.Editing(id: s.id, kind: .reply) }
             } else if s.shownStatus == "busy" {
                 IconButton(symbol: Theme.Symbols.stop, help: "Dừng (bấm hai lần)",
-                           tint: stopArmed(s) ? Theme.Colors.status("waiting") : nil) {
+                           tint: stopArmed(s) ? Theme.Colors.status("waiting") : nil, send: slotSend) {
                     // The click compares with the real time: `store.now` only ticks once a second.
                     if panel.stopArmed[s.id].map({ Date().timeIntervalSince($0) < 3 }) ?? false {
                         panel.stopArmed[s.id] = nil
@@ -282,15 +295,20 @@ extension WidgetView {
                     }
                     Spacer(minLength: 0)
                     if pr.isOpen {
+                        let nudgeSend = store.sendState(SendKey(session: s.id, kind: .nudge, pr: pr.ref))
                         if pr.rabbit == .awaitingApproval {
-                            PillButton(title: "Nhắc duyệt", symbol: Theme.Symbols.rabbit) { onAction(.nudgeRabbit(s.id, pr.ref)) }
+                            PillButton(title: "Nhắc duyệt", symbol: Theme.Symbols.rabbit, send: nudgeSend) { onAction(.nudgeRabbit(s.id, pr.ref)) }
+                        } else if let nudgeSend {
+                            // The nudge moved the rabbit on, so its button is gone; keep the result on screen for its 3 s.
+                            SentLine(state: nudgeSend)
                         }
                         let canAsk = s.canAskClaude
-                        PillButton(title: "Nhờ Claude") {
-                            onAction(.askClaude(s.id, prompt: PullRequests.prompt(store.prPrompt, url: pr.url, id: pr.ref.id)))
+                        let askSend = store.sendState(SendKey(session: s.id, kind: .askClaude, pr: pr.ref))
+                        PillButton(title: "Nhờ Claude", send: askSend) {
+                            onAction(.askClaude(s.id, prompt: PullRequests.prompt(store.prPrompt, url: pr.url, id: pr.ref.id), pr: pr.ref))
                         }
-                        .disabled(!canAsk)
-                        .opacity(canAsk ? 1 : Theme.Opacity.disabled)
+                        .disabled(!canAsk && askSend == nil)
+                        .opacity(canAsk || askSend != nil ? 1 : Theme.Opacity.disabled)
                         .help(canAsk ? "" : "Chỉ gửi được khi Claude đã xong lượt")
                     }
                 }
@@ -301,6 +319,9 @@ extension WidgetView {
             }
             if let pending = s.pending {
                 approvalBlock(s, pending).padding(.leading, Theme.Space.indent)
+            } else if let sent = store.sendState(SendKey(session: s.id, kind: .approve)) ?? store.sendState(SendKey(session: s.id, kind: .deny)) {
+                // The approval block is gone at the next refresh; the result stays for its 3 s.
+                SentLine(state: sent).padding(.leading, Theme.Space.indent)
             }
             if let q = s.question {
                 questionBlock(s, q).padding(.leading, Theme.Space.indent)

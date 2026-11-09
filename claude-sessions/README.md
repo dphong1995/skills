@@ -66,7 +66,7 @@ Khi lượt chính đã xong mà agent nền còn chạy, thẻ hiện `chờ N 
 ![Agent nền](docs/images/35-background-agents.png)
 
 ### Dòng PR Bitbucket
-Mỗi PR của session có một dòng với số yêu cầu sửa, số người duyệt, bình luận, và nút `Nhờ Claude` để bảo Claude xử lý bình luận.
+Mỗi PR của session có một dòng với số yêu cầu sửa, số người duyệt, bình luận, và nút `Nhờ Claude` để bảo Claude xử lý bình luận. Các nút gửi hiện `Đang gửi…` rồi `Đã gửi ✓` hoặc `Lỗi — bấm thử lại` ngay trên nút trong 3 giây.
 
 ![Dòng PR](docs/images/22-pr-lines.png)
 

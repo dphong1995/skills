@@ -115,6 +115,17 @@ public struct NewMark: Equatable {
     }
 }
 
+public enum SendState: Equatable { case sending, sent, failed }
+
+/// One send button of one session; `pr` tells the PR buttons of a session apart.
+public struct SendKey: Hashable {
+    public enum Kind: Hashable { case askClaude, nudge, approve, deny, reply, stop, resume, answer }
+    public let session: String
+    public let kind: Kind
+    public let pr: PRRef?
+    public init(session: String, kind: Kind, pr: PRRef? = nil) { self.session = session; self.kind = kind; self.pr = pr }
+}
+
 public final class Store: ObservableObject {
     @Published var sessions: [Session] = []
     /// Session id -> cmux surface UUID, filled by the app. Pruned to live ids and dropped when the session's pid changes.
@@ -300,6 +311,8 @@ public final class Store: ObservableObject {
     public var prMonitor: PRMonitor?
     /// Reads cmux Feed questions; nil in fixture runs and when cmux has no socket path file.
     public var feedMonitor: FeedMonitor?
+    /// Every send the widget made lately, by button; shown on the button for 3 s, see `sendState`.
+    @Published var sends: [SendKey: (state: SendState, at: Date)] = [:]
     /// Session id -> request id of the question the widget answered; dropped once the session stops waiting.
     @Published public internal(set) var sent: [String: String] = [:]
     /// Session id -> request id whose send failed; the card falls back to `Trả lời trong cmux`. Dropped like `sent`.
@@ -475,6 +488,7 @@ public final class Store: ObservableObject {
 
     public func refresh(at date: Date = Date()) {
         now = date
+        pruneSends()
         if let quotaReader {
             let q = quotaReader.read(at: date)
             if q != quota { quota = q }
@@ -843,6 +857,41 @@ public final class Store: ObservableObject {
     /// The Feed question the session `id` is asking, as of the last refresh.
     public func question(of id: String) -> FeedQuestion? { sessions.first { $0.id == id }?.question }
 
+    /// Claims `k` for a send; false (the caller beeps) while another send to the same session is in flight.
+    public func beginSend(_ k: SendKey, at date: Date = Date()) -> Bool {
+        if sends.keys.contains(where: { $0.session == k.session && sendState($0) == .sending }) { return false }
+        sends[k] = (.sending, date)
+        return true
+    }
+
+    public func finishSend(_ k: SendKey, ok: Bool, at date: Date = Date()) {
+        sends[k] = (ok ? .sent : .failed, date)
+    }
+
+    /// What the button of `k` shows: `.sending` up to 15 s (then `.failed`), `.sent`/`.failed` for 3 s, then nil.
+    public func sendState(_ k: SendKey) -> SendState? {
+        guard let e = sends[k] else { return nil }
+        let age = now.timeIntervalSince(e.at)
+        switch e.state {
+        case .sending: return age >= Store.sendTimeout ? .failed : .sending
+        case .sent, .failed: return age < Store.sendShown ? e.state : nil
+        }
+    }
+
+    static let sendTimeout: TimeInterval = 15
+    static let sendShown: TimeInterval = 3
+
+    /// Turns a stuck `.sending` into `.failed` and drops what is no longer shown.
+    private func pruneSends() {
+        guard !sends.isEmpty else { return }
+        var next = sends
+        for (k, e) in sends {
+            if e.state == .sending, now.timeIntervalSince(e.at) >= Store.sendTimeout { next[k] = (.failed, now) }
+            else if sendState(k) == nil { next[k] = nil }
+        }
+        sends = next
+    }
+
     /// Remembers that the answer to `requestId` reached cmux, so the card reads `Đã gửi`.
     public func noteSent(session id: String, requestId: String) { sent[id] = requestId }
 
@@ -868,7 +917,7 @@ public final class Store: ObservableObject {
         switch a {
         case .jump, .openLink, .connect, .nudgeRabbit, .resume: return true
         case .approve(_, let toolId), .deny(_, let toolId, _): return allows(Editing(id: a.sessionId, kind: .deny, toolId: toolId))
-        case .askClaude(let id, _), .reply(let id, _): return sessions.first { $0.id == id }?.canAskClaude == true
+        case .askClaude(let id, _, _), .reply(let id, _): return sessions.first { $0.id == id }?.canAskClaude == true
         case .stop(let id): return sessions.first { $0.id == id }?.shownStatus == "busy"
         case .answer(let id, let requestId, _, _):
             guard let s = sessions.first(where: { $0.id == id }) else { return false }

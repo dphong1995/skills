@@ -33,7 +33,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var lastNext: HotKeys.Cycle?
     var timer: Timer?
     var monitors: [Any] = []
-    var sending: Set<String> = []
     var lookingUp: Set<String> = []
     var tick = 0
     var checkingFocus = false
@@ -528,22 +527,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         if case .nudgeRabbit(_, let ref) = a {
-            guard let monitor = store.prMonitor else { return NSSound.beep() }
-            monitor.nudge(ref) { ok in if !ok { NSSound.beep() } }
+            guard let k = a.sendKey, store.beginSend(k) else { return NSSound.beep() }
+            guard let monitor = store.prMonitor else {
+                store.finishSend(k, ok: false)
+                return NSSound.beep()
+            }
+            monitor.nudge(ref) { ok in
+                DispatchQueue.main.async { [weak self] in
+                    self?.store.finishSend(k, ok: ok)
+                    if !ok { NSSound.beep() }
+                }
+            }
             return
         }
         if case .answer(_, let requestId, let answers, let other) = a {
             // Goes through cmux's socket, not the terminal: only a question still in the last `feed.list` of this session is answered.
-            guard !sending.contains(id), let monitor = store.feedMonitor, store.stillValid(a),
-                  let q = store.question(of: id) else { return NSSound.beep() }
-            sending.insert(id)
+            guard let monitor = store.feedMonitor, store.stillValid(a), let q = store.question(of: id),
+                  let k = a.sendKey, store.beginSend(k) else { return NSSound.beep() }
             for p in panels.values where p.state.editing?.id == id { p.state.editing = nil }
             // Optimistic: the monitor drops the item from its snapshot before `ok` reaches main, which would flash `Trả lời trong cmux`.
             store.noteSent(session: id, requestId: requestId)
             monitor.reply(q, answers: answers, other: other) { ok in
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
-                    sending.remove(id)
+                    store.finishSend(k, ok: ok)
                     if ok { return }
                     store.noteSendFailed(session: id, requestId: requestId)
                     NSSound.beep()
@@ -552,13 +559,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         if case .resume(let closed) = a {
-            guard !sending.contains(id) else { return NSSound.beep() }
-            sending.insert(id)
+            guard let k = a.sendKey, store.beginSend(k) else { return NSSound.beep() }
             DispatchQueue.global().async { [weak self] in
                 let ok = closed.resume()
                 DispatchQueue.main.async {
                     guard let self else { return }
-                    self.sending.remove(id)
+                    self.store.finishSend(k, ok: ok)
                     if ok { return self.store.closed.revive([id]) }
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(closed.shellCommand, forType: .string)
@@ -574,8 +580,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
-        guard !sending.contains(id) else { return NSSound.beep() }
-        sending.insert(id)
+        guard let k = a.sendKey, store.beginSend(k) else { return NSSound.beep() }
         let denyReason: String? = {
             switch a {
             case .deny(_, _, let r), .reply(_, let r): return r
@@ -589,16 +594,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         resolveSurface(id) { [weak self] surface in
             guard let self else { return }
-            guard let surface else { sending.remove(id); return NSSound.beep() }
+            guard let surface else { store.finishSend(k, ok: false); return NSSound.beep() }
             // Validate right before the first keystroke: the lookup above may have taken a while.
             refreshAndChime()
             guard store.surfaces[id] == surface, store.stillValid(a) else {
-                sending.remove(id)
+                store.finishSend(k, ok: false)
                 return NSSound.beep()
             }
             CmuxJump.send(surface: surface, keys: CmuxJump.keys(for: a)) { [weak self] ok in
                 guard let self else { return }
-                sending.remove(id)
+                store.finishSend(k, ok: ok)
                 guard ok else { return NSSound.beep() }
                 store.markSeen(id)
                 if let denyReason, store.drafts[draftKey] == denyReason { store.drafts[draftKey] = nil }

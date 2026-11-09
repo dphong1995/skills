@@ -100,7 +100,7 @@ public enum WidgetAction: Equatable {
     case approve(String, toolId: String)
     case deny(String, toolId: String, reason: String)
     case openLink(String, URL)
-    case askClaude(String, prompt: String)
+    case askClaude(String, prompt: String, pr: PRRef)
     /// Types a prompt of the user's own into a finished session.
     case reply(String, text: String)
     /// Sends Esc to a busy session.
@@ -113,9 +113,24 @@ public enum WidgetAction: Equatable {
     /// Opens the token dialog of a service; belongs to no session.
     case connect(Service)
 
+    /// The send button this action belongs to; nil for actions that only open things.
+    public var sendKey: SendKey? {
+        switch self {
+        case .askClaude(let id, _, let pr): SendKey(session: id, kind: .askClaude, pr: pr)
+        case .nudgeRabbit(let id, let ref): SendKey(session: id, kind: .nudge, pr: ref)
+        case .approve(let id, _): SendKey(session: id, kind: .approve)
+        case .deny(let id, _, _): SendKey(session: id, kind: .deny)
+        case .reply(let id, _): SendKey(session: id, kind: .reply)
+        case .stop(let id): SendKey(session: id, kind: .stop)
+        case .resume(let c): SendKey(session: c.id, kind: .resume)
+        case .answer(let id, _, _, _): SendKey(session: id, kind: .answer)
+        case .jump, .openLink, .connect: nil
+        }
+    }
+
     public var sessionId: String {
         switch self {
-        case .jump(let id), .approve(let id, _), .deny(let id, _, _), .openLink(let id, _), .askClaude(let id, _), .reply(let id, _), .stop(let id), .answer(let id, _, _, _), .nudgeRabbit(let id, _): id
+        case .jump(let id), .approve(let id, _), .deny(let id, _, _), .openLink(let id, _), .askClaude(let id, _, _), .reply(let id, _), .stop(let id), .answer(let id, _, _, _), .nudgeRabbit(let id, _): id
         case .resume(let c): c.id
         case .connect: ""
         }
@@ -261,18 +276,24 @@ public struct WidgetView: View {
             .onTapGesture { panel.closedOpen.toggle() }
             if panel.closedOpen {
                 ForEach(items, id: \.id) { c in
+                    let send = store.sendState(SendKey(session: c.id, kind: .resume))
                     HStack(spacing: 10) {
                         Text(c.title).font(Theme.Fonts.body.weight(.medium)).foregroundStyle(Theme.Colors.primaryText).lineLimit(1)
                         Text(c.subtitle).font(Theme.Fonts.meta).foregroundStyle(Theme.Colors.tertiaryText).lineLimit(1)
                         Spacer(minLength: 12)
-                        Text("đóng \(closedAgo(c.closedAt, store.now))").font(Theme.Fonts.small.monospacedDigit())
-                            .foregroundStyle(Theme.Colors.secondaryText).fixedSize()
+                        switch send {
+                        case .sending?: Text("Đang mở…").font(Theme.Fonts.small).foregroundStyle(Theme.Colors.secondaryText).fixedSize()
+                        case .failed?: Text("Lỗi — đã copy lệnh").font(Theme.Fonts.small).foregroundStyle(.red).fixedSize()
+                        case .sent?, nil:
+                            Text("đóng \(closedAgo(c.closedAt, store.now))").font(Theme.Fonts.small.monospacedDigit())
+                                .foregroundStyle(Theme.Colors.secondaryText).fixedSize()
+                        }
                     }
                     .padding(.horizontal, 6)
                     .frame(height: Layout.closedRowHeight)
                     .background(Theme.Colors.card, in: RoundedRectangle(cornerRadius: 6))
                     .contentShape(Rectangle())
-                    .onTapGesture { onAction(.resume(c)) }
+                    .onTapGesture { if send != .sending { onAction(.resume(c)) } }
                 }
             }
         }
