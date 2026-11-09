@@ -19,7 +19,6 @@ private func cacheURL() -> URL { makeTempDir().appendingPathComponent("usage.jso
     #expect(q?.weekly == 5)
     #expect(q?.fiveHourReset == Date(timeIntervalSince1970: 1793962800.171))
     #expect(q?.weeklyReset == Date(timeIntervalSince1970: 1794549600.171))
-    #expect(q?.updated == Date(timeIntervalSince1970: 1793961364.363))
 }
 
 @Test func fractionalPercentIsRounded() {
@@ -41,8 +40,6 @@ private func cacheURL() -> URL { makeTempDir().appendingPathComponent("usage.jso
     let later = now.addingTimeInterval(16 * 60)
     let q = QuotaReader(url: url).read(at: later)
     #expect(q != nil)
-    #expect(q?.isStale(now: later) == true)
-    #expect(q?.isStale(now: now) == false)
 }
 
 @Test func forecastLinear() {

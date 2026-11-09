@@ -266,7 +266,7 @@ struct SnapshotTests {
         store.refresh(at: Date())
         store.unseen = Dictionary(uniqueKeysWithValues: (0..<12).map { ("i\($0)", NewMark(claude: true)) })
         store.quota = Quota(fiveHour: 97, fiveHourReset: Date().addingTimeInterval(7200), weekly: 40,
-                            weeklyReset: Date().addingTimeInterval(5 * 86400), updated: Date(), forecast: nil)
+                            weeklyReset: Date().addingTimeInterval(5 * 86400), forecast: nil)
         render(store, panel, "41-collapsed-badge")
     }
 
@@ -705,9 +705,9 @@ struct SnapshotTests {
         let now = Date()
         writeSession(dir, "a", pid: me, status: "busy", ageSec: 42, name: "talo6-dct-frontend-d7", cwd: frontend)
         writeSession(dir, "b", pid: me, status: "waiting", waitingFor: "input needed", ageSec: 75, name: "ocr-service-a1", cwd: backend)
-        func quota(_ five: Int, _ weekly: Int, forecast: Bool = false, age: TimeInterval = 60) -> Quota {
+        func quota(_ five: Int, _ weekly: Int, forecast: Bool = false) -> Quota {
             Quota(fiveHour: five, fiveHourReset: now.addingTimeInterval(2 * 3600), weekly: weekly, weeklyReset: now.addingTimeInterval(5 * 86400),
-                  updated: now.addingTimeInterval(-age), forecast: forecast ? now.addingTimeInterval(3600) : nil)
+                  forecast: forecast ? now.addingTimeInterval(3600) : nil)
         }
         store.refresh(at: now)
         panel.hovering = true
@@ -717,8 +717,6 @@ struct SnapshotTests {
         render(store, panel, "quota-2-warn")
         store.quota = quota(97, 40, forecast: true)
         render(store, panel, "quota-3-high-forecast")
-        store.quota = quota(30, 5, age: 20 * 60)
-        render(store, panel, "quota-4-stale")
         panel.hovering = false
         store.quota = quota(85, 10)
         #expect(Layout.size(store, panel).width == Layout.collapsed.width + Layout.quotaPillExtra)

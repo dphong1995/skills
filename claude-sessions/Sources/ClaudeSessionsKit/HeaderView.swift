@@ -97,7 +97,6 @@ extension WidgetView {
     }
 
     func quotaBars(_ q: Quota) -> some View {
-        let stale = q.isStale(now: store.now)
         let t = Self.clock
         return HStack(spacing: Theme.Space.gap + 2) {
             quotaBar("5h", q.fiveHour)
@@ -113,9 +112,7 @@ extension WidgetView {
                     .font(Theme.Fonts.meta.monospacedDigit()).foregroundStyle(Theme.Colors.tertiaryText)
             }
             quotaBar("Tuần", q.weekly)
-            if stale { Text("cũ").font(Theme.Fonts.meta).foregroundStyle(Theme.Colors.tertiaryText) }
         }
         .lineLimit(1).fixedSize()
-        .opacity(stale ? Theme.Opacity.stale : 1)
     }
 }

@@ -52,7 +52,6 @@ enum Theme {
 
     enum Opacity {
         static let disabled = 0.4
-        static let stale = 0.5
         static let freshTint = 0.08
         static let tagTint = 0.2
         static let statusTagTint = 0.25

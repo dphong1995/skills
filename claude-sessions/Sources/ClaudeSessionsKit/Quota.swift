@@ -5,11 +5,7 @@ public struct Quota: Equatable {
     public var fiveHourReset: Date
     public var weekly: Int
     public var weeklyReset: Date
-    public var updated: Date
     public var forecast: Date?
-
-    /// The cache is stale once its last success is over 15 minutes old.
-    public func isStale(now: Date) -> Bool { now.timeIntervalSince(updated) > 900 }
 
     /// The percent shown on the collapsed pill: the larger of the two, only from 80.
     public var pillPercent: Int? {
@@ -64,7 +60,7 @@ public final class QuotaReader {
             samples.append((updated, five))
             if samples.count > 60 { samples.removeFirst(samples.count - 60) }
         }
-        return Quota(fiveHour: five, fiveHourReset: fiveReset, weekly: weekly, weeklyReset: weeklyReset, updated: updated,
+        return Quota(fiveHour: five, fiveHourReset: fiveReset, weekly: weekly, weeklyReset: weeklyReset,
                      forecast: Self.forecast(samples: samples, now: now, reset: fiveReset))
     }
 
