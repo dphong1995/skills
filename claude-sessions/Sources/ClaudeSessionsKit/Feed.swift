@@ -54,13 +54,18 @@ public enum Feed {
         !q.questions.isEmpty && q.questions.allSatisfy { !$0.options.isEmpty }
     }
 
-    /// The labels picked for question `i`.
-    /// 1-based option number, continuous across the card's questions; nil past 9 (no digit key).
-    static func optionNumber(_ q: FeedQuestion, question i: Int, option j: Int) -> Int? {
-        let n = q.questions.prefix(i).reduce(0) { $0 + $1.options.count } + j + 1
-        return n <= 9 ? n : nil
+    /// Every option of the card with its 1-based number, continuous across the questions (the digit keys reach 1-9).
+    static func numberedOptions(_ q: FeedQuestion) -> [(question: Int, option: Int, number: Int)] {
+        let all = q.questions.enumerated().flatMap { i, item in item.options.indices.map { (question: i, option: $0) } }
+        return all.enumerated().map { (question: $1.question, option: $1.option, number: $0 + 1) }
     }
 
+    /// The number shown on an option; nil past 9 (no digit key).
+    static func optionNumber(_ q: FeedQuestion, question i: Int, option j: Int) -> Int? {
+        numberedOptions(q).first { $0.question == i && $0.option == j }.flatMap { $0.number <= 9 ? $0.number : nil }
+    }
+
+    /// The labels picked for question `i`.
     static func picks(_ answers: [[String]], _ i: Int) -> [String] { answers.indices.contains(i) ? answers[i] : [] }
 
     /// The trimmed Other text of question `i`.

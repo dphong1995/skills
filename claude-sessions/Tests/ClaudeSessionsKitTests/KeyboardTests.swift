@@ -4,10 +4,29 @@ import Testing
 @testable import ClaudeSessionsKit
 
 private func question(_ counts: [Int]) -> FeedQuestion {
-    FeedQuestion(requestId: "r", createdAt: Date(), sessionId: "s", questions: counts.enumerated().map { i, n in
+    feedQuestion(requestId: "r", sessionId: "s", questions: counts.enumerated().map { i, n in
         FeedQuestion.Item(prompt: "q\(i)", header: nil, multiSelect: false,
                           options: (0..<n).map { FeedQuestion.Option(id: "\(i)-\($0)", label: "o\(i)-\($0)", description: nil) })
     })
+}
+
+@Test func keyboardKeepsPinnedCardOpenOnLeave() {
+    let panel = PanelState()
+    panel.pinWithKeyboard()
+    #expect(panel.pointerWants(inside: true))
+    #expect(panel.pointerWants(inside: false))
+    #expect(panel.pinnedOpen && panel.pinnedEntered)
+    panel.keyboard = false
+    #expect(!panel.pointerWants(inside: false))
+    #expect(!panel.pinnedOpen && !panel.pinnedEntered)
+}
+
+@Test func pinNeverEnteredStaysOpen() {
+    let panel = PanelState()
+    panel.pinnedOpen = true
+    #expect(panel.pointerWants(inside: false))
+    #expect(panel.pinnedOpen)
+    #expect(!PanelState().pointerWants(inside: false))
 }
 
 @Test func moveSelection() {

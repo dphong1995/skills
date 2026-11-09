@@ -54,23 +54,6 @@ struct PillButton: View {
     }
 }
 
-/// Status of a ticket or PR: a capsule tinted by its tone.
-struct StatusTag: View {
-    let text: String
-    let tone: ItemTone?
-
-    var body: some View {
-        let tint = toneColor(tone)
-        let textColor = tint.map { Color(nsColor: NSColor($0).blended(withFraction: 0.35, of: .white) ?? .white) } ?? Theme.Colors.secondaryText
-        Text(text).font(Theme.Fonts.metaStrong)
-            .foregroundStyle(textColor)
-            .lineLimit(1).truncationMode(.tail)
-            .frame(maxWidth: 130 - 14).fixedSize(horizontal: true, vertical: false)
-            .padding(.horizontal, 7).padding(.vertical, 2)
-            .background(Capsule().fill(tint?.opacity(0.25) ?? Theme.Colors.field))
-    }
-}
-
 /// A 24x24 rounded icon button; `tint` replaces the field fill (the armed `Dừng`).
 struct IconButton: View {
     let symbol: String
@@ -98,27 +81,40 @@ struct IconButton: View {
     }
 }
 
-/// A small capsule label; with `tint` it is tinted and its text brightened like `StatusTag`.
+/// A small capsule label; with `tint` it is tinted and its text brightened. `maxWidth` truncates a long text (ticket and PR status).
 struct Tag: View {
     let text: String
     var symbol: String? = nil
     var tint: Color? = nil
+    var tintOpacity = Theme.Opacity.tagTint
+    var maxWidth: CGFloat? = nil
 
-    init(_ text: String, symbol: String? = nil, tint: Color? = nil) {
+    init(_ text: String, symbol: String? = nil, tint: Color? = nil, tintOpacity: Double = Theme.Opacity.tagTint, maxWidth: CGFloat? = nil) {
         self.text = text
         self.symbol = symbol
         self.tint = tint
+        self.tintOpacity = tintOpacity
+        self.maxWidth = maxWidth
     }
 
     var body: some View {
         let textColor = tint.map { Color(nsColor: NSColor($0).blended(withFraction: 0.35, of: .white) ?? .white) } ?? Theme.Colors.secondaryText
         HStack(spacing: 3) {
             if let symbol { Image(systemName: symbol).font(Theme.Fonts.micro) }
-            Text(text).lineLimit(1)
+            label
         }
         .font(Theme.Fonts.metaStrong).foregroundStyle(textColor)
         .padding(.horizontal, 7).padding(.vertical, 2)
-        .background(Capsule().fill(tint?.opacity(0.2) ?? Theme.Colors.field))
+        .background(Capsule().fill(tint?.opacity(tintOpacity) ?? Theme.Colors.field))
+    }
+
+    @ViewBuilder private var label: some View {
+        if let maxWidth {
+            Text(text).lineLimit(1).truncationMode(.tail)
+                .frame(maxWidth: maxWidth).fixedSize(horizontal: true, vertical: false)
+        } else {
+            Text(text).lineLimit(1)
+        }
     }
 }
 
@@ -140,7 +136,9 @@ struct LinkRow: View {
                     .layoutPriority(1)
             }
             Spacer(minLength: 6)
-            if let status = item.status { StatusTag(text: status, tone: item.tone) }
+            if let status = item.status {
+                Tag(status, tint: toneColor(item.tone), tintOpacity: Theme.Opacity.statusTagTint, maxWidth: 130 - 14)
+            }
         }
         .padding(.horizontal, 4)
         .frame(height: Layout.linkRowHeight)

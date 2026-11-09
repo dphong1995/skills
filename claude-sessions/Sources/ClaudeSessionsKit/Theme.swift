@@ -13,7 +13,6 @@ enum Theme {
         static let secondaryText = Color.white.opacity(0.65)
         static let tertiaryText = Color.white.opacity(0.50)
         static let active = Color.white.opacity(0.22)
-        static let selected = Color.white.opacity(0.32)
         static let selectionRing = Color.white.opacity(0.60)
         static let primaryAction = Color(red: 0x30 / 255, green: 0xD1 / 255, blue: 0x58 / 255)
         static let onPrimary = Color.black
@@ -55,11 +54,13 @@ enum Theme {
         static let disabled = 0.4
         static let stale = 0.5
         static let freshTint = 0.08
+        static let tagTint = 0.2
+        static let statusTagTint = 0.25
     }
 
     enum Space {
         static let gap: CGFloat = 6
-        static let indent: CGFloat = 22
+        static let indent: CGFloat = 24
         static let rightColumn: CGFloat = 64
         static let quotaBarWidth: CGFloat = 48
         static let quotaBarHeight: CGFloat = 4
@@ -92,7 +93,7 @@ enum Theme {
         static let clock = "clock"
 
         static func status(_ s: Session) -> String {
-            if s.status == "waiting" { return s.isPermissionPrompt ? "exclamationmark.triangle.fill" : "questionmark.circle.fill" }
+            if s.status == "waiting" { return s.isPermissionPrompt ? warning : "questionmark.circle.fill" }
             if (s.backgroundAgents ?? 0) > 0 { return "hourglass" }
             switch s.shownStatus {
             case "idle": return "checkmark.circle.fill"

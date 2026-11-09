@@ -169,9 +169,7 @@ extension WidgetView {
         var newLabel = claudeNew ? [", mới: Claude"] : []
         newLabel += (mark?.prs ?? []).sorted { $0.id < $1.id }.map { ", mới: PR #\($0.id)" }
         let statusColor = Theme.Colors.status(s.colorStatus)
-        let armed = s.shownStatus == "busy" && !s.canAskClaude && stopArmed(s)
-        // The title text column: the 14pt status icon plus the 10pt gap of the head.
-        let textColumn: CGFloat = 14 + 10
+        let armed = s.shownStatus == "busy" && stopArmed(s)
         let markedShown = Set(s.prs.map(\.ref)).intersection(mark?.prs ?? [])
         return VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .top, spacing: 10) {
@@ -255,8 +253,8 @@ extension WidgetView {
                     }
                     menuButton(s)
                 }
-                .padding(.leading, textColumn)
-                if panel.openMenus.contains(s.id) { linkList(s).padding(.leading, textColumn) }
+                .padding(.leading, Theme.Space.indent)
+                if panel.openMenus.contains(s.id) { linkList(s).padding(.leading, Theme.Space.indent) }
             }
             ForEach(s.prs, id: \.ref) { pr in
                 let prNew = markedShown.contains(pr.ref)
@@ -296,16 +294,16 @@ extension WidgetView {
                 .padding(.horizontal, 4)
                 .background(prNew ? Theme.Colors.freshPR.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 5))
                 .padding(.horizontal, -4)
-                .padding(.leading, textColumn)
+                .padding(.leading, Theme.Space.indent)
             }
             if let pending = s.pending {
-                approvalBlock(s, pending).padding(.leading, textColumn)
+                approvalBlock(s, pending).padding(.leading, Theme.Space.indent)
             }
             if let q = s.question {
-                questionBlock(s, q).padding(.leading, textColumn)
+                questionBlock(s, q).padding(.leading, Theme.Space.indent)
             }
             if let editing, editing != .answer {
-                editor(s, editing).padding(.leading, textColumn)
+                editor(s, editing).padding(.leading, Theme.Space.indent)
             }
         }
         .padding(.horizontal, 8)

@@ -54,11 +54,11 @@ extension WidgetView {
                             .font(Theme.Fonts.count.monospacedDigit())
                             .foregroundStyle(Color.white)
                             .padding(.horizontal, Theme.Space.badgeH).padding(.vertical, Theme.Space.badgeV)
-                            .background(Capsule().fill(color(st)))
+                            .background(Capsule().fill(Theme.Colors.status(st)))
                             .fixedSize()
                     } else {
                         HStack(spacing: dot) {
-                            Circle().fill(color(st)).frame(width: 6, height: 6)
+                            Circle().fill(Theme.Colors.status(st)).frame(width: 6, height: 6)
                             Text("\(n)").font(Theme.Fonts.count.monospacedDigit()).foregroundStyle(Theme.Colors.secondaryText).fixedSize()
                         }
                     }

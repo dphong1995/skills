@@ -64,7 +64,7 @@ struct Session: Identifiable, Equatable {
     /// Pending background agents and workflows; non-nil only while the session is `busy` but its main turn has ended.
     var backgroundAgents: Int? = nil
     var prs: [PRStatus] = []
-    /// Every ticket and PR of the session, grouped for the `☰ N` menu.
+    /// Every ticket and PR of the session, grouped for the inline menu.
     var menu: [LinkSection] = []
     /// The menu holds a ticket and Jira is not connected: the menu ends with a `Kết nối Jira…` item.
     var menuNeedsJira = false
@@ -798,7 +798,7 @@ public final class Store: ObservableObject {
                  status: pr.stateWord, tone: pr.tone, help: pr.title)
     }
 
-    /// The `☰ N` menu: tickets by origin, then every PR. `prs` is nil without a PR monitor, so every PR link is listed as it is.
+    /// The inline menu: tickets by origin, then every PR. `prs` is nil without a PR monitor, so every PR link is listed as it is.
     static func menu(_ entries: [ButtonEntry], issues: [String: JiraIssue], prs: [PRStatus]?) -> [LinkSection] {
         func tickets(_ source: ButtonEntry.Source, _ title: String) -> LinkSection {
             LinkSection(title: title, items: entries.filter { $0.source == source }.compactMap { e in

@@ -15,7 +15,7 @@ public final class PanelState: ObservableObject {
     /// Session id -> when its `Dừng` button was first clicked; a second click within 3 s sends the stop.
     @Published public var stopArmed: [String: Date] = [:]
 
-    /// Session ids whose `☰ N` list is expanded; cleared when the widget collapses.
+    /// Session ids whose menu list is expanded; cleared when the widget collapses.
     @Published public var openMenus: Set<String> = []
 
     /// The `Vừa đóng (N)` group is expanded; cleared when the widget collapses.
@@ -57,6 +57,18 @@ public final class PanelState: ObservableObject {
         return open.contains { $0.keyboard || $0.pinnedOpen } ? .close : .keyboard
     }
 
+    /// One mouse tick: updates the pin and returns whether the card should be hovered. A pinned card the mouse entered closes on the
+    /// next leave, except in keyboard mode, which keeps it open until the keyboard mode ends.
+    public func pointerWants(inside: Bool) -> Bool {
+        guard pinnedOpen else { return inside }
+        if inside { pinnedEntered = true }
+        if !inside && pinnedEntered && !keyboard {
+            pinnedOpen = false; pinnedEntered = false
+            return false
+        }
+        return true
+    }
+
     /// Pins the card open and takes the keyboard, as the hotkey does.
     public func pinWithKeyboard() {
         pinnedOpen = true; pinnedEntered = false; keyboard = true
@@ -79,13 +91,8 @@ public final class PanelState: ObservableObject {
 
     /// The question index and label for digit key `number`, counted continuously across the questions.
     public static func optionAt(_ q: FeedQuestion, number: Int) -> (question: Int, label: String)? {
-        var n = number
-        guard n >= 1 else { return nil }
-        for (i, item) in q.questions.enumerated() {
-            if n <= item.options.count { return (i, item.options[n - 1].label) }
-            n -= item.options.count
-        }
-        return nil
+        guard let hit = Feed.numberedOptions(q).first(where: { $0.number == number }) else { return nil }
+        return (hit.question, q.questions[hit.question].options[hit.option].label)
     }
 
     /// Picks `label` for question `i`: replaces the pick of a single-select question (and drops its Other text), toggles it in a multi-select one.

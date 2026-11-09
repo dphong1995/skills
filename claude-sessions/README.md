@@ -23,7 +23,7 @@ Bấm phím tắt mở widget (`⌃⌥Space`) thì thẻ được chọn bằng 
 | `⌘↩` | gửi câu trả lời khi mọi câu hỏi đã có lựa chọn |
 | `Esc` | đang gõ: thôi gõ; không gõ: đóng widget và trả phím cho app trước |
 
-Phím không áp dụng cho thẻ đang chọn thì kêu beep; phím không gán thì đi tiếp tới app đang dùng. Chế độ bàn phím chỉ bật khi bấm phím tắt mở widget (bấm khi widget đang mở do rê chuột thì chuyển sang chế độ bàn phím thay vì đóng); chỉ rê chuột thì không bao giờ lấy phím, và rê chuột vào widget khi đang gõ ở terminal không cướp phím.
+Phím không áp dụng cho thẻ đang chọn thì kêu beep; phím không gán thì đi tiếp tới app đang dùng. Chế độ bàn phím chỉ bật khi bấm phím tắt mở widget (bấm khi widget đang mở do rê chuột thì chuyển sang chế độ bàn phím thay vì đóng, và giữ mở cho đến khi bấm `Esc`, bấm lại phím tắt, hoặc bấm sang app khác; chuột rời khung không làm nó đóng); chỉ rê chuột thì không bao giờ lấy phím, và rê chuột vào widget khi đang gõ ở terminal không cướp phím.
 
 ### Viên thu gọn
 Khi không rê chuột, widget chỉ là một viên nhỏ với số session theo nhóm: số session chờ nằm trong huy hiệu đỏ đặc, các nhóm khác (cam xong, xanh đang chạy) là chấm màu với số mờ hơn; nhóm vàng có icon sparkle là session có tin mới. Khi quota 5h từ 80% trở lên, viên rộng thêm để hiện `5h N%`.

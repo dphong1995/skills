@@ -15,11 +15,6 @@ func closedAgo(_ since: Date, _ now: Date) -> String {
     return s < 3600 ? "\(max(1, s / 60))p" : "\(s / 3600)h"
 }
 
-func color(_ status: String) -> Color {
-    Theme.Colors.status(status)
-}
-
-
 /// Inline markdown for a reply; links are dropped (phase buttons open them) and a parse failure shows the text as is.
 func markdown(_ s: String) -> AttributedString {
     guard var a = try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) else {
@@ -34,7 +29,6 @@ func markdown(_ s: String) -> AttributedString {
     }
     return a
 }
-
 
 struct SnapshotRenderingKey: EnvironmentKey {
     static let defaultValue = false
@@ -127,7 +121,6 @@ public enum WidgetAction: Equatable {
         }
     }
 }
-
 
 public struct WidgetView: View {
     @ObservedObject var store: Store
@@ -284,9 +277,6 @@ public struct WidgetView: View {
             }
         }
     }
-
-
-
 
 }
 

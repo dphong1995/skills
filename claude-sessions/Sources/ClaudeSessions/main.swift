@@ -633,11 +633,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for p in panels.values {
             // The pill lies inside the fixed canvas frame, so most mouse moves skip the layout computation.
             let inside = p.window.frame.contains(mouse) && Layout.pill(in: p.window.frame, size: Layout.size(store, p.state), anchor: p.state.anchor).contains(mouse)
-            var want = inside
-            if p.state.pinnedOpen {
-                if inside { p.state.pinnedEntered = true }
-                if !inside && p.state.pinnedEntered { p.state.pinnedOpen = false; p.state.pinnedEntered = false } else { want = true }
-            }
+            let want = p.state.pointerWants(inside: inside)
             if p.state.editing == nil && want != p.state.hovering {
                 p.state.hovering = want
                 if want { store.peekUntil = nil }

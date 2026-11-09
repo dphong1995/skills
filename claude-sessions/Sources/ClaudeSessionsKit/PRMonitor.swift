@@ -171,7 +171,7 @@ public final class PRMonitor {
         return prs
     }
 
-    /// Posts `@coderabbitai approve` on a PR that is `🐰 chờ duyệt`. `done(true)` once posted; `done(false)` when
+    /// Posts `@coderabbitai approve` on a PR that awaits approval (`chờ duyệt`). `done(true)` once posted; `done(false)` when
     /// refused (not awaiting, or a post for it is already in flight) or the post failed. `done` runs on the main queue.
     public func nudge(_ ref: PRRef, done: @escaping (Bool) -> Void) {
         lock.lock()
