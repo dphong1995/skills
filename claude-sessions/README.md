@@ -7,7 +7,7 @@ Widget macOS nổi luôn nằm trên cùng, hiện các session Claude Code đan
 ## Tính năng
 
 ### Danh sách mở rộng
-Rê chuột vào viên thì mở danh sách các session, mỗi thẻ có tiêu đề, thư mục, chấm màu trạng thái và thời gian. Header gom số session theo nhóm màu và hiện quota 5 giờ / tuần; mỗi thẻ có thẻ trạng thái (`chờ duyệt`, `xong`, `đang chạy`...) và thẻ PR, và huy hiệu đỏ ở viên thu gọn đếm session đang chờ. Câu hỏi của Claude hiện thành danh sách đánh số.
+Rê chuột vào viên thì mở danh sách các session, mỗi thẻ có icon trạng thái, tiêu đề kèm tag trạng thái (`chờ duyệt`, `chờ trả lời`, `xong`, `đang chạy`, `chờ N agent nền`), thư mục, vạch màu ở mép trái và cột phải cố định gồm thời gian và nút icon nhanh. Header gom số session theo nhóm màu và hiện quota `5h` / `Tuần` dạng thanh; PR hiện thành các tag có icon. Câu hỏi của Claude hiện thành danh sách đánh số, mỗi đáp án có mô tả luôn hiện; `Cho phép` và `Gửi` màu xanh lá.
 
 ### Phím tắt bàn phím
 Bấm phím tắt mở widget (`⌃⌥Space`) thì thẻ được chọn bằng vòng viền trắng và điều khiển bằng bàn phím:
@@ -17,16 +17,16 @@ Bấm phím tắt mở widget (`⌃⌥Space`) thì thẻ được chọn bằng 
 | `↑` / `↓` | chọn thẻ trước / sau |
 | `↩` | nhảy tới pane cmux của thẻ (widget vẫn mở) |
 | `A` | cho phép (chỉ khi thẻ chờ duyệt và lệnh đã hiện đủ) |
-| `D` | mở ô lý do từ chối |
+| `D` | mở ô lý do từ chối (chỉ ở thẻ đang hiện nút `Từ chối…`) |
 | `R` | mở ô trả lời (session xong, chạy trong cmux) |
 | `1`-`9` | chọn đáp án thứ n của câu hỏi (đánh số liên tục qua các câu hỏi) |
 | `⌘↩` | gửi câu trả lời khi mọi câu hỏi đã có lựa chọn |
 | `Esc` | đang gõ: thôi gõ; không gõ: đóng widget và trả phím cho app trước |
 
-Phím không áp dụng cho thẻ đang chọn thì kêu beep. Chế độ bàn phím chỉ bật khi bấm phím tắt mở widget (bấm khi widget đang mở do rê chuột thì chuyển sang chế độ bàn phím thay vì đóng); rê chuột vào widget khi đang gõ ở terminal không cướp phím.
+Phím không áp dụng cho thẻ đang chọn thì kêu beep; phím không gán thì đi tiếp tới app đang dùng. Chế độ bàn phím chỉ bật khi bấm phím tắt mở widget (bấm khi widget đang mở do rê chuột thì chuyển sang chế độ bàn phím thay vì đóng); chỉ rê chuột thì không bao giờ lấy phím, và rê chuột vào widget khi đang gõ ở terminal không cướp phím.
 
 ### Viên thu gọn
-Khi không rê chuột, widget chỉ là một viên nhỏ với chấm trạng thái và số session theo màu (đỏ chờ, cam xong, xanh đang chạy); nhóm vàng `✦` là session có tin mới.
+Khi không rê chuột, widget chỉ là một viên nhỏ với số session theo nhóm: số session chờ nằm trong huy hiệu đỏ đặc, các nhóm khác (cam xong, xanh đang chạy) là chấm màu với số mờ hơn; nhóm vàng có icon sparkle là session có tin mới. Khi quota 5h từ 80% trở lên, viên rộng thêm để hiện `5h N%`.
 
 ![Viên thu gọn](docs/images/06-mixed-collapsed.png)
 
@@ -71,17 +71,17 @@ Mỗi PR của session có một dòng với số yêu cầu sửa, số ngườ
 ![Dòng PR](docs/images/22-pr-lines.png)
 
 ### CodeRabbit
-PR hiện trạng thái review của CodeRabbit; khi đang chờ duyệt có nút `🐰 Nhắc duyệt`.
+PR hiện trạng thái review của CodeRabbit; khi đang chờ duyệt có nút `Nhắc duyệt` (icon con thỏ).
 
 ![CodeRabbit](docs/images/31-pr-awaiting-approval.png)
 
 ### Ticket Jira và link
-Các ticket Jira và PR nhắc trong session thành nút bấm; nút `☰ N` bung danh sách đầy đủ ngay trong widget.
+Các ticket Jira và PR nhắc trong session thành chip bấm được (chip ticket tô màu theo trạng thái Jira); nút icon danh sách + `N` bung danh sách đầy đủ ngay trong widget.
 
 ![Ticket và link](docs/images/29-link-list-open.png)
 
 ### Dấu tin mới
-Session vừa chuyển từ đang chạy sang xong/chờ, hoặc PR có sự kiện, được đánh dấu bằng vạch vàng (hoặc tô tím ở dòng PR) cho đến khi bạn xem.
+Session vừa chuyển từ đang chạy sang xong/chờ, hoặc PR có sự kiện, được đánh dấu bằng icon sparkle và nền vàng nhạt trên thẻ (hoặc tô tím ở dòng PR) cho đến khi bạn xem.
 
 ![Dấu tin mới](docs/images/34-mark-both.png)
 

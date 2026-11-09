@@ -60,13 +60,14 @@ private func session(_ id: String, _ status: String, _ text: String?) -> Session
     #expect(Layout.height(of: session("a", "idle", nil)) == 50)
     var longTitle = session("a", "busy", nil)
     longTitle.firstPrompt = String(repeating: "x", count: 100)
-    #expect(Layout.height(of: longTitle) == 66)
+    #expect(Layout.height(of: longTitle) == 56)
     var withTodo = session("a", "busy", nil)
     withTodo.todo = Todo(done: 1, total: 4, current: "x")
-    #expect(Layout.height(of: withTodo) == CGFloat(50 + 15))
+    // The right column (time over the button) leaves 10 pt that extra text lines fill first.
+    #expect(Layout.height(of: withTodo) == CGFloat(50 + 5))
     var withActivity = session("a", "busy", nil)
     withActivity.activity = "Bash: ls"
-    #expect(Layout.height(of: withActivity) == CGFloat(50 + 15))
+    #expect(Layout.height(of: withActivity) == CGFloat(50 + 5))
     var withLinks = session("a", "idle", "hi")
     withLinks.menu = [LinkSection(title: "PR", items: [LinkItem(text: "PR #1", url: URL(string: "https://x.y/pull/1")!)])]
     #expect(Layout.height(of: withLinks) == CGFloat(92 + 22))
@@ -74,12 +75,13 @@ private func session(_ id: String, _ status: String, _ text: String?) -> Session
 
 @Test func titleWrapThreshold() {
     let short = session("a", "busy", nil)
-    var fifty = short
-    fifty.firstPrompt = String(repeating: "x", count: 50)
-    var fortyEight = short
-    fortyEight.firstPrompt = String(repeating: "x", count: 48)
-    #expect(Layout.height(of: fifty) == Layout.height(of: short) + 16)
-    #expect(Layout.height(of: fortyEight) == Layout.height(of: short))
+    var over = short
+    over.firstPrompt = String(repeating: "x", count: Layout.titleWrapCount + 1)
+    var at = short
+    at.firstPrompt = String(repeating: "x", count: Layout.titleWrapCount)
+    #expect(Layout.titleWrapCount == 76)
+    #expect(Layout.height(of: over) == Layout.height(of: short) + Layout.titleWrapHeight - Layout.headTextSlack)
+    #expect(Layout.height(of: at) == Layout.height(of: short))
 }
 
 @Test func heightCountsMenuRowWithoutLinks() {

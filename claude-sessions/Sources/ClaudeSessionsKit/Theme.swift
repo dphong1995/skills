@@ -54,6 +54,7 @@ enum Theme {
     enum Opacity {
         static let disabled = 0.4
         static let stale = 0.5
+        static let freshTint = 0.08
     }
 
     enum Space {
@@ -85,6 +86,10 @@ enum Theme {
         static let reply = "arrowshape.turn.up.left"
         static let stop = "stop.fill"
         static let todo = "checklist"
+        static let changesRequested = "xmark"
+        static let approved = "checkmark"
+        static let person = "person"
+        static let clock = "clock"
 
         static func status(_ s: Session) -> String {
             if s.status == "waiting" { return s.isPermissionPrompt ? "exclamationmark.triangle.fill" : "questionmark.circle.fill" }

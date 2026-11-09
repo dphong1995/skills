@@ -35,8 +35,32 @@ public final class PanelState: ObservableObject {
     /// Opened or switched to by the hotkey: the panel is key and the arrow keys move `selected`.
     @Published public var keyboard = false
     @Published public var selected: String?
-    /// The local keyDown monitor installed while `keyboard` is on.
-    public var keyMonitor: Any?
+
+    /// The panel has to be the key window: a text field is open or keyboard mode is on.
+    public var wantsKey: Bool { editing != nil || keyboard }
+
+    /// Whether a panel that stopped wanting the key should give key status back: only a key, visible panel that wants it no more.
+    public func shouldHandBackKey(isKey: Bool, hidden: Bool) -> Bool { isKey && !hidden && !wantsKey }
+
+    /// Collapses the card and ends keyboard mode and any open editor.
+    public func close() {
+        pinnedOpen = false; pinnedEntered = false; hovering = false
+        editing = nil; keyboard = false; selected = nil
+    }
+
+    public enum HotkeyToggle: Equatable { case open, close, keyboard }
+
+    /// What the open hotkey does given the panels that are open: nothing open opens one with the keyboard; one opened by the hotkey
+    /// or already in keyboard mode closes; one opened by hover only switches to keyboard mode.
+    public static func hotkeyToggle(open: [PanelState]) -> HotkeyToggle {
+        if open.isEmpty { return .open }
+        return open.contains { $0.keyboard || $0.pinnedOpen } ? .close : .keyboard
+    }
+
+    /// Pins the card open and takes the keyboard, as the hotkey does.
+    public func pinWithKeyboard() {
+        pinnedOpen = true; pinnedEntered = false; keyboard = true
+    }
 
     public init() {}
 

@@ -34,6 +34,12 @@ public enum Layout {
     static let seenDwell: Duration = .seconds(1)
     static let replyRowHeight: CGFloat = 92
     static let todoHeight: CGFloat = 15
+    /// A row's head is the taller of the text column (title and folder, ~30 pt) and the right column (time over the 24 pt button, ~40 pt),
+    /// so extra text lines grow into the right column's spare height first.
+    static let headTextSlack: CGFloat = 10
+    /// Characters of a title before it wraps to a second line.
+    static let titleWrapCount = 76
+    static let titleWrapHeight: CGFloat = 16
     static let headerHeight: CGFloat = 32
     /// Padding inside the list's scroll content, on the header's side and the far side; `listHeight` is measured with it.
     static let listPaddingNear: CGFloat = 4
@@ -108,8 +114,10 @@ public enum Layout {
         } else {
             base = s.isFinished && s.lastReply != nil ? replyRowHeight : rowHeight
         }
-        return base + (s.todo != nil ? todoHeight : 0) + (s.activity != nil ? todoHeight : 0)
-            + (s.title.count > 48 ? 16 : 0) + (s.menu.isEmpty ? 0 : 22) + s.prs.reduce(0) { $0 + ($1.isOpen ? 22 : 18) }
+        let textGrowth = (s.todo != nil ? todoHeight : 0) + (s.activity != nil ? todoHeight : 0) + (s.title.count > titleWrapCount ? titleWrapHeight : 0)
+        let slack = base == replyRowHeight ? 0 : headTextSlack
+        return base + max(0, textGrowth - slack)
+            + (s.menu.isEmpty ? 0 : 22) + s.prs.reduce(0) { $0 + ($1.isOpen ? 22 : 18) }
             + (open ? CGFloat(s.menuCount) * linkRowHeight + CGFloat(s.menu.count) * linkSectionHeight + (s.menuNeedsJira ? linkRowHeight : 0) : 0)
     }
 

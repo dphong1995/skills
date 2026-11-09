@@ -12,18 +12,19 @@ func statusText(_ s: Session) -> String {
 }
 
 /// The parts of a PR line in order; `prLine` joins their text and the row renders each as a `Tag`.
-func prParts(_ pr: PRStatus, now: Date, stale: Date?) -> [(text: String, symbol: String?, tint: Color?)] {
-    var parts: [(String, String?, Color?)] = [("PR #\(pr.ref.id)", Theme.Symbols.pr, nil)]
+/// `dropRank` is 0 for a part that stays; a part with rank r is dropped once the row has to drop r tags (higher ranks go first).
+func prParts(_ pr: PRStatus, now: Date, stale: Date?) -> [(text: String, symbol: String?, tint: Color?, dropRank: Int)] {
+    var parts: [(String, String?, Color?, Int)] = [("PR #\(pr.ref.id)", Theme.Symbols.pr, nil, 0)]
     if !pr.isOpen {
-        parts.append((pr.stateWord, nil, toneColor(pr.tone)))
+        parts.append((pr.stateWord, nil, toneColor(pr.tone), 0))
         return parts
     }
-    if pr.changesRequested > 0 { parts.append(("\(pr.changesRequested) yêu cầu sửa", "xmark", .red)) }
-    if pr.reviewers > 0 { parts.append(("\(pr.approved)/\(pr.reviewers)", "checkmark", pr.approved > 0 ? .green : nil)) }
-    if let rabbit = pr.rabbit { parts.append((CodeRabbit.label(rabbit), Theme.Symbols.rabbit, nil)) }
-    if pr.comments > 0 { parts.append(("\(pr.comments)", Theme.Symbols.comments, nil)) }
-    if let c = pr.lastOther { parts.append(("\(c.name) \(elapsed(c.at, now))", "person", nil)) }
-    if let stale { parts.append(("cũ \(elapsed(stale, now))", "clock", nil)) }
+    if pr.changesRequested > 0 { parts.append(("\(pr.changesRequested) yêu cầu sửa", Theme.Symbols.changesRequested, .red, 0)) }
+    if pr.reviewers > 0 { parts.append(("\(pr.approved)/\(pr.reviewers)", Theme.Symbols.approved, pr.approved > 0 ? .green : nil, 0)) }
+    if let rabbit = pr.rabbit { parts.append((CodeRabbit.label(rabbit), Theme.Symbols.rabbit, nil, 0)) }
+    if pr.comments > 0 { parts.append(("\(pr.comments)", Theme.Symbols.comments, nil, 0)) }
+    if let c = pr.lastOther { parts.append(("\(c.name) \(elapsed(c.at, now))", Theme.Symbols.person, nil, 2)) }
+    if let stale { parts.append(("cũ \(elapsed(stale, now))", Theme.Symbols.clock, nil, 1)) }
     return parts
 }
 
@@ -57,7 +58,7 @@ extension WidgetView {
                 jumpLine("Cần duyệt trong cmux", s)
             case .one(let p):
                 let fit = Layout.commandFit(p.text)
-                let full = fit == .short || (fit == .long && store.shownCommands.contains(p.toolId))
+                let full = store.isCommandShown(p)
                 Text(p.text).font(Theme.Fonts.mono)
                     .foregroundStyle(Theme.Colors.primaryText)
                     .lineLimit(full ? nil : 4).truncationMode(.tail)
@@ -116,11 +117,12 @@ extension WidgetView {
     @ViewBuilder
     func quickButton(_ s: Session) -> some View {
         let inCmux = !store.surfaceMisses.contains(s.id)
+        let outsideCmux = "Chỉ dùng được trong cmux"
         Group {
             if s.canAskClaude {
-                IconButton(symbol: Theme.Symbols.reply, help: "Trả lời…") { panel.editing = Store.Editing(id: s.id, kind: .reply) }
+                IconButton(symbol: Theme.Symbols.reply, help: inCmux ? "Trả lời…" : outsideCmux) { panel.editing = Store.Editing(id: s.id, kind: .reply) }
             } else if s.shownStatus == "busy" {
-                IconButton(symbol: Theme.Symbols.stop, help: "Dừng (bấm hai lần)",
+                IconButton(symbol: Theme.Symbols.stop, help: inCmux ? "Dừng (bấm hai lần)" : outsideCmux,
                            tint: stopArmed(s) ? Theme.Colors.status("waiting") : nil) {
                     // The click compares with the real time: `store.now` only ticks once a second.
                     if panel.stopArmed[s.id].map({ Date().timeIntervalSince($0) < 3 }) ?? false {
@@ -133,7 +135,6 @@ extension WidgetView {
             }
         }
         .disabled(!inCmux).opacity(inCmux ? 1 : Theme.Opacity.disabled)
-        .help(inCmux ? "" : "Chỉ dùng được trong cmux")
     }
 
     /// Menu count: toggles the inline list of every ticket and PR of the session.
@@ -265,7 +266,7 @@ extension WidgetView {
                     ViewThatFits(in: .horizontal) {
                         // Drop the stale tag first, then the last-other tag, when space runs out.
                         ForEach([0, 1, 2], id: \.self) { drop in
-                            let shown = parts.filter { !(drop >= 1 && $0.symbol == "clock") && !(drop >= 2 && $0.symbol == "person") }
+                            let shown = parts.filter { !($0.dropRank > 0 && drop >= $0.dropRank) }
                             HStack(spacing: 4) {
                                 ForEach(Array(shown.enumerated()), id: \.offset) { i, p in
                                     if i == 0 {
@@ -310,12 +311,16 @@ extension WidgetView {
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
         .frame(minHeight: Layout.rowHeight)
-        .background(Theme.Colors.card)
-        .background(claudeNew ? Theme.Colors.fresh.opacity(0.08) : .clear)
+        .background {
+            ZStack {
+                Theme.Colors.card
+                if claudeNew { Theme.Colors.fresh.opacity(Theme.Opacity.freshTint) }
+            }
+        }
         .overlay(alignment: .leading) { Rectangle().fill(statusColor).frame(width: 3) }
         .overlay {
             if panel.keyboard && panel.selected == s.id {
-                RoundedRectangle(cornerRadius: 8).stroke(Theme.Colors.selectionRing, lineWidth: Theme.Space.selectionRing)
+                RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.Colors.selectionRing, lineWidth: Theme.Space.selectionRing)
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 8))

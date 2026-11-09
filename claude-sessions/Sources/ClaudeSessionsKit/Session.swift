@@ -145,6 +145,11 @@ public final class Store: ObservableObject {
     }
     /// Tool ids whose long command the user expanded with Xem đủ.
     @Published var shownCommands: Set<String> = []
+    /// Whether the card shows the whole of `p`'s command (short, or long and expanded with Xem đủ); only then can it be approved or denied from the widget.
+    func isCommandShown(_ p: Pending) -> Bool {
+        let fit = Layout.commandFit(p.text)
+        return fit == .short || (fit == .long && shownCommands.contains(p.toolId))
+    }
     /// Typed text per `draftKey`: a reply and a deny reason of one session are kept apart.
     @Published public var drafts: [String: String] = [:]
     public static func draftKey(_ id: String, _ kind: Editing.Kind) -> String { kind == .reply ? "\(id)#reply" : id }
