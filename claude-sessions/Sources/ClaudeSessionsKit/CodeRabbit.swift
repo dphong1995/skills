@@ -1,6 +1,6 @@
 import Foundation
 
-public enum Rabbit: Equatable { case reviewing, reviewed(findings: Int?), approved, skipped, failed, awaitingApproval, nudged }
+public enum Rabbit: Equatable { case reviewing, reviewed(findings: Int?), approved, skipped, failed, awaitingApproval, nudged, approvalFailed(reason: String) }
 
 struct RabbitFacts: Equatable {
     /// uuid of the author of the newest marked comment.
@@ -12,6 +12,12 @@ struct RabbitFacts: Equatable {
     var allAnswered: Bool { threads.pending == 0 }
     /// The newest approve command is newer than every top-level CodeRabbit comment.
     var nudgePending: Bool
+    /// When the newest approve command was posted.
+    var command: Date? = nil
+    /// When CodeRabbit last posted a top-level comment saying the approval failed.
+    var approvalFailedAt: Date? = nil
+    /// A reviewer (not `me`, not the PR author, not CodeRabbit) has a comment `me` has not answered in its thread.
+    var othersPending = false
 }
 
 /// The raw data `derive` reads; `statuses` and `comments` are nil until fetched.
@@ -23,6 +29,10 @@ struct RabbitInputs {
     var summary: [String: Any]?
     var approvers: Set<String>
     var me: String?
+    var author: String? = nil
+    /// When the monitor first saw the newest approve command; the 600 s timeout counts from the later of that and the command's
+    /// own time, so a clock that runs ahead of Bitbucket's cannot end it early.
+    var commandSeen: Date? = nil
 }
 
 struct RabbitView: Equatable {
@@ -32,6 +42,7 @@ struct RabbitView: Equatable {
     var status: Rabbit?
     var since: Date?
     var threads: RabbitThreads?
+    var othersPending = false
 }
 
 enum CodeRabbit {
@@ -54,13 +65,16 @@ enum CodeRabbit {
         return state(fromValues: values, commit: commit)
     }
 
-    static func state(fromValues values: [[String: Any]], commit: String?) -> (rabbit: Rabbit, since: Date)? {
-        let newest = values.filter { v in
+    private static func newestStatus(in values: [[String: Any]], commit: String?) -> [String: Any]? {
+        values.filter { v in
             guard isStatus(v) else { return false }
             guard let commit, let hash = (v["commit"] as? [String: Any])?["hash"] as? String else { return true }
             return hash.hasPrefix(commit)
         }.max { (stamp($0, "updated_on") ?? .distantPast) < (stamp($1, "updated_on") ?? .distantPast) }
-        guard let s = newest, let state = s["state"] as? String else { return nil }
+    }
+
+    static func state(fromValues values: [[String: Any]], commit: String?) -> (rabbit: Rabbit, since: Date)? {
+        guard let s = newestStatus(in: values, commit: commit), let state = s["state"] as? String else { return nil }
         // CodeRabbit's INPROGRESS status lingers after its summary is posted, so its start is its last update.
         let since = (state == "INPROGRESS" ? stamp(s, "updated_on") : nil) ?? stamp(s, "created_on") ?? stamp(s, "updated_on") ?? .distantPast
         let text = (s["description"] as? String ?? "").lowercased()
@@ -71,6 +85,10 @@ enum CodeRabbit {
         case "STOPPED": return (.skipped, since)
         case "SUCCESSFUL":
             if text.hasPrefix("approve command performed") {
+                let description = s["description"] as? String ?? ""
+                if let skipped = description.range(of: "Approval skipped: ", options: .caseInsensitive), !text.contains("already approved") {
+                    return (.approvalFailed(reason: String(description[skipped.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)), since)
+                }
                 return (has(["approval completed", "already approved"]) ? .approved : .reviewed(findings: nil), since)
             }
             if has(["failed", "could not", "incomplete", "not published", "error"]) { return (.failed, since) }
@@ -121,14 +139,23 @@ enum CodeRabbit {
     }
 
     /// Pure: the same inputs always give the same view.
+    private static let nudgeTimeout: TimeInterval = 600
+
     static func derive(_ i: RabbitInputs, now: Date) -> RabbitView {
-        let facts = i.comments.map(facts(from:))
+        var facts = i.comments.map { CodeRabbit.facts(from: $0, me: i.me, author: i.author) }
         var status: Rabbit?
         var since: Date?
+        var statusUpdated: Date?
+        var statusDescription = ""
         if let values = i.statuses, let fresh = state(fromValues: values, commit: i.commit) {
             since = fresh.since
+            let newest = newestStatus(in: values, commit: i.commit)
+            statusUpdated = newest.flatMap { stamp($0, "updated_on") }
+            statusDescription = ((newest?["description"] as? String) ?? "").lowercased()
             let pool = (i.comments ?? []) + (i.summary.map { [$0] } ?? [])
             var r = fresh.rabbit
+            // An approve command newer than the failed approval starts over: the answer to it is still to come.
+            if case .approvalFailed = r, let c = facts?.command, let u = statusUpdated, c > u { r = .reviewed(findings: nil) }
             if r == .reviewing {
                 // The summary is out; the status lags behind it.
                 if case .count(let n) = findings(fromValues: pool, since: fresh.since, createdOnly: true) { r = .reviewed(findings: n) }
@@ -137,7 +164,22 @@ enum CodeRabbit {
             }
             status = r
         }
-        return RabbitView(rabbit: resolve(status, approvers: i.approvers, facts: facts), status: status, since: since, threads: facts?.threads)
+        // The newest approve command ends once CodeRabbit answered in a comment (kept by `facts`), updated its status, or 600 s passed.
+        if let command = facts?.command, facts?.nudgePending == true,
+           (statusUpdated.map { $0 > command } ?? false) || now.timeIntervalSince(max(command, i.commandSeen ?? .distantPast)) >= nudgeTimeout {
+            facts?.nudgePending = false
+        }
+        var shown = resolve(status, approvers: i.approvers, facts: facts)
+        // The failure CodeRabbit wrote in a comment after the newest command stays until a new review (a status that is not
+        // an approve command) or a newer command replaces it.
+        if case .reviewed? = status, let f = facts, let command = f.command, let failed = f.approvalFailedAt, failed > command,
+           !(statusUpdated.map { $0 > failed } ?? false) || statusDescription.hasPrefix("approve command performed") {
+            switch shown {
+            case .reviewed?, .awaitingApproval?: shown = .approvalFailed(reason: "approval failed")
+            default: break
+            }
+        }
+        return RabbitView(rabbit: shown, status: status, since: since, threads: facts?.threads, othersPending: facts?.othersPending ?? false)
     }
 
     static func label(_ r: Rabbit, threads: RabbitThreads? = nil) -> String {
@@ -151,29 +193,32 @@ enum CodeRabbit {
         case .failed: return "lỗi"
         case .awaitingApproval: return "chờ duyệt"
         case .nudged: return "đang nhắc"
+        case .approvalFailed: return "duyệt lỗi"
         }
     }
 
     /// `Nhờ Claude` has nothing to ask while CodeRabbit is done and every thread is answered.
-    static func hidesAskClaude(_ r: Rabbit?, threads: RabbitThreads?) -> Bool {
-        guard let threads, threads.pending == 0 else { return false }
+    static func hidesAskClaude(_ r: Rabbit?, threads: RabbitThreads?, othersPending: Bool = false) -> Bool {
+        guard let threads, threads.pending == 0, !othersPending else { return false }
         switch r {
-        case .reviewed?, .awaitingApproval?, .nudged?, .approved?: return true
+        case .reviewed?, .awaitingApproval?, .nudged?, .approved?, .approvalFailed?: return true
         default: return false
         }
     }
 
     static func isFinal(_ r: Rabbit) -> Bool {
         switch r {
-        case .reviewed, .approved, .failed, .awaitingApproval: return true
+        case .reviewed, .approved, .failed, .awaitingApproval, .approvalFailed: return true
         case .reviewing, .skipped, .nudged: return false
         }
     }
 
+    private static let mention = try! NSRegularExpression(pattern: #"@coderabbit(ai)?\b"#, options: .caseInsensitive)
+
     private static let nudgeCommand = try! NSRegularExpression(pattern: #"@coderabbit(ai)?\s+approve"#, options: .caseInsensitive)
 
     /// What the full comment list says about the CodeRabbit account, its inline threads and a pending approve command.
-    static func facts(from values: [[String: Any]]) -> RabbitFacts {
+    static func facts(from values: [[String: Any]], me: String? = nil, author: String? = nil) -> RabbitFacts {
         let live = values.filter { ($0["deleted"] as? Bool) != true }
         func created(_ v: [String: Any]) -> Date { stamp(v, "created_on") ?? .distantPast }
         func parent(_ v: [String: Any]) -> Int? { (v["parent"] as? [String: Any])?["id"] as? Int }
@@ -185,6 +230,8 @@ enum CodeRabbit {
         for v in live { if let p = parent(v) { children[p, default: []].append(v) } }
         let roots = marked.filter { $0["inline"] != nil && parent($0) == nil }
         let pending = roots.filter { root in
+            // CodeRabbit rewrites a root it has dealt with to `✅ Addressed in commit …`.
+            if raw(root).contains("Addressed in commit") { return false }
             var thread = [root]
             var i = 0
             while i < thread.count {
@@ -201,7 +248,33 @@ enum CodeRabbit {
         }.map(created).max()
         let topLevel = marked.filter { parent($0) == nil && $0["inline"] == nil }.map(created).max()
         let nudgePending = command.map { c in topLevel.map { c > $0 } ?? true } ?? false
-        return RabbitFacts(rabbitUser: rabbitUser, threads: RabbitThreads(pending: pending, total: roots.count), nudgePending: nudgePending)
+        let approvalFailedAt = marked.filter { parent($0) == nil && $0["inline"] == nil && raw($0).lowercased().contains("approval failed") }
+            .map(created).max()
+
+        // Reviewer comments `me` has not answered: nothing from `me` after them in their thread.
+        var othersPending = false
+        if let me {
+            var parentOf: [Int: Int] = [:]
+            for v in live { if let id = v["id"] as? Int, let p = parent(v) { parentOf[id] = p } }
+            func rootId(_ v: [String: Any]) -> Int? {
+                guard var id = v["id"] as? Int else { return nil }
+                while let p = parentOf[id] { id = p }
+                return id
+            }
+            othersPending = live.contains { v in
+                let user = (v["user"] as? [String: Any])?["uuid"] as? String
+                let r = raw(v)
+                guard let user, user != me, user != author, !isComment(v),
+                      mention.firstMatch(in: r, range: NSRange(location: 0, length: (r as NSString).length)) == nil else { return false }
+                let root = rootId(v)
+                return !live.contains { w in
+                    ((w["user"] as? [String: Any])?["uuid"] as? String) == me && created(w) > created(v)
+                        && (root != nil ? rootId(w) == root : false)
+                }
+            }
+        }
+        return RabbitFacts(rabbitUser: rabbitUser, threads: RabbitThreads(pending: pending, total: roots.count), nudgePending: nudgePending,
+                           command: command, approvalFailedAt: approvalFailedAt, othersPending: othersPending)
     }
 
     /// The displayed state from the raw status, the PR's approvers and the comment facts.
@@ -209,7 +282,7 @@ enum CodeRabbit {
         if let u = facts?.rabbitUser, approvers.contains(u) { return .approved }
         if status == .reviewing { return .reviewing }
         switch status {
-        case .failed?, .skipped?: return status
+        case .failed?, .skipped?, .approvalFailed?: return status
         case .reviewed?, .approved?:
             guard let facts, facts.rabbitUser != nil else { return status }
             if facts.allAnswered { return facts.nudgePending ? .nudged : .awaitingApproval }

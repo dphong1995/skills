@@ -1055,4 +1055,52 @@ private func withCommit(_ pr: [String: Any], _ hash: String) -> [String: Any] {
         #expect(posts == 1)
         #expect(results == [false, false])
     }
+
+    @Test func approvalFailedChimesOnce() {
+        let api = fake(open: [prJSON(id: 7571, comments: 1)])
+        setStatuses(api, rabbitStatus(description: "Review completed", created: Self.started))
+        let m = monitor(api)
+        m.update([target([prRef(7571)])], at: t0)
+        _ = m.takeSnapshot()
+        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7571, comments: 2)]])
+        setStatuses(api, rabbitStatus(description: "Approve command performed: Approval skipped: durable Cloud recovery is unavailable", created: Self.later))
+        m.update([target([prRef(7571)])], at: t0 + 61)
+        let snap = m.takeSnapshot()
+        #expect(snap.prs["s"]?.first?.rabbit == .approvalFailed(reason: "durable Cloud recovery is unavailable"))
+        #expect(snap.events == [.rabbitNeedsYou])
+        m.update([target([prRef(7571)])], at: t0 + 122)
+        #expect(m.takeSnapshot().events.isEmpty)
+    }
+
+    @Test func commentsSlowPolledWhilePending() {
+        func run(_ comments: [[String: Any]]) -> (api: FakeBitbucket, m: PRMonitor) {
+            let api = fake(open: [prJSON(id: 7571, comments: 1)])
+            setStatuses(api, rabbitStatus(description: "Review completed", created: Self.started))
+            api.set("/comments", json: ["values": comments])
+            let m = monitor(api)
+            m.update([target([prRef(7571)])], at: t0)
+            return (api, m)
+        }
+        let early = run(pendingFinding(count: 1, at: Self.later))
+        let n = early.api.requests(containing: "/comments")
+        early.m.update([target([prRef(7571)])], at: t0 + 299)
+        #expect(early.api.requests(containing: "/comments") == n)
+
+        let late = run(pendingFinding(count: 1, at: Self.later))
+        late.m.update([target([prRef(7571)])], at: t0 + 301)
+        #expect(late.api.requests(containing: "/comments") == n + 1)
+
+        let done = run([rabbitComment("**Actionable comments posted: 0**", at: Self.later)])
+        let k = done.api.requests(containing: "/comments")
+        done.m.update([target([prRef(7571)])], at: t0 + 301)
+        #expect(done.api.requests(containing: "/comments") == k)
+    }
+
+    @Test func authorParsed() {
+        var pr = prJSON(id: 7571)
+        pr["author"] = ["uuid": "{author}"]
+        let m = monitor(fake(open: [pr]))
+        m.update([target([prRef(7571)])], at: t0)
+        #expect(m.takeSnapshot().prs["s"]?.first?.author == "{author}")
+    }
 }

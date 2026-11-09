@@ -42,7 +42,10 @@ public final class PRMonitor {
     /// How long a PR head without a CodeRabbit status keeps asking for one.
     private static let rabbitWait: TimeInterval = 600
     private static let statusesSlowPoll: TimeInterval = 300
-    private static let singleFields = "id,title,state,comment_count,updated_on,source.branch.name,source.repository.full_name,source.commit.hash,participants.approved,participants.state,participants.role,participants.user.uuid,links.html.href"
+    /// How often the comments are refetched while CodeRabbit threads are pending (CodeRabbit edits them to `Addressed`
+    /// without changing `comment_count`).
+    private static let commentsSlowPoll: TimeInterval = 300
+    private static let singleFields = "id,title,state,comment_count,updated_on,source.branch.name,source.repository.full_name,source.commit.hash,participants.approved,participants.state,participants.role,participants.user.uuid,author.uuid,links.html.href"
     private static let openFields = singleFields.split(separator: ",").map { "values.\($0)" }.joined(separator: ",") + ",next"
     private static let statusFields = "values.state,values.commit.hash,values.key,values.name,values.description,values.created_on,values.updated_on"
     private static let commentFields = "values.user.uuid,values.user.display_name,values.created_on,values.updated_on,values.deleted,values.content.raw,values.id,values.parent.id,values.inline.path,next"
@@ -76,6 +79,9 @@ public final class PRMonitor {
     private var summaries: [PRRef: (commit: String?, value: [String: Any])] = [:]
     /// When each PR's `/statuses` was last fetched successfully (paces the slow poll after the window).
     private var statusesAt: [PRRef: Date] = [:]
+    private var commentsAt: [PRRef: Date] = [:]
+    /// Per PR: the newest approve command and the `now` of the cycle that first saw it.
+    private var commandSeen: [PRRef: (command: Date, at: Date)] = [:]
     /// PRs whose first `/comments` fetch failed and is still owed.
     private var commentsOwed = Set<PRRef>()
     private var headSeen: [PRRef: (commit: String?, at: Date)] = [:]
@@ -153,6 +159,8 @@ public final class PRMonitor {
         summaries = summaries.filter { used.contains($0.key) }
         headSeen = headSeen.filter { used.contains($0.key) }
         statusesAt = statusesAt.filter { used.contains($0.key) }
+        commentsAt = commentsAt.filter { used.contains($0.key) }
+        commandSeen = commandSeen.filter { used.contains($0.key) }
         statusesFetched.formIntersection(used)
         commentsOwed.formIntersection(used)
         hidden.formIntersection(used)
@@ -189,6 +197,7 @@ public final class PRMonitor {
         }
         let work = { [self] () -> Bool in
             defer { lock.lock(); nudging.remove(ref); lock.unlock() }
+            let nudgedAt = lastCycle ?? Date()
             guard statuses[ref]?.rabbit == .awaitingApproval else { return false }
             let path = "/2.0/repositories/\(ref.workspace)/\(ref.repo)/pullrequests/\(ref.id)/comments"
             do {
@@ -197,10 +206,11 @@ public final class PRMonitor {
                 publish()
                 return false
             }
-            let posted: [String: Any] = ["id": -1, "user": ["uuid": me ?? ""], "created_on": ISO8601DateFormatter().string(from: Date()),
+            // Stamped with the clock of the last cycle, the one `now` is compared against.
+            let posted: [String: Any] = ["id": -1, "user": ["uuid": me ?? ""], "created_on": ISO8601DateFormatter().string(from: nudgedAt),
                                          "content": ["raw": "@coderabbitai approve"], "deleted": false]
             commentValues[ref, default: []].append(posted)
-            if let pr = statuses[ref] { statuses[ref]?.rabbit = derive(pr, ref, now: Date()).rabbit }
+            if let pr = statuses[ref] { statuses[ref]?.rabbit = derive(pr, ref, now: nudgedAt).rabbit }
             lastCycle = nil
             publish()
             return true
@@ -221,8 +231,12 @@ public final class PRMonitor {
 
     private func derive(_ pr: PRStatus, _ ref: PRRef, now: Date) -> RabbitView {
         let summary = summaries[ref].flatMap { $0.commit == pr.commit ? $0.value : nil }
-        return CodeRabbit.derive(RabbitInputs(commit: pr.commit, statuses: statusValues[ref], comments: commentValues[ref],
-                                              summary: summary, approvers: pr.approvers, me: me), now: now)
+        let comments = commentValues[ref]
+        if let command = comments.flatMap({ CodeRabbit.facts(from: $0).command }), commandSeen[ref]?.command != command {
+            commandSeen[ref] = (command, now)
+        }
+        return CodeRabbit.derive(RabbitInputs(commit: pr.commit, statuses: statusValues[ref], comments: comments, summary: summary,
+                                              approvers: pr.approvers, me: me, author: pr.author, commandSeen: commandSeen[ref]?.at), now: now)
     }
 
     /// Sets the four rabbit fields from the raw data kept for `ref`; the thread counts stay nil until a comments fetch succeeded.
@@ -232,6 +246,7 @@ public final class PRMonitor {
         pr.rabbitStatus = v.status
         pr.rabbitSince = v.since
         pr.rabbitThreads = v.threads
+        pr.rabbitOthersPending = v.othersPending
     }
 
     private func post(_ path: String, json: [String: Any]) throws -> Data {
@@ -387,7 +402,11 @@ public final class PRMonitor {
                     }
                 }
                 let owed = commentsOwed.contains(ref)
-                if prev == nil || prev?.comments != pr.comments || rabbitFinished || owed {
+                // Not while the status itself still says `reviewing`: that case is polled through the statuses.
+                let commentsSlow = (prev?.rabbitThreads?.pending ?? 0) > 0
+                    && statusValues[ref].flatMap({ CodeRabbit.state(fromValues: $0, commit: pr.commit)?.rabbit }) != .reviewing
+                    && commentsAt[ref].map { now.timeIntervalSince($0) >= Self.commentsSlowPoll } ?? true
+                if prev == nil || prev?.comments != pr.comments || rabbitFinished || owed || commentsSlow {
                     guard let d = try? fetchComments(path) else {
                         if prev != nil { continue }
                         commentsOwed.insert(ref)
@@ -398,6 +417,7 @@ public final class PRMonitor {
                         continue
                     }
                     commentsOwed.remove(ref)
+                    commentsAt[ref] = now
                     owedFetched = owed
                     if let c = PullRequests.lastOther(fromComments: d, me: me) { pr.lastOther = c }
                     if let values = decode(d)?["values"] as? [[String: Any]] {
@@ -427,7 +447,7 @@ public final class PRMonitor {
                     if !(r == .approved && prev.rabbit == .approved && prev.commit == pr.commit) {
                         switch r {
                         case .reviewed(let n?) where n > 0: found.append(.rabbitNeedsYou)
-                        case .failed: found.append(.rabbitNeedsYou)
+                        case .failed, .approvalFailed: found.append(.rabbitNeedsYou)
                         default: found.append(.rabbitDone)
                         }
                     }

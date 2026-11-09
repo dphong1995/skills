@@ -71,7 +71,7 @@ Mỗi PR của session có một dòng với số yêu cầu sửa, số ngườ
 ![Dòng PR](docs/images/22-pr-lines.png)
 
 ### CodeRabbit
-PR hiện trạng thái review của CodeRabbit; khi còn thread góp ý chưa được trả lời, tag là `còn X/N` (ví dụ `còn 2/5`). Hết thread thì `chờ duyệt` kèm nút `Nhắc duyệt` (icon con thỏ) và nút `Nhờ Claude` ẩn.
+PR hiện trạng thái review của CodeRabbit; khi còn thread góp ý chưa được trả lời, tag là `còn X/N` (ví dụ `còn 2/5`). Hết thread thì `chờ duyệt` kèm nút `Nhắc duyệt` (icon con thỏ) và nút `Nhờ Claude` ẩn. Thread mà CodeRabbit đã sửa gốc thành `✅ Addressed in commit …` tính là xong (bình luận được đọc lại tối đa 5 phút một lần khi còn thread chưa xong). Bình luận của người review (không phải tác giả PR, không phải bạn) mà bạn chưa trả lời giữ nút `Nhờ Claude`. `đang nhắc` hết khi CodeRabbit đăng bình luận mới, cập nhật status, hoặc sau 600 giây. Lệnh duyệt thất bại (`Approval skipped: <lý do>` hoặc bình luận `approval failed`) hiện tag đỏ `duyệt lỗi`, rê chuột thấy lý do, không có nút `Nhắc duyệt`.
 
 ![CodeRabbit](docs/images/31-pr-awaiting-approval.png)
 

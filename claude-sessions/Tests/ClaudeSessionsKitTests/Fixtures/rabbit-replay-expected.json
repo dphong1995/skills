@@ -1802,13 +1802,13 @@
   "talo6-dct-backend#7548" : {
     "hidesAskClaude" : false,
     "label" : "bỏ qua",
-    "pending" : 3,
+    "pending" : 0,
     "total" : 9
   },
   "talo6-dct-backend#7548\/noApprovers" : {
     "hidesAskClaude" : false,
     "label" : "bỏ qua",
-    "pending" : 3,
+    "pending" : 0,
     "total" : 9
   },
   "talo6-dct-backend#7549" : {
@@ -1831,7 +1831,7 @@
   },
   "talo6-dct-backend#7550\/noApprovers" : {
     "hidesAskClaude" : true,
-    "label" : "chờ duyệt",
+    "label" : "duyệt lỗi",
     "pending" : 0,
     "total" : 1
   },
@@ -2136,15 +2136,15 @@
     "total" : 0
   },
   "talo6-dct-backend#7576" : {
-    "hidesAskClaude" : false,
+    "hidesAskClaude" : true,
     "label" : "đã duyệt",
-    "pending" : 1,
+    "pending" : 0,
     "total" : 3
   },
   "talo6-dct-backend#7576\/noApprovers" : {
-    "hidesAskClaude" : false,
-    "label" : "còn 1\/3",
-    "pending" : 1,
+    "hidesAskClaude" : true,
+    "label" : "chờ duyệt",
+    "pending" : 0,
     "total" : 3
   },
   "talo6-dct-backend#7577" : {
@@ -4459,7 +4459,7 @@
   },
   "talo6-dct-frontend#6852\/noApprovers" : {
     "hidesAskClaude" : true,
-    "label" : "chờ duyệt",
+    "label" : "duyệt lỗi",
     "pending" : 0,
     "total" : 1
   },
@@ -4471,7 +4471,7 @@
   },
   "talo6-dct-frontend#6853\/noApprovers" : {
     "hidesAskClaude" : true,
-    "label" : "chờ duyệt",
+    "label" : "duyệt lỗi",
     "pending" : 0,
     "total" : 2
   },
@@ -4483,7 +4483,7 @@
   },
   "talo6-dct-frontend#6854\/noApprovers" : {
     "hidesAskClaude" : true,
-    "label" : "chờ duyệt",
+    "label" : "duyệt lỗi",
     "pending" : 0,
     "total" : 1
   },
@@ -4507,7 +4507,7 @@
   },
   "talo6-dct-frontend#6856\/noApprovers" : {
     "hidesAskClaude" : true,
-    "label" : "chờ duyệt",
+    "label" : "duyệt lỗi",
     "pending" : 0,
     "total" : 3
   },
@@ -4519,7 +4519,7 @@
   },
   "talo6-dct-frontend#6857\/noApprovers" : {
     "hidesAskClaude" : true,
-    "label" : "chờ duyệt",
+    "label" : "duyệt lỗi",
     "pending" : 0,
     "total" : 4
   },

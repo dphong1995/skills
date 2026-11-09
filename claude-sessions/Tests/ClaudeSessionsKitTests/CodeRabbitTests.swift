@@ -19,7 +19,7 @@ private func rabbit(_ state: String, _ description: String) -> Rabbit? {
         #expect(rabbit("STOPPED", "Stopped") == .skipped)
         #expect(rabbit("SUCCESSFUL", "Approve command performed: Comments resolved. Approval completed") == .approved)
         #expect(rabbit("SUCCESSFUL", "Approve command performed: Approval skipped: already approved") == .approved)
-        #expect(rabbit("SUCCESSFUL", "Approve command performed: Approval skipped: durable Cloud recovery is unavailable") == .reviewed(findings: nil))
+        #expect(rabbit("SUCCESSFUL", "Approve command performed: Approval skipped: durable Cloud recovery is unavailable") == .approvalFailed(reason: "durable Cloud recovery is unavailable"))
         #expect(rabbit("SUCCESSFUL", "Review completed") == .reviewed(findings: nil))
 
         let other: [String: Any] = ["key": "pipelines", "name": "Pipeline", "state": "SUCCESSFUL", "commit": ["hash": "abc123"]]
@@ -236,5 +236,101 @@ private func rabbit(_ state: String, _ description: String) -> Rabbit? {
         let summary = rabbitComment("**Actionable comments posted: 1**", at: "2026-11-03T04:01:00.000000+00:00")
         let i = inputs(status, comments: [summary])
         #expect(CodeRabbit.derive(i, now: Self.now) == CodeRabbit.derive(i, now: Self.now))
+    }
+
+    // MARK: Rules 7-10
+
+    private static let tc = Date(timeIntervalSince1970: 1_793_682_000) // 2026-11-03T05:00:00Z
+    private static func at(_ seconds: TimeInterval) -> String {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f.string(from: tc.addingTimeInterval(seconds))
+    }
+
+    private func derived(statuses: [[String: Any]], comments: [[String: Any]], now: TimeInterval, me: String? = nil, author: String? = nil) -> RabbitView {
+        CodeRabbit.derive(RabbitInputs(commit: "abc123", statuses: statuses, comments: comments, summary: nil, approvers: [], me: me, author: author),
+                          now: Self.tc.addingTimeInterval(now))
+    }
+
+    private var reviewed: [String: Any] { rabbitStatus(description: "Review completed", created: Self.at(-600)) }
+    private var approveCommand: [String: Any] { humanReply(id: 10, parent: nil, "@coderabbitai approve", at: Self.at(0), inline: false) }
+
+    @Test func approvalSkippedIsApprovalFailed() {
+        let status = rabbitStatus(description: "Approve command performed: Comments resolved. Approval skipped: durable Cloud recovery is unavailable")
+        let v = derived(statuses: [status], comments: [], now: 60)
+        #expect(v.rabbit == .approvalFailed(reason: "durable Cloud recovery is unavailable"))
+        #expect(v.rabbit.map { CodeRabbit.label($0) } == "duyệt lỗi")
+        let already = rabbitStatus(description: "Approve command performed: Approval skipped: already approved")
+        #expect(derived(statuses: [already], comments: [], now: 60).rabbit == .approved)
+    }
+
+    private var failedComment: [String: Any] { rabbitComment("Comments resolved, but approval failed.", at: Self.at(30)) }
+
+    @Test func approvalFailedFromComment() {
+        let v = derived(statuses: [reviewed], comments: [approveCommand, failedComment], now: 60)
+        #expect(v.rabbit == .approvalFailed(reason: "approval failed"))
+    }
+
+    @Test func approvalFailedCommentSurvivesApproveStatusUpdate() {
+        let status = rabbitStatus(description: "Approve command performed: Comments resolved.", created: Self.at(-600), updated: Self.at(60))
+        let v = derived(statuses: [status], comments: [approveCommand, failedComment], now: 90)
+        #expect(v.rabbit == .approvalFailed(reason: "approval failed"))
+    }
+
+    @Test func approvalFailedCommentClearedByNewReview() {
+        let fresh = rabbitStatus(description: "Review completed", created: Self.at(120))
+        let v = derived(statuses: [reviewed, fresh], comments: [approveCommand, failedComment], now: 150)
+        #expect(v.rabbit != .approvalFailed(reason: "approval failed"))
+    }
+
+    @Test func newerCommandSupersedesApprovalFailed() {
+        let again = humanReply(id: 11, parent: nil, "@coderabbitai approve", at: Self.at(90), inline: false)
+        let v = derived(statuses: [reviewed], comments: [approveCommand, failedComment, again], now: 100)
+        #expect(v.rabbit == .nudged)
+    }
+
+    private var answeredThread: [[String: Any]] {
+        [rabbitInline(id: 1, "nit", at: Self.at(-500)), humanReply(id: 2, parent: 1, "fixed", at: Self.at(-400)),
+         rabbitInline(id: 3, "ok", at: Self.at(-300), parent: 1)]
+    }
+
+    @Test func nudgeEndsOnStatusUpdate() {
+        let comments = answeredThread + [approveCommand]
+        #expect(derived(statuses: [reviewed], comments: comments, now: 40).rabbit == .nudged)
+        let updated = rabbitStatus(description: "Review completed", created: Self.at(-600), updated: Self.at(30))
+        #expect(derived(statuses: [updated], comments: comments, now: 40).rabbit == .awaitingApproval)
+    }
+
+    @Test func nudgeTimesOutAfter600s() {
+        let comments = answeredThread + [approveCommand]
+        #expect(derived(statuses: [reviewed], comments: comments, now: 599).rabbit == .nudged)
+        #expect(derived(statuses: [reviewed], comments: comments, now: 601).rabbit == .awaitingApproval)
+    }
+
+    @Test func addressedRootIsDone() {
+        let root = rabbitInline(id: 1, "✅ Addressed in commits 6ae36ec to e0eaca7", at: Self.at(-300))
+        #expect(derived(statuses: [reviewed], comments: [root], now: 60).threads == RabbitThreads(pending: 0, total: 1))
+        let later = humanReply(id: 2, parent: 1, "thanks, but also...", at: Self.at(-100))
+        #expect(derived(statuses: [reviewed], comments: [root, later], now: 60).threads == RabbitThreads(pending: 0, total: 1))
+    }
+
+    @Test func othersPendingIgnoresAuthorAndMe() {
+        func pending(_ comments: [[String: Any]], me: String? = "{me}") -> Bool {
+            CodeRabbit.facts(from: comments, me: me, author: "{a}").othersPending
+        }
+        let r = humanReply(id: 1, parent: nil, uuid: "{r}", "please rename", at: Self.at(0))
+        #expect(pending([r]))
+        #expect(pending([r, humanReply(id: 2, parent: 1, uuid: "{a}", "done", at: Self.at(10))]))
+        #expect(!pending([r, humanReply(id: 2, parent: 1, uuid: "{me}", "done", at: Self.at(10))]))
+        #expect(!pending([humanReply(id: 1, parent: nil, uuid: "{a}", "note", at: Self.at(0))]))
+        #expect(!pending([humanReply(id: 1, parent: nil, uuid: "{r}", "@coderabbitai review", at: Self.at(0))]))
+        #expect(!pending([r], me: nil))
+    }
+
+    @Test func hidesAskClaudeKeepsButtonForOthers() {
+        let none = RabbitThreads(pending: 0, total: 0)
+        #expect(CodeRabbit.hidesAskClaude(.awaitingApproval, threads: none))
+        #expect(!CodeRabbit.hidesAskClaude(.awaitingApproval, threads: none, othersPending: true))
+        #expect(CodeRabbit.hidesAskClaude(.approvalFailed(reason: "x"), threads: none))
     }
 }

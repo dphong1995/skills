@@ -14,18 +14,23 @@ func statusText(_ s: Session) -> String {
 
 /// The parts of a PR line in order; `prLine` joins their text and the row renders each as a `Tag`.
 /// `dropRank` is 0 for a part that stays; a part with rank r is dropped once the row has to drop r tags (lower ranks go first).
-func prParts(_ pr: PRStatus, now: Date, stale: Date?) -> [(text: String, symbol: String?, tint: Color?, dropRank: Int)] {
-    var parts: [(String, String?, Color?, Int)] = [("PR #\(pr.ref.id)", Theme.Symbols.pr, nil, 0)]
+func prParts(_ pr: PRStatus, now: Date, stale: Date?) -> [(text: String, symbol: String?, tint: Color?, dropRank: Int, help: String?)] {
+    var parts: [(String, String?, Color?, Int, String?)] = [("PR #\(pr.ref.id)", Theme.Symbols.pr, nil, 0, nil)]
     if !pr.isOpen {
-        parts.append((pr.stateWord, nil, toneColor(pr.tone), 0))
+        parts.append((pr.stateWord, nil, toneColor(pr.tone), 0, nil))
         return parts
     }
-    if pr.changesRequested > 0 { parts.append(("\(pr.changesRequested) yêu cầu sửa", Theme.Symbols.changesRequested, .red, 0)) }
-    if pr.reviewers > 0 { parts.append(("\(pr.approved)/\(pr.reviewers)", Theme.Symbols.approved, pr.approved > 0 ? .green : nil, 0)) }
-    if let rabbit = pr.rabbit { parts.append((CodeRabbit.label(rabbit, threads: pr.rabbitThreads), Theme.Symbols.rabbit, nil, 0)) }
-    if pr.comments > 0 { parts.append(("\(pr.comments)", Theme.Symbols.comments, nil, 0)) }
-    if let c = pr.lastOther { parts.append(("\(c.name) \(elapsed(c.at, now))", Theme.Symbols.person, nil, 2)) }
-    if let stale { parts.append(("cũ \(elapsed(stale, now))", Theme.Symbols.clock, nil, 1)) }
+    if pr.changesRequested > 0 { parts.append(("\(pr.changesRequested) yêu cầu sửa", Theme.Symbols.changesRequested, .red, 0, nil)) }
+    if pr.reviewers > 0 { parts.append(("\(pr.approved)/\(pr.reviewers)", Theme.Symbols.approved, pr.approved > 0 ? .green : nil, 0, nil)) }
+    if let rabbit = pr.rabbit {
+        var tint: Color?
+        var help: String?
+        if case .approvalFailed(let reason) = rabbit { tint = .red; help = reason }
+        parts.append((CodeRabbit.label(rabbit, threads: pr.rabbitThreads), Theme.Symbols.rabbit, tint, 0, help))
+    }
+    if pr.comments > 0 { parts.append(("\(pr.comments)", Theme.Symbols.comments, nil, 0, nil)) }
+    if let c = pr.lastOther { parts.append(("\(c.name) \(elapsed(c.at, now))", Theme.Symbols.person, nil, 2, nil)) }
+    if let stale { parts.append(("cũ \(elapsed(stale, now))", Theme.Symbols.clock, nil, 1, nil)) }
     return parts
 }
 
@@ -279,7 +284,7 @@ extension WidgetView {
                                     if i == 0 {
                                         PRIdTag(text: p.text, symbol: p.symbol, help: pr.title ?? "") { onAction(.openLink(s.id, pr.url)) }
                                     } else {
-                                        Tag(p.text, symbol: p.symbol, tint: p.tint)
+                                        Tag(p.text, symbol: p.symbol, tint: p.tint).help(p.help ?? "")
                                     }
                                 }
                             }
@@ -297,7 +302,7 @@ extension WidgetView {
                         }
                         let canAsk = s.canAskClaude
                         let askSend = store.sendState(SendKey(session: s.id, kind: .askClaude, pr: pr.ref))
-                        if !CodeRabbit.hidesAskClaude(pr.rabbit, threads: pr.rabbitThreads) {
+                        if !CodeRabbit.hidesAskClaude(pr.rabbit, threads: pr.rabbitThreads, othersPending: pr.rabbitOthersPending) {
                             PillButton(title: "Nhờ Claude", send: askSend) {
                                 onAction(.askClaude(s.id, prompt: PullRequests.prompt(store.prPrompt, url: pr.url, id: pr.ref.id), pr: pr.ref))
                             }
