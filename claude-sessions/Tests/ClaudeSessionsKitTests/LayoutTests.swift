@@ -363,7 +363,8 @@ private func prStatus(id: Int, state: String = "OPEN", reviewers: Int = 0, appro
 
 @Test func questionBlockHeight() {
     let one = feedQuestion()
-    // prompt line + 2 options + Other field, then the Gửi row.
+    // prompt line + 2 options + Other row, then the Gửi row.
+    #expect(Layout.otherFieldHeight == 22)
     let perQuestion = Layout.questionLineHeight + 2 * Layout.optionRowHeight + Layout.otherFieldHeight
     #expect(Layout.questionBlockHeight(one) == perQuestion + Layout.questionFooterHeight)
     let two = feedQuestion(questions: one.questions + one.questions)

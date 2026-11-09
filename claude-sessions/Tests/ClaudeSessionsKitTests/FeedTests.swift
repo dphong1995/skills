@@ -212,3 +212,17 @@ private func selections(_ p: [String: Any]) -> [String]? { p["selections"] as? [
 @Test func socketTransportNeedsPathFile() {
     #expect(SocketFeedTransport(pathFile: URL(fileURLWithPath: "/nonexistent/last-socket-path")) == nil)
 }
+
+@Test func optionNumberContinuous() {
+    func item(_ n: Int) -> FeedQuestion.Item {
+        FeedQuestion.Item(prompt: "p", header: nil, multiSelect: false,
+                          options: (0..<n).map { FeedQuestion.Option(id: "o\($0)", label: "L\($0)", description: nil) })
+    }
+    let three = feedQuestion(questions: [item(3), item(3)])
+    #expect(Feed.optionNumber(three, question: 0, option: 0) == 1)
+    #expect(Feed.optionNumber(three, question: 0, option: 2) == 3)
+    #expect(Feed.optionNumber(three, question: 1, option: 0) == 4)
+    #expect(Feed.optionNumber(three, question: 1, option: 2) == 6)
+    let five = feedQuestion(questions: [item(5), item(5)])
+    #expect(Feed.optionNumber(five, question: 1, option: 4) == nil)
+}

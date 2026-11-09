@@ -89,7 +89,7 @@ public enum Layout {
 
     static let questionLineHeight: CGFloat = 16
     static let optionRowHeight: CGFloat = 22
-    static let otherFieldHeight: CGFloat = 26
+    static let otherFieldHeight: CGFloat = 22
     static let questionFooterHeight: CGFloat = 26
     /// A question's `Trả lời trong cmux` line.
     static let questionFallbackHeight: CGFloat = 22

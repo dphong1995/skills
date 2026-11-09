@@ -55,6 +55,12 @@ public enum Feed {
     }
 
     /// The labels picked for question `i`.
+    /// 1-based option number, continuous across the card's questions; nil past 9 (no digit key).
+    static func optionNumber(_ q: FeedQuestion, question i: Int, option j: Int) -> Int? {
+        let n = q.questions.prefix(i).reduce(0) { $0 + $1.options.count } + j + 1
+        return n <= 9 ? n : nil
+    }
+
     static func picks(_ answers: [[String]], _ i: Int) -> [String] { answers.indices.contains(i) ? answers[i] : [] }
 
     /// The trimmed Other text of question `i`.

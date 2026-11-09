@@ -25,6 +25,10 @@ extension WidgetView {
         }
     }
 
+    static func optionSymbol(multi: Bool, on: Bool) -> String {
+        multi ? (on ? Theme.Symbols.checkOn : Theme.Symbols.checkOff) : (on ? Theme.Symbols.radioOn : Theme.Symbols.radioOff)
+    }
+
     func questionForm(_ s: Session, _ q: FeedQuestion) -> some View {
         let answers = panel.answers[q.requestId] ?? [], other = panel.others[q.requestId] ?? [:]
         let canSend = Feed.complete(q, answers: answers, other: other)
@@ -41,27 +45,31 @@ extension WidgetView {
                     Text(item.prompt).font(Theme.Fonts.small).foregroundStyle(Theme.Colors.primaryText).lineLimit(1)
                 }
                 .frame(height: Layout.questionLineHeight, alignment: .leading)
-                ForEach(item.options, id: \.id) { o in
-                    let on = picked.contains(o.label)
-                    PillButton(title: o.label,
-                               fill: on ? Theme.Colors.selected : Theme.Colors.field,
-                               symbol: item.multiSelect ? (on ? Theme.Symbols.checkOn : Theme.Symbols.checkOff) : nil) { panel.pick(q, i, o.label) }
-                        .help(o.description ?? "")
-                        .frame(height: Layout.optionRowHeight, alignment: .leading)
+                ForEach(Array(item.options.enumerated()), id: \.element.id) { j, o in
+                    OptionRow(symbol: Self.optionSymbol(multi: item.multiSelect, on: picked.contains(o.label)),
+                              number: Feed.optionNumber(q, question: i, option: j), label: o.label, detail: o.description) {
+                        panel.pick(q, i, o.label)
+                    }
+                    .frame(height: Layout.optionRowHeight)
                 }
                 Group {
                     if (panel.editing == Store.Editing(id: s.id, kind: .answer) && panel.otherKey == key) || !(other[i] ?? "").isEmpty {
-                        TextField("Khác…", text: Binding(get: { panel.others[q.requestId]?[i] ?? "" }, set: { panel.setOther(q, i, $0) }))
-                            .textFieldStyle(.plain)
-                            .font(Theme.Fonts.body)
-                            .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background(RoundedRectangle(cornerRadius: 7).fill(Theme.Colors.field))
-                            .focused($otherFocus, equals: key)
-                            .onAppear { if panel.wantOther == key { otherFocus = key; panel.wantOther = nil } }
-                            .onSubmit { sendAnswer(s, q) }
-                            .onExitCommand { panel.editing = nil }
+                        HStack(spacing: Theme.Space.gap) {
+                            Image(systemName: Theme.Symbols.other).font(Theme.Fonts.small).foregroundStyle(Theme.Colors.secondaryText)
+                                .frame(width: 14)
+                            TextField("Khác…", text: Binding(get: { panel.others[q.requestId]?[i] ?? "" }, set: { panel.setOther(q, i, $0) }))
+                                .textFieldStyle(.plain)
+                                .font(Theme.Fonts.body)
+                                .padding(.horizontal, 6)
+                                .frame(height: Layout.otherFieldHeight)
+                                .background(RoundedRectangle(cornerRadius: 5).fill(Theme.Colors.field))
+                                .focused($otherFocus, equals: key)
+                                .onAppear { if panel.wantOther == key { otherFocus = key; panel.wantOther = nil } }
+                                .onSubmit { sendAnswer(s, q) }
+                                .onExitCommand { panel.editing = nil }
+                        }
                     } else {
-                        PillButton(title: "Khác…") {
+                        OptionRow(symbol: Theme.Symbols.other, number: nil, label: "Khác…", detail: nil) {
                             panel.wantOther = key
                             panel.otherKey = key
                             panel.editing = Store.Editing(id: s.id, kind: .answer)
@@ -74,8 +82,41 @@ extension WidgetView {
                 PillButton(title: "Gửi", fill: Theme.Colors.primaryAction, textColor: Theme.Colors.onPrimary) { sendAnswer(s, q) }
                     .disabled(!canSend).opacity(canSend ? 1 : Theme.Opacity.disabled)
                 Text(Feed.countdown(q, now: store.now)).font(Theme.Fonts.small.monospacedDigit()).foregroundStyle(Theme.Colors.secondaryText)
+                Text("⌘↩").font(Theme.Fonts.meta).foregroundStyle(Theme.Colors.tertiaryText)
             }
             .frame(height: Layout.questionFooterHeight, alignment: .leading)
         }
+    }
+}
+
+/// One option of a question: symbol, number, label and a one-line description; the whole row is the tap target.
+struct OptionRow: View {
+    let symbol: String
+    let number: Int?
+    let label: String
+    let detail: String?
+    let action: () -> Void
+    @StateObject private var hover = RowHover()
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: Theme.Space.gap) {
+                Image(systemName: symbol).font(Theme.Fonts.small).foregroundStyle(Theme.Colors.secondaryText).frame(width: 14)
+                Text(number.map(String.init) ?? "").font(Theme.Fonts.mono).foregroundStyle(Theme.Colors.tertiaryText).frame(width: 8)
+                Text(label).font(Theme.Fonts.body).foregroundStyle(Theme.Colors.primaryText).lineLimit(1).fixedSize()
+                if let d = detail, !d.isEmpty {
+                    Text("— " + d).font(Theme.Fonts.body).foregroundStyle(Theme.Colors.secondaryText)
+                        .lineLimit(1).truncationMode(.tail)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 4)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 5).fill(hover.on ? Theme.Colors.cardHover : Color.clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover.on = $0 }
+        .help(detail ?? "")
     }
 }

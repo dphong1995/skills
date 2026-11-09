@@ -74,6 +74,7 @@ enum Theme {
         static let checkOn = "checkmark.square.fill"
         static let radioOff = "circle"
         static let radioOn = "largecircle.fill.circle"
+        static let other = "pencil"
         static let reply = "arrowshape.turn.up.left"
         static let stop = "stop.fill"
         static let todo = "checklist"
