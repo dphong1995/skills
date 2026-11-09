@@ -16,12 +16,7 @@ func closedAgo(_ since: Date, _ now: Date) -> String {
 }
 
 func color(_ status: String) -> Color {
-    switch status {
-    case "waiting": .red
-    case "idle": .orange
-    case "busy": Color(red: 0.35, green: 0.6, blue: 1)
-    default: .gray
-    }
+    Theme.Colors.status(status)
 }
 
 
@@ -34,7 +29,7 @@ func markdown(_ s: String) -> AttributedString {
         if run.link != nil { a[run.range].link = nil }
         if run.inlinePresentationIntent?.contains(.code) == true {
             let bold = run.inlinePresentationIntent?.contains(.stronglyEmphasized) == true
-            a[run.range].font = Font.system(size: 11, weight: bold ? .bold : .regular).monospaced()
+            a[run.range].font = Theme.Fonts.mono(bold: bold)
         }
     }
     return a
@@ -169,9 +164,9 @@ public struct WidgetView: View {
         }
         .frame(maxHeight: expanded ? Layout.maxExpandedHeight : nil, alignment: panel.anchor.up ? .bottom : .top)
         .fixedSize(horizontal: false, vertical: expanded)
-        .background(RoundedRectangle(cornerRadius: radius, style: .continuous).fill(Color.black.opacity(o)))
+        .background(RoundedRectangle(cornerRadius: radius, style: .continuous).fill(expanded ? Theme.Colors.canvas.opacity(Theme.Colors.canvasOpacity) : Color.black.opacity(o)))
         .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous)
-            .stroke(Color.white.opacity(0.14 * o / Layout.cardOpacity), lineWidth: 1))
+            .stroke(Theme.Colors.stroke.opacity(o / Layout.cardOpacity), lineWidth: 1))
         .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
         .shadow(color: .black.opacity(0.4 * o / Layout.cardOpacity), radius: expanded ? 12 : 6, y: 3)
@@ -215,7 +210,7 @@ public struct WidgetView: View {
         let rows = VStack(spacing: Layout.cardGap) {
             ForEach(store.sessions) { row($0) }
             if store.sessions.isEmpty {
-                Text("Không có session nào").font(.system(size: 12)).foregroundStyle(.white.opacity(0.5))
+                Text("Không có session nào").font(Theme.Fonts.label).foregroundStyle(Theme.Colors.tertiaryText)
                     .frame(height: Layout.rowHeight)
             }
             if !store.closed.items.isEmpty { closedGroup }
@@ -251,11 +246,11 @@ public struct WidgetView: View {
         let items = store.closed.items
         return VStack(spacing: 0) {
             HStack(spacing: 6) {
-                Image(systemName: panel.closedOpen ? "chevron.down" : "chevron.right").font(.system(size: 9, weight: .bold))
-                Text("Vừa đóng (\(items.count))").font(.system(size: 11, weight: .semibold))
+                Image(systemName: panel.closedOpen ? "chevron.down" : "chevron.right").font(Theme.Fonts.micro)
+                Text("Vừa đóng (\(items.count))").font(Theme.Fonts.smallStrong)
                 Spacer(minLength: 0)
             }
-            .foregroundStyle(.white.opacity(0.6))
+            .foregroundStyle(Theme.Colors.secondaryText)
             .padding(.horizontal, 6)
             .frame(height: Layout.closedRowHeight)
             .contentShape(Rectangle())
@@ -263,15 +258,15 @@ public struct WidgetView: View {
             if panel.closedOpen {
                 ForEach(items, id: \.id) { c in
                     HStack(spacing: 10) {
-                        Text(c.title).font(.system(size: 11.5, weight: .medium)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
-                        Text(c.subtitle).font(.system(size: 10.5)).foregroundStyle(.white.opacity(0.45)).lineLimit(1)
+                        Text(c.title).font(Theme.Fonts.body.weight(.medium)).foregroundStyle(Theme.Colors.primaryText).lineLimit(1)
+                        Text(c.subtitle).font(Theme.Fonts.meta).foregroundStyle(Theme.Colors.tertiaryText).lineLimit(1)
                         Spacer(minLength: 12)
-                        Text("đóng \(closedAgo(c.closedAt, store.now))").font(.system(size: 11).monospacedDigit())
-                            .foregroundStyle(.white.opacity(0.55)).fixedSize()
+                        Text("đóng \(closedAgo(c.closedAt, store.now))").font(Theme.Fonts.small.monospacedDigit())
+                            .foregroundStyle(Theme.Colors.secondaryText).fixedSize()
                     }
                     .padding(.horizontal, 6)
                     .frame(height: Layout.closedRowHeight)
-                    .background(.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
+                    .background(Theme.Colors.card, in: RoundedRectangle(cornerRadius: 6))
                     .contentShape(Rectangle())
                     .onTapGesture { onAction(.resume(c)) }
                 }

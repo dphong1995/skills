@@ -14,7 +14,7 @@ extension WidgetView {
         return VStack(alignment: .leading, spacing: 0) {
             switch state {
             case .sent:
-                Text("Đã gửi").font(.system(size: 11)).foregroundStyle(.white.opacity(0.8))
+                Text("Đã gửi").font(Theme.Fonts.small).foregroundStyle(Theme.Colors.primaryText)
                     .frame(height: Layout.questionFallbackHeight, alignment: .leading)
             case .fallback:
                 PillButton(title: "Trả lời trong cmux") { onAction(.jump(s.id)) }
@@ -34,17 +34,18 @@ extension WidgetView {
                 let key = "\(s.id)#\(i)"
                 HStack(spacing: 6) {
                     if let h = item.header {
-                        Text(h).font(.system(size: 10, weight: .semibold)).foregroundStyle(.white.opacity(0.7))
+                        Text(h).font(Theme.Fonts.captionStrong).foregroundStyle(Theme.Colors.secondaryText)
                             .padding(.horizontal, 6).padding(.vertical, 1)
-                            .background(Capsule().fill(.white.opacity(0.12)))
+                            .background(Capsule().fill(Theme.Colors.field))
                     }
-                    Text(item.prompt).font(.system(size: 11)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
+                    Text(item.prompt).font(Theme.Fonts.small).foregroundStyle(Theme.Colors.primaryText).lineLimit(1)
                 }
                 .frame(height: Layout.questionLineHeight, alignment: .leading)
                 ForEach(item.options, id: \.id) { o in
                     let on = picked.contains(o.label)
-                    PillButton(title: (item.multiSelect ? (on ? "☑ " : "☐ ") : "") + o.label,
-                               fill: on ? .white.opacity(0.32) : .white.opacity(0.12)) { panel.pick(q, i, o.label) }
+                    PillButton(title: o.label,
+                               fill: on ? Theme.Colors.selected : Theme.Colors.field,
+                               symbol: item.multiSelect ? (on ? Theme.Symbols.checkOn : Theme.Symbols.checkOff) : nil) { panel.pick(q, i, o.label) }
                         .help(o.description ?? "")
                         .frame(height: Layout.optionRowHeight, alignment: .leading)
                 }
@@ -52,9 +53,9 @@ extension WidgetView {
                     if (panel.editing == Store.Editing(id: s.id, kind: .answer) && panel.otherKey == key) || !(other[i] ?? "").isEmpty {
                         TextField("Khác…", text: Binding(get: { panel.others[q.requestId]?[i] ?? "" }, set: { panel.setOther(q, i, $0) }))
                             .textFieldStyle(.plain)
-                            .font(.system(size: 11.5))
+                            .font(Theme.Fonts.body)
                             .padding(.horizontal, 8).padding(.vertical, 4)
-                            .background(RoundedRectangle(cornerRadius: 7).fill(.white.opacity(0.1)))
+                            .background(RoundedRectangle(cornerRadius: 7).fill(Theme.Colors.field))
                             .focused($otherFocus, equals: key)
                             .onAppear { if panel.wantOther == key { otherFocus = key; panel.wantOther = nil } }
                             .onSubmit { sendAnswer(s, q) }
@@ -70,9 +71,9 @@ extension WidgetView {
                 .frame(height: Layout.otherFieldHeight, alignment: .leading)
             }
             HStack(spacing: 8) {
-                PillButton(title: "Gửi", fill: color(s.shownStatus), textColor: .black) { sendAnswer(s, q) }
-                    .disabled(!canSend).opacity(canSend ? 1 : 0.4)
-                Text(Feed.countdown(q, now: store.now)).font(.system(size: 11).monospacedDigit()).foregroundStyle(.white.opacity(0.55))
+                PillButton(title: "Gửi", fill: Theme.Colors.primaryAction, textColor: Theme.Colors.onPrimary) { sendAnswer(s, q) }
+                    .disabled(!canSend).opacity(canSend ? 1 : Theme.Opacity.disabled)
+                Text(Feed.countdown(q, now: store.now)).font(Theme.Fonts.small.monospacedDigit()).foregroundStyle(Theme.Colors.secondaryText)
             }
             .frame(height: Layout.questionFooterHeight, alignment: .leading)
         }

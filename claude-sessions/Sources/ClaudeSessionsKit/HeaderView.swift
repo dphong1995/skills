@@ -28,27 +28,27 @@ extension WidgetView {
                 if expanded {
                     quotaGroup(q)
                 } else if let p = q.pillPercent {
-                    Text("\(p)%").font(.system(size: 12, weight: .semibold).monospacedDigit()).foregroundStyle(quotaColor(p)).fixedSize()
+                    Text("\(p)%").font(Theme.Fonts.count.monospacedDigit()).foregroundStyle(quotaColor(p)).fixedSize()
                 }
             }
             if newCount > 0 {
                 HStack(spacing: dot) {
-                    Text("✦").font(.system(size: 11, weight: .bold)).fixedSize()
-                    Text("\(newCount)").font(.system(size: 12, weight: .semibold).monospacedDigit()).fixedSize()
+                    Image(systemName: Theme.Symbols.fresh).font(Theme.Fonts.smallStrong).fixedSize()
+                    Text("\(newCount)").font(Theme.Fonts.count.monospacedDigit()).fixedSize()
                 }
-                .foregroundStyle(.yellow)
+                .foregroundStyle(Theme.Colors.fresh)
             }
             if store.sessions.isEmpty {
                 HStack(spacing: 6) {
                     if !expanded { Circle().fill(.gray).frame(width: 6, height: 6) }
-                    Text("–").font(.system(size: 12)).foregroundStyle(.white.opacity(0.5))
+                    Text("–").font(Theme.Fonts.label).foregroundStyle(Theme.Colors.tertiaryText)
                 }
             }
             ForEach(["waiting", "idle", "busy"], id: \.self) { st in
                 if let n = counts[st] {
                     HStack(spacing: dot) {
                         Circle().fill(color(st)).frame(width: 6, height: 6)
-                        Text("\(n)").font(.system(size: 12, weight: .semibold).monospacedDigit()).foregroundStyle(.white).fixedSize()
+                        Text("\(n)").font(Theme.Fonts.count.monospacedDigit()).foregroundStyle(Theme.Colors.primaryText).fixedSize()
                     }
                 }
             }
@@ -57,7 +57,7 @@ extension WidgetView {
 
     func quotaColor(_ percent: Int) -> Color {
         switch QuotaLevel.level(percent) {
-        case .normal: .white
+        case .normal: Theme.Colors.primaryText
         case .warn: .yellow
         case .high: .red
         }
@@ -79,10 +79,10 @@ extension WidgetView {
             Text("· tuần \(q.weekly)%").foregroundStyle(quotaColor(q.weekly))
             if stale { Text("cũ") }
         }
-        .font(.system(size: 11, weight: .semibold).monospacedDigit())
-        .foregroundStyle(.white.opacity(0.7))
+        .font(Theme.Fonts.smallStrong.monospacedDigit())
+        .foregroundStyle(Theme.Colors.secondaryText)
         .lineLimit(1).fixedSize()
-        .opacity(stale ? 0.5 : 1)
+        .opacity(stale ? Theme.Opacity.stale : 1)
         .padding(.trailing, 6)
     }
 }

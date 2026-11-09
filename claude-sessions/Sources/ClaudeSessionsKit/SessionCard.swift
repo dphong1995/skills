@@ -51,15 +51,15 @@ extension WidgetView {
             case .one(let p):
                 let fit = Layout.commandFit(p.text)
                 let full = fit == .short || (fit == .long && store.shownCommands.contains(p.toolId))
-                Text(p.text).font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.8))
+                Text(p.text).font(Theme.Fonts.mono)
+                    .foregroundStyle(Theme.Colors.primaryText)
                     .lineLimit(full ? nil : 4).truncationMode(.tail)
                 if s.approvable != nil {
                     if fit == .tooLong {
                         jumpLine("Lệnh dài, bấm để duyệt trong cmux", s)
                     } else if full {
                         HStack(spacing: 6) {
-                            PillButton(title: "Cho phép", fill: color(s.shownStatus), textColor: .black) {
+                            PillButton(title: "Cho phép", fill: Theme.Colors.primaryAction, textColor: Theme.Colors.onPrimary) {
                                 onAction(.approve(s.id, toolId: p.toolId))
                             }
                             PillButton(title: "Từ chối…") { panel.editing = Store.Editing(id: s.id, kind: .deny, toolId: p.toolId) }
@@ -73,7 +73,7 @@ extension WidgetView {
     }
 
     func jumpLine(_ text: String, _ s: Session) -> some View {
-        Text(text).font(.system(size: 11)).foregroundStyle(.white.opacity(0.8))
+        Text(text).font(Theme.Fonts.small).foregroundStyle(Theme.Colors.primaryText)
             .contentShape(Rectangle())
             .onTapGesture { onAction(.jump(s.id)) }
     }
@@ -83,10 +83,10 @@ extension WidgetView {
         let draft = Binding(get: { store.drafts[draftKey, default: ""] }, set: { store.drafts[draftKey] = $0 })
         return TextField(kind == .reply ? "Trả lời…" : "Lý do (để trống = chỉ từ chối)", text: draft, axis: .vertical)
             .textFieldStyle(.plain)
-            .font(.system(size: 11.5))
+            .font(Theme.Fonts.body)
             .lineLimit(1...4)
             .padding(.horizontal, 8).padding(.vertical, 5)
-            .background(RoundedRectangle(cornerRadius: 7).fill(.white.opacity(0.1)))
+            .background(RoundedRectangle(cornerRadius: 7).fill(Theme.Colors.field))
             .focused($focused)
             .onAppear { focused = true }
             .onSubmit {
@@ -120,15 +120,15 @@ extension WidgetView {
                 }
             }
         }
-        .disabled(!inCmux).opacity(inCmux ? 1 : 0.4)
+        .disabled(!inCmux).opacity(inCmux ? 1 : Theme.Opacity.disabled)
         .help(inCmux ? "" : "Chỉ dùng được trong cmux")
     }
 
-    /// `☰ N`: toggles the inline list of every ticket and PR of the session.
+    /// Menu count: toggles the inline list of every ticket and PR of the session.
     func menuButton(_ s: Session) -> some View {
         let open = panel.openMenus.contains(s.id)
         let hiddenMark = store.unseen[s.id]?.prs.subtracting(s.prs.map(\.ref)).isEmpty == false
-        return PillButton(title: "☰ \(s.menuCount)", fill: .white.opacity(open ? 0.22 : 0.12), dot: hiddenMark ? .purple : nil) {
+        return PillButton(title: "\(s.menuCount)", fill: open ? Theme.Colors.active : Theme.Colors.field, symbol: Theme.Symbols.menu, dot: hiddenMark ? Theme.Colors.freshPR : nil) {
             if open { panel.openMenus.remove(s.id) } else { panel.openMenus.insert(s.id) }
         }
     }
@@ -136,7 +136,7 @@ extension WidgetView {
     func linkList(_ s: Session) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(s.menu, id: \.title) { section in
-                Text(section.title).font(.system(size: 10)).foregroundStyle(.white.opacity(0.45))
+                Text(section.title).font(Theme.Fonts.caption).foregroundStyle(Theme.Colors.tertiaryText)
                     .frame(height: Layout.linkSectionHeight, alignment: .bottomLeading)
                 ForEach(Array(section.items.enumerated()), id: \.offset) { _, item in
                     LinkRow(item: item, icon: item.iconURL.flatMap { store.issueIcons[$0] }) { onAction(.openLink(s.id, item.url)) }
@@ -161,38 +161,46 @@ extension WidgetView {
                 Circle().fill(color(s.colorStatus)).frame(width: 8, height: 8)
                     .accessibilityLabel(statusText(s) + newLabel.joined())
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(s.title).font(.system(size: 12.5, weight: .medium)).foregroundStyle(.white).lineLimit(2)
+                    Text(s.title).font(Theme.Fonts.title).foregroundStyle(Theme.Colors.primaryText).lineLimit(2)
                     HStack(spacing: 0) {
                         Text(s.subtitle).lineLimit(1).truncationMode(.tail)
                         if s.agentCount > 0 {
-                            Text(" · 🤖×\(s.agentCount)").lineLimit(1).fixedSize()
+                            HStack(spacing: 2) {
+                                Text(" ·")
+                                Image(systemName: Theme.Symbols.agents).imageScale(.small)
+                                Text("\(s.agentCount)")
+                            }
+                            .lineLimit(1).fixedSize()
                                 .help(s.agents.joined(separator: "\n"))
                         }
                     }
-                    .font(.system(size: 10.5)).foregroundStyle(.white.opacity(0.45))
+                    .font(Theme.Fonts.meta).foregroundStyle(Theme.Colors.tertiaryText)
                     if let todo = s.todo {
                         Text(todo.label)
-                            .font(.system(size: 11)).foregroundStyle(.white.opacity(0.7))
+                            .font(Theme.Fonts.small).foregroundStyle(Theme.Colors.secondaryText)
                             .lineLimit(1).truncationMode(.tail)
                     }
                     if let a = s.activity {
-                        Text("▸ \(a)").font(.system(size: 11)).foregroundStyle(.white.opacity(0.6))
-                            .lineLimit(1).truncationMode(.tail)
+                        HStack(spacing: 4) {
+                            Image(systemName: Theme.Symbols.activity).font(Theme.Fonts.micro)
+                            Text(a).lineLimit(1).truncationMode(.tail)
+                        }
+                        .font(Theme.Fonts.small).foregroundStyle(Theme.Colors.secondaryText)
                     }
                     if s.question == nil, s.isFinished, let reply = s.replyText {
-                        Text(reply).font(.system(size: 11)).foregroundStyle(.white.opacity(0.75))
+                        Text(reply).font(Theme.Fonts.small).foregroundStyle(Theme.Colors.secondaryText)
                             .lineLimit(4).truncationMode(.tail)
                     }
                 }
                 Spacer(minLength: 12)
-                Text(elapsed(s.since, store.now)).font(.system(size: 11.5).monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.55)).frame(minWidth: 36, alignment: .trailing)
+                Text(elapsed(s.since, store.now)).font(Theme.Fonts.body.monospacedDigit())
+                    .foregroundStyle(Theme.Colors.secondaryText).frame(minWidth: 36, alignment: .trailing)
                 quickButton(s)
             }
             .padding(.horizontal, 6).padding(.vertical, 3)
-            .background(claudeNew ? Color.yellow.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 6))
+            .background(claudeNew ? Theme.Colors.fresh.opacity(0.08) : .clear, in: RoundedRectangle(cornerRadius: 6))
             .overlay(alignment: .leading) {
-                if claudeNew { Capsule().fill(.yellow).frame(width: 3).padding(.vertical, 3) }
+                if claudeNew { Capsule().fill(Theme.Colors.fresh).frame(width: 3).padding(.vertical, 3) }
             }
             .padding(.horizontal, -6).padding(.vertical, -3)
             .contentShape(Rectangle())
@@ -204,9 +212,10 @@ extension WidgetView {
                             HStack(spacing: 6) {
                                 ForEach(s.links.prefix(k), id: \.url) { link in
                                     let titled = link.help != nil
-                                    PillButton(title: titled ? link.label : "↗ \(link.label)",
+                                    PillButton(title: link.label,
+                                               symbol: titled ? nil : Theme.Symbols.link,
                                                icon: titled ? link.iconURL.flatMap { store.issueIcons[$0] } : nil, showsIcon: titled,
-                                               dot: titled ? toneColor(link.tone) ?? .white.opacity(0.55) : nil) { onAction(.openLink(s.id, link.url)) }
+                                               dot: titled ? toneColor(link.tone) ?? Theme.Colors.secondaryText : nil) { onAction(.openLink(s.id, link.url)) }
                                         .help(link.help ?? "")
                                 }
                             }
@@ -223,8 +232,8 @@ extension WidgetView {
                 let prNew = markedShown.contains(pr.ref)
                 let prText = Text(prAttributed(pr, now: store.now, stale: store.prStale ? store.prLastSuccess : nil))
                 HStack(spacing: 6) {
-                    (prNew ? Text("✦ ").foregroundStyle(.purple) + prText : prText)
-                        .font(.system(size: 11)).foregroundStyle(.white.opacity(0.75))
+                    (prNew ? Text(Image(systemName: Theme.Symbols.fresh)).foregroundStyle(Theme.Colors.freshPR) + Text(" ") + prText : prText)
+                        .font(Theme.Fonts.small).foregroundStyle(Theme.Colors.secondaryText)
                         .lineLimit(1).truncationMode(.tail)
                         .contentShape(Rectangle())
                         .onTapGesture { onAction(.openLink(s.id, pr.url)) }
@@ -232,19 +241,19 @@ extension WidgetView {
                     Spacer(minLength: 0)
                     if pr.isOpen {
                         if pr.rabbit == .awaitingApproval {
-                            PillButton(title: "🐰 Nhắc duyệt") { onAction(.nudgeRabbit(s.id, pr.ref)) }
+                            PillButton(title: "Nhắc duyệt", symbol: Theme.Symbols.rabbit) { onAction(.nudgeRabbit(s.id, pr.ref)) }
                         }
                         let canAsk = s.canAskClaude
                         PillButton(title: "Nhờ Claude") {
                             onAction(.askClaude(s.id, prompt: PullRequests.prompt(store.prPrompt, url: pr.url, id: pr.ref.id)))
                         }
                         .disabled(!canAsk)
-                        .opacity(canAsk ? 1 : 0.4)
+                        .opacity(canAsk ? 1 : Theme.Opacity.disabled)
                         .help(canAsk ? "" : "Chỉ gửi được khi Claude đã xong lượt")
                     }
                 }
                 .padding(.horizontal, 4)
-                .background(prNew ? Color.purple.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 5))
+                .background(prNew ? Theme.Colors.freshPR.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 5))
                 .padding(.horizontal, -4)
                 .padding(.leading, 18)
             }
@@ -261,7 +270,7 @@ extension WidgetView {
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
         .frame(minHeight: Layout.rowHeight)
-        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+        .background(Theme.Colors.card, in: RoundedRectangle(cornerRadius: 8))
         .onHover { panel.noteRowHover(s.id, inside: $0) }
     }
 }

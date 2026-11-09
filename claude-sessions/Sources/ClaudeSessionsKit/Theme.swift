@@ -4,6 +4,7 @@ import SwiftUI
 enum Theme {
     enum Colors {
         static let canvas = Color(red: 0x1C / 255, green: 0x1C / 255, blue: 0x1E / 255)
+        static let canvasOpacity = 0.96
         static let card = Color(red: 0x2C / 255, green: 0x2C / 255, blue: 0x2E / 255)
         static let cardHover = Color(red: 0x3A / 255, green: 0x3A / 255, blue: 0x3C / 255)
         static let field = Color.white.opacity(0.10)
@@ -11,6 +12,8 @@ enum Theme {
         static let primaryText = Color.white.opacity(0.92)
         static let secondaryText = Color.white.opacity(0.65)
         static let tertiaryText = Color.white.opacity(0.50)
+        static let active = Color.white.opacity(0.22)
+        static let selected = Color.white.opacity(0.32)
         static let primaryAction = Color(red: 0x30 / 255, green: 0xD1 / 255, blue: 0x58 / 255)
         static let onPrimary = Color.black
         static let fresh = Color.yellow
@@ -32,9 +35,24 @@ enum Theme {
         static let meta = Font.system(size: 10.5)
         static let mono = Font.system(size: 11, design: .monospaced)
 
+        static let count = Font.system(size: 12, weight: .semibold)
+        static let label = Font.system(size: 12)
+        static let small = Font.system(size: 11)
+        static let smallStrong = Font.system(size: 11, weight: .semibold)
+        static let metaStrong = Font.system(size: 10.5, weight: .semibold)
+        static let metaMono = Font.system(size: 10.5).monospaced()
+        static let caption = Font.system(size: 10)
+        static let captionStrong = Font.system(size: 10, weight: .semibold)
+        static let micro = Font.system(size: 9, weight: .bold)
+
         static func mono(bold: Bool) -> Font {
             Font.system(size: 11, weight: bold ? .bold : .regular).monospaced()
         }
+    }
+
+    enum Opacity {
+        static let disabled = 0.4
+        static let stale = 0.5
     }
 
     enum Space {
