@@ -949,6 +949,44 @@ private let askX = WidgetAction.askClaude("a", prompt: "x", pr: testPR)
     #expect(store.chime == .needsYou)
 }
 
+@Test func shellStatusShowsWaitingOnBackgroundCommand() {
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
+    writeSession(dir, "a", pid: me, status: "shell", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    let s = store.sessions[0]
+    #expect(statusText(s) == "chờ lệnh nền")
+    #expect(s.colorStatus == "busy")
+    #expect(s.shownStatus == "idle")
+    #expect(s.canAskClaude)
+    #expect(s.isFinished)
+    #expect(Theme.Symbols.status(s) == "hourglass")
+}
+
+@Test func shellAnnouncesOnceThenIdleIsQuiet() {
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
+    let t0 = Date()
+    writeSession(dir, "a", pid: me, status: "busy", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: t0)
+    writeSession(dir, "a", pid: me, status: "shell", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: t0.addingTimeInterval(1))
+    #expect(store.transitions == ["a": .done])
+    #expect(store.chime == .done)
+    writeSession(dir, "a", pid: me, status: "idle", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: t0.addingTimeInterval(2))
+    #expect(store.transitions.isEmpty)
+    #expect(store.chime == nil)
+}
+
+@Test func shellSessionHasNoBackgroundCount() {
+    let dir = makeTempDir()
+    let store = makeStore(dir: dir)
+    writeSession(dir, "a", pid: me, status: "shell", ageSec: 0, name: "a", cwd: frontend)
+    store.refresh(at: Date())
+    #expect(store.sessions[0].backgroundAgents == nil)
+}
+
 @Test func chimeNeedsYouWins() {
     let dir = makeTempDir()
     let store = makeStore(dir: dir)

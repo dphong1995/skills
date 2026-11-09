@@ -74,10 +74,10 @@ struct Session: Identifiable, Equatable {
 }
 
 extension Session {
-    /// `idle` while only background agents run, else the raw `status`.
-    var shownStatus: String { backgroundAgents != nil ? "idle" : status }
+    /// `idle` while only background agents or a background shell command run, else the raw `status`.
+    var shownStatus: String { backgroundAgents != nil || status == "shell" ? "idle" : status }
     /// The colour, group and sort order: only a positive background count counts as running, else `shownStatus`.
-    var colorStatus: String { (backgroundAgents ?? 0) > 0 ? "busy" : shownStatus }
+    var colorStatus: String { (backgroundAgents ?? 0) > 0 || status == "shell" ? "busy" : shownStatus }
     var title: String { nameSource == "user" ? name : (aiTitle ?? firstPrompt ?? name) }
     var folder: String { ClosedSession.folder(cwd) }
     var subtitle: String { folder }
@@ -593,7 +593,7 @@ public final class Store: ObservableObject {
         for s in list {
             if let last = lastStatus[s.id], last != "busy", s.status == "busy" { newUnseen[s.id] = nil }
             var announced = false
-            if lastStatus[s.id] == "busy" && (s.status == "idle" || s.status == "waiting") {
+            if lastStatus[s.id] == "busy" && (s.status == "idle" || s.status == "shell" || s.status == "waiting") {
                 newUnseen[s.id, default: NewMark()].claude = true
                 announced = true
                 if s.status == "waiting" && s.questionLive && announcedQuestion[s.id] == s.question?.requestId {

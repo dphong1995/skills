@@ -6,6 +6,7 @@ func statusText(_ s: Session) -> String {
     return switch s.status {
     case "busy": "đang chạy"
     case "idle": "xong"
+    case "shell": "chờ lệnh nền"
     case "waiting": s.isPermissionPrompt ? "chờ duyệt" : "chờ trả lời"
     default: s.status.isEmpty ? "?" : s.status
     }
