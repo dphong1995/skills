@@ -418,23 +418,29 @@ struct SnapshotTests {
         render(store, panel, "31-pr-awaiting-approval")
     }
 
-    @Test func prRowRemaining() {
+    /// One idle session `b` with PR 7583. `reviewed`: CodeRabbit finished its review; `comments`: the PR's comments, nil when that fetch fails.
+    private func prRowStore(reviewed: Bool, comments: [[String: Any]]?) -> (Store, PanelState) {
         let dir = makeTempDir(), projects = makeTempDir()
         let api = FakeBitbucket()
         let repo = "t6engineering/talo6-dct-backend"
-        let c1 = "2026-11-03T03:40:00.000000+00:00", c2 = "2026-11-03T03:41:00.000000+00:00", c3 = "2026-11-03T03:42:00.000000+00:00"
         api.set("/2.0/user", json: ["uuid": "{me}"])
-        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7583, repo: repo, comments: 3, rabbitApproved: false)]])
-        api.set("/statuses", json: ["values": [rabbitStatus(description: "Review completed", created: "2026-11-03T03:33:15.111541+00:00")]])
-        api.set("/comments", json: ["values": [
-            rabbitComment("**Actionable comments posted: 1**", at: c1), rabbitInline(id: 1, "nit", at: c1),
-            rabbitInline(id: 4, "nit 2", at: c2)]])
+        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [reviewed ? prJSON(id: 7583, repo: repo, comments: 3, rabbitApproved: false) : prJSON(id: 7583, repo: repo, comments: 0)]])
+        api.set("/statuses", json: ["values": reviewed ? [rabbitStatus(description: "Review completed", created: "2026-11-03T03:33:15.111541+00:00")] : []])
+        if let comments { api.set("/comments", json: ["values": comments]) } else { api.routes["/comments"] = .failure(.transport) }
         let pr = "https://bitbucket.org/\(repo)/pull-requests/7583"
         _ = writeTranscript(projects, cwd: backend, id: "b", lines: [userLine("Xem " + pr), assistantLine("Đã push, xem " + pr), ""])
         writeSession(dir, "b", pid: me, status: "idle", ageSec: 30, name: "talo6-dct-backend-3f", cwd: backend)
         let store = makeStore(dir: dir, projects: projects, prs: PRMonitor(api: api, queue: nil, remote: { _ in nil }))
         let panel = PanelState()
         panel.hovering = true
+        return (store, panel)
+    }
+
+    @Test func prRowRemaining() {
+        let c1 = "2026-11-03T03:40:00.000000+00:00", c2 = "2026-11-03T03:41:00.000000+00:00"
+        let (store, panel) = prRowStore(reviewed: true, comments: [
+            rabbitComment("**Actionable comments posted: 1**", at: c1), rabbitInline(id: 1, "nit", at: c1),
+            rabbitInline(id: 4, "nit 2", at: c2)])
         store.refresh(at: Date())
         let pr0 = store.sessions.first { $0.id == "b" }!.prs[0]
         #expect(pr0.rabbitThreads == RabbitThreads(pending: 2, total: 2))
@@ -443,41 +449,20 @@ struct SnapshotTests {
     }
 
     @Test func askClaudeShownWhenCountsUnknown() {
-        let dir = makeTempDir(), projects = makeTempDir()
-        let api = FakeBitbucket()
-        let repo = "t6engineering/talo6-dct-backend"
-        api.set("/2.0/user", json: ["uuid": "{me}"])
-        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7583, repo: repo, comments: 3, rabbitApproved: false)]])
-        api.set("/statuses", json: ["values": [rabbitStatus(description: "Review completed", created: "2026-11-03T03:33:15.111541+00:00")]])
-        api.routes["/comments"] = .failure(.transport)
-        let pr = "https://bitbucket.org/\(repo)/pull-requests/7583"
-        _ = writeTranscript(projects, cwd: backend, id: "b", lines: [userLine("Xem " + pr), assistantLine("Đã push, xem " + pr), ""])
-        writeSession(dir, "b", pid: me, status: "idle", ageSec: 30, name: "talo6-dct-backend-3f", cwd: backend)
-        let store = makeStore(dir: dir, projects: projects, prs: PRMonitor(api: api, queue: nil, remote: { _ in nil }))
-        let panel = PanelState()
-        panel.hovering = true
+        let (store, panel) = prRowStore(reviewed: true, comments: nil)
         store.refresh(at: Date())
-        #expect(store.sessions.first { $0.id == "b" }!.prs[0].rabbitThreads == nil)
+        let pr0 = store.sessions.first { $0.id == "b" }!.prs[0]
+        #expect(pr0.rabbitThreads == nil)
+        #expect(pr0.rabbit == .reviewed(findings: nil))
+        #expect(!CodeRabbit.hidesAskClaude(pr0.rabbit, threads: pr0.rabbitThreads))
         render(store, panel, "52-pr-counts-unknown")
     }
 
     @Test func prRowAllDoneHidesAskClaude() {
-        let dir = makeTempDir(), projects = makeTempDir()
-        let api = FakeBitbucket()
-        let repo = "t6engineering/talo6-dct-backend"
         let c1 = "2026-11-03T03:40:00.000000+00:00", c2 = "2026-11-03T03:41:00.000000+00:00", c3 = "2026-11-03T03:42:00.000000+00:00"
-        api.set("/2.0/user", json: ["uuid": "{me}"])
-        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7583, repo: repo, comments: 3, rabbitApproved: false)]])
-        api.set("/statuses", json: ["values": [rabbitStatus(description: "Review completed", created: "2026-11-03T03:33:15.111541+00:00")]])
-        api.set("/comments", json: ["values": [
+        let (store, panel) = prRowStore(reviewed: true, comments: [
             rabbitComment("**Actionable comments posted: 1**", at: c1), rabbitInline(id: 1, "nit", at: c1),
-            humanReply(id: 2, parent: 1, "won't fix", at: c2), rabbitInline(id: 3, "withdrawn", at: c3, parent: 1)]])
-        let pr = "https://bitbucket.org/\(repo)/pull-requests/7583"
-        _ = writeTranscript(projects, cwd: backend, id: "b", lines: [userLine("Xem " + pr), assistantLine("Đã push, xem " + pr), ""])
-        writeSession(dir, "b", pid: me, status: "idle", ageSec: 30, name: "talo6-dct-backend-3f", cwd: backend)
-        let store = makeStore(dir: dir, projects: projects, prs: PRMonitor(api: api, queue: nil, remote: { _ in nil }))
-        let panel = PanelState()
-        panel.hovering = true
+            humanReply(id: 2, parent: 1, "won't fix", at: c2), rabbitInline(id: 3, "withdrawn", at: c3, parent: 1)])
         store.refresh(at: Date())
         let pr0 = store.sessions.first { $0.id == "b" }!.prs[0]
         #expect(pr0.rabbitThreads == RabbitThreads(pending: 0, total: 1))
@@ -625,19 +610,7 @@ struct SnapshotTests {
     }
 
     @Test func prRowShowsSentState() {
-        let dir = makeTempDir(), projects = makeTempDir()
-        let api = FakeBitbucket()
-        let repo = "t6engineering/talo6-dct-backend"
-        api.set("/2.0/user", json: ["uuid": "{me}"])
-        api.set("/2.0/workspaces/t6engineering/pullrequests/", json: ["values": [prJSON(id: 7583, repo: repo, comments: 0)]])
-        api.set("/statuses", json: ["values": []])
-        api.set("/comments", json: ["values": []])
-        let pr = "https://bitbucket.org/\(repo)/pull-requests/7583"
-        _ = writeTranscript(projects, cwd: backend, id: "b", lines: [userLine("Xem " + pr), assistantLine("Đã push, xem " + pr), ""])
-        writeSession(dir, "b", pid: me, status: "idle", ageSec: 30, name: "talo6-dct-backend-3f", cwd: backend)
-        let store = makeStore(dir: dir, projects: projects, prs: PRMonitor(api: api, queue: nil, remote: { _ in nil }))
-        let panel = PanelState()
-        panel.hovering = true
+        let (store, panel) = prRowStore(reviewed: false, comments: [])
         let t0 = Date()
         store.refresh(at: t0)
         let ask = SendKey(session: "b", kind: .askClaude, pr: prRef(7583))

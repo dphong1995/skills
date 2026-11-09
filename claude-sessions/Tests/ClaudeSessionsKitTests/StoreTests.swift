@@ -1899,4 +1899,32 @@ private func feedStore(_ items: [[String: Any]]) -> (Store, URL, FakeFeedTranspo
     #expect(a != b)
 }
 
+@Test func approveSendIsPerPrompt() {
+    let store = makeStore(dir: makeTempDir())
+    let t0 = Date()
+    store.refresh(at: t0)
+    let a = WidgetAction.approve("s1", toolId: "tA").sendKey!, b = WidgetAction.approve("s1", toolId: "tB").sendKey!
+    #expect(a != b)
+    store.finishSend(a, ok: true, at: t0)
+    store.refresh(at: t0.addingTimeInterval(1))
+    #expect(store.sendState(a) == .sent)
+    // A new prompt (tool B) shows no send state on its `Cho phép`; the session-level line still shows tool A's result.
+    #expect(store.sendState(b) == nil)
+    #expect(store.sendState(WidgetAction.deny("s1", toolId: "tB", reason: "").sendKey!) == nil)
+    #expect(store.sendState(session: "s1", kinds: [.approve, .deny]) == .sent)
+}
+
+@Test func sendStateOfSessionTakesNewestKey() {
+    let store = makeStore(dir: makeTempDir())
+    let t0 = Date()
+    store.refresh(at: t0)
+    store.finishSend(SendKey(session: "s1", kind: .reply), ok: true, at: t0)
+    store.finishSend(SendKey(session: "s1", kind: .stop), ok: false, at: t0.addingTimeInterval(1))
+    store.finishSend(SendKey(session: "s2", kind: .stop), ok: true, at: t0.addingTimeInterval(1))
+    store.refresh(at: t0.addingTimeInterval(1))
+    #expect(store.sendState(session: "s1", kinds: [.reply, .stop]) == .failed)
+    #expect(store.sendState(session: "s1", kinds: [.reply]) == .sent)
+    #expect(store.sendState(session: "s1", kinds: [.approve]) == nil)
+}
+
 private let testPR = PRRef(workspace: "w", repo: "r", id: 1)

@@ -215,6 +215,12 @@ public final class PRMonitor {
         CodeRabbit.resolve(pr.rabbitStatus, approvers: pr.approvers, facts: rabbitFacts[ref])
     }
 
+    /// Sets the displayed rabbit and the thread counts from the comment facts kept for `ref`; the counts stay nil until a comments fetch succeeded.
+    private func resolve(_ pr: inout PRStatus, _ ref: PRRef) {
+        pr.rabbit = resolved(pr, ref)
+        pr.rabbitThreads = rabbitFacts[ref]?.threads
+    }
+
     private func post(_ path: String, json: [String: Any]) throws -> Data {
         try recorded { try api.post(path, json: json) }
     }
@@ -342,7 +348,6 @@ public final class PRMonitor {
             pr.lastOther = prev?.lastOther
             pr.rabbitStatus = prev?.rabbitStatus
             pr.rabbitSince = prev?.rabbitSince
-            pr.rabbitThreads = prev?.rabbitThreads
             var rabbitFinished = false
             var firstStatuses = false
             if pr.isOpen {
@@ -381,7 +386,7 @@ public final class PRMonitor {
                     guard let d = try? fetchComments(path) else {
                         if prev != nil { continue }
                         commentsOwed.insert(ref)
-                        pr.rabbit = resolved(pr, ref)
+                        resolve(&pr, ref)
                         recordRabbit(ref, pr)
                         if firstStatuses { statusesFetched.insert(ref) }
                         statuses[ref] = pr
@@ -392,7 +397,6 @@ public final class PRMonitor {
                     if let values = decode(d)?["values"] as? [[String: Any]] {
                         let facts = CodeRabbit.facts(from: values)
                         rabbitFacts[ref] = facts
-                        pr.rabbitThreads = RabbitThreads(pending: facts.pending, total: facts.threads)
                     }
                     if pr.rabbitStatus == .reviewing, let since = pr.rabbitSince,
                        case .count(let n) = CodeRabbit.findings(fromComments: d, since: since, createdOnly: true) {
@@ -404,7 +408,7 @@ public final class PRMonitor {
                         case .notFound: break // the summary is beyond this page: keep the known count
                         }
                     }
-                    pr.rabbit = resolved(pr, ref)
+                    resolve(&pr, ref)
                     // Re-record only a count filled in for the review already recorded; a new kind must still chime.
                     if owed, rabbitSeen[ref]?.commit == pr.commit, CodeRabbit.kind(prev?.rabbit) == CodeRabbit.kind(pr.rabbit),
                        pr.rabbitSince == prev?.rabbitSince { recordRabbit(ref, pr) }
@@ -412,7 +416,7 @@ public final class PRMonitor {
                     if owed, rabbitSeen[ref] == nil { recordRabbit(ref, pr) }
                 }
             }
-            pr.rabbit = resolved(pr, ref)
+            resolve(&pr, ref)
             if let prev {
                 var found = PullRequests.events(old: prev, new: pr)
                 if firstStatuses {

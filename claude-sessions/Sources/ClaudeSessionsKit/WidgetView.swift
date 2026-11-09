@@ -118,8 +118,8 @@ public enum WidgetAction: Equatable {
         switch self {
         case .askClaude(let id, _, let pr): SendKey(session: id, kind: .askClaude, pr: pr)
         case .nudgeRabbit(let id, let ref): SendKey(session: id, kind: .nudge, pr: ref)
-        case .approve(let id, _): SendKey(session: id, kind: .approve)
-        case .deny(let id, _, _): SendKey(session: id, kind: .deny)
+        case .approve(let id, let toolId): SendKey(session: id, kind: .approve, detail: toolId)
+        case .deny(let id, let toolId, _): SendKey(session: id, kind: .deny, detail: toolId)
         case .reply(let id, _): SendKey(session: id, kind: .reply)
         case .stop(let id): SendKey(session: id, kind: .stop)
         case .resume(let c): SendKey(session: c.id, kind: .resume)

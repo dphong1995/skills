@@ -527,16 +527,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         if case .nudgeRabbit(_, let ref) = a {
-            guard let k = a.sendKey, store.beginSend(k) else { return NSSound.beep() }
-            guard let monitor = store.prMonitor else {
-                store.finishSend(k, ok: false)
-                return NSSound.beep()
-            }
-            monitor.nudge(ref) { ok in
-                DispatchQueue.main.async { [weak self] in
-                    self?.store.finishSend(k, ok: ok)
-                    if !ok { NSSound.beep() }
-                }
+            guard let monitor = store.prMonitor, let k = a.sendKey, store.beginSend(k) else { return NSSound.beep() }
+            // `nudge` calls `done` on the main queue.
+            monitor.nudge(ref) { [weak self] ok in
+                self?.store.finishSend(k, ok: ok)
+                if !ok { NSSound.beep() }
             }
             return
         }

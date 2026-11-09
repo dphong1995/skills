@@ -5,12 +5,11 @@ public enum Rabbit: Equatable { case reviewing, reviewed(findings: Int?), approv
 struct RabbitFacts: Equatable {
     /// uuid of the author of the newest marked comment.
     var rabbitUser: String?
-    /// CodeRabbit inline threads (a live top-level inline comment and its descendants).
-    var threads: Int
-    /// Threads not answered: no human reply, or the newest comment is not CodeRabbit's.
-    var pending: Int
+    /// CodeRabbit inline threads (a live top-level inline comment and its descendants), and those not answered:
+    /// no human reply, or the newest comment is not CodeRabbit's.
+    var threads: RabbitThreads
     /// Every top-level inline CodeRabbit finding has been answered.
-    var allAnswered: Bool { pending == 0 }
+    var allAnswered: Bool { threads.pending == 0 }
     /// The newest approve command is newer than every top-level CodeRabbit comment.
     var nudgePending: Bool
 }
@@ -147,7 +146,7 @@ enum CodeRabbit {
         }.map(created).max()
         let topLevel = marked.filter { parent($0) == nil && $0["inline"] == nil }.map(created).max()
         let nudgePending = command.map { c in topLevel.map { c > $0 } ?? true } ?? false
-        return RabbitFacts(rabbitUser: rabbitUser, threads: roots.count, pending: pending, nudgePending: nudgePending)
+        return RabbitFacts(rabbitUser: rabbitUser, threads: RabbitThreads(pending: pending, total: roots.count), nudgePending: nudgePending)
     }
 
     /// The displayed state from the raw status, the PR's approvers and the comment facts.

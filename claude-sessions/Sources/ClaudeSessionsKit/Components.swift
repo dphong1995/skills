@@ -54,15 +54,34 @@ struct PillButton: View {
             case nil:
                 PillLabel(title: title, fill: fill, textColor: textColor, symbol: symbol, icon: icon, showsIcon: showsIcon)
             case .sending?:
-                PillLabel(title: "Đang gửi…").opacity(Theme.Opacity.disabled)
+                PillLabel(title: SendState.sending.title).opacity(Theme.Opacity.disabled)
             case .sent?:
-                PillLabel(title: "Đã gửi ✓", fill: Theme.Colors.primaryAction, textColor: Theme.Colors.onPrimary)
+                PillLabel(title: SendState.sent.title, fill: Theme.Colors.primaryAction, textColor: Theme.Colors.onPrimary)
             case .failed?:
-                PillLabel(title: "Lỗi — bấm thử lại", fill: .red, textColor: .white)
+                PillLabel(title: SendState.failed.title, fill: .red, textColor: .white)
             }
         }
         .buttonStyle(.plain)
         .disabled(send == .sending)
+    }
+}
+
+extension SendState {
+    var title: String {
+        switch self {
+        case .sending: "Đang gửi…"
+        case .sent: "Đã gửi ✓"
+        case .failed: "Lỗi — bấm thử lại"
+        }
+    }
+
+    /// The text colour of a `SentLine`.
+    var color: Color {
+        switch self {
+        case .sending: Theme.Colors.secondaryText
+        case .sent: Theme.Colors.primaryAction
+        case .failed: .red
+        }
     }
 }
 
@@ -71,11 +90,7 @@ struct SentLine: View {
     let state: SendState
 
     var body: some View {
-        switch state {
-        case .sending: Text("Đang gửi…").font(Theme.Fonts.small).foregroundStyle(Theme.Colors.secondaryText)
-        case .sent: Text("Đã gửi ✓").font(Theme.Fonts.small).foregroundStyle(Theme.Colors.primaryAction)
-        case .failed: Text("Lỗi — bấm thử lại").font(Theme.Fonts.small).foregroundStyle(.red)
-        }
+        Text(state.title).font(Theme.Fonts.small).foregroundStyle(state.color)
     }
 }
 

@@ -97,7 +97,7 @@ enum Theme {
 
         static func status(_ s: Session) -> String {
             if s.status == "waiting" { return s.isPermissionPrompt ? warning : "questionmark.circle.fill" }
-            if (s.backgroundAgents ?? 0) > 0 || s.status == "shell" { return "hourglass" }
+            if s.waitsInBackground { return "hourglass" }
             switch s.shownStatus {
             case "idle": return "checkmark.circle.fill"
             case "busy": return "circle.dotted"

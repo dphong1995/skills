@@ -69,10 +69,10 @@ extension WidgetView {
                     } else if full {
                         HStack(spacing: 6) {
                             PillButton(title: "Cho phép", fill: Theme.Colors.primaryAction, textColor: Theme.Colors.onPrimary,
-                                       send: store.sendState(SendKey(session: s.id, kind: .approve))) {
+                                       send: store.sendState(SendKey(session: s.id, kind: .approve, detail: p.toolId))) {
                                 onAction(.approve(s.id, toolId: p.toolId))
                             }
-                            PillButton(title: "Từ chối…", send: store.sendState(SendKey(session: s.id, kind: .deny))) {
+                            PillButton(title: "Từ chối…", send: store.sendState(SendKey(session: s.id, kind: .deny, detail: p.toolId))) {
                                 panel.editing = Store.Editing(id: s.id, kind: .deny, toolId: p.toolId)
                             }
                         }
@@ -122,16 +122,8 @@ extension WidgetView {
     func quickButton(_ s: Session) -> some View {
         let inCmux = !store.surfaceMisses.contains(s.id)
         let outsideCmux = "Chỉ dùng được trong cmux"
-        let replySend = store.sendState(SendKey(session: s.id, kind: .reply)), stopSend = store.sendState(SendKey(session: s.id, kind: .stop))
         // Whichever of the two sent last; the slot flips between the buttons as the session goes idle and busy.
-        let slotSend: SendState? = {
-            switch (replySend, stopSend) {
-            case (let r?, let st?): return (store.sends[SendKey(session: s.id, kind: .reply)]?.at ?? .distantPast) >= (store.sends[SendKey(session: s.id, kind: .stop)]?.at ?? .distantPast) ? r : st
-            case (let r?, nil): return r
-            case (nil, let st?): return st
-            case (nil, nil): return nil
-            }
-        }()
+        let slotSend = store.sendState(session: s.id, kinds: [.reply, .stop])
         Group {
             if s.canAskClaude {
                 IconButton(symbol: Theme.Symbols.reply, help: "Trả lời…", send: slotSend) { panel.editing = Store.Editing(id: s.id, kind: .reply) }
@@ -309,7 +301,7 @@ extension WidgetView {
                             PillButton(title: "Nhờ Claude", send: askSend) {
                                 onAction(.askClaude(s.id, prompt: PullRequests.prompt(store.prPrompt, url: pr.url, id: pr.ref.id), pr: pr.ref))
                             }
-                            .disabled(!canAsk && askSend == nil)
+                            .disabled(!canAsk)
                             .opacity(canAsk || askSend != nil ? 1 : Theme.Opacity.disabled)
                             .help(canAsk ? "" : "Chỉ gửi được khi Claude đã xong lượt")
                         } else if let askSend {
@@ -324,7 +316,7 @@ extension WidgetView {
             }
             if let pending = s.pending {
                 approvalBlock(s, pending).padding(.leading, Theme.Space.indent)
-            } else if let sent = store.sendState(SendKey(session: s.id, kind: .approve)) ?? store.sendState(SendKey(session: s.id, kind: .deny)) {
+            } else if let sent = store.sendState(session: s.id, kinds: [.approve, .deny]) {
                 // The approval block is gone at the next refresh; the result stays for its 3 s.
                 SentLine(state: sent).padding(.leading, Theme.Space.indent)
             }

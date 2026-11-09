@@ -77,7 +77,9 @@ extension Session {
     /// `idle` while only background agents or a background shell command run, else the raw `status`.
     var shownStatus: String { backgroundAgents != nil || status == "shell" ? "idle" : status }
     /// The colour, group and sort order: only a positive background count counts as running, else `shownStatus`.
-    var colorStatus: String { (backgroundAgents ?? 0) > 0 || status == "shell" ? "busy" : shownStatus }
+    var colorStatus: String { waitsInBackground ? "busy" : shownStatus }
+    /// Waiting on background agents or a background shell command.
+    var waitsInBackground: Bool { (backgroundAgents ?? 0) > 0 || status == "shell" }
     var title: String { nameSource == "user" ? name : (aiTitle ?? firstPrompt ?? name) }
     var folder: String { ClosedSession.folder(cwd) }
     var subtitle: String { folder }
@@ -117,13 +119,16 @@ public struct NewMark: Equatable {
 
 public enum SendState: Equatable { case sending, sent, failed }
 
-/// One send button of one session; `pr` tells the PR buttons of a session apart.
+/// One send button of one session; `pr` tells the PR buttons of a session apart, `detail` the prompt of an approve/deny (its tool id).
 public struct SendKey: Hashable {
     public enum Kind: Hashable { case askClaude, nudge, approve, deny, reply, stop, resume, answer }
     public let session: String
     public let kind: Kind
     public let pr: PRRef?
-    public init(session: String, kind: Kind, pr: PRRef? = nil) { self.session = session; self.kind = kind; self.pr = pr }
+    public let detail: String?
+    public init(session: String, kind: Kind, pr: PRRef? = nil, detail: String? = nil) {
+        self.session = session; self.kind = kind; self.pr = pr; self.detail = detail
+    }
 }
 
 public final class Store: ObservableObject {
@@ -859,7 +864,7 @@ public final class Store: ObservableObject {
 
     /// Claims `k` for a send; false (the caller beeps) while another send to the same session is in flight.
     public func beginSend(_ k: SendKey, at date: Date = Date()) -> Bool {
-        if sends.keys.contains(where: { $0.session == k.session && sendState($0) == .sending }) { return false }
+        if sends.contains(where: { $0.key.session == k.session && $0.value.state == .sending }) { return false }
         sends[k] = (.sending, date)
         return true
     }
@@ -868,20 +873,26 @@ public final class Store: ObservableObject {
         sends[k] = (ok ? .sent : .failed, date)
     }
 
-    /// What the button of `k` shows: `.sending` up to 15 s (then `.failed`), `.sent`/`.failed` for 3 s, then nil.
+    /// What the button of `k` shows: `.sending` until `pruneSends` times it out, `.sent`/`.failed` for 3 s, then nil.
     public func sendState(_ k: SendKey) -> SendState? {
         guard let e = sends[k] else { return nil }
-        let age = now.timeIntervalSince(e.at)
         switch e.state {
-        case .sending: return age >= Store.sendTimeout ? .failed : .sending
-        case .sent, .failed: return age < Store.sendShown ? e.state : nil
+        case .sending: return .sending
+        case .sent, .failed: return now.timeIntervalSince(e.at) < Store.sendShown ? e.state : nil
         }
+    }
+
+    /// The state of the newest shown send among the session's keys of `kinds`; for a slot that flips between buttons.
+    public func sendState(session: String, kinds: [SendKey.Kind]) -> SendState? {
+        sends.filter { $0.key.session == session && kinds.contains($0.key.kind) }
+            .compactMap { k, e in sendState(k).map { ($0, e.at) } }
+            .max { $0.1 < $1.1 }?.0
     }
 
     static let sendTimeout: TimeInterval = 15
     static let sendShown: TimeInterval = 3
 
-    /// Turns a stuck `.sending` into `.failed` and drops what is no longer shown.
+    /// Turns a `.sending` older than 15 s into `.failed` and drops what is no longer shown.
     private func pruneSends() {
         guard !sends.isEmpty else { return }
         var next = sends
@@ -889,7 +900,7 @@ public final class Store: ObservableObject {
             if e.state == .sending, now.timeIntervalSince(e.at) >= Store.sendTimeout { next[k] = (.failed, now) }
             else if sendState(k) == nil { next[k] = nil }
         }
-        sends = next
+        if next.count != sends.count || next.contains(where: { sends[$0.key]?.state != $0.value.state }) { sends = next }
     }
 
     /// Remembers that the answer to `requestId` reached cmux, so the card reads `Đã gửi`.
