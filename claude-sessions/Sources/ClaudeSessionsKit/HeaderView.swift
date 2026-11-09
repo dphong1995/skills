@@ -6,9 +6,11 @@ extension WidgetView {
         Group {
             if expanded {
                 HStack(spacing: Theme.Space.gap) {
-                    if let q = store.quota { quotaBars(q) }
                     Spacer(minLength: Theme.Space.gap)
-                    groups(expanded: true, dot: 3, gap: 7, showQuota: false)
+                    HStack(spacing: Theme.Space.quotaToCounts) {
+                        if let q = store.quota { quotaBars(q) }
+                        groups(expanded: true, dot: 3, gap: 7, showQuota: false)
+                    }
                 }
             } else {
                 // Two-digit counts fall back to the tight spacing.
@@ -99,7 +101,6 @@ extension WidgetView {
         let t = Self.clock
         return HStack(spacing: Theme.Space.gap + 2) {
             quotaBar("5h", q.fiveHour)
-            quotaBar("Tuần", q.weekly)
             if let f = q.forecast {
                 HStack(spacing: 3) {
                     Image(systemName: Theme.Symbols.warning)
@@ -111,6 +112,7 @@ extension WidgetView {
                 Text("reset \(t.string(from: q.fiveHourReset))")
                     .font(Theme.Fonts.meta.monospacedDigit()).foregroundStyle(Theme.Colors.tertiaryText)
             }
+            quotaBar("Tuần", q.weekly)
             if stale { Text("cũ").font(Theme.Fonts.meta).foregroundStyle(Theme.Colors.tertiaryText) }
         }
         .lineLimit(1).fixedSize()

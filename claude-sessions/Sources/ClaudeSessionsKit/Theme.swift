@@ -60,6 +60,7 @@ enum Theme {
 
     enum Space {
         static let gap: CGFloat = 6
+        static let quotaToCounts: CGFloat = 12
         static let indent: CGFloat = 24
         static let rightColumn: CGFloat = 64
         static let quotaBarWidth: CGFloat = 48
