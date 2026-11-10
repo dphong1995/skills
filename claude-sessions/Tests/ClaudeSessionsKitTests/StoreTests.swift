@@ -846,34 +846,34 @@ private let askX = WidgetAction.askClaude("a", prompt: "x", pr: testPR)
     r.refresh()
     #expect(r.session?.backgroundAgents == 0)
     #expect(r.session?.shownStatus == "idle")
+    #expect(r.session?.busyAfterTurn == false)
+    #expect(r.session.map(statusText) == "xong")
     #expect(r.store.stillValid(askX))
 }
 
 @Test func busyAfterTurnShowsBackgroundWait() {
     let r = ActivityRig([userLine("hi"), assistantLine("done"), turnDurationLine(timestamp: Date().addingTimeInterval(-60))])
     r.refresh()
-    let s = r.session!
-    #expect(s.busyAfterTurn)
-    #expect(s.colorStatus == "busy")
-    #expect(s.shownStatus == "idle")
-    #expect(s.waitsInBackground)
-    #expect(statusText(s) == "chờ agent nền")
+    #expect(r.session?.busyAfterTurn == true)
+    #expect(r.session?.colorStatus == "busy")
+    #expect(r.session?.shownStatus == "idle")
+    #expect(r.session?.waitsInBackground == true)
+    #expect(r.session.map(statusText) == "chờ agent nền")
     #expect(r.store.stillValid(askX))
 }
 
 @Test func busyBeforeTurnEndStaysDone() {
     let r = ActivityRig([userLine("hi"), assistantLine("done"), turnDurationLine(timestamp: Date().addingTimeInterval(-1))])
     r.refresh()
-    let s = r.session!
-    #expect(!s.busyAfterTurn)
-    #expect(s.colorStatus == "idle")
-    #expect(statusText(s) == "xong")
+    #expect(r.session?.busyAfterTurn == false)
+    #expect(r.session?.colorStatus == "idle")
+    #expect(r.session.map(statusText) == "xong")
 }
 
 @Test func busyAfterTurnKeepsCount() {
     let r = ActivityRig([userLine("hi"), assistantLine("done"), turnDurationLine(background: 2, timestamp: Date().addingTimeInterval(-60))])
     r.refresh()
-    #expect(statusText(r.session!) == "chờ 2 agent nền")
+    #expect(r.session.map(statusText) == "chờ 2 agent nền")
 }
 
 @Test func busyAfterTurnEndsOnNewTurn() {

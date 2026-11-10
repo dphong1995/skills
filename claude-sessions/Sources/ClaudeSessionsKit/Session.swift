@@ -78,9 +78,9 @@ struct Session: Identifiable, Equatable {
 extension Session {
     /// `idle` while only background agents or a background shell command run, else the raw `status`.
     var shownStatus: String { backgroundAgents != nil || status == "shell" ? "idle" : status }
-    /// The colour, group and sort order: only a positive background count counts as running, else `shownStatus`.
+    /// The colour, group and sort order: `busy` while `waitsInBackground`, else `shownStatus`.
     var colorStatus: String { waitsInBackground ? "busy" : shownStatus }
-    /// Waiting on background agents or a background shell command.
+    /// Waiting on background agents, a background shell command, or uncounted work after the turn (`busyAfterTurn`).
     var waitsInBackground: Bool { (backgroundAgents ?? 0) > 0 || busyAfterTurn || status == "shell" }
     var title: String { nameSource == "user" ? name : (aiTitle ?? firstPrompt ?? name) }
     var folder: String { ClosedSession.folder(cwd) }

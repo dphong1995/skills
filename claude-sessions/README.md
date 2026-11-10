@@ -7,7 +7,7 @@ Widget macOS nổi luôn nằm trên cùng, hiện các session Claude Code đan
 ## Tính năng
 
 ### Danh sách mở rộng
-Rê chuột vào viên thì mở danh sách các session, mỗi thẻ có icon trạng thái, tiêu đề kèm tag trạng thái (`chờ duyệt`, `chờ trả lời`, `xong`, `đang chạy`, `chờ N agent nền`, `chờ lệnh nền`), thư mục, vạch màu ở mép trái và cột phải cố định gồm thời gian và nút icon nhanh. Header gom số session theo nhóm màu và hiện quota `5h` / `Tuần` dạng thanh ở bên phải, ngay trước số session (thanh `5h` kèm `reset HH:mm` hoặc dự báo `hết ~HH:mm` màu đỏ, rồi tới thanh `Tuần`); PR hiện thành các tag có icon. Câu hỏi của Claude hiện thành danh sách đánh số, mỗi đáp án có mô tả luôn hiện; `Cho phép` và `Gửi` màu xanh lá.
+Rê chuột vào viên thì mở danh sách các session, mỗi thẻ có icon trạng thái, tiêu đề kèm tag trạng thái (`chờ duyệt`, `chờ trả lời`, `xong`, `đang chạy`, `chờ N agent nền`, `chờ agent nền`, `chờ lệnh nền`), thư mục, vạch màu ở mép trái và cột phải cố định gồm thời gian và nút icon nhanh. Header gom số session theo nhóm màu và hiện quota `5h` / `Tuần` dạng thanh ở bên phải, ngay trước số session (thanh `5h` kèm `reset HH:mm` hoặc dự báo `hết ~HH:mm` màu đỏ, rồi tới thanh `Tuần`); PR hiện thành các tag có icon. Câu hỏi của Claude hiện thành danh sách đánh số, mỗi đáp án có mô tả luôn hiện; `Cho phép` và `Gửi` màu xanh lá.
 
 ### Phím tắt bàn phím
 Bấm phím tắt mở widget (`⌃⌥Space`) thì thẻ được chọn bằng vòng viền trắng và điều khiển bằng bàn phím:
@@ -61,7 +61,7 @@ Tên dòng lấy từ tên đặt bằng `/rename`, tiêu đề AI hoặc prompt
 ![Tiêu đề session](docs/images/15-titles-branch.png)
 
 ### Agent nền
-Khi lượt chính đã xong mà agent nền còn chạy, thẻ hiện `chờ N agent nền` và đếm số agent. Khi lượt chính xong mà còn lệnh Bash chạy nền (`status: "shell"`), thẻ hiện `chờ lệnh nền` (icon đồng hồ cát, màu `đang chạy`, nút `Trả lời…`).
+Khi lượt chính đã xong mà agent nền còn chạy, thẻ hiện `chờ N agent nền` và đếm số agent. Khi file session bị ghi lại `busy` sau lượt đã xong mà không còn số đếm nào (ví dụ agent nền đã dừng chờ lệnh Bash nền của chính nó rồi chạy lại, Claude Code không đếm), thẻ hiện `chờ agent nền` với cùng icon, màu và nút như `chờ N agent nền`. Khi lượt chính xong mà còn lệnh Bash chạy nền (`status: "shell"`), thẻ hiện `chờ lệnh nền` (icon đồng hồ cát, màu `đang chạy`, nút `Trả lời…`).
 
 ![Agent nền](docs/images/35-background-agents.png)
 
