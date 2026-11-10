@@ -849,6 +849,44 @@ private let askX = WidgetAction.askClaude("a", prompt: "x", pr: testPR)
     #expect(r.store.stillValid(askX))
 }
 
+@Test func busyAfterTurnShowsBackgroundWait() {
+    let r = ActivityRig([userLine("hi"), assistantLine("done"), turnDurationLine(timestamp: Date().addingTimeInterval(-60))])
+    r.refresh()
+    let s = r.session!
+    #expect(s.busyAfterTurn)
+    #expect(s.colorStatus == "busy")
+    #expect(s.shownStatus == "idle")
+    #expect(s.waitsInBackground)
+    #expect(statusText(s) == "chờ agent nền")
+    #expect(r.store.stillValid(askX))
+}
+
+@Test func busyBeforeTurnEndStaysDone() {
+    let r = ActivityRig([userLine("hi"), assistantLine("done"), turnDurationLine(timestamp: Date().addingTimeInterval(-1))])
+    r.refresh()
+    let s = r.session!
+    #expect(!s.busyAfterTurn)
+    #expect(s.colorStatus == "idle")
+    #expect(statusText(s) == "xong")
+}
+
+@Test func busyAfterTurnKeepsCount() {
+    let r = ActivityRig([userLine("hi"), assistantLine("done"), turnDurationLine(background: 2, timestamp: Date().addingTimeInterval(-60))])
+    r.refresh()
+    #expect(statusText(r.session!) == "chờ 2 agent nền")
+}
+
+@Test func busyAfterTurnEndsOnNewTurn() {
+    let r = ActivityRig([userLine("hi"), assistantLine("done"), turnDurationLine(timestamp: Date().addingTimeInterval(-60))])
+    r.refresh()
+    #expect(r.session?.busyAfterTurn == true)
+    r.append(userLine("again") + "\n" + bash("ls") + "\n")
+    r.refresh()
+    #expect(r.session?.busyAfterTurn == false)
+    #expect(r.session?.shownStatus == "busy")
+    #expect(r.activity == "Bash: ls")
+}
+
 @Test func backgroundWaitClearedWhenSessionNotBusy() {
     let r = ActivityRig([userLine("hi"), assistantLine("done"), turnDurationLine(background: 1)])
     r.refresh()

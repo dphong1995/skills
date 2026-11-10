@@ -67,10 +67,11 @@ func assistantLine(_ text: String?, sidechain: Bool = false) -> String {
 }
 
 /// The main-turn end marker Claude Code appends; counts left nil are omitted.
-func turnDurationLine(background: Int? = nil, workflows: Int? = nil, sidechain: Bool = false) -> String {
+func turnDurationLine(background: Int? = nil, workflows: Int? = nil, sidechain: Bool = false, timestamp: Date? = nil) -> String {
     var o: [String: Any] = ["type": "system", "subtype": "turn_duration", "isSidechain": sidechain, "durationMs": 10]
     if let background { o["pendingBackgroundAgentCount"] = background }
     if let workflows { o["pendingWorkflowCount"] = workflows }
+    if let timestamp { o["timestamp"] = ISODate.string(from: timestamp) }
     return jsonLine(o)
 }
 

@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 func statusText(_ s: Session) -> String {
-    if let n = s.backgroundAgents { return n > 0 ? "chờ \(n) agent nền" : "xong" }
+    if let n = s.backgroundAgents { return n > 0 ? "chờ \(n) agent nền" : s.busyAfterTurn ? "chờ agent nền" : "xong" }
     return switch s.status {
     case "busy": "đang chạy"
     case "idle": "xong"

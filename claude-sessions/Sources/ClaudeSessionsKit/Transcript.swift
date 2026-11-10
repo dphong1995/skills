@@ -14,7 +14,7 @@ enum PendingState: Equatable {
 /// Where the main thread of a transcript stands: a turn in progress, or ended with background agents/workflows still pending.
 enum MainTurn: Equatable {
     case running
-    case ended(background: Int)
+    case ended(background: Int, at: Date?)
 }
 
 public struct SessionLink: Equatable {
@@ -369,7 +369,8 @@ enum Transcript {
             switch o["type"] as? String {
             case "user", "assistant": return .running
             case "system" where o["subtype"] as? String == "turn_duration":
-                return .ended(background: (o["pendingBackgroundAgentCount"] as? Int ?? 0) + (o["pendingWorkflowCount"] as? Int ?? 0))
+                return .ended(background: (o["pendingBackgroundAgentCount"] as? Int ?? 0) + (o["pendingWorkflowCount"] as? Int ?? 0),
+                              at: (o["timestamp"] as? String).flatMap(ISODate.date))
             default: continue
             }
         }

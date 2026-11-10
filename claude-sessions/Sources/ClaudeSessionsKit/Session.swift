@@ -63,6 +63,8 @@ struct Session: Identifiable, Equatable {
     var agents: [String] = []
     /// Pending background agents and workflows; non-nil only while the session is `busy` but its main turn has ended.
     var backgroundAgents: Int? = nil
+    /// The status file was rewritten `busy` after the last main turn ended with no pending background count: work such as a resumed background agent runs that Claude Code does not count.
+    var busyAfterTurn = false
     var prs: [PRStatus] = []
     /// Every ticket and PR of the session, grouped for the inline menu.
     var menu: [LinkSection] = []
@@ -79,7 +81,7 @@ extension Session {
     /// The colour, group and sort order: only a positive background count counts as running, else `shownStatus`.
     var colorStatus: String { waitsInBackground ? "busy" : shownStatus }
     /// Waiting on background agents or a background shell command.
-    var waitsInBackground: Bool { (backgroundAgents ?? 0) > 0 || status == "shell" }
+    var waitsInBackground: Bool { (backgroundAgents ?? 0) > 0 || busyAfterTurn || status == "shell" }
     var title: String { nameSource == "user" ? name : (aiTitle ?? firstPrompt ?? name) }
     var folder: String { ClosedSession.folder(cwd) }
     var subtitle: String { folder }
@@ -560,8 +562,9 @@ public final class Store: ObservableObject {
         for i in list.indices {
             let url = transcriptURL(for: list[i])
             let (text, turn, agents) = readActivity(for: list[i], url: url, size: Int(sizes[list[i].id] ?? 0))
-            if case .ended(let n) = turn {
+            if case .ended(let n, let at) = turn {
                 list[i].backgroundAgents = n
+                if n == 0, let at, let since = list[i].since { list[i].busyAfterTurn = since > at }
                 // The first loop skipped the reply read: the row was still `busy` then.
                 let t = readTail(for: list[i], url: url, size: Int(sizes[list[i].id] ?? 0))
                 list[i].lastReply = t.reply
