@@ -1473,3 +1473,9 @@ fn snapshot_stable_without_change() {
     store.refresh(secs(t0, 1));
     assert_eq!(store.snapshot(), first);
 }
+
+mod activity;
+mod chime;
+mod closed_feed;
+mod prs;
+mod sends;

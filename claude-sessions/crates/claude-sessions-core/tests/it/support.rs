@@ -780,6 +780,9 @@ pub struct StoreSetup {
     pub prs: Option<PRMonitor>,
     pub jira: Option<JiraMonitor>,
     pub branch: Option<claude_sessions_core::store::BranchFn>,
+    pub feed: Option<claude_sessions_core::feed::FeedMonitor>,
+    pub closed_store: Option<claude_sessions_core::closed_sessions::ClosedStore>,
+    pub is_running: Option<Box<dyn Fn(i32) -> bool>>,
 }
 
 /// A store whose transcript lookups never touch the real `~/.claude/projects` and whose branch reader never touches a real repo.
@@ -800,6 +803,9 @@ pub fn make_store_with(dir: &Path, setup: StoreSetup) -> Store {
             start_hidden: setup.start_hidden,
             prs: setup.prs,
             jira: setup.jira,
+            feed: setup.feed,
+            closed_store: setup.closed_store,
+            is_running: setup.is_running,
             scanner: claude_sessions_core::transcript_scanner::TranscriptScanner::new(false),
             branch: Some(setup.branch.unwrap_or_else(|| Box::new(|_| None))),
             ..StoreOptions::default()

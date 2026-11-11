@@ -101,7 +101,7 @@ pub(super) fn ticket_text(key: &str, issue: Option<&JiraIssue>) -> String {
 }
 
 /// `PR #id  title  ·  state`.
-pub(super) fn link_text(pr: &PRStatus) -> String {
+pub fn link_text(pr: &PRStatus) -> String {
     let title = pr
         .title
         .as_ref()
@@ -119,7 +119,8 @@ fn pr_tone(pr: &PRStatus) -> ItemTone {
     }
 }
 
-fn pr_item(pr: &PRStatus) -> LinkItem {
+/// The menu row of one tracked PR (Swift `Store.menu` for a single PR).
+pub fn pr_item(pr: &PRStatus) -> LinkItem {
     LinkItem {
         text: link_text(pr),
         url: pr.url.clone(),

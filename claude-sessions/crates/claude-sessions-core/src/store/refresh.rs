@@ -96,7 +96,8 @@ impl Store {
                     list[i].busy_after_turn = since > at;
                 }
                 // The first loop skipped the reply read: the row was still `busy` then.
-                list[i].last_reply = self.read_tail(&s, url.as_deref(), size).0;
+                let ended = list[i].clone();
+                list[i].last_reply = self.read_tail(&ended, url.as_deref(), size).0;
             } else {
                 list[i].activity = a.text;
                 list[i].agents = a.agents;
