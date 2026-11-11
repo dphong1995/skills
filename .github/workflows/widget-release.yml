@@ -1,0 +1,179 @@
+# Release pipeline for the ClaudeSessions widget (Rust).
+#   - push of a tag widget-v*  : build, then publish a GitHub release (pre-release when the tag has -rc)
+#   - workflow_dispatch        : dry run (build only, no release)
+# The build job compiles third-party code, so it has no secrets and read-only contents.
+# The release job compiles only xtask (built without default features: no third-party crates),
+# holds the signing secrets and has write access.
+name: widget-release
+
+on:
+  push:
+    tags: ["widget-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: widget-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  build:
+    runs-on: macos-14
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: claude-sessions
+    steps:
+      # actions/checkout v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Tag must be on main
+        if: startsWith(github.ref, 'refs/tags/widget-v')
+        working-directory: .
+        run: |
+          git fetch --no-tags origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+      - name: Toolchain from rust-toolchain.toml
+        run: |
+          rustup toolchain install
+          rustc --version
+          cargo --version
+
+      # actions/cache v4.2.3
+      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
+        with:
+          path: |
+            ~/.cache/cargo-tools
+            ~/.cargo/registry
+            ~/.cargo/git
+            claude-sessions/target
+          key: widget-${{ runner.os }}-${{ hashFiles('claude-sessions/Cargo.lock', 'claude-sessions/rust-toolchain.toml') }}
+          restore-keys: widget-${{ runner.os }}-
+
+      - name: Install cargo-deny and cargo-about
+        run: |
+          tools="$HOME/.cache/cargo-tools"
+          [ -x "$tools/bin/cargo-deny" ] || cargo install --locked --root "$tools" cargo-deny
+          [ -x "$tools/bin/cargo-about" ] || cargo install --locked --root "$tools" cargo-about --features cli
+          echo "$tools/bin" >> "$GITHUB_PATH"
+
+      - name: Licences, sources, advisories
+        run: cargo deny check
+
+      - name: Clippy
+        run: cargo clippy --workspace --locked -- -D warnings
+
+      # Perf, E2E, GUI and HID tests need machine-specific env flags and stay off here.
+      - name: Core tests
+        run: cargo test -p claude-sessions-core --locked
+
+      - name: Build the dmg
+        env:
+          IS_TAG: ${{ startsWith(github.ref, 'refs/tags/widget-v') }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "$IS_TAG" = "true" ]; then version="${REF_NAME#widget-v}"; else version="0.0.0-dryrun"; fi
+          cargo xtask dist --version "$version"
+
+      # A tar keeps the executable bits and the app bundle layout that a zip artifact would lose.
+      - name: Pack target/dist
+        run: tar -C target -cf "$RUNNER_TEMP/dist.tar" dist
+
+      # actions/upload-artifact v4.6.2
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: widget-dist
+          path: ${{ runner.temp }}/dist.tar
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/widget-v')
+    needs: build
+    runs-on: macos-14
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.ref_name }}
+    defaults:
+      run:
+        working-directory: claude-sessions
+    steps:
+      # actions/checkout v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      # actions/download-artifact v4.3.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: widget-dist
+          path: ${{ runner.temp }}/artifact
+
+      - name: Unpack target/dist
+        run: |
+          mkdir -p target
+          tar -C target -xf "$RUNNER_TEMP/artifact/dist.tar"
+
+      - name: Toolchain from rust-toolchain.toml
+        run: rustup toolchain install
+
+      # Secrets are visible to this step only. Skipped (not failed) when no certificate is configured.
+      - name: Sign with Developer ID and notarize
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: |
+          if [ -z "$MACOS_CERT_P12" ]; then
+            echo "No MACOS_CERT_P12 secret: keeping the ad-hoc signed build"
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychain_password="$(openssl rand -hex 24)"
+          printf '%s' "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          rm -f "$RUNNER_TEMP/cert.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" login.keychain-db
+          security default-keychain -s "$keychain"
+          identity="$(security find-identity -v -p codesigning "$keychain" | sed -n 's/.*"\(.*\)"/\1/p' | head -n 1)"
+          if [ -z "$identity" ]; then echo "No codesigning identity in the certificate" >&2; exit 1; fi
+          xcrun notarytool store-credentials claude-sessions \
+            --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" \
+            --keychain "$keychain" >/dev/null
+          cargo run --locked -p xtask --no-default-features -- resign --identity "$identity"
+
+      - name: Delete the temporary keychain
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+      - name: Create the release and upload the assets
+        working-directory: claude-sessions/target/dist
+        run: |
+          prerelease=""
+          case "$TAG" in *-rc*) prerelease="--prerelease" ;; esac
+          printf 'ClaudeSessions widget %s\n\nInstall with `bash install.sh --only widget` after the maintainer pins this release in `claude-sessions/release.lock`.\nSHA-256: %s\n' \
+            "$TAG" "$(cut -d' ' -f1 ClaudeSessions.dmg.sha256)" > "$RUNNER_TEMP/notes.md"
+          gh release view "$TAG" >/dev/null 2>&1 \
+            || gh release create "$TAG" --verify-tag --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md" $prerelease
+          gh release upload "$TAG" ClaudeSessions.dmg ClaudeSessions.dmg.sha256 --clobber

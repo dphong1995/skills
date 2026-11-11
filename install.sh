@@ -18,7 +18,7 @@ DESCS=(
   "skillOverrides that switch off org skills"
   "cmux settings (cmux/install.sh)"
   "OMC HUD (hud/install.sh)"
-  "ClaudeSessions widget (build, replace the running app; needs macOS + swift)"
+  "ClaudeSessions widget (installs the release pinned in claude-sessions/release.lock after verifying it, swift build until one is pinned; needs macOS)"
 )
 DEFAULTS=(1 0 0 0 0 0 0 0)
 COUNT=${#ITEMS[@]}
@@ -198,7 +198,116 @@ install_hud() {
   run_external hud/install.sh
 }
 
+# Pinned release path. Sets WIDGET_ERR and returns 1 on any failure (never relies on set -e).
+WIDGET_TMP=""
+widget_cleanup() {
+  if [ -n "$WIDGET_TMP" ]; then
+    hdiutil detach -quiet -force "$WIDGET_TMP/mnt" >/dev/null 2>&1 || true
+    rm -rf "$WIDGET_TMP"
+    WIDGET_TMP=""
+  fi
+}
+
+widget_fail() {
+  WIDGET_ERR="$1"
+  return 1
+}
+
+widget_install_pinned() {  # $1 = lock file ("" when only SKILLS_WIDGET_DMG is set)
+  local lock="$1" tag="" want_sha="" want="" dmg mnt app have dest new old i
+  dest="$HOME/Applications/ClaudeSessions.app"
+  new="$HOME/Applications/.ClaudeSessions.app.new"
+  old="$HOME/Applications/.ClaudeSessions.app.old"
+  if [ -n "$lock" ]; then
+    tag=$(sed -n 's/^tag=//p' "$lock" | head -n 1)
+    want_sha=$(sed -n 's/^sha256=//p' "$lock" | head -n 1)
+    case "$tag" in
+      widget-v[0-9]*) ;;
+      *) widget_fail "release.lock has no valid tag" || return 1 ;;
+    esac
+    case "$tag" in
+      *[!0-9A-Za-z.+-]*) widget_fail "release.lock has no valid tag" || return 1 ;;
+    esac
+    case "$want_sha" in
+      *[!0-9a-f]* | "") widget_fail "release.lock has no valid sha256" || return 1 ;;
+    esac
+    [ "${#want_sha}" = 64 ] || widget_fail "release.lock has no valid sha256" || return 1
+    want="${tag#widget-v}"
+  fi
+  WIDGET_TMP=$(mktemp -d) || widget_fail "cannot create a temp dir" || return 1
+  trap widget_cleanup EXIT
+  dmg="$WIDGET_TMP/ClaudeSessions.dmg"
+  mnt="$WIDGET_TMP/mnt"
+  if [ -n "${SKILLS_WIDGET_DMG:-}" ]; then
+    echo "  using local dmg $SKILLS_WIDGET_DMG: skipping download and checksum"
+    cp "$SKILLS_WIDGET_DMG" "$dmg" || widget_fail "cannot read $SKILLS_WIDGET_DMG" || return 1
+  else
+    echo "  downloading $tag"
+    curl --fail --silent --show-error --proto '=https' --tlsv1.2 -L -o "$dmg" \
+      "https://github.com/dphong1995/skills/releases/download/$tag/ClaudeSessions.dmg" \
+      || widget_fail "download of $tag failed" || return 1
+    have=$(shasum -a 256 "$dmg" | awk '{print $1}')
+    [ "$have" = "$want_sha" ] || widget_fail "checksum mismatch for $tag (expected $want_sha, got $have)" || return 1
+  fi
+  mkdir -p "$mnt"
+  hdiutil attach -quiet -nobrowse -readonly -noautoopen -mountpoint "$mnt" "$dmg" >/dev/null \
+    || widget_fail "cannot mount the dmg" || return 1
+  app="$mnt/ClaudeSessions.app"
+  [ -d "$app" ] || widget_fail "the dmg has no ClaudeSessions.app" || return 1
+  codesign --verify --deep --strict "$app" >/dev/null 2>&1 || widget_fail "app signature check failed" || return 1
+  [ "$(plutil -extract CFBundleIdentifier raw -o - "$app/Contents/Info.plist" 2>/dev/null)" = "local.claude-sessions" ] \
+    || widget_fail "unexpected bundle id in the dmg" || return 1
+  [ -n "$want" ] || want=$(plutil -extract CFBundleShortVersionString raw -o - "$app/Contents/Info.plist" 2>/dev/null) || want=""
+  have=""
+  if [ -d "$dest" ]; then
+    have=$(plutil -extract CFBundleShortVersionString raw -o - "$dest/Contents/Info.plist" 2>/dev/null) || have=""
+  fi
+  if [ -n "$want" ] && [ "$have" = "$want" ]; then
+    echo "  widget already $want"
+    return 0
+  fi
+  rm -rf "$new"
+  ditto "$app" "$new" || widget_fail "cannot copy the app into ~/Applications" || return 1
+  if pgrep -x ClaudeSessions >/dev/null 2>&1; then
+    osascript -e 'quit app "ClaudeSessions"' >/dev/null 2>&1 || true
+    for ((i = 0; i < 10; i++)); do
+      pgrep -x ClaudeSessions >/dev/null 2>&1 || break
+      sleep 0.5
+    done
+    if pgrep -x ClaudeSessions >/dev/null 2>&1; then pkill -x ClaudeSessions >/dev/null 2>&1 || true; fi
+  fi
+  rm -rf "$old"
+  if [ -e "$dest" ]; then
+    mv "$dest" "$old" || { rm -rf "$new"; widget_fail "cannot move the old app aside" || return 1; }
+  fi
+  if ! mv "$new" "$dest"; then
+    if [ -e "$old" ]; then mv "$old" "$dest" || true; fi
+    widget_fail "cannot move the new app into place" || return 1
+  fi
+  rm -rf "$old"
+  open "$dest" || true
+  echo "  widget ${want:-installed}"
+  if [ -d /Applications/ClaudeSessions.app ]; then
+    echo "  warning: /Applications/ClaudeSessions.app also exists; remove one of the two copies" >&2
+  fi
+  return 0
+}
+
 install_widget() {
+  local lock="${SKILLS_WIDGET_LOCK:-$SRC/claude-sessions/release.lock}"
+  if [ "$(uname -s)" = "Darwin" ] && { [ -f "$lock" ] || [ -n "${SKILLS_WIDGET_DMG:-}" ]; }; then
+    [ -f "$lock" ] || lock=""
+    WIDGET_ERR=""
+    if ! widget_install_pinned "$lock"; then
+      widget_cleanup
+      echo "  widget skipped: $WIDGET_ERR"
+      SUMMARY_SKIPPED="$SUMMARY_SKIPPED  widget: $WIDGET_ERR"$'\n'
+    fi
+    widget_cleanup
+    trap - EXIT
+    return 0
+  fi
+  # No release.lock yet: build from the Swift sources (removed once a release is pinned).
   if [ "${SKILLS_INSTALL_DRY_EXTERNAL:-}" = "1" ]; then
     run_external claude-sessions/build.sh
     return 0
@@ -385,5 +494,5 @@ fi
 if [ -d "$BACKUP" ]; then echo "Replaced files backed up to $BACKUP"; fi
 echo "Restart Claude Code (or run /doctor) to pick them up."
 case "$SUMMARY_INSTALLED" in
-  *" widget"*) echo "The widget keeps the old build until you quit it; the installer quits and reopens it when swift is present." ;;
+  *" widget"*) echo "The installer verifies the pinned widget release, then quits the running widget and reopens the new one." ;;
 esac

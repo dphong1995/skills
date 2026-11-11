@@ -4,8 +4,13 @@ version = "0.0.1"
 edition.workspace = true
 publish.workspace = true
 
+[features]
+default = ["hid"]
+# The release job runs `cargo xtask` with --no-default-features so it builds no third-party code.
+hid = ["dep:claude-sessions-macos", "claude-sessions-macos/hid"]
+
 [dependencies]
-claude-sessions-macos = { workspace = true, features = ["hid"] }
+claude-sessions-macos = { workspace = true, optional = true }
 
 [lints]
 workspace = true

@@ -24,7 +24,7 @@ Lần `--update` đầu tiên sau khi nâng cấp từ bộ cài cũ chưa có f
 | `org-skills` | `skillOverrides` tắt các skill org không dùng cho code | `~/.claude/settings.json` | không |
 | `cmux` | settings của cmux (`cmux/install.sh`) | `~/.config/cmux/`, `~/Library/Application Support/com.cmuxterm.app/` | không |
 | `hud` | OMC HUD (`hud/install.sh`) | `~/.claude/hud/`, `~/.claude/settings.json` | không |
-| `widget` | widget ClaudeSessions: build rồi thay app đang chạy (cần macOS + `swift`) | `~/Applications/ClaudeSessions.app` | không |
+| `widget` | widget ClaudeSessions: cài bản release ghim trong `claude-sessions/release.lock` sau khi kiểm (SHA-256, `codesign`, bundle id) rồi thay app đang chạy; chưa có `release.lock` thì build bằng `swift` như trước (cần macOS) | `~/Applications/ClaudeSessions.app` | không |
 
 Cờ dòng lệnh (lỗi cách dùng thoát với mã 2 và không cài gì):
 

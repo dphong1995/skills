@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -157,4 +158,140 @@ test('list', () => {
   const names = stdout.trim().split('\n').map((l) => l.split(/\s+/)[0]);
   assert.deepEqual(names, ITEMS);
   assert.deepEqual(readdirSync(home), []);
+});
+
+// ---- widget: pinned, verified release dmg ----
+const SYSTEM_PATH = ['/usr/bin', '/bin', '/usr/sbin', '/sbin'];
+const WIDGET_TOOLS = ['awk', 'basename', 'cat', 'codesign', 'cp', 'cut', 'date', 'dirname', 'ditto', 'env', 'grep', 'hdiutil', 'head', 'ln', 'ls', 'mkdir', 'mktemp', 'mv', 'plutil', 'readlink', 'rm', 'sed', 'shasum', 'sleep', 'sort', 'tail', 'touch', 'tr', 'uname'];
+const mac = process.platform === 'darwin' ? test : test.skip;
+
+function makeDmg(dir, name, { bundleId = 'local.claude-sessions', version = '2.0.0-rc.1', sign = true } = {}) {
+  const src = join(dir, `src-${name}`);
+  const app = join(src, 'ClaudeSessions.app');
+  mkdirSync(join(app, 'Contents/MacOS'), { recursive: true });
+  writeFileSync(join(app, 'Contents/Info.plist'), `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>${bundleId}</string>
+<key>CFBundleExecutable</key><string>ClaudeSessions</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleShortVersionString</key><string>${version}</string>
+</dict></plist>
+`);
+  writeFileSync(join(app, 'Contents/MacOS/ClaudeSessions'), '#!/bin/sh\nexit 0\n');
+  chmodSync(join(app, 'Contents/MacOS/ClaudeSessions'), 0o755);
+  if (sign) assert.equal(spawnSync('codesign', ['--force', '-s', '-', app]).status, 0);
+  const dmg = join(dir, `${name}.dmg`);
+  assert.equal(spawnSync('hdiutil', ['create', '-quiet', '-volname', 'ClaudeSessions', '-srcfolder', src, '-format', 'UDZO', dmg]).status, 0);
+  return { dmg, sha: createHash('sha256').update(readFileSync(dmg)).digest('hex') };
+}
+
+function widgetEnv(dmgs) {
+  const dir = mkdtempSync(join(tmpdir(), 'skills-widget-'));
+  const bin = join(dir, 'bin');
+  mkdirSync(bin);
+  for (const t of WIDGET_TOOLS) {
+    const found = SYSTEM_PATH.map((d) => join(d, t)).find((p) => existsSync(p));
+    assert.ok(found, t);
+    symlinkSync(found, join(bin, t));
+  }
+  const stub = (name, body) => {
+    writeFileSync(join(bin, name), `#!/bin/bash\necho "${name} $*" >> "${dir}/calls.log"\n${body}\n`);
+    chmodSync(join(bin, name), 0o755);
+  };
+  stub('curl', 'out=""; while [ $# -gt 0 ]; do if [ "$1" = "-o" ]; then out="$2"; fi; shift; done\n[ -z "$TEST_CURL_FAIL" ] || exit 22\ncp "$TEST_DMG" "$out"');
+  stub('open', 'exit 0');
+  stub('osascript', 'exit 0');
+  stub('pgrep', 'exit 1');
+  stub('pkill', 'exit 0');
+  assert.ok(!existsSync(join(bin, 'swift')) && !existsSync(join(bin, 'cargo')));
+  const home = join(dir, 'home');
+  mkdirSync(join(home, 'Applications'), { recursive: true });
+  return { dir, bin, home, claude: join(dir, 'claude'), calls: () => (existsSync(join(dir, 'calls.log')) ? readFileSync(join(dir, 'calls.log'), 'utf8') : '') };
+}
+
+function runWidget(env, { sha, tag = 'widget-v2.0.0-rc.1', dmg, curlFail = false, local = false, extra = {} }) {
+  const lock = join(env.dir, 'release.lock');
+  writeFileSync(lock, `tag=${tag}\nsha256=${sha}\n`);
+  const e = {
+    PATH: env.bin, HOME: env.home, CLAUDE_HOME: env.claude, SKILLS_WIDGET_LOCK: lock, TEST_DMG: dmg, ...extra,
+  };
+  if (curlFail) e.TEST_CURL_FAIL = '1';
+  if (local) e.SKILLS_WIDGET_DMG = dmg;
+  const r = spawnSync('/bin/bash', [join(root, 'install.sh'), '--only', 'widget'], { env: e, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  return { code: r.status, out: r.stdout + r.stderr };
+}
+
+const installedApp = (env) => join(env.home, 'Applications/ClaudeSessions.app');
+const markExisting = (env, version = '1.0.0') => {
+  const app = installedApp(env);
+  mkdirSync(join(app, 'Contents'), { recursive: true });
+  writeFileSync(join(app, 'Contents/Info.plist'), `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict><key>CFBundleIdentifier</key><string>local.claude-sessions</string><key>CFBundleShortVersionString</key><string>${version}</string></dict></plist>
+`);
+  writeFileSync(join(app, 'OLD'), 'old');
+};
+
+mac('widget installs from pinned release dmg', () => {
+  const env = widgetEnv();
+  const good = makeDmg(env.dir, 'good');
+  const r = runWidget(env, { sha: good.sha, dmg: good.dmg });
+  assert.equal(r.code, 0, r.out);
+  assert.ok(existsSync(join(installedApp(env), 'Contents/MacOS/ClaudeSessions')), r.out);
+  assert.equal(env.calls().split('\n').filter((l) => l.startsWith('open ')).length, 1);
+  assert.match(env.calls(), /curl .*https:\/\/github\.com\/dphong1995\/skills\/releases\/download\/widget-v2\.0\.0-rc\.1\/ClaudeSessions\.dmg/);
+  assert.ok(!existsSync(join(env.home, 'Applications/.ClaudeSessions.app.new')));
+});
+
+mac('widget: every verification failure leaves the app and still finishes the run', () => {
+  const env = widgetEnv();
+  const good = makeDmg(env.dir, 'good');
+  const unsigned = makeDmg(env.dir, 'unsigned', { sign: false });
+  const wrongId = makeDmg(env.dir, 'wrongid', { bundleId: 'evil.app' });
+  const cases = [
+    ['checksum mismatch', { sha: '0'.repeat(64), dmg: good.dmg }, /checksum/],
+    ['curl failing', { sha: good.sha, dmg: good.dmg, curlFail: true }, /download/],
+    ['unsigned app', { sha: unsigned.sha, dmg: unsigned.dmg }, /signature/],
+    ['wrong bundle id', { sha: wrongId.sha, dmg: wrongId.dmg }, /bundle id/],
+  ];
+  for (const [name, opts, cause] of cases) {
+    markExisting(env);
+    const r = runWidget(env, opts);
+    assert.equal(r.code, 0, `${name}: ${r.out}`);
+    assert.match(r.out, new RegExp(`Skipped:\\n\\s+widget: .*${cause.source}`), name);
+    assert.ok(existsSync(join(installedApp(env), 'OLD')), `${name}: existing app untouched`);
+    assert.ok(!env.calls().split('\n').some((l) => l.startsWith('open ')), name);
+    assert.match(r.out, /Installed into/, `${name}: run finished`);
+    assert.equal(readFileSync(join(env.claude, '.skills-repo-selection'), 'utf8'), 'widget\n', name);
+  }
+});
+
+mac('widget: same version installed does nothing', () => {
+  const env = widgetEnv();
+  const good = makeDmg(env.dir, 'good');
+  markExisting(env, '2.0.0-rc.1');
+  const r = runWidget(env, { sha: good.sha, dmg: good.dmg });
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /widget already 2\.0\.0-rc\.1/);
+  assert.ok(existsSync(join(installedApp(env), 'OLD')));
+  assert.ok(!/^(open|osascript|pkill) /m.test(env.calls()));
+});
+
+mac('widget: SKILLS_WIDGET_DMG skips download and checksum', () => {
+  const env = widgetEnv();
+  const good = makeDmg(env.dir, 'good');
+  const r = runWidget(env, { sha: '0'.repeat(64), dmg: good.dmg, local: true });
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /skipping download and checksum/);
+  assert.ok(!/^curl /m.test(env.calls()));
+  assert.ok(existsSync(join(installedApp(env), 'Contents/MacOS/ClaudeSessions')));
+});
+
+test('widget without a lock keeps the Swift path', () => {
+  const home = mkdtempSync(join(tmpdir(), 'skills-install-'));
+  const r = spawnSync('bash', [join(root, 'install.sh'), '--only', 'widget'], {
+    env: { ...process.env, CLAUDE_HOME: home, SKILLS_INSTALL_DRY_EXTERNAL: '1', SKILLS_WIDGET_LOCK: join(home, 'no-such.lock') },
+    encoding: 'utf8',
+  });
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /would run: claude-sessions\/build\.sh/);
 });

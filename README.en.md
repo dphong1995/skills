@@ -24,7 +24,7 @@ The first `--update` after upgrading from the old installer has no remembered se
 | `org-skills` | `skillOverrides` that switch off org skills not used for code | `~/.claude/settings.json` | no |
 | `cmux` | cmux settings (`cmux/install.sh`) | `~/.config/cmux/`, `~/Library/Application Support/com.cmuxterm.app/` | no |
 | `hud` | OMC HUD (`hud/install.sh`) | `~/.claude/hud/`, `~/.claude/settings.json` | no |
-| `widget` | ClaudeSessions widget: build, then replace the running app (needs macOS + `swift`) | `~/Applications/ClaudeSessions.app` | no |
+| `widget` | ClaudeSessions widget: install the release pinned in `claude-sessions/release.lock` after verifying it (SHA-256, `codesign`, bundle id), then replace the running app; until a `release.lock` exists it builds with `swift` as before (needs macOS) | `~/Applications/ClaudeSessions.app` | no |
 
 Flags (a usage error exits with code 2 and installs nothing):
 
