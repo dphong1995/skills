@@ -16,6 +16,10 @@ path = "tests/it/main.rs"
 name = "gui"
 harness = false
 
+[features]
+# The gate app shows the core fixture states; release builds leave it out.
+fixtures = ["claude-sessions-core/fixtures"]
+
 [dependencies]
 claude-sessions-core.workspace = true
 claude-sessions-macos.workspace = true
@@ -23,6 +27,7 @@ url.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+claude-sessions-core = { workspace = true, features = ["fixtures"] }
 
 [lints]
 workspace = true

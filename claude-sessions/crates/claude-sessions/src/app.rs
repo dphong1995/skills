@@ -6,8 +6,12 @@
 
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
+use std::time::SystemTime;
 
-use claude_sessions_core::scene::HitId;
+use claude_sessions_core::layout;
+use claude_sessions_core::panel_state::PanelState;
+use claude_sessions_core::scene::{HitId, Scene};
+use claude_sessions_core::store::Snapshot;
 use claude_sessions_macos::keys::{self, KEY_CODE_ESCAPE, KeyMonitor};
 use claude_sessions_macos::main_queue::{self, Ticker};
 use claude_sessions_macos::menu::{self, MenuItem};
@@ -16,8 +20,8 @@ use claude_sessions_macos::text::CoreTextMeasure;
 use claude_sessions_macos::ui::{UiEvent, WidgetPanelHandle};
 use claude_sessions_macos::{NotificationObserver, alert, app as mac_app, hotkeys, screens};
 
-use crate::fake::{self, Card};
 use crate::panels::PanelHost;
+use crate::views::{View, build};
 
 type Shared = Rc<RefCell<AppState>>;
 type WeakState = Weak<RefCell<AppState>>;
@@ -29,8 +33,62 @@ const MENU_TOKEN: isize = 3;
 
 struct AppState {
     panels: Vec<PanelHost>,
-    cards: Vec<Card>,
-    tick: u64,
+    snap: Snapshot,
+    panel: PanelState,
+    now: SystemTime,
+}
+
+/// The fixture state named by `CLAUDE_SESSIONS_FIXTURE` (default `07-mixed-hover`), built in a temp dir that is removed
+/// before returning.
+#[cfg(feature = "fixtures")]
+fn initial_state() -> (Snapshot, PanelState, SystemTime) {
+    use claude_sessions_core::fixtures::{STATES, fixed_now, view_now};
+    let want = std::env::var("CLAUDE_SESSIONS_FIXTURE").unwrap_or_else(|_| "07-mixed-hover".into());
+    let (name, build_state) = STATES.iter().find(|(n, _)| *n == want).unwrap_or_else(|| {
+        let names: Vec<&str> = STATES.iter().map(|(n, _)| *n).collect();
+        eprintln!("unknown fixture {want:?}; one of {}", names.join(", "));
+        &STATES[0]
+    });
+    let dir = std::env::temp_dir().join(format!("claude-sessions-fixture-{}", std::process::id()));
+    let now = fixed_now();
+    let (snap, panel) = build_state(&dir, now);
+    let _ = std::fs::remove_dir_all(&dir);
+    eprintln!("fixture {name}");
+    (snap, panel, view_now(name, now))
+}
+
+/// Without the `fixtures` feature the gate app shows an empty list until the store is wired in.
+#[cfg(not(feature = "fixtures"))]
+fn initial_state() -> (Snapshot, PanelState, SystemTime) {
+    let snap = Snapshot {
+        sessions: Vec::new(),
+        closed: Vec::new(),
+        quota: None,
+        unseen: Default::default(),
+        sends: Default::default(),
+        shown_commands: Default::default(),
+        surface_misses: Default::default(),
+        connections: Default::default(),
+        issue_icons: Default::default(),
+        pr_last_success: None,
+        pr_stale: false,
+        hidden: false,
+        peeking: false,
+        muted: false,
+        bg_opacity: 0.92,
+    };
+    (snap, PanelState::new(), SystemTime::now())
+}
+
+/// The scene of a view, moved to the top-right corner of the canvas the panel window covers.
+fn place(mut scene: Scene) -> Scene {
+    let dx = layout::CANVAS.w - layout::MARGIN - scene.size.w;
+    for node in &mut scene.nodes {
+        node.frame.x += dx;
+        node.frame.y += layout::MARGIN;
+    }
+    scene.size = layout::CANVAS;
+    scene
 }
 
 /// Runs `f` with the state borrowed. A failed borrow is a re-entrancy bug: debug builds panic, release builds drop
@@ -48,11 +106,18 @@ fn with_state<R>(weak: &WeakState, f: impl FnOnce(&mut AppState) -> R) -> Option
 impl AppState {
     fn render(&mut self) {
         for host in &mut self.panels {
-            let scene = if host.expanded {
-                fake::expanded_scene(&self.cards, self.tick, &CoreTextMeasure)
-            } else {
-                fake::pill_scene(&self.cards)
-            };
+            let mut panel = self.panel.clone();
+            panel.hovering = host.expanded;
+            let scene = place(
+                build(&View {
+                    snap: &self.snap,
+                    panel: &panel,
+                    measure: &CoreTextMeasure,
+                    now: self.now,
+                    clock: &|_| "09:41".to_string(),
+                })
+                .scene,
+            );
             host.window.set_scene(&scene);
             host.scene = scene;
         }
@@ -80,11 +145,6 @@ impl AppState {
     }
 
     fn on_tick(&mut self) {
-        self.tick += 1;
-        if self.tick.is_multiple_of(10) {
-            fake::rotate(&mut self.cards, self.tick / 10);
-        }
-        self.render();
         self.track_mouse();
     }
 }
@@ -143,7 +203,7 @@ fn handle_event(weak: &WeakState, key: &str, event: UiEvent) {
             eprintln!("dragged");
             with_state(weak, AppState::track_mouse);
         }
-        UiEvent::RightClick { hit, at } if hit == Some(fake::PILL_HIT) => {
+        UiEvent::RightClick { at, .. } => {
             let Some(view) = with_state(weak, |s| {
                 s.panels
                     .iter()
@@ -172,7 +232,6 @@ fn handle_event(weak: &WeakState, key: &str, event: UiEvent) {
                 menu::popup(&view, &items, at, move |id| on_menu_pick(&weak, id));
             });
         }
-        UiEvent::RightClick { .. } => {}
     }
 }
 
@@ -265,10 +324,12 @@ struct Running {
 fn start() -> Running {
     mac_app::set_accessory_policy();
     menu::install_main_menu();
+    let (snap, panel, now) = initial_state();
     let shared: Shared = Rc::new(RefCell::new(AppState {
         panels: Vec::new(),
-        cards: fake::cards(),
-        tick: 0,
+        snap,
+        panel,
+        now,
     }));
     sync_panels(&shared);
 

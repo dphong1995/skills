@@ -113,3 +113,69 @@ pub fn read_png_pixel(
         ],
     ))
 }
+
+/// How two PNGs differ: `differing` pixels have a channel more than `tolerance` (of 255) apart. Different pixel sizes count
+/// every pixel as differing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PngDiff {
+    pub size_a: (usize, usize),
+    pub size_b: (usize, usize),
+    pub differing: usize,
+    pub total: usize,
+}
+
+fn decode(path: &Path) -> Result<objc2::rc::Retained<NSBitmapImageRep>, String> {
+    let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    NSBitmapImageRep::imageRepWithData(&NSData::with_bytes(&bytes))
+        .ok_or_else(|| format!("{}: not a readable image", path.display()))
+}
+
+/// Compares the decoded samples of two PNGs pixel by pixel.
+pub fn compare_png(a: &Path, b: &Path, tolerance: u8) -> Result<PngDiff, String> {
+    let (ra, rb) = (decode(a)?, decode(b)?);
+    let size = |r: &NSBitmapImageRep| (r.pixelsWide() as usize, r.pixelsHigh() as usize);
+    let (size_a, size_b) = (size(&ra), size(&rb));
+    let total = size_a.0 * size_a.1;
+    let same_layout = size_a == size_b
+        && ra.samplesPerPixel() == rb.samplesPerPixel()
+        && ra.bitsPerPixel() == 32
+        && rb.bitsPerPixel() == 32;
+    if !same_layout {
+        return Ok(PngDiff {
+            size_a,
+            size_b,
+            differing: total,
+            total,
+        });
+    }
+    let samples = ra.samplesPerPixel() as usize;
+    let row = |r: &NSBitmapImageRep| r.bytesPerRow() as usize;
+    let (stride_a, stride_b) = (row(&ra), row(&rb));
+    let (pa, pb) = (ra.bitmapData(), rb.bitmapData());
+    if pa.is_null() || pb.is_null() {
+        return Err("image has no bitmap data".into());
+    }
+    let mut differing = 0;
+    for y in 0..size_a.1 {
+        // SAFETY: each decoded rep owns `bytesPerRow * pixelsHigh` bytes at `bitmapData`, and `y`, `x` stay inside the
+        // image; both reps outlive these slices.
+        let (la, lb) = unsafe {
+            (
+                std::slice::from_raw_parts(pa.add(y * stride_a), size_a.0 * 4),
+                std::slice::from_raw_parts(pb.add(y * stride_b), size_a.0 * 4),
+            )
+        };
+        for x in 0..size_a.0 {
+            let (qa, qb) = (&la[x * 4..x * 4 + samples], &lb[x * 4..x * 4 + samples]);
+            if qa.iter().zip(qb).any(|(p, q)| p.abs_diff(*q) > tolerance) {
+                differing += 1;
+            }
+        }
+    }
+    Ok(PngDiff {
+        size_a,
+        size_b,
+        differing,
+        total,
+    })
+}

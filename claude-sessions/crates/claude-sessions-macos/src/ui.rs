@@ -15,7 +15,7 @@ use objc2_foundation::MainThreadMarker;
 use self::draw::ns_rect;
 
 use crate::panel::{self, PanelProps, WidgetPanel};
-pub use png::{read_png_pixel, render_png};
+pub use png::{PngDiff, compare_png, read_png_pixel, render_png};
 pub use scene_view::SceneView;
 
 /// What the user did in the scene; `at` is in scene points (top-left origin).

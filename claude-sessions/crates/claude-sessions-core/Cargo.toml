@@ -7,6 +7,10 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Snapshot states for the static views' tests and the gate app; never built into the release app.
+fixtures = []
+
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true

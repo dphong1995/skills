@@ -10,6 +10,8 @@ pub mod code_rabbit;
 pub mod credentials;
 pub mod feed;
 pub mod file_stamp;
+#[cfg(feature = "fixtures")]
+pub mod fixtures;
 pub mod geometry;
 pub mod git_branch;
 pub mod hotkeys;

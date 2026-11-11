@@ -1,13 +1,12 @@
 //! One panel per display: creation, placement and the pointer test (`syncPanels`, `trackMouse`).
 
+use claude_sessions_core::layout::CANVAS;
 use claude_sessions_core::scene::{Point, Rect, Scene};
 use claude_sessions_macos::NotificationObserver;
 use claude_sessions_macos::keys::{self, KeyMonitor};
 use claude_sessions_macos::mouse;
 use claude_sessions_macos::screens::KeyedScreen;
 use claude_sessions_macos::ui::{EventHandler, WidgetPanelHandle};
-
-use crate::fake::{self, CANVAS};
 
 pub struct PanelHost {
     pub key: String,
@@ -47,7 +46,7 @@ impl PanelHost {
         })
     }
 
-    /// Whether the pointer (screen points, bottom-left origin) is over the card.
+    /// Whether the pointer (screen points, bottom-left origin) is over the pill or the card.
     pub fn pointer_inside(&self) -> bool {
         let f = self.window.frame();
         let pointer = mouse::pointer();
@@ -55,6 +54,6 @@ impl PanelHost {
             x: pointer.x - f.x,
             y: f.y + f.h - pointer.y,
         };
-        fake::card_contains(&self.scene, local)
+        self.scene.nodes.iter().any(|n| n.frame.contains(local))
     }
 }
