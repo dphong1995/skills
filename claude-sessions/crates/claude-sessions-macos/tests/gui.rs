@@ -701,6 +701,7 @@ fn shadow_path_animates_with_the_frame() -> Result<(), String> {
     use claude_sessions_macos::ui::SceneView;
     use objc2::rc::Retained;
     use objc2::runtime::AnyObject;
+    use objc2_core_foundation::CFType;
     use objc2_core_graphics::CGPath;
     use objc2_foundation::{MainThreadMarker, NSSize, ns_string};
     use objc2_quartz_core::CABasicAnimation;
@@ -725,8 +726,11 @@ fn shadow_path_animates_with_the_frame() -> Result<(), String> {
         .map_err(|_| "the shadowPath animation is not a CABasicAnimation".to_string())?;
     let size_of = |value: Option<Retained<AnyObject>>| -> Result<(f64, f64), String> {
         let value = value.ok_or("animation without a value")?;
-        // SAFETY: `animate_frame` stores a CGPath in both values.
-        let path = unsafe { &*(&*value as *const AnyObject as *const CGPath) };
+        // SAFETY: every Objective-C object is a valid CF object for `CFGetTypeID`; `downcast_ref` checks the type.
+        let cf = unsafe { &*(&*value as *const AnyObject as *const CFType) };
+        let path = cf
+            .downcast_ref::<CGPath>()
+            .ok_or("animation value is not a CGPath")?;
         let b = CGPath::bounding_box(Some(path));
         Ok((b.size.width, b.size.height))
     };
@@ -740,6 +744,45 @@ fn shadow_path_animates_with_the_frame() -> Result<(), String> {
     let model = layer.shadowPath().ok_or("no shadowPath")?;
     let b = CGPath::bounding_box(Some(&model));
     if (b.size.width, b.size.height) != (100.0, 70.0) {
+        return Err(format!("model shadowPath bounds {b:?}"));
+    }
+    Ok(())
+}
+
+/// A direct (non-animated) resize drops a `shadowPath` animation still heading for the old target.
+fn direct_resize_cancels_the_shadow_animation() -> Result<(), String> {
+    use claude_sessions_core::scene::Rect;
+    use claude_sessions_macos::ui::SceneView;
+    use objc2_core_graphics::CGPath;
+    use objc2_foundation::{MainThreadMarker, NSSize, ns_string};
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(200.0, 100.0));
+    view.set_scene(&one_node_scene(shadow_node(
+        Rect::new(10.0, 10.0, 100.0, 40.0),
+        true,
+    )));
+    if !claude_sessions_macos::ui::testing::animate_first_node_frame(
+        &view,
+        Rect::new(10.0, 10.0, 100.0, 70.0),
+    ) {
+        return Err("no node view".into());
+    }
+    let layer = node_layer(&view)?;
+    // SAFETY: a plain getter on a layer owned here.
+    if unsafe { layer.animationForKey(ns_string!("shadowPath")) }.is_none() {
+        return Err("no shadowPath animation to cancel".into());
+    }
+    view.set_scene(&one_node_scene(shadow_node(
+        Rect::new(10.0, 10.0, 100.0, 90.0),
+        true,
+    )));
+    // SAFETY: a plain getter on a layer owned here.
+    if unsafe { layer.animationForKey(ns_string!("shadowPath")) }.is_some() {
+        return Err("the stale shadowPath animation is still running".into());
+    }
+    let model = layer.shadowPath().ok_or("no shadowPath")?;
+    let b = CGPath::bounding_box(Some(&model));
+    if (b.size.width, b.size.height) != (100.0, 90.0) {
         return Err(format!("model shadowPath bounds {b:?}"));
     }
     Ok(())
@@ -949,6 +992,10 @@ fn main() {
     results.push((
         "shadow_path_animates_with_the_frame",
         shadow_path_animates_with_the_frame(),
+    ));
+    results.push((
+        "direct_resize_cancels_the_shadow_animation",
+        direct_resize_cancels_the_shadow_animation(),
     ));
     results.push((
         "node_without_shadow_has_none",

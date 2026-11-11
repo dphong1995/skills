@@ -50,7 +50,6 @@ pub const fn font(size: f64, weight: Weight) -> FontSpec {
     }
 }
 
-pub const HEADER_TITLE_FONT: FontSpec = font(13.0, Weight::Semibold);
 pub const COUNT_FONT: FontSpec = font(12.0, Weight::Semibold);
 pub const QUOTA_FONT: FontSpec = font(11.0, Weight::Regular);
 pub const SECTION_FONT: FontSpec = font(10.5, Weight::Semibold);

@@ -513,15 +513,18 @@ pub const PILL_GAP: f64 = 10.0;
 /// The quota ring plus `86%`.
 pub const PILL_QUOTA_W: f64 = 58.0;
 
+/// Width of one digit of a pill count.
+pub const PILL_DIGIT_W: f64 = 7.5;
+
 /// Width of the pill group `index` (see `pill_groups`) as drawn: the sparkle, the `Cần bạn` badge or the dot, then the
 /// digits of its count. It is the group's visible width, so the gap between groups is `PILL_GAP` everywhere.
 pub fn pill_group_width(index: usize, count: usize) -> f64 {
     let digits = count.to_string().len() as f64;
     match index {
-        0 => 18.0 + 7.5 * digits,
+        0 => 18.0 + PILL_DIGIT_W * digits,
         1 if count < 10 => 18.0,
-        1 => 18.0 + 7.5 * digits,
-        _ => 7.0 + 5.0 + 7.5 * digits,
+        1 => 18.0 + PILL_DIGIT_W * digits,
+        _ => 7.0 + 5.0 + PILL_DIGIT_W * digits,
     }
 }
 

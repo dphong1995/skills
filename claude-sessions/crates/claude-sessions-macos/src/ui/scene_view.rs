@@ -467,6 +467,7 @@ impl SceneView {
         };
         if !animate {
             for (view, frame) in resized.iter().chain(&slid) {
+                view.cancel_shadow_animation();
                 view.setFrame(ns_rect(*frame));
             }
             remove();

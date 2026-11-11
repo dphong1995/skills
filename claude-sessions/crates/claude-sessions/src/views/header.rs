@@ -54,14 +54,6 @@ pub fn node(ctx: &mut Ctx, y: f64) -> Node {
     let snap = ctx.view.snap;
     let cy = HEADER_HEIGHT / 2.0;
     let mut c = Canvas::default();
-    c.text(
-        Rect::new(8.0, cy - 9.0, 160.0, 18.0),
-        "Claude",
-        theme::HEADER_TITLE_FONT,
-        theme::solid(ThemeColor::TextSecondary),
-        1,
-        Align::Left,
-    );
     let counts_w = groups_width(snap);
     let counts_x = CARD_W - 8.0 - counts_w;
     draw_groups(&mut c, snap, counts_x, cy);

@@ -1575,6 +1575,18 @@ fn countdown_is_not_mono() {
 }
 
 #[test]
+fn the_expanded_header_has_no_claude_title() {
+    let built = fixture_built("07-mixed-hover");
+    let header = built
+        .scene
+        .nodes
+        .iter()
+        .find(|n| n.key.0 == "header")
+        .unwrap();
+    assert!(!texts(header).contains(&"Claude"));
+}
+
+#[test]
 fn pill_group_gaps_are_equal() {
     let built = fixture_built("06-mixed-collapsed");
     let node = &built.scene.nodes[0];
@@ -1594,9 +1606,9 @@ fn pill_group_gaps_are_equal() {
             } if text.chars().all(|c| c.is_ascii_digit()) => {
                 let s = start.take().unwrap_or(rect.x);
                 // The badge is a capsule that holds its digit: it ends where its own rect ends. Left-aligned digits end
-                // after their ink (7.5 pt per digit), not at the end of their rect.
+                // after their ink (`PILL_DIGIT_W` per digit), not at the end of their rect.
                 let end = if *align == Align::Left {
-                    rect.x + 7.5 * text.len() as f64
+                    rect.x + layout::PILL_DIGIT_W * text.len() as f64
                 } else {
                     rect.x + rect.w
                 };
