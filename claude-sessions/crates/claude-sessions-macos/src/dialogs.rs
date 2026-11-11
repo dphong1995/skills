@@ -8,7 +8,7 @@ use objc2::rc::Retained;
 use objc2_app_kit::{
     NSAlert, NSAlertFirstButtonReturn, NSAlertSecondButtonReturn, NSAlertThirdButtonReturn,
     NSApplication, NSBorderType, NSScrollView, NSSecureTextField, NSStatusWindowLevel, NSTextField,
-    NSTextView, NSView, NSWindowDidBecomeKeyNotification,
+    NSTextInputClient, NSTextView, NSView, NSWindowDidBecomeKeyNotification,
 };
 use objc2_foundation::{MainThreadMarker, NSPoint, NSRect, NSSize, NSString};
 
@@ -157,31 +157,39 @@ pub fn ask_prompt(current: &str, info: &str) -> PromptAnswer {
 
 /// AppKit puts the alert back to `NSModalPanelWindowLevel` (8) when it becomes key, below the panel's 25; the level set
 /// before `runModal` only holds until then. Each time the alert becomes key (after the session started, and again when the
-/// user comes back to the app) the level is put back, on a later main-queue turn so it lands after AppKit's own change.
-fn keep_above_panel(alert: &NSAlert) -> Vec<NotificationObserver> {
+/// user comes back to the app) the level is put back. The observer block is registered on the main queue and the
+/// notification is posted from the main thread, so it runs synchronously inside the post; that is still late enough
+/// because AppKit re-levels to 8 before it posts `didBecomeKey`.
+fn keep_above_panel(alert: &NSAlert) -> NotificationObserver {
     let window = alert.window();
     // SAFETY: a plain notification-name constant.
     let became_key = unsafe { NSWindowDidBecomeKeyNotification };
     let target = window.clone();
-    vec![NotificationObserver::new(
-        became_key,
-        Some(&window),
-        move || {
-            if target.level() != NSStatusWindowLevel + 1 {
-                target.setLevel(NSStatusWindowLevel + 1);
-            }
-        },
-    )]
+    NotificationObserver::new(became_key, Some(&window), move || {
+        if target.level() != NSStatusWindowLevel + 1 {
+            target.setLevel(NSStatusWindowLevel + 1);
+        }
+    })
 }
 
 /// `Esc` ends the session with the second button's code (`Huỷ`) while the alert is key. AppKit binds `Esc` only to a
 /// button titled "Cancel", and giving `Huỷ` that key equivalent makes AppKit move it to the end of the button column.
+/// Only Shift, Control, Option and Command count as modifiers (Caps Lock, Numeric Pad and Function do not), and `Esc`
+/// passes through while an input method composes text, so it cancels the composition and not the dialog.
 fn escape_closes(alert: &NSAlert) -> Option<crate::keys::KeyMonitor> {
     let mtm = MainThreadMarker::new()?;
     let window = alert.window();
     crate::keys::KeyMonitor::new(move |key| {
-        let plain = key.flags & 0xffff_0000 == 0;
-        if key.key_code == crate::keys::KEY_CODE_ESCAPE && plain && window.isKeyWindow() {
+        let plain = key.flags & 0x1e_0000 == 0;
+        let composing = window
+            .firstResponder()
+            .and_then(|r| r.downcast::<NSTextView>().ok())
+            .is_some_and(|text| text.hasMarkedText());
+        if key.key_code == crate::keys::KEY_CODE_ESCAPE
+            && plain
+            && !composing
+            && window.isKeyWindow()
+        {
             NSApplication::sharedApplication(mtm).stopModalWithCode(NSAlertSecondButtonReturn);
             true
         } else {

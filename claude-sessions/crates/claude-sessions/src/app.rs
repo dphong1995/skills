@@ -649,6 +649,8 @@ fn edit_prompt(weak: &WeakState) {
         return;
     };
     let answer = dialogs::ask_prompt(&current, "{url} = link PR, {id} = số PR");
+    // A key-take skipped while the dialog was open is retried now.
+    schedule_key_sync(weak);
     with_state(weak, |s| {
         if let Some(value) = connect::prompt_value(&answer, DEFAULT_PROMPT) {
             s.pr_prompt = value;
@@ -682,7 +684,10 @@ fn connect_dialog(
         let account = account.or(saved_account).unwrap_or_default();
         let title = format!("Kết nối {}", service.display_name());
         let info = connect::info(service, host.as_deref());
-        match dialogs::ask_token(&title, &info, notice.as_deref(), &account) {
+        let answer = dialogs::ask_token(&title, &info, notice.as_deref(), &account);
+        // A key-take skipped while the dialog was open is retried now.
+        schedule_key_sync(&weak);
+        match answer {
             TokenAnswer::Cancel => {
                 with_state(&weak, |s| s.connecting = false);
             }
@@ -1095,6 +1100,9 @@ fn make_key_monitor(weak: &WeakState, key: &str) -> Option<KeyMonitor> {
     KeyMonitor::new(move |info: &KeyInfo| {
         let outcome = with_state(&weak, |s| {
             let host = s.panels.iter_mut().find(|p| p.key == key)?;
+            if !host.window.is_key() {
+                return None;
+            }
             let outcome = keyboard_mode::handle(
                 info.key_code,
                 &info.chars,
@@ -1258,9 +1266,15 @@ fn hotkey_handler(weak: &WeakState, which: Which) -> impl Fn() + 'static {
             return beep();
         }
         let weak = weak.clone();
-        main_queue::async_main(move || match which {
-            Which::Open => toggle_open(&weak),
-            Which::Next => jump_to_next_waiting(&weak),
+        main_queue::async_main(move || {
+            // A dialog may have opened since the hotkey fired.
+            if mac_app::modal_open() {
+                return beep();
+            }
+            match which {
+                Which::Open => toggle_open(&weak),
+                Which::Next => jump_to_next_waiting(&weak),
+            }
         });
     }
 }

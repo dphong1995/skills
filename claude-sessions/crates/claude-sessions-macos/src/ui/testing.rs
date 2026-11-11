@@ -110,7 +110,7 @@ fn run_invisible_modal<G: 'static>(
     delay: f64,
     setup: impl FnOnce(&objc2_app_kit::NSAlert) -> G + 'static,
     read: impl Fn(&objc2_app_kit::NSWindow) + 'static,
-) -> Result<(), String> {
+) -> Result<isize, String> {
     use std::cell::Cell;
     use std::rc::Rc;
     use std::sync::Arc;
@@ -135,6 +135,8 @@ fn run_invisible_modal<G: 'static>(
     });
     let ended = Rc::new(Cell::new(false));
     let over = ended.clone();
+    let response = Rc::new(Cell::new(0isize));
+    let answer = response.clone();
     crate::main_queue::run_loop_later(move || {
         let alert = NSAlert::new(mtm);
         alert.setMessageText(&NSString::from_str("test"));
@@ -152,11 +154,14 @@ fn run_invisible_modal<G: 'static>(
         unsafe {
             NSRunLoop::currentRunLoop().addTimer_forMode(&timer, NSModalPanelRunLoopMode);
         }
-        if activate {
-            crate::dialogs::run_alert(mtm, &alert);
+        let code = if activate {
+            crate::dialogs::run_alert(mtm, &alert)
         } else {
-            crate::dialogs::run_alert_above_panel(&alert);
-        }
+            crate::dialogs::run_alert_above_panel(&alert)
+        };
+        // The session may have ended by itself (Esc): the abort must not fire outside it.
+        timer.invalidate();
+        answer.set(code);
         over.set(true);
     });
     while !ended.get() {
@@ -166,7 +171,77 @@ fn run_invisible_modal<G: 'static>(
             .runMode_beforeDate(mode, &NSDate::dateWithTimeIntervalSinceNow(0.05));
     }
     finished.store(true, Ordering::SeqCst);
-    Ok(())
+    Ok(response.get())
+}
+
+/// Hands focus back to the app that was frontmost before a test activated this one.
+fn give_focus_back(front: Option<objc2::rc::Retained<objc2_app_kit::NSRunningApplication>>) {
+    if let Some(front) = front {
+        front.activateWithOptions(objc2_app_kit::NSApplicationActivationOptions::empty());
+    }
+}
+
+/// Test hook: starts an invisible, activated alert (see `run_invisible_modal`) and posts a synthetic `Esc` key-down
+/// (with the Caps Lock flag when `caps_lock`) 0.4 s into the session; returns the response the session ended with
+/// (`Esc` must end it with `NSAlertSecondButtonReturn`; otherwise an abort at 3 s ends it). Focus goes back to the
+/// app that was frontmost. Not part of the app's API.
+#[doc(hidden)]
+pub fn escape_response_during_modal(caps_lock: bool) -> Result<isize, String> {
+    use block2::RcBlock;
+    use objc2_app_kit::{
+        NSApplication, NSApplicationActivationPolicy, NSEvent, NSEventModifierFlags, NSEventType,
+        NSModalPanelRunLoopMode, NSWorkspace,
+    };
+    use objc2_foundation::{MainThreadMarker, NSPoint, NSRunLoop, NSString, NSTimer};
+
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let app = NSApplication::sharedApplication(mtm);
+    let policy = app.activationPolicy();
+    app.setActivationPolicy(NSApplicationActivationPolicy::Accessory);
+    let front = NSWorkspace::sharedWorkspace().frontmostApplication();
+    let flags = if caps_lock {
+        NSEventModifierFlags::CapsLock
+    } else {
+        NSEventModifierFlags::empty()
+    };
+    let result = run_invisible_modal(
+        "escape_response_during_modal",
+        true,
+        3.0,
+        move |alert| {
+            let window = alert.window();
+            window.setFrameOrigin(NSPoint::new(-30000.0, -30000.0));
+            let number = window.windowNumber();
+            let post = RcBlock::new(move |_: std::ptr::NonNull<NSTimer>| {
+                let esc = NSString::from_str("\u{1b}");
+                if let Some(event) = NSEvent::keyEventWithType_location_modifierFlags_timestamp_windowNumber_context_characters_charactersIgnoringModifiers_isARepeat_keyCode(
+                    NSEventType::KeyDown,
+                    NSPoint::new(0.0, 0.0),
+                    flags,
+                    0.0,
+                    number,
+                    None,
+                    &esc,
+                    &esc,
+                    false,
+                    crate::keys::KEY_CODE_ESCAPE,
+                ) {
+                    NSApplication::sharedApplication(mtm).postEvent_atStart(&event, true);
+                }
+            });
+            // SAFETY: the block is copied by the timer and only runs on the main run loop.
+            let timer = unsafe { NSTimer::timerWithTimeInterval_repeats_block(0.4, false, &post) };
+            // SAFETY: a live timer and a run-loop mode constant, on the main thread.
+            unsafe {
+                NSRunLoop::currentRunLoop().addTimer_forMode(&timer, NSModalPanelRunLoopMode);
+            }
+            timer
+        },
+        |_| (),
+    );
+    app.setActivationPolicy(policy);
+    give_focus_back(front);
+    result
 }
 
 /// Test hook: runs an invisible alert (see `run_invisible_modal`) with the app activated (as an accessory app, like the
@@ -185,13 +260,18 @@ pub fn alert_level_during_modal() -> Result<AlertInSession, String> {
     let app = NSApplication::sharedApplication(mtm);
     let policy = app.activationPolicy();
     app.setActivationPolicy(objc2_app_kit::NSApplicationActivationPolicy::Accessory);
+    let front = objc2_app_kit::NSWorkspace::sharedWorkspace().frontmostApplication();
     let seen = Rc::new(RefCell::new(None));
     let slot = seen.clone();
     let result = run_invisible_modal(
         "alert_level_during_modal",
         true,
         0.5,
-        |_| (),
+        |alert| {
+            alert
+                .window()
+                .setFrameOrigin(objc2_foundation::NSPoint::new(-30000.0, -30000.0));
+        },
         move |window| {
             *slot.borrow_mut() = Some(AlertInSession {
                 level: window.level(),
@@ -203,6 +283,7 @@ pub fn alert_level_during_modal() -> Result<AlertInSession, String> {
         },
     );
     app.setActivationPolicy(policy);
+    give_focus_back(front);
     result?;
     seen.borrow_mut()
         .take()
