@@ -336,6 +336,131 @@ fn field_text_flows_and_survives() -> Result<(), String> {
     Ok(())
 }
 
+fn two_field_scene(with_second: bool) -> claude_sessions_core::scene::Scene {
+    use claude_sessions_core::scene::{Field, Rect};
+    let mut scene = field_scene("", "Email");
+    if with_second {
+        scene.nodes[0].fields.push(Field {
+            key: "other".into(),
+            rect: Rect::new(10.0, 36.0, 180.0, 30.0),
+            text: String::new(),
+            placeholder: "Other".into(),
+        });
+    }
+    scene
+}
+
+type FieldPanel = (
+    claude_sessions_macos::ui::WidgetPanelHandle,
+    std::rc::Rc<std::cell::RefCell<Vec<claude_sessions_macos::ui::UiEvent>>>,
+);
+
+/// A hidden-until-shown widget panel with `scene`, optionally key (keyboard mode), and the events its fields emit.
+fn field_panel(key: bool) -> Result<FieldPanel, String> {
+    use claude_sessions_core::scene::Rect;
+    use claude_sessions_macos::ui::WidgetPanelHandle;
+    let events: std::rc::Rc<std::cell::RefCell<Vec<_>>> = Default::default();
+    let sink = events.clone();
+    let panel = WidgetPanelHandle::new(
+        Rect::new(-3000.0, -3000.0, 200.0, 80.0),
+        std::rc::Rc::new(move |e| sink.borrow_mut().push(e)),
+    )
+    .ok_or("not on the main thread")?;
+    panel.show();
+    if key {
+        claude_sessions_macos::keys::enter_keyboard(&panel);
+        if !panel.is_key() {
+            return Err("the panel did not become key".into());
+        }
+    }
+    Ok((panel, events))
+}
+
+/// A field created by a scene update while the window is key takes the cursor; the newest one wins.
+fn newly_created_field_takes_focus() -> Result<(), String> {
+    use claude_sessions_macos::ui::testing::field;
+    let (panel, _events) = field_panel(true)?;
+    let view = panel.view();
+    view.set_scene(&claude_sessions_core::scene::Scene::default());
+    view.set_scene(&two_field_scene(false));
+    let first = field(&view, "email").ok_or("no email field")?;
+    if first.currentEditor().is_none() {
+        return Err("the new field did not take the cursor".into());
+    }
+    view.set_scene(&two_field_scene(true));
+    let second = field(&view, "other").ok_or("no second field")?;
+    let result = if second.currentEditor().is_none() {
+        Err("the second new field did not take the cursor".to_string())
+    } else if first.currentEditor().is_some() {
+        Err("the older field kept the cursor".to_string())
+    } else {
+        Ok(())
+    };
+    panel.close();
+    result
+}
+
+/// A window that is not key keeps its first responder: the field waits for `enter_keyboard`.
+fn field_created_while_not_key_is_not_forced() -> Result<(), String> {
+    use claude_sessions_macos::ui::testing::field;
+    let (panel, _events) = field_panel(false)?;
+    if panel.is_key() {
+        return Err("the panel is key already".into());
+    }
+    let view = panel.view();
+    view.set_scene(&two_field_scene(false));
+    view.set_scene(&two_field_scene(true));
+    let result = match (field(&view, "email"), field(&view, "other")) {
+        (Some(a), Some(b)) if a.currentEditor().is_none() && b.currentEditor().is_none() => Ok(()),
+        (Some(_), Some(_)) => {
+            Err("a field took the cursor in a window that is not key".to_string())
+        }
+        _ => Err("fields missing".to_string()),
+    };
+    panel.close();
+    result
+}
+
+/// Esc in a field (`cancelOperation:`) is consumed and reported with the field's key, for any field.
+fn cancel_operation_emits_field_cancel() -> Result<(), String> {
+    use claude_sessions_macos::ui::UiEvent;
+    use claude_sessions_macos::ui::testing::field;
+    use objc2::sel;
+    use objc2_app_kit::{NSControlTextEditingDelegate, NSTextView};
+    use objc2_foundation::MainThreadMarker;
+
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let (panel, events) = field_panel(false)?;
+    let view = panel.view();
+    view.set_scene(&two_field_scene(true));
+    let text_view = NSTextView::new(mtm);
+    // The `Khác…` field has the same delegate path as the reply field, so the second field stands for it.
+    for key in ["email", "other"] {
+        let f = field(&view, key).ok_or("no field")?;
+        let delegate = f.delegate().ok_or("no delegate")?;
+        // SAFETY: plain delegate calls with live objects.
+        let consumed = unsafe {
+            delegate.control_textView_doCommandBySelector(&f, &text_view, sel!(cancelOperation:))
+        };
+        if !consumed {
+            return Err(format!("Esc in {key} was not consumed"));
+        }
+    }
+    panel.close();
+    let want = vec![
+        UiEvent::FieldCancel {
+            key: "email".into(),
+        },
+        UiEvent::FieldCancel {
+            key: "other".into(),
+        },
+    ];
+    if *events.borrow() != want {
+        return Err(format!("events: {:?}", events.borrow()));
+    }
+    Ok(())
+}
+
 /// A scroll host that went away takes its scroll view out of the view tree.
 fn scroll_host_is_removed() -> Result<(), String> {
     use claude_sessions_core::scene::{Node, Rect, Size};
@@ -959,6 +1084,18 @@ fn main() {
     results.push((
         "field_text_flows_and_survives",
         field_text_flows_and_survives(),
+    ));
+    results.push((
+        "newly_created_field_takes_focus",
+        newly_created_field_takes_focus(),
+    ));
+    results.push((
+        "field_created_while_not_key_is_not_forced",
+        field_created_while_not_key_is_not_forced(),
+    ));
+    results.push((
+        "cancel_operation_emits_field_cancel",
+        cancel_operation_emits_field_cancel(),
     ));
     results.push(("scroll_host_is_removed", scroll_host_is_removed()));
     results.push((

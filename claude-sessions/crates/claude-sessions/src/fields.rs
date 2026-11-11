@@ -91,6 +91,28 @@ pub fn submit_target(
     }
 }
 
+/// Esc in the field `key`: ends that field's editing (`PanelState.editing`, or the open `Khác…` field), nothing else.
+/// Returns whether anything changed.
+pub fn cancel(key: &str, panel: &mut PanelState) -> bool {
+    let Some(field) = parse(key) else {
+        return false;
+    };
+    let (id, kind) = match field {
+        Field::Reply(id) => (id, EditKind::Reply),
+        Field::Deny(id) => (id, EditKind::Deny),
+        Field::Other(..) => {
+            return panel
+                .other_key
+                .take_if(|k| k == key.strip_prefix("other-").unwrap_or(""))
+                .is_some();
+        }
+    };
+    panel
+        .editing
+        .take_if(|e| e.id == id && e.kind == kind)
+        .is_some()
+}
+
 /// The text of the field a click on `target` belongs to: the reply or deny-reason draft, empty for other targets.
 pub fn text_for<'a>(target: &Target, drafts: &'a HashMap<String, String>) -> &'a str {
     let key = match target {

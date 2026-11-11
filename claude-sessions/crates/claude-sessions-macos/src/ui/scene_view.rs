@@ -332,6 +332,8 @@ impl SceneView {
         };
         let mut nodes = ivars.nodes.borrow_mut();
         let mut fading_out = Vec::new();
+        // The last field this update created: it takes the cursor when the window is key.
+        let mut created_field = None;
 
         for node in diff.added.iter().filter(|n| n.scroll.is_none()) {
             let mut start = place(node);
@@ -340,7 +342,7 @@ impl SceneView {
             }
             let view = NodeView::new(mtm, &node.key.0, start);
             view.set_cmds(&node.cmds, false);
-            view.set_fields(&node.fields, &sink);
+            created_field = view.set_fields(&node.fields, &sink).or(created_field);
             view.set_spinner(node.spinner, spin);
             view.set_tips(&node.tips);
             if animate {
@@ -379,7 +381,9 @@ impl SceneView {
             if prev.is_none_or(|p| p.fields != update.node.fields)
                 || view.field_text_differs(&update.node.fields)
             {
-                view.set_fields(&update.node.fields, &sink);
+                created_field = view
+                    .set_fields(&update.node.fields, &sink)
+                    .or(created_field);
             }
             if prev.is_none_or(|p| p.spinner != update.node.spinner) {
                 view.set_spinner(update.node.spinner, spin);
@@ -527,6 +531,12 @@ impl SceneView {
             && let Some(window) = self.window()
         {
             window.invalidateCursorRectsForView(self);
+        }
+        // Only a field created by this update, and only in a key window (otherwise the cursor would move unseen).
+        if let (Some(field), Some(window)) = (created_field, self.window())
+            && window.isKeyWindow()
+        {
+            window.makeFirstResponder(Some(&field));
         }
     }
 }

@@ -82,12 +82,14 @@ define_class!(
             _text_view: &NSTextView,
             command: Sel,
         ) -> Bool {
-            if command != sel!(insertNewline:) {
+            let key = self.ivars().key.clone();
+            if command == sel!(insertNewline:) {
+                (self.ivars().sink)(UiEvent::FieldSubmit { key });
+            } else if command == sel!(cancelOperation:) {
+                (self.ivars().sink)(UiEvent::FieldCancel { key });
+            } else {
                 return Bool::NO;
             }
-            (self.ivars().sink)(UiEvent::FieldSubmit {
-                key: self.ivars().key.clone(),
-            });
             Bool::YES
         }
     }
@@ -343,8 +345,13 @@ impl NodeView {
 
     /// Adds, moves and removes the native text fields. The text is set only when the scene's text for a field changed and
     /// the field is not being edited, so what the user typed survives a scene that did not change it; `sink` gets the
-    /// field's `FieldChanged` and `FieldSubmit` events.
-    pub(crate) fn set_fields(&self, fields: &[Field], sink: &EventHandler) {
+    /// field's `FieldChanged`, `FieldSubmit` and `FieldCancel` events. Returns the last field this call created.
+    pub(crate) fn set_fields(
+        &self,
+        fields: &[Field],
+        sink: &EventHandler,
+    ) -> Option<Retained<NSTextField>> {
+        let mut created = None;
         let mtm = self.mtm();
         let mut have = self.ivars().fields.borrow_mut();
         have.retain(|slot| {
@@ -364,6 +371,7 @@ impl NodeView {
                     unsafe { view.setDelegate(Some(ProtocolObject::from_ref(&*delegate))) };
                     self.addSubview(&view);
                     view.setStringValue(&NSString::from_str(&field.text));
+                    created = Some(view.clone());
                     have.push(FieldSlot {
                         key: field.key.clone(),
                         view,
@@ -382,6 +390,7 @@ impl NodeView {
                 slot.view.setStringValue(&NSString::from_str(&field.text));
             }
         }
+        created
     }
 
     /// Whether a native field shows other text than the scene's, so `set_fields` has to run although the scene is the same.
@@ -392,6 +401,16 @@ impl NodeView {
                 .find(|slot| slot.key == f.key)
                 .is_some_and(|slot| slot.view.stringValue().to_string() != f.text)
         })
+    }
+
+    /// The native text field with `Field.key` `key`, if this node has it.
+    pub(crate) fn field(&self, key: &str) -> Option<Retained<NSTextField>> {
+        self.ivars()
+            .fields
+            .borrow()
+            .iter()
+            .find(|slot| slot.key == key)
+            .map(|slot| slot.view.clone())
     }
 
     /// The first native text field of this node, if any.

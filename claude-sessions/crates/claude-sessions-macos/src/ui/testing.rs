@@ -63,3 +63,14 @@ pub fn animate_first_node_frame(
     );
     true
 }
+
+/// The native text field with `Field.key` `key`, wherever it sits in `view`.
+pub fn field(
+    view: &SceneView,
+    key: &str,
+) -> Option<objc2::rc::Retained<objc2_app_kit::NSTextField>> {
+    view.subviews()
+        .iter()
+        .filter_map(|v| v.downcast::<NodeView>().ok())
+        .find_map(|n| n.field(key))
+}

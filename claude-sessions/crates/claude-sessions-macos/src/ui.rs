@@ -44,6 +44,10 @@ pub enum UiEvent {
     FieldSubmit {
         key: String,
     },
+    /// Esc was pressed in the text field with this `Field.key` (the key press is consumed).
+    FieldCancel {
+        key: String,
+    },
 }
 
 /// Receives what the user does in a scene.

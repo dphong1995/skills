@@ -164,3 +164,43 @@ fn drafts_fill_the_fields_of_a_rebuilt_scene() {
         .unwrap();
     assert_eq!(field.text, "kept");
 }
+
+#[test]
+fn cancel_ends_only_the_field_that_is_open() {
+    let editing = |id: &str, kind| Editing {
+        id: id.into(),
+        kind,
+        tool_id: None,
+    };
+    let mut panel = PanelState::default();
+    panel.editing = Some(editing("s1", EditKind::Reply));
+    panel.keyboard = true;
+    // Another session's or another kind's field is not the open one.
+    assert!(!fields::cancel("reply-s2", &mut panel));
+    assert!(!fields::cancel("deny-s1", &mut panel));
+    assert!(panel.editing.is_some());
+    assert!(fields::cancel("reply-s1", &mut panel));
+    assert!(panel.editing.is_none());
+    assert!(panel.keyboard, "keyboard mode stays");
+    assert!(!fields::cancel("reply-s1", &mut panel));
+    panel.editing = Some(editing("s1", EditKind::Deny));
+    assert!(fields::cancel("deny-s1", &mut panel));
+    assert!(panel.editing.is_none());
+}
+
+#[test]
+fn cancel_in_other_field_closes_that_field_only() {
+    let mut panel = PanelState::default();
+    panel.other_key = Some("s1#0".into());
+    panel.editing = Some(Editing {
+        id: "s1".into(),
+        kind: EditKind::Reply,
+        tool_id: None,
+    });
+    assert!(!fields::cancel("other-s1#1", &mut panel));
+    assert!(panel.other_key.is_some());
+    assert!(fields::cancel("other-s1#0", &mut panel));
+    assert!(panel.other_key.is_none());
+    assert!(panel.editing.is_some(), "an unrelated editor is untouched");
+    assert!(!fields::cancel("bogus", &mut panel));
+}
