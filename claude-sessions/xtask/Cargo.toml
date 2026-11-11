@@ -1,0 +1,11 @@
+[package]
+name = "xtask"
+version = "0.0.1"
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+claude-sessions-macos = { workspace = true, features = ["hid"] }
+
+[lints]
+workspace = true

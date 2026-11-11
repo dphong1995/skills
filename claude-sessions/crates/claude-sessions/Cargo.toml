@@ -1,0 +1,20 @@
+[package]
+name = "claude-sessions"
+version = "0.0.1"
+edition.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "ClaudeSessions"
+path = "src/main.rs"
+
+[[test]]
+name = "gui"
+harness = false
+
+[dependencies]
+claude-sessions-core.workspace = true
+claude-sessions-macos.workspace = true
+
+[lints]
+workspace = true

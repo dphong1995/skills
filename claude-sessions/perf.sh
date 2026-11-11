@@ -3,8 +3,26 @@
 # Run from anywhere on an otherwise quiet machine; prints a PASS/FAIL table and exits 1 on any FAIL.
 # Env: PERF_PHASE_SECONDS (default 60). The fixture lives in .build/perf-fixture (delete it to regenerate).
 # Never touches ~/.claude, the Keychain or the installed app: the binary gets CLAUDE_SESSIONS_ROOT.
+#
+# --ab [--gate]: A/B run of the Swift build against the Rust build (`cargo xtask bundle`) on the same fixture. Each metric is
+# the median of AB_ROUNDS (5) interleaved rounds (the first binary alternates per round); prints
+# `metric | swift (median) | rust (median) | rule | PASS/FAIL` plus every round's raw numbers, exits 1 on any FAIL and
+# refuses to run while another ClaudeSessions process runs. --gate uses .build/perf-fixture-gate (3 tiny sessions:
+# waiting, busy, idle) and runs settle + idle only. Rules: Rust footprint <= Swift; CPU <= Swift x 1.1 or within 0.1
+# percentage point; idle wakeups <= Swift x 1.1 or within 0.5/s; footprint growth in a phase < 5 MB.
 
 cd "$(dirname "$0")" || exit 1
+
+AB=0
+GATE=0
+for arg in "$@"; do
+    case "$arg" in
+        --ab) AB=1 ;;
+        --gate) GATE=1 ;;
+        *) echo "usage: perf.sh [--ab [--gate]]"; exit 2 ;;
+    esac
+done
+[ "$GATE" -eq 1 ] && [ "$AB" -eq 0 ] && { echo "--gate needs --ab"; exit 2; }
 
 PHASE=${PERF_PHASE_SECONDS:-60}
 FOOTPRINT_MAX_MB=100
@@ -19,6 +37,13 @@ BIG_MB=230
 
 ROOT="$PWD/.build/perf-fixture"
 BIN="$PWD/.build/release/ClaudeSessions"
+SWIFT_BIN="$BIN"
+RUST_BIN="$PWD/target/bundle/ClaudeSessions.app/Contents/MacOS/ClaudeSessions"
+AB_ROUNDS=${AB_ROUNDS:-5}
+if [ "$GATE" -eq 1 ]; then
+    ROOT="$PWD/.build/perf-fixture-gate"
+    SESSIONS=3
+fi
 APP_PID=""
 WRITER_PID=""
 SLEEP_PIDS=()
@@ -44,9 +69,19 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT TERM
 
+if [ "$AB" -eq 1 ]; then
+    running=$(pgrep -x ClaudeSessions)
+    [ -n "$running" ] && { echo "another ClaudeSessions process is running (pid $running); quit it first"; exit 1; }
+fi
+
 echo "== build"
 swift build -c release --product ClaudeSessions 2>&1 | grep -v "ld: warning" | tail -2
 [ "${PIPESTATUS[0]}" -eq 0 ] && [ -x "$BIN" ] || { echo "build failed"; exit 1; }
+if [ "$AB" -eq 1 ]; then
+    echo "== build (rust)"
+    export PATH="$HOME/.cargo/bin:$PATH"
+    cargo xtask bundle > /dev/null && [ -x "$RUST_BIN" ] || { echo "rust build failed"; exit 1; }
+fi
 
 load=$(sysctl -n vm.loadavg | awk '{print $2}')
 cores=$(sysctl -n hw.ncpu)
@@ -62,12 +97,12 @@ TOOL_LINE='{"type":"assistant","isSidechain":false,"message":{"content":[{"type"
 
 mkdir -p "$ROOT/projects" "$ROOT/sessions" "$ROOT/tasks" "$ROOT/cwd"
 UNIT="$ROOT/unit.jsonl"
-if [ ! -s "$UNIT" ]; then
+if [ "$GATE" -eq 0 ] && [ ! -s "$UNIT" ]; then
     # 1 unit ~1 MB: 100 realistic turns, then lines the scanner skips without a JSON parse.
     FILLER='{"type":"progress","data":"'$(head -c 900 /dev/zero | tr '\0' 'x')'"}'
     { for _ in $(seq 100); do echo "$REAL"; done; for _ in $(seq 1000); do echo "$FILLER"; done; } > "$UNIT.tmp" && mv "$UNIT.tmp" "$UNIT"
 fi
-UNIT_SIZE=$(stat -f %z "$UNIT")
+[ "$GATE" -eq 0 ] && UNIT_SIZE=$(stat -f %z "$UNIT")
 
 name_of() { echo "perf-$1"; }
 transcript_of() { echo "$ROOT/projects/$(echo -n "$ROOT/cwd/$1" | sed 's/[^A-Za-z0-9]/-/g')/$(name_of "$1").jsonl"; }
@@ -81,7 +116,9 @@ for i in $(seq 0 $((SESSIONS - 1))); do
     for n in 1 2 3 4 5; do
         echo "{\"id\":\"$n\",\"subject\":\"Task $n\",\"status\":\"pending\",\"blocks\":[],\"blockedBy\":[]}" > "$ROOT/tasks/$(name_of "$i")/$n.json"
     done
-    if [ "$(stat -f %z "$t" 2>/dev/null)" != $((units * UNIT_SIZE)) ]; then
+    if [ "$GATE" -eq 1 ]; then
+        echo "$REAL" > "$t"
+    elif [ "$(stat -f %z "$t" 2>/dev/null)" != $((units * UNIT_SIZE)) ]; then
         echo "generating $(basename "$t") ($units MB)"
         for _ in $(seq "$units"); do cat "$UNIT"; done > "$t"
     fi
@@ -99,7 +136,9 @@ write_session() {
 }
 rm -f "$ROOT"/sessions/*.json
 for i in $(seq 0 $((SESSIONS - 1))); do
-    if [ "$i" -ge 7 ]; then write_session "$i" waiting; else write_session "$i" idle; fi
+    if [ "$GATE" -eq 1 ]; then
+        case "$i" in 0) write_session "$i" waiting ;; 1) write_session "$i" busy ;; *) write_session "$i" idle ;; esac
+    elif [ "$i" -ge 7 ]; then write_session "$i" waiting; else write_session "$i" idle; fi
 done
 
 # ---- readings ------------------------------------------------------------------------------------------------------
@@ -150,6 +189,11 @@ measure_phase() {
     wait $!
     cpu1=$(cpu_seconds); fp1=$(footprint_mb); w1=$(idle_wakeups)
     check_alive "$name end"
+    RAW_FP=$fp1
+    RAW_GROWTH=$(delta_of "$fp0" "$fp1" 1 %.1f)
+    RAW_CPU=$(delta_of "$cpu0" "$cpu1" "$(awk -v s="$PHASE" 'BEGIN{print 100 / s}')" %.2f)
+    RAW_WAKE=n/a
+    [ "$3" = wakeups ] && RAW_WAKE=$(delta_of "$w0" "$w1" "$(awk -v s="$PHASE" 'BEGIN{print 1 / s}')" %.2f)
     record "$name footprint end (MB)" "$fp1" "$FOOTPRINT_MAX_MB"
     record "$name footprint growth (MB)" "$(delta_of "$fp0" "$fp1" 1 %.1f)" "$GROWTH_MAX_MB"
     record "$name CPU (%)" "$(delta_of "$cpu0" "$cpu1" "$(awk -v s="$PHASE" 'BEGIN{print 100 / s}')" %.2f)" "$cpu_max"
@@ -157,28 +201,107 @@ measure_phase() {
 }
 
 # ---- run -----------------------------------------------------------------------------------------------------------
-echo "== start app"
-CLAUDE_SESSIONS_ROOT="$ROOT" "$BIN" > /dev/null 2>&1 &
-APP_PID=$!
-echo "app pid: $APP_PID (sample it with: sample $APP_PID 10)"
+# Starts $BIN on the fixture and waits until its CPU time stops rising; sets SETTLE_SECONDS, FAILs when it never calms down.
+start_and_settle() {
+    echo "== start app"
+    CLAUDE_SESSIONS_ROOT="$ROOT" "$BIN" > /dev/null 2>&1 &
+    APP_PID=$!
+    echo "app pid: $APP_PID (sample it with: sample $APP_PID 10)"
 
-echo "== settle (cputime rising < 0.05 s for 5 consecutive 1 s samples, cap ${SETTLE_CAP} s)"
-settle_start=$SECONDS
-quiet=0
-prev=$(cpu_seconds)
-while [ "$quiet" -lt 5 ] && [ $((SECONDS - settle_start)) -lt "$SETTLE_CAP" ]; do
-    sleep 1
-    app_alive || break
-    cur=$(cpu_seconds)
-    if is_num "$prev" && is_num "$cur" && awk -v a="$prev" -v b="$cur" 'BEGIN{exit !(b - a < 0.05)}'; then quiet=$((quiet + 1)); else quiet=0; fi
-    prev=$cur
-done
-settle=$((SECONDS - settle_start))
-check_alive settle
-if [ "$quiet" -lt 5 ]; then
-    FAILED=1
-    RESULTS+=("$(printf '%-34s | %10s | < %-8s | FAIL (not stable)' "settle (s)" "$settle" "$SETTLE_CAP")")
+    echo "== settle (cputime rising < 0.05 s for 5 consecutive 1 s samples, cap ${SETTLE_CAP} s)"
+    local settle_start=$SECONDS cur
+    quiet=0
+    local prev
+    prev=$(cpu_seconds)
+    while [ "$quiet" -lt 5 ] && [ $((SECONDS - settle_start)) -lt "$SETTLE_CAP" ]; do
+        sleep 1
+        app_alive || break
+        cur=$(cpu_seconds)
+        if is_num "$prev" && is_num "$cur" && awk -v a="$prev" -v b="$cur" 'BEGIN{exit !(b - a < 0.05)}'; then quiet=$((quiet + 1)); else quiet=0; fi
+        prev=$cur
+    done
+    settle=$((SECONDS - settle_start))
+    check_alive settle
+    if [ "$quiet" -lt 5 ]; then
+        FAILED=1
+        RESULTS+=("$(printf '%-34s | %10s | < %-8s | FAIL (not stable)' "settle (s)" "$settle" "$SETTLE_CAP")")
+    fi
+}
+
+stop_app() {
+    kill "$APP_PID" 2>/dev/null
+    for _ in $(seq 30); do kill -0 "$APP_PID" 2>/dev/null || break; sleep 0.1; done
+    app_alive && kill -9 "$APP_PID" 2>/dev/null
+    wait "$APP_PID" 2>/dev/null
+    APP_PID=""
+}
+
+# $1 = a list of numbers on separate lines; prints the median.
+median() { sort -n | awk '{ v[NR] = $1 } END { if (NR % 2) print v[(NR + 1) / 2]; else printf "%.2f", (v[NR / 2] + v[NR / 2 + 1]) / 2 }'; }
+
+# $1 swift median, $2 rust median, $3 mode (<= | x1.1+0.1 | x1.1+0.5 | lt5); prints PASS or FAIL.
+ab_verdict() {
+    is_num "$1" && is_num "$2" || { echo FAIL; return; }
+    awk -v s="$1" -v r="$2" -v m="$3" 'BEGIN {
+        if (m == "<=") ok = (r <= s)
+        else if (m == "x1.1+0.1") ok = (r <= s * 1.1 || r <= s + 0.1)
+        else if (m == "x1.1+0.5") ok = (r <= s * 1.1 || r <= s + 0.5)
+        else ok = (r < 5)
+        print ok ? "PASS" : "FAIL" }'
+}
+
+# A/B: AB_ROUNDS interleaved rounds, the first binary alternating; raw numbers go to AB_<app>_<metric> arrays.
+ab_main() {
+    local round app first
+    AB_ROWS=()
+    for round in $(seq 1 "$AB_ROUNDS"); do
+        if [ $((round % 2)) -eq 1 ]; then first=swift; else first=rust; fi
+        for app in "$first" "$([ "$first" = swift ] && echo rust || echo swift)"; do
+            echo "=== round $round: $app"
+            if [ "$app" = swift ]; then BIN=$SWIFT_BIN; else BIN=$RUST_BIN; fi
+            RESULTS=(); FAILED=0
+            start_and_settle
+            measure_phase idle "$CPU_IDLE_MAX" wakeups
+            AB_ROWS+=("$round $app idle $RAW_FP $RAW_GROWTH $RAW_CPU $RAW_WAKE")
+            if [ "$GATE" -eq 0 ]; then
+                for i in 0 1 2; do write_session "$i" busy; done
+                ( while true; do for i in 0 1 2; do echo "$TOOL_LINE" >> "$(transcript_of "$i")"; done; sleep 0.5; done ) 2>/dev/null &
+                WRITER_PID=$!
+                measure_phase load "$CPU_LOAD_MAX"
+                AB_ROWS+=("$round $app load $RAW_FP $RAW_GROWTH $RAW_CPU n/a")
+                kill "$WRITER_PID" 2>/dev/null; WRITER_PID=""
+                for i in 0 1 2; do write_session "$i" idle; done
+            fi
+            stop_app
+        done
+    done
+    local phases="idle"; [ "$GATE" -eq 0 ] && phases="idle load"
+    local ab_failed=0 phase metric col mode swift_m rust_m verdict
+    echo
+    printf '%-26s | %14s | %14s | %-18s | %s\n' metric "swift (median)" "rust (median)" rule result
+    for phase in $phases; do
+        for metric in "footprint end (MB):4:<=:rust <= swift" "footprint growth (MB):5:lt5:rust < 5" "CPU (%):6:x1.1+0.1:rust <= x1.1 or +0.1" "idle wakeups (/s):7:x1.1+0.5:rust <= x1.1 or +0.5"; do
+            IFS=: read -r label col mode rule <<< "$metric"
+            [ "$col" = 7 ] && [ "$phase" = load ] && continue
+            swift_m=$(printf '%s\n' "${AB_ROWS[@]}" | awk -v p="$phase" -v c="$col" '$2 == "swift" && $3 == p { print $c }' | median)
+            rust_m=$(printf '%s\n' "${AB_ROWS[@]}" | awk -v p="$phase" -v c="$col" '$2 == "rust" && $3 == p { print $c }' | median)
+            verdict=$(ab_verdict "$swift_m" "$rust_m" "$mode")
+            [ "$verdict" = FAIL ] && ab_failed=1
+            printf '%-26s | %14s | %14s | %-18s | %s\n' "$phase $label" "$swift_m" "$rust_m" "$rule" "$verdict"
+        done
+    done
+    echo
+    echo "raw rounds: round app phase footprint_mb growth_mb cpu_pct wakeups_per_s"
+    printf '%s\n' "${AB_ROWS[@]}"
+    return "$ab_failed"
+}
+
+if [ "$AB" -eq 1 ]; then
+    ab_main
+    exit $?
 fi
+
+start_and_settle
 
 echo "== idle phase (${PHASE} s)"
 measure_phase idle "$CPU_IDLE_MAX" wakeups

@@ -1,0 +1,315 @@
+//! The scene: pure data that views produce and the AppKit layer draws. Origin is top-left (flipped), units are points.
+
+use std::collections::HashMap;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Point {
+    pub x: f64,
+    pub y: f64,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Size {
+    pub w: f64,
+    pub h: f64,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Rect {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+}
+
+impl Rect {
+    pub const fn new(x: f64, y: f64, w: f64, h: f64) -> Self {
+        Self { x, y, w, h }
+    }
+
+    pub fn contains(&self, p: Point) -> bool {
+        p.x >= self.x && p.x < self.x + self.w && p.y >= self.y && p.y < self.y + self.h
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Appearance {
+    Dark,
+    Light,
+}
+
+/// Colour tokens; each resolves to an RGBA value per appearance.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ThemeColor {
+    Panel,
+    PanelStroke,
+    Row,
+    RowAttention,
+    Code,
+    Button,
+    Text,
+    TextSecondary,
+    Red,
+    Orange,
+    Green,
+    Blue,
+    Yellow,
+}
+
+impl ThemeColor {
+    pub fn rgba(self, appearance: Appearance) -> [f64; 4] {
+        let dark = appearance == Appearance::Dark;
+        let pick = |d: [f64; 4], l: [f64; 4]| if dark { d } else { l };
+        match self {
+            Self::Panel => pick([0.10, 0.11, 0.14, 0.94], [0.97, 0.97, 0.98, 0.95]),
+            Self::PanelStroke => pick([1.0, 1.0, 1.0, 0.10], [0.0, 0.0, 0.0, 0.12]),
+            Self::Row => pick([1.0, 1.0, 1.0, 0.06], [0.0, 0.0, 0.0, 0.05]),
+            Self::RowAttention => pick([1.0, 0.75, 0.2, 0.10], [1.0, 0.6, 0.0, 0.12]),
+            Self::Code => pick([0.0, 0.0, 0.0, 0.35], [0.0, 0.0, 0.0, 0.07]),
+            Self::Button => pick([1.0, 1.0, 1.0, 0.14], [0.0, 0.0, 0.0, 0.08]),
+            Self::Text => pick([1.0, 1.0, 1.0, 0.92], [0.0, 0.0, 0.0, 0.88]),
+            Self::TextSecondary => pick([1.0, 1.0, 1.0, 0.55], [0.0, 0.0, 0.0, 0.55]),
+            Self::Red => pick([1.0, 0.38, 0.35, 1.0], [0.85, 0.15, 0.12, 1.0]),
+            Self::Orange => pick([1.0, 0.72, 0.25, 1.0], [0.85, 0.5, 0.0, 1.0]),
+            Self::Green => pick([0.2, 0.84, 0.35, 1.0], [0.1, 0.62, 0.2, 1.0]),
+            Self::Blue => pick([0.35, 0.65, 1.0, 1.0], [0.0, 0.4, 0.9, 1.0]),
+            Self::Yellow => pick([1.0, 0.82, 0.1, 1.0], [0.8, 0.6, 0.0, 1.0]),
+        }
+    }
+
+    pub const fn opaque(self) -> Color {
+        Color {
+            token: self,
+            alpha: 1.0,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Color {
+    pub token: ThemeColor,
+    /// Multiplied into the token's own alpha.
+    pub alpha: f64,
+}
+
+impl Color {
+    pub fn resolve(self, appearance: Appearance) -> [f64; 4] {
+        let [r, g, b, a] = self.token.rgba(appearance);
+        [r, g, b, a * self.alpha]
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Weight {
+    Regular,
+    Medium,
+    Semibold,
+    Bold,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FontSpec {
+    pub size: f64,
+    pub weight: Weight,
+    pub mono: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Align {
+    Left,
+    Center,
+    Right,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum DrawCmd {
+    RoundedRect {
+        rect: Rect,
+        radius: f64,
+        fill: Option<Color>,
+        stroke: Option<Color>,
+    },
+    /// `max_lines` 0 = unlimited; text beyond it is cut with an ellipsis.
+    Text {
+        rect: Rect,
+        text: String,
+        font: FontSpec,
+        color: Color,
+        max_lines: u32,
+        align: Align,
+    },
+    /// An SF Symbol by name.
+    Symbol {
+        name: String,
+        rect: Rect,
+        color: Color,
+        weight: Weight,
+    },
+    Line {
+        from: Point,
+        to: Point,
+        color: Color,
+        width: f64,
+    },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct HitId(pub u32);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Cursor {
+    Arrow,
+    Pointer,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Hit {
+    pub rect: Rect,
+    pub id: HitId,
+    pub cursor: Cursor,
+}
+
+/// A native, editable text field laid over the scene.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Field {
+    pub key: String,
+    pub rect: Rect,
+    pub text: String,
+    pub placeholder: String,
+}
+
+/// Stable per pill/header/section/card/row so the renderer can tell what changed.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct NodeKey(pub String);
+
+impl From<&str> for NodeKey {
+    fn from(key: &str) -> Self {
+        Self(key.to_owned())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Node {
+    pub key: NodeKey,
+    /// In scene points; draw commands are relative to the node's own top-left.
+    pub frame: Rect,
+    pub cmds: Vec<DrawCmd>,
+    /// Relative to the node's top-left.
+    pub hits: Vec<Hit>,
+    pub fields: Vec<Field>,
+    /// The loading spinner's rect relative to the node's top-left, if it shows one.
+    pub spinner: Option<Rect>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Scene {
+    pub size: Size,
+    pub nodes: Vec<Node>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct NodeUpdate<'a> {
+    pub node: &'a Node,
+    pub frame_changed: bool,
+    pub cmds_changed: bool,
+}
+
+#[derive(Debug, Default, PartialEq)]
+pub struct SceneDiff<'a> {
+    pub added: Vec<&'a Node>,
+    pub removed: Vec<&'a NodeKey>,
+    /// Nodes present in both scenes that differ in any way; unchanged nodes are absent.
+    pub updated: Vec<NodeUpdate<'a>>,
+}
+
+/// What changed from `old` to `new`, by node key.
+pub fn changed_nodes<'a>(old: &'a Scene, new: &'a Scene) -> SceneDiff<'a> {
+    let before: HashMap<&NodeKey, &Node> = old.nodes.iter().map(|n| (&n.key, n)).collect();
+    let mut diff = SceneDiff::default();
+    for node in &new.nodes {
+        match before.get(&node.key) {
+            None => diff.added.push(node),
+            Some(prev) if *prev != node => diff.updated.push(NodeUpdate {
+                node,
+                frame_changed: prev.frame != node.frame,
+                cmds_changed: prev.cmds != node.cmds,
+            }),
+            Some(_) => {}
+        }
+    }
+    let after: HashMap<&NodeKey, ()> = new.nodes.iter().map(|n| (&n.key, ())).collect();
+    diff.removed = old
+        .nodes
+        .iter()
+        .map(|n| &n.key)
+        .filter(|k| !after.contains_key(k))
+        .collect();
+    diff
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn node(key: &str, x: f64, text: &str) -> Node {
+        Node {
+            key: key.into(),
+            frame: Rect::new(x, 0.0, 10.0, 10.0),
+            cmds: vec![DrawCmd::Text {
+                rect: Rect::new(0.0, 0.0, 10.0, 10.0),
+                text: text.into(),
+                font: FontSpec {
+                    size: 12.0,
+                    weight: Weight::Regular,
+                    mono: false,
+                },
+                color: ThemeColor::Text.opaque(),
+                max_lines: 1,
+                align: Align::Left,
+            }],
+            hits: vec![],
+            fields: vec![],
+            spinner: None,
+        }
+    }
+
+    fn scene(nodes: Vec<Node>) -> Scene {
+        Scene {
+            size: Size { w: 100.0, h: 100.0 },
+            nodes,
+        }
+    }
+
+    #[test]
+    fn identical_scenes_have_no_changes() {
+        let s = scene(vec![node("a", 0.0, "x"), node("b", 5.0, "y")]);
+        assert_eq!(changed_nodes(&s, &s.clone()), SceneDiff::default());
+    }
+
+    #[test]
+    fn reports_added_removed_and_what_changed() {
+        let old = scene(vec![
+            node("a", 0.0, "x"),
+            node("b", 0.0, "y"),
+            node("c", 0.0, "z"),
+        ]);
+        let new = scene(vec![
+            node("a", 0.0, "x"),
+            node("b", 7.0, "y"),
+            node("c", 0.0, "changed"),
+            node("d", 0.0, "n"),
+        ]);
+        let diff = changed_nodes(&old, &new);
+        assert_eq!(diff.added.len(), 1);
+        assert_eq!(diff.added[0].key, "d".into());
+        assert!(diff.removed.is_empty());
+        let flags: Vec<_> = diff
+            .updated
+            .iter()
+            .map(|u| (u.node.key.0.as_str(), u.frame_changed, u.cmds_changed))
+            .collect();
+        assert_eq!(flags, [("b", true, false), ("c", false, true)]);
+        let gone = changed_nodes(&new, &old);
+        assert_eq!(gone.removed, [&NodeKey::from("d")]);
+    }
+}

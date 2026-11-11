@@ -3,3 +3,4 @@ skills/*/tests/out/
 .omc/
 plans/
 claude-sessions/.build/
+claude-sessions/target/
