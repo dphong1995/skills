@@ -4,7 +4,7 @@ use std::ffi::c_void;
 use std::path::Path;
 use std::ptr::NonNull;
 
-use claude_sessions_core::scene::{Appearance, Scene};
+use claude_sessions_core::scene::{Appearance, DrawCmd, Point, Scene, ThemeColor};
 use objc2::AnyThread;
 use objc2_app_kit::{NSApplication, NSBitmapImageFileType, NSBitmapImageRep, NSGraphicsContext};
 use objc2_core_foundation::{CFRetained, CGPoint, CGRect, CGSize};
@@ -76,6 +76,20 @@ pub fn render_png(
             ),
         );
         draw_cmds(&node.cmds, appearance);
+        if let Some(r) = node.spinner {
+            // The live spinner is a Core Animation layer; an offscreen render draws it still, at the same place and size.
+            draw_cmds(
+                &[DrawCmd::Arc {
+                    center: Point::new(r.x + r.w / 2.0, r.y + r.h / 2.0),
+                    radius: (r.w - 2.0) / 2.0,
+                    width: 2.0,
+                    start: 0.0,
+                    end: 270.0,
+                    color: ThemeColor::Blue.opaque(),
+                }],
+                appearance,
+            );
+        }
         gc.restoreGraphicsState();
     }
     NSGraphicsContext::restoreGraphicsState_class();

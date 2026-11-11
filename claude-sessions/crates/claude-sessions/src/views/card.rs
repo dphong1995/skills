@@ -58,11 +58,19 @@ pub fn node(ctx: &mut Ctx, s: &Session, y: f64, layout: &CardLayout) -> Node {
     if s.color_status() == "busy" && !s.waits_in_background() {
         c.spinner = Some(icon);
     } else {
+        // A solid circle with the plain glyph on it: the hierarchical `.circle.fill` symbols draw their glyph dim.
+        let glyph = theme::status_symbol(s).trim_end_matches(".circle.fill");
+        let (fill, ink) = if s.waits_in_background() {
+            (theme::tint(ThemeColor::Blue, 0.25), theme::status_color(s))
+        } else {
+            (theme::status_color(s), theme::solid(ThemeColor::White))
+        };
+        c.rrect(icon, theme::ICON / 2.0, Some(fill), None);
         c.symbol(
-            theme::status_symbol(s),
-            icon,
-            theme::status_color(s),
-            Weight::Regular,
+            glyph,
+            Rect::new(icon.x + 3.0, icon.y + 3.0, icon.w - 6.0, icon.h - 6.0),
+            ink,
+            Weight::Bold,
         );
     }
 
@@ -90,15 +98,17 @@ pub fn node(ctx: &mut Ctx, s: &Session, y: f64, layout: &CardLayout) -> Node {
         .measure(s.title(), &theme::TITLE_FONT, layout.title_w, 2)
         .w;
     let label = state_label(s);
-    let state_w = ctx.text_w(&label, &theme::STATE_FONT);
-    c.text(
-        Rect::new(tx + title_w + 6.0, CARD_PAD_Y + 2.0, state_w + 2.0, 15.0),
-        &label,
-        theme::STATE_FONT,
-        theme::status_color(s),
-        1,
-        Align::Left,
-    );
+    if !label.is_empty() {
+        let state_w = ctx.text_w(&label, &theme::STATE_FONT);
+        c.text(
+            Rect::new(tx + title_w + 6.0, CARD_PAD_Y + 2.0, state_w + 2.0, 15.0),
+            &label,
+            theme::STATE_FONT,
+            theme::status_color(s),
+            1,
+            Align::Left,
+        );
+    }
     let sub = Rect::new(
         CARD_INSET,
         CARD_PAD_Y + layout.title_h,

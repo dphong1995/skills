@@ -1300,7 +1300,15 @@ pub fn state_question_7_fallback(dir: &Path, now: SystemTime) -> State {
     question(dir, now, 7)
 }
 
-/// Every state under its Swift name, in the order of `SnapshotTests.swift`.
+/// Not a Swift state: keyboard mode (mockup 3) over the picked single question card, which is the selected one.
+pub fn state_keyboard_mode(dir: &Path, now: SystemTime) -> State {
+    let (snap, mut panel) = question(dir, now, 2);
+    panel.keyboard = true;
+    panel.selected = Some("a".into());
+    (snap, panel)
+}
+
+/// Every state under its Swift name, in the order of `SnapshotTests.swift`, then `keyboard-mode`.
 pub const STATES: &[(&str, StateFn)] = &[
     ("01-empty-collapsed", state_01_empty_collapsed),
     ("02-all-busy-collapsed", state_02_all_busy_collapsed),
@@ -1377,4 +1385,5 @@ pub const STATES: &[(&str, StateFn)] = &[
     ("question-5-countdown", state_question_5_countdown),
     ("question-6-sent", state_question_6_sent),
     ("question-7-fallback", state_question_7_fallback),
+    ("keyboard-mode", state_keyboard_mode),
 ];

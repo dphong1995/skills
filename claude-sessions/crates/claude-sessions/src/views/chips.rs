@@ -35,9 +35,32 @@ pub fn draw_chips(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
     let view = ctx.view;
     let y = block.y + (block.h - CHIP_H) / 2.0;
     let mut x = CARD_INSET;
-    for link in &s.links {
+    let count = s.menu_count().to_string();
+    let menu_w = ctx.text_w(&count, &theme::META_FONT) + 34.0;
+    let widths: Vec<f64> = s
+        .links
+        .iter()
+        .map(|l| {
+            let icon = if l.icon_url.is_some() { 18.0 } else { 0.0 };
+            ctx.text_w(&l.label, &theme::META_FONT) + 16.0 + icon
+        })
+        .collect();
+    // Chips that do not fit before the menu chip collapse into a `+N` chip.
+    let right = CARD_INSET + TEXT_W;
+    let shown = (0..=widths.len())
+        .rev()
+        .find(|&k| {
+            let more = if k < widths.len() {
+                ctx.text_w(&format!("+{}", widths.len() - k), &theme::META_FONT) + 22.0
+            } else {
+                -6.0
+            };
+            let used: f64 = widths[..k].iter().map(|w| w + 6.0).sum();
+            CARD_INSET + used + more + 6.0 + menu_w <= right
+        })
+        .unwrap_or(0);
+    for (link, &w) in s.links.iter().zip(&widths).take(shown) {
         let icon = if link.icon_url.is_some() { 18.0 } else { 0.0 };
-        let w = ctx.text_w(&link.label, &theme::META_FONT) + 16.0 + icon;
         let chip = Rect::new(x, y, w, CHIP_H);
         c.rrect(
             chip,
@@ -71,6 +94,27 @@ pub fn draw_chips(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
         );
         x += w + 6.0;
     }
+    if shown < widths.len() {
+        let label = format!("+{}", widths.len() - shown);
+        let w = ctx.text_w(&label, &theme::META_FONT) + 22.0;
+        let chip = Rect::new(x, y, w, CHIP_H);
+        c.rrect(
+            chip,
+            theme::CHIP_RADIUS,
+            Some(theme::solid(ThemeColor::Button)),
+            None,
+        );
+        c.label(
+            chip,
+            &label,
+            theme::META_FONT,
+            theme::solid(ThemeColor::TextSecondary),
+            Align::Center,
+        );
+        c.tip(chip, "Xem đủ trong danh sách");
+        c.hit(chip, Target::Menu(s.id.clone()));
+        x += w + 6.0;
+    }
     // The menu count; purple while a PR it does not list yet is new.
     let open = view.panel.open_menus.contains(&s.id);
     let hidden_mark = view
@@ -78,8 +122,7 @@ pub fn draw_chips(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
         .unseen
         .get(&s.id)
         .is_some_and(|m| m.prs.iter().any(|r| !s.prs.iter().any(|p| &p.ref_ == r)));
-    let count = s.menu_count().to_string();
-    let w = ctx.text_w(&count, &theme::META_FONT) + 34.0;
+    let w = menu_w;
     let chip = Rect::new(x, y, w, CHIP_H);
     let fill = if open {
         theme::tint(ThemeColor::Text, 0.22)

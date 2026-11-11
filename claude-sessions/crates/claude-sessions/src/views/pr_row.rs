@@ -53,7 +53,14 @@ fn flow(p: &PrPart) -> Option<(Option<&'static str>, String, ThemeColor)> {
             p.text.clone(),
             ThemeColor::TextSecondary,
         )),
-        PartKind::Person => Some((None, p.text.clone(), ThemeColor::TextFaint)),
+        // `Tin Tran 4m` is drawn `Tin Tran · 4m` (the text keeps its plain form for the one-line summary).
+        PartKind::Person => {
+            let text = match p.text.rsplit_once(' ') {
+                Some((name, ago)) => format!("{name} · {ago}"),
+                None => p.text.clone(),
+            };
+            Some((None, text, ThemeColor::TextFaint))
+        }
         PartKind::Clock => Some((Some("clock"), p.text.clone(), ThemeColor::TextFaint)),
         PartKind::State(_) | PartKind::Rabbit => None,
     }

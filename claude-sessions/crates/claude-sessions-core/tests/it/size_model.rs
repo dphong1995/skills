@@ -269,3 +269,43 @@ fn an_approval_result_line_adds_its_own_height_in_place_of_the_approval_block() 
     assert_eq!(with.height - base.height, SENT_LINE_H);
     assert!(with.find(Block::SentLine).is_some());
 }
+
+#[test]
+fn the_command_box_ends_one_padding_under_its_last_line() {
+    let box_h =
+        approval_height(1, false) - layout::CMD_MARGIN - layout::BLOCK_GAP - layout::BUTTON_H;
+    assert_eq!(
+        box_h,
+        layout::CMD_PAD + layout::CMD_LINE_H + layout::CMD_PAD
+    );
+    // 12 pt monospaced text is 15 pt per line.
+    assert_eq!(layout::CMD_LINE_H, 15.0);
+}
+
+#[test]
+fn a_generic_state_label_is_not_reserved_room_in_the_title() {
+    let w =
+        |s: Session| card_layout(&s, &snapshot(vec![s.clone()]), &panel(), &FakeMeasure).title_w;
+    let idle = Session::new("a", "a", "/w", "idle");
+    let mut bg = Session::new("b", "b", "/w", "busy");
+    bg.background_agents = Some(2);
+    assert_eq!(layout::state_label(&idle), "");
+    assert_eq!(
+        layout::state_label(&Session::new("c", "c", "/w", "busy")),
+        ""
+    );
+    assert_eq!(layout::state_label(&bg), "chờ 2 agent nền");
+    assert!(w(idle) > w(bg));
+}
+
+#[test]
+fn keyboard_mode_adds_the_hint_line_to_the_panel() {
+    let snap = snapshot(vec![approval("a", "ls")]);
+    let mut keys = panel();
+    keys.keyboard = true;
+    assert_eq!(
+        expanded_size(&snap, &keys, &FakeMeasure).h
+            - expanded_size(&snap, &panel(), &FakeMeasure).h,
+        layout::KEY_HINT_H
+    );
+}

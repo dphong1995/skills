@@ -378,6 +378,7 @@ fn expanded(ctx: &mut Ctx) -> Scene {
             }
             Item::Empty { y } => nodes.push(section::empty_node(ctx, *y)),
             Item::Closed { y, h } => nodes.push(closed::node(ctx, *y, *h)),
+            Item::KeyHint { y } => nodes.push(closed::key_hint_node(ctx, *y)),
         }
     }
     Scene {

@@ -29,7 +29,8 @@ pub const LINE_ROW_H: f64 = 20.0;
 pub const REPLY_GAP: f64 = 5.0;
 pub const CMD_MARGIN: f64 = 7.0;
 pub const CMD_PAD: f64 = 7.0;
-pub const CMD_LINE_H: f64 = 17.0;
+/// The line pitch of the 12 pt monospaced command text, so the box ends one `CMD_PAD` under its last line.
+pub const CMD_LINE_H: f64 = 15.0;
 pub const CMD_MAX_LINES: usize = 8;
 pub const BUTTON_H: f64 = 24.0;
 pub const BLOCK_GAP: f64 = 8.0;
@@ -51,6 +52,8 @@ pub const CARD_MIN_BUTTON_H: f64 = 60.0;
 pub const CLOSED_ROW_H: f64 = 26.0;
 pub const CLOSED_ITEM_H: f64 = 24.0;
 pub const EMPTY_H: f64 = 40.0;
+/// The key hint line at the bottom of the panel in keyboard mode.
+pub const KEY_HINT_H: f64 = 26.0;
 pub const SPARKLE_W: f64 = 18.0;
 
 const fn font(size: f64, weight: Weight, mono: bool) -> FontSpec {
@@ -62,9 +65,13 @@ pub const STATE_FONT: FontSpec = font(11.0, Weight::Semibold, false);
 pub const SUB_FONT: FontSpec = font(11.5, Weight::Regular, false);
 pub const REPLY_FONT: FontSpec = font(12.5, Weight::Regular, false);
 
-/// `chờ duyệt · Bash`, `chờ trả lời · 2 câu hỏi`, else the plain state text.
+/// `chờ duyệt · Bash`, `chờ trả lời · 2 câu hỏi`, else the plain state text. Empty when the text only repeats the
+/// section (plain `xong` in Done, plain `đang chạy` in Running).
 pub fn state_label(s: &Session) -> String {
     let base = text::status_text(s);
+    if s.question.is_none() && (base == "xong" || base == "đang chạy") {
+        return String::new();
+    }
     if let Some(q) = &s.question {
         return format!("{base} · {} câu hỏi", q.questions.len());
     }
@@ -248,7 +255,8 @@ pub fn card_layout(
 ) -> CardLayout {
     let new = snap.unseen.get(&s.id).is_some_and(|n| n.claude);
     let state_w = m.measure(&state_label(s), &STATE_FONT, f64::MAX / 4.0, 1).w;
-    let title_w = TEXT_W - RIGHT_COLUMN - state_w - 6.0 - if new { SPARKLE_W + 4.0 } else { 0.0 };
+    let state_gap = if state_w > 0.0 { state_w + 6.0 } else { 0.0 };
+    let title_w = TEXT_W - RIGHT_COLUMN - state_gap - if new { SPARKLE_W + 4.0 } else { 0.0 };
     let title_h = m.measure(s.title(), &TITLE_FONT, title_w.max(40.0), 2).h;
 
     let mut blocks = Vec::new();
@@ -335,6 +343,10 @@ pub enum Item {
         y: f64,
         h: f64,
     },
+    /// Keyboard mode only.
+    KeyHint {
+        y: f64,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -379,6 +391,10 @@ pub fn expanded_layout(snap: &Snapshot, panel: &PanelState, m: &dyn TextMeasure)
     if closed > 0.0 {
         items.push(Item::Closed { y, h: closed });
         y += closed;
+    }
+    if panel.keyboard {
+        items.push(Item::KeyHint { y });
+        y += KEY_HINT_H;
     }
     let content_h = y + PANEL_PAD;
     ExpandedLayout {

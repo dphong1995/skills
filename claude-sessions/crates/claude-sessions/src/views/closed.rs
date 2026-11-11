@@ -4,10 +4,23 @@
 use super::{Canvas, Ctx};
 use crate::hits::Target;
 use crate::theme;
-use claude_sessions_core::layout::{CARD_W, CLOSED_ITEM_H, CLOSED_ROW_H};
+use claude_sessions_core::layout::{CARD_W, CLOSED_ITEM_H, CLOSED_ROW_H, KEY_HINT_H, PANEL_PAD};
 use claude_sessions_core::scene::{Align, Node, Rect, ThemeColor, Weight};
 use claude_sessions_core::store::{SendKey, SendKind, SendState};
 use claude_sessions_core::text;
+
+/// The key hint line under the list while keyboard mode is on.
+pub fn key_hint_node(ctx: &mut Ctx, y: f64) -> Node {
+    let mut c = Canvas::default();
+    c.label(
+        Rect::new(12.0, 0.0, CARD_W - 24.0, KEY_HINT_H),
+        "↑↓ chọn thẻ · ↩ nhảy tới pane · R trả lời · Esc đóng",
+        theme::META_FONT,
+        theme::solid(ThemeColor::TextSecondary),
+        Align::Left,
+    );
+    ctx.node("key-hint", Rect::new(PANEL_PAD, y, CARD_W, KEY_HINT_H), c)
+}
 
 pub fn node(ctx: &mut Ctx, y: f64, h: f64) -> Node {
     let snap = ctx.view.snap;

@@ -4,7 +4,7 @@ use claude_sessions::views::{Built, View, build};
 use claude_sessions_core::feed::{BlockState, FeedItem, FeedOption, FeedQuestion};
 use claude_sessions_core::layout::{self, expanded_layout, expanded_size};
 use claude_sessions_core::panel_state::PanelState;
-use claude_sessions_core::scene::{DrawCmd, Node, Scene};
+use claude_sessions_core::scene::{DrawCmd, Node, Scene, ThemeColor};
 use claude_sessions_core::store::{Action, SendKey, SendKind, SendState, Session, Snapshot};
 use claude_sessions_core::transcript::{Pending, PendingState};
 use std::time::{Duration, SystemTime};
@@ -195,11 +195,13 @@ fn state_text_sits_beside_the_title_and_every_line_is_kept() {
     assert!(texts(card(&scene, "ask")).contains(&"chờ trả lời · 1 câu hỏi"));
     assert!(texts(card(&scene, "bg")).contains(&"chờ 2 agent nền"));
     let run = card(&scene, "run");
-    assert!(texts(run).contains(&"đang chạy"));
+    // The section already says so: the generic labels are not repeated on the card.
+    assert!(!texts(run).contains(&"đang chạy"));
     assert!(texts(run).contains(&"Bash npm test"));
     assert!(texts(run).contains(&"3/5 · auth"));
     assert!(run.spinner.is_some(), "a running card spins");
     let done = card(&scene, "done");
+    assert!(!texts(done).contains(&"xong"));
     assert!(texts(done).contains(&"Đã sửa xong"));
     assert!(texts(done).contains(&"front · main"));
     assert!(card(&scene, "bg").spinner.is_none());
@@ -568,6 +570,36 @@ fn two_questions_have_one_option_hit_per_option() {
     assert!(!t.contains(&Target::Answer("ask".into())));
 }
 
+/// Option rows drawn as picked: blue-tinted fill with a blue border.
+fn picked_rows(node: &Node) -> usize {
+    node.cmds
+        .iter()
+        .filter(|c| {
+            matches!(c, DrawCmd::RoundedRect { fill: Some(f), stroke: Some(s), .. }
+                if f.token == ThemeColor::Blue && s.token == ThemeColor::Blue)
+        })
+        .count()
+}
+
+#[test]
+fn options_are_numbered_badge_rows_and_a_multi_select_marks_several() {
+    let snap = snapshot(vec![two_questions()]);
+    let mut panel = open();
+    let q = snap.sessions[0].question.clone().unwrap();
+    let node = |panel: &PanelState| card(&render(&snap, panel).scene, "ask").clone();
+    assert_eq!(picked_rows(&node(&panel)), 0);
+    assert!(!symbols(&node(&panel)).contains(&"circle"));
+    assert!(texts(&node(&panel)).contains(&"1") && texts(&node(&panel)).contains(&"5"));
+    panel.pick(&q, 1, "1h");
+    panel.pick(&q, 1, "1d");
+    assert_eq!(picked_rows(&node(&panel)), 2, "a multi-select keeps both");
+    panel.pick(&q, 0, "Redis");
+    panel.pick(&q, 0, "Memory");
+    assert_eq!(picked_rows(&node(&panel)), 3, "a single-select keeps one");
+    // The header chip stays.
+    assert!(texts(&node(&panel)).contains(&"Cache"));
+}
+
 #[test]
 fn picking_marks_the_option_and_activates_send() {
     let snap = snapshot(vec![question("ask")]);
@@ -576,7 +608,7 @@ fn picking_marks_the_option_and_activates_send() {
     panel.pick(&q, 0, "Redis");
     let built = render(&snap, &panel);
     let node = card(&built.scene, "ask");
-    assert!(symbols(node).contains(&"largecircle.fill.circle"));
+    assert_eq!(picked_rows(node), 1, "the picked option is a blue row");
     assert!(targets(&built, node).contains(&Target::Answer("ask".into())));
     let sending = {
         let mut snap = snap.clone();
@@ -913,7 +945,7 @@ fn a_shell_waiting_on_a_background_command_shows_the_hourglass() {
         &snapshot(vec![Session::new("sh", "sh", "/w", "shell")]),
         &panel,
     );
-    assert!(symbols(card(&built.scene, "sh")).contains(&"hourglass.circle.fill"));
+    assert!(symbols(card(&built.scene, "sh")).contains(&"hourglass"));
 }
 
 #[test]
@@ -1179,4 +1211,116 @@ fn a_ticket_icon_is_an_image_once_its_bytes_are_in_the_snapshot() {
     assert!(!card(&built.scene, "done").cmds.iter().any(
         |c| matches!(c, DrawCmd::RoundedRect { rect, .. } if rect.w == 12.0 && rect.h == 12.0)
     ));
+}
+
+#[test]
+fn keyboard_mode_rings_the_selected_card_and_shows_the_key_hint() {
+    let snap = snapshot(vec![question("ask"), finished("done")]);
+    let mut panel = open();
+    let none = render(&snap, &panel);
+    assert!(
+        none.scene.nodes.iter().all(|n| n.key.0 != "key-hint"),
+        "no hint outside keyboard mode"
+    );
+    panel.keyboard = true;
+    panel.selected = Some("ask".into());
+    let built = render(&snap, &panel);
+    let ring = |id: &str| {
+        card(&built.scene, id).cmds.iter().any(|c| {
+            matches!(c, DrawCmd::RoundedRect { stroke: Some(s), .. } if s.token == ThemeColor::Text)
+        })
+    };
+    assert!(ring("ask"), "the selected card has the white border");
+    assert!(!ring("done"));
+    let hint = built
+        .scene
+        .nodes
+        .iter()
+        .find(|n| n.key.0 == "key-hint")
+        .expect("keyboard mode shows the hint line");
+    assert_eq!(
+        texts(hint),
+        ["↑↓ chọn thẻ · ↩ nhảy tới pane · R trả lời · Esc đóng"]
+    );
+    assert_eq!(
+        built.scene.size.h - none.scene.size.h,
+        layout::KEY_HINT_H,
+        "the hint line is part of the size model"
+    );
+}
+
+#[test]
+fn ticket_chips_that_do_not_fit_collapse_into_a_plus_chip_inside_the_card() {
+    let mut s = tickets();
+    s.links = (101..=112)
+        .map(|n| SessionLink {
+            label: format!("T6IR-{n} In Progress"),
+            url: url(&format!("https://x.atlassian.net/browse/T6IR-{n}")),
+            help: None,
+            icon_url: None,
+            tone: None,
+        })
+        .collect();
+    let snap = snapshot(vec![s]);
+    let built = render(&snap, &open());
+    let node = card(&built.scene, "done");
+    let more = texts(node)
+        .into_iter()
+        .find(|t| t.starts_with('+'))
+        .expect("a +N chip");
+    let shown = texts(node)
+        .iter()
+        .filter(|t| t.starts_with("T6IR-"))
+        .count();
+    assert_eq!(more, format!("+{}", 12 - shown));
+    assert!(shown > 0 && shown < 12);
+    let edge = layout::CARD_W - layout::CARD_PAD_RIGHT;
+    for c in &node.cmds {
+        if let DrawCmd::RoundedRect { rect, .. } = c
+            && rect.x > 0.0
+        {
+            assert!(
+                rect.x + rect.w <= edge + 0.01,
+                "{rect:?} runs past the card"
+            );
+        }
+    }
+    // Every chip is still reachable: the `+N` chip opens the list.
+    let t = targets(&built, node);
+    assert!(t.iter().filter(|t| matches!(t, Target::Menu(_))).count() >= 2);
+}
+
+#[test]
+fn the_waiting_badge_is_a_circle_for_one_digit_and_a_capsule_for_two() {
+    let badge = |n: usize| {
+        let snap = snapshot((0..n).map(|i| approval(&format!("a{i}"))).collect());
+        let built = render(&snap, &PanelState::new());
+        let pill = &built.scene.nodes[0];
+        pill.cmds
+            .iter()
+            .find_map(|c| match c {
+                DrawCmd::RoundedRect {
+                    rect,
+                    fill: Some(f),
+                    ..
+                } if f.token == ThemeColor::Red => Some(*rect),
+                _ => None,
+            })
+            .unwrap()
+    };
+    let one = badge(1);
+    assert_eq!(one.w, one.h);
+    let many = badge(12);
+    assert!(many.w > many.h);
+}
+
+#[test]
+fn a_status_icon_is_a_solid_circle_with_a_plain_glyph() {
+    let snap = snapshot(vec![finished("done")]);
+    let built = render(&snap, &open());
+    let node = card(&built.scene, "done");
+    assert!(symbols(node).contains(&"checkmark"));
+    assert!(node.cmds.iter().any(|c| matches!(c,
+        DrawCmd::RoundedRect { rect, fill: Some(f), .. }
+            if rect.w == rect.h && f.token == ThemeColor::Orange && f.alpha == 1.0)));
 }

@@ -1,4 +1,4 @@
-//! The question block: per question the prompt, one row per option (radio or checkbox, number, label, description), the
+//! The question block: per question the prompt, one row per option (numbered badge, label, description), the
 //! `Khác…` row (plus its field while open), then `Gửi`, the countdown and `⌘↩`. A sent or fallback question is one note line.
 //! Positions follow `layout::question_height`.
 
@@ -90,38 +90,45 @@ fn form(ctx: &mut Ctx, c: &mut Canvas, s: &Session, q: &FeedQuestion, block: Rec
                 OPTION_H
             };
             let row = Rect::new(CARD_INSET, y, TEXT_W, h);
+            // Mockup `.opt`: a light row with a numbered badge; the picked one is blue-tinted with a blue border and badge.
+            let face = Rect::new(row.x, y + 1.0, row.w, h - 2.0);
             if on {
-                c.rrect(row, 5.0, Some(theme::tint(ThemeColor::Text, 0.08)), None);
+                c.rrect(
+                    face,
+                    8.0,
+                    Some(theme::tint(ThemeColor::Blue, 0.20)),
+                    Some(theme::tint(ThemeColor::Blue, 0.60)),
+                );
+            } else {
+                c.rrect(face, 8.0, Some(theme::tint(ThemeColor::Text, 0.035)), None);
             }
-            let symbol = match (item.multi_select, on) {
-                (true, true) => "checkmark.square.fill",
-                (true, false) => "square",
-                (false, true) => "largecircle.fill.circle",
-                (false, false) => "circle",
-            };
-            let top = if o.description.is_some() { 6.0 } else { 7.0 };
-            c.symbol(
-                symbol,
-                Rect::new(row.x + 6.0, y + top, 14.0, 14.0),
-                theme::solid(if on {
-                    ThemeColor::Blue
+            let top = 6.0;
+            let badge = Rect::new(row.x + 8.0, y + top, 18.0, 18.0);
+            c.rrect(
+                badge,
+                5.0,
+                Some(if on {
+                    theme::solid(ThemeColor::Blue)
                 } else {
-                    ThemeColor::TextSecondary
+                    theme::tint(ThemeColor::Text, 0.10)
                 }),
-                Weight::Regular,
+                None,
             );
             if let Some(n) = feed::option_number(q, i, j) {
-                c.text(
-                    Rect::new(row.x + 24.0, y + top - 1.0, 10.0, 16.0),
+                c.label(
+                    badge,
                     &n.to_string(),
-                    theme::META_MONO_FONT,
-                    theme::solid(ThemeColor::TextFaint),
-                    1,
-                    Align::Left,
+                    theme::CAPTION_FONT,
+                    theme::solid(if on {
+                        ThemeColor::White
+                    } else {
+                        ThemeColor::TextSecondary
+                    }),
+                    Align::Center,
                 );
             }
             c.text(
-                Rect::new(row.x + 40.0, y + top - 1.0, row.w - 48.0, 16.0),
+                Rect::new(row.x + 34.0, y + top, row.w - 42.0, 16.0),
                 &o.label,
                 theme::BUTTON_FONT,
                 theme::solid(ThemeColor::Text),
@@ -131,7 +138,7 @@ fn form(ctx: &mut Ctx, c: &mut Canvas, s: &Session, q: &FeedQuestion, block: Rec
             if let Some(d) = &o.description {
                 c.tip(row, d);
                 c.text(
-                    Rect::new(row.x + 40.0, y + 24.0, row.w - 48.0, 16.0),
+                    Rect::new(row.x + 34.0, y + 25.0, row.w - 42.0, 16.0),
                     d,
                     theme::META_FONT,
                     theme::solid(ThemeColor::TextSecondary),
@@ -153,7 +160,7 @@ fn form(ctx: &mut Ctx, c: &mut Canvas, s: &Session, q: &FeedQuestion, block: Rec
         let other_row = Rect::new(CARD_INSET, y, TEXT_W, OTHER_ROW_H);
         c.symbol(
             "pencil",
-            Rect::new(other_row.x + 6.0, y + 7.0, 14.0, 14.0),
+            Rect::new(other_row.x + 8.0, y + 7.0, 14.0, 14.0),
             theme::solid(ThemeColor::TextSecondary),
             Weight::Regular,
         );
@@ -162,7 +169,7 @@ fn form(ctx: &mut Ctx, c: &mut Canvas, s: &Session, q: &FeedQuestion, block: Rec
             _ => "Khác…".to_string(),
         };
         c.text(
-            Rect::new(other_row.x + 40.0, y + 6.0, other_row.w - 48.0, 16.0),
+            Rect::new(other_row.x + 34.0, y + 6.0, other_row.w - 42.0, 16.0),
             &label,
             theme::BUTTON_FONT,
             theme::solid(ThemeColor::Text),
@@ -180,7 +187,7 @@ fn form(ctx: &mut Ctx, c: &mut Canvas, s: &Session, q: &FeedQuestion, block: Rec
         if open == Some(i) {
             c.fields.push(Field {
                 key: format!("other-{}#{i}", s.id),
-                rect: Rect::new(CARD_INSET + 40.0, y, TEXT_W - 40.0, FIELD_H),
+                rect: Rect::new(CARD_INSET + 34.0, y, TEXT_W - 34.0, FIELD_H),
                 text: others.get(&i).cloned().unwrap_or_default(),
                 placeholder: "Khác…".into(),
             });

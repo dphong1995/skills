@@ -75,7 +75,8 @@ pub fn draw_groups(c: &mut Canvas, snap: &Snapshot, x: f64, cy: f64) -> f64 {
                 );
             }
             1 => {
-                let badge = Rect::new(x, cy - 9.0, w - 4.0, 18.0);
+                // A circle for one digit, a capsule for more.
+                let badge = Rect::new(x, cy - 9.0, if n < 10 { 18.0 } else { w - 4.0 }, 18.0);
                 c.rrect(badge, 9.0, Some(theme::solid(tokens[i])), None);
                 c.text(
                     Rect::new(badge.x, cy - 8.0, badge.w, 16.0),
@@ -113,11 +114,12 @@ pub fn node(ctx: &mut Ctx) -> Node {
     let w = collapsed_width(snap);
     let cy = HEADER_HEIGHT / 2.0;
     let mut c = Canvas::default();
+    // The thin light border sits inside the node: a stroke centred on the edge would be half clipped away.
     c.rrect(
-        Rect::new(0.0, 0.0, w, HEADER_HEIGHT),
-        HEADER_HEIGHT / 2.0,
+        Rect::new(0.5, 0.5, w - 1.0, HEADER_HEIGHT - 1.0),
+        (HEADER_HEIGHT - 1.0) / 2.0,
         Some(theme::solid(ThemeColor::Panel)),
-        Some(theme::solid(ThemeColor::PanelStroke)),
+        Some(theme::tint(ThemeColor::Text, 0.18)),
     );
     if snap.sessions.is_empty() {
         c.rrect(
