@@ -3,13 +3,14 @@
 
 use std::collections::HashMap;
 
+use crate::theme;
 use claude_sessions_core::kv::KeyValueStore;
 use claude_sessions_core::pull_requests::DEFAULT_PROMPT;
 use claude_sessions_core::store::Store;
 use serde_json::{Map, Value};
 
-/// Background opacities of the expanded card (Swift `Layout.bgOpacities`).
-pub const BG_OPACITIES: [f64; 5] = [0.0, 0.25, 0.5, 0.75, 0.92];
+/// Background opacities of the collapsed pill (Swift `Layout.bgOpacities`).
+pub const BG_OPACITIES: [f64; 5] = [0.0, 0.25, 0.5, 0.75, theme::CARD_OPACITY];
 
 /// The values last loaded or saved, to tell what changed.
 #[derive(Clone, Debug, PartialEq)]

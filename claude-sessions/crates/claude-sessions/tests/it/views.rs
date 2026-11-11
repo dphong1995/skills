@@ -1468,7 +1468,11 @@ fn pill_node_has_shadow() {
 
 #[test]
 fn pill_follows_background_opacity() {
-    let full = *claude_sessions::settings::BG_OPACITIES.last().unwrap();
+    let full = claude_sessions::theme::CARD_OPACITY;
+    assert_eq!(
+        *claude_sessions::settings::BG_OPACITIES.last().unwrap(),
+        full
+    );
     let mut hit_rects = Vec::new();
     for o in [0.0, 0.25, full] {
         let (mut snap, _) = mixed();
@@ -1484,7 +1488,8 @@ fn pill_follows_background_opacity() {
             (fill.token, stroke.token),
             (ThemeColor::Panel, ThemeColor::Text)
         );
-        assert!((fill.alpha - o).abs() < 1e-9, "fill {o}");
+        // `Panel` carries the alpha of the designed look: at `full` the fill is exactly `Panel` as drawn before the fix.
+        assert!((fill.alpha - o / full).abs() < 1e-9, "fill {o}");
         assert!((stroke.alpha - 0.18 * o / full).abs() < 1e-9, "stroke {o}");
         let shadow = node.shadow.expect("the pill keeps its shadow");
         assert!(

@@ -7,6 +7,9 @@ use claude_sessions_core::store::Session;
 
 pub use claude_sessions_core::layout::{REPLY_FONT, STATE_FONT, SUB_FONT, TITLE_FONT};
 
+/// Swift's `Layout.cardOpacity`: the opaque end of the background opacity menu, at which the pill looks as designed.
+pub const CARD_OPACITY: f64 = 0.92;
+
 pub const PANEL_RADIUS: f64 = 18.0;
 pub const CARD_RADIUS: f64 = 12.0;
 pub const BUTTON_RADIUS: f64 = 7.0;

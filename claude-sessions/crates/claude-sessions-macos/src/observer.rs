@@ -1,7 +1,6 @@
 //! Registrations that undo themselves when dropped.
 
 use block2::RcBlock;
-use objc2::Message;
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::runtime::ProtocolObject;
@@ -40,21 +39,7 @@ impl NotificationObserver {
         object: Option<&AnyObject>,
         callback: impl Fn() + 'static,
     ) -> Self {
-        Self::on(
-            &NSNotificationCenter::defaultCenter(),
-            name,
-            object,
-            callback,
-        )
-    }
-
-    /// Like `new`, on `center` (the workspace has its own).
-    pub(crate) fn on(
-        center: &NSNotificationCenter,
-        name: &NSNotificationName,
-        object: Option<&AnyObject>,
-        callback: impl Fn() + 'static,
-    ) -> Self {
+        let center = NSNotificationCenter::defaultCenter();
         let block = RcBlock::new(move |_: NonNull<NSNotification>| callback());
         // SAFETY: the block is copied by the center; `mainQueue` runs the callback on the main thread.
         let token = unsafe {
@@ -65,10 +50,7 @@ impl NotificationObserver {
                 &block,
             )
         };
-        Self {
-            center: center.retain(),
-            token,
-        }
+        Self { center, token }
     }
 }
 

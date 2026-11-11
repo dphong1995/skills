@@ -132,8 +132,9 @@ pub fn render_png(
     std::fs::write(path, data.to_vec()).map_err(|e| format!("{}: {e}", path.display()))
 }
 
-/// The node's shadow, outside its shape only (the live one is a layer shadow under the node): the rounded rect is filled with
-/// a shadow while the clip keeps its own fill out. The context's origin is the node's top-left.
+/// The node's shadow, outside its shape only (the live one is a layer shadow under the node): the shape is filled far off the
+/// canvas and its shadow is offset back, so no fill lands on the canvas; the clip keeps the shadow out of the shape. The
+/// context's origin is the node's top-left.
 fn draw_shadow(ctx: &CGContext, node: &Node, scale: f64) {
     let Some(shadow) = node.shadow else { return };
     let path = shadow_path(&shadow, node.frame.w, node.frame.h);
@@ -142,14 +143,17 @@ fn draw_shadow(ctx: &CGContext, node: &Node, scale: f64) {
     // Everything but the shape: the even-odd clip of a huge rect with the shape cut out.
     CGContext::add_rect(
         Some(ctx),
-        CGRect::new(CGPoint::new(-1.0e4, -1.0e4), CGSize::new(2.0e4, 2.0e4)),
+        CGRect::new(CGPoint::new(-1.0e4, -1.0e4), CGSize::new(4.0e4, 2.0e4)),
     );
     CGContext::add_path(Some(ctx), Some(&path));
     CGContext::eo_clip(Some(ctx));
-    // Shadow offsets live in the context's base space (y up, device pixels), not in the flipped, scaled user space.
+    // The fill goes `FAR` points to the right, off the canvas; the shadow offset brings the shadow back. Shadow offsets live
+    // in the context's base space (y up, device pixels), not in the flipped, scaled user space.
+    const FAR: f64 = 1.0e4;
+    CGContext::translate_ctm(Some(ctx), FAR, 0.0);
     CGContext::set_shadow_with_color(
         Some(ctx),
-        CGSize::new(shadow.offset.x * scale, -shadow.offset.y * scale),
+        CGSize::new((shadow.offset.x - FAR) * scale, -shadow.offset.y * scale),
         shadow.radius * scale,
         Some(&color),
     );

@@ -416,8 +416,26 @@ impl NodeView {
             .map(|slot| slot.view.clone())
     }
 
+    /// The node is leaving: its fields stop taking input and emit no more events. A field that is being edited first hands
+    /// the cursor to `parent`.
+    pub(crate) fn retire_fields(&self, parent: &NSView) {
+        let fields = self.ivars().fields.borrow();
+        if let Some(window) = self.window()
+            && fields
+                .iter()
+                .any(|slot| slot.view.currentEditor().is_some())
+        {
+            window.makeFirstResponder(Some(parent));
+        }
+        for slot in fields.iter() {
+            slot.view.setEnabled(false);
+            // SAFETY: clearing the delegate is always valid; the slot still keeps the delegate object alive.
+            unsafe { slot.view.setDelegate(None) };
+        }
+    }
+
     /// A ring in `rect`; `None` removes it. With `spin` it rotates (in the render server), otherwise it stands still: the
-    /// caller passes `spin` only while the node is visible in an expanded panel.
+    /// caller passes `spin` only while the panel is on screen.
     pub(crate) fn set_spinner(&self, rect: Option<Rect>, spin: bool) {
         let mut slot = self.ivars().spinner.borrow_mut();
         let Some(rect) = rect else {

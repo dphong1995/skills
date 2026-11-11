@@ -537,6 +537,37 @@ fn cancel_operation_emits_field_cancel() -> Result<(), String> {
     Ok(())
 }
 
+/// A node removed by `set_scene` fades out for a moment: its field takes no input and emits nothing meanwhile.
+fn fading_node_field_is_disabled() -> Result<(), String> {
+    use claude_sessions_macos::ui::{SceneView, UiEvent};
+    use objc2_foundation::{MainThreadMarker, NSSize};
+
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(200.0, 80.0));
+    let events: std::rc::Rc<std::cell::RefCell<Vec<UiEvent>>> = Default::default();
+    let sink = events.clone();
+    view.set_handler(std::rc::Rc::new(move |e| sink.borrow_mut().push(e)));
+    view.set_scene(&field_scene("", "Email"));
+    let field = view.field("email").ok_or("no field")?;
+    if !field.isEnabled() || field.delegate().is_none() {
+        return Err("the field starts without being enabled and delegated".into());
+    }
+    view.set_scene(&claude_sessions_core::scene::Scene::default());
+    if view.field("email").is_some() {
+        return Err("the removed node still answers for its field".into());
+    }
+    if field.isEnabled() {
+        return Err("the fading field is still enabled".into());
+    }
+    if field.delegate().is_some() {
+        return Err("the fading field still has its delegate".into());
+    }
+    if !events.borrow().is_empty() {
+        return Err(format!("events: {:?}", events.borrow()));
+    }
+    Ok(())
+}
+
 /// A scroll host that went away takes its scroll view out of the view tree.
 fn scroll_host_is_removed() -> Result<(), String> {
     use claude_sessions_core::scene::{Node, Rect, Size};
@@ -1017,6 +1048,33 @@ fn spinner_spins_on_a_live_panel() -> Result<(), String> {
     Ok(())
 }
 
+/// A spinner created while the panel is already live spins at once.
+fn spinner_created_on_a_live_panel_spins() -> Result<(), String> {
+    use claude_sessions_core::scene::Rect;
+    use claude_sessions_macos::ui::SceneView;
+    use objc2_foundation::{MainThreadMarker, NSSize, ns_string};
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(200.0, 100.0));
+    view.set_motion_live(true);
+    let mut node = shadow_node(Rect::new(10.0, 10.0, 100.0, 40.0), false);
+    node.spinner = Some(Rect::new(4.0, 4.0, 16.0, 16.0));
+    view.set_scene(&one_node_scene(node));
+    let layer = node_layer(&view)?;
+    // SAFETY: plain getters on layers owned here.
+    let spins = unsafe {
+        layer
+            .sublayers()
+            .and_then(|l| l.iter().next())
+            .ok_or("no spinner layer")?
+            .animationForKey(ns_string!("spin"))
+            .is_some()
+    };
+    if !spins {
+        return Err("a spinner created on a live panel does not spin".into());
+    }
+    Ok(())
+}
+
 /// A second resize during a running open animation leaves the `shadowPath` animation heading to the newest size.
 fn second_resize_retargets_the_shadow_animation() -> Result<(), String> {
     use claude_sessions_core::scene::Rect;
@@ -1038,7 +1096,11 @@ fn second_resize_retargets_the_shadow_animation() -> Result<(), String> {
         Rect::new(10.0, 10.0, 100.0, 90.0),
         true,
     )));
-    let (_, to) = shadow_animation_sizes(&layer)?;
+    let (from, to) = shadow_animation_sizes(&layer)?;
+    // No presentation layer exists yet, so the animation starts from the model's size.
+    if from != (100.0, 70.0) {
+        return Err(format!("the shadowPath animation starts from {from:?}"));
+    }
     if to != (100.0, 90.0) {
         return Err(format!("the shadowPath animation heads to {to:?}"));
     }
@@ -1089,6 +1151,26 @@ fn render_png_pads_margin_and_draws_shadow() -> Result<(), String> {
     let (_, corner) = read_png_pixel(&path, 0, 0)?;
     if corner[3] >= 0.02 {
         return Err(format!("corner is not transparent: {corner:?}"));
+    }
+    Ok(())
+}
+
+/// A zero-alpha shadow draws nothing: no ring of the shape's fill is left at its curved edge.
+fn zero_alpha_shadow_leaves_the_png_transparent() -> Result<(), String> {
+    use claude_sessions_core::scene::{Appearance, Rect};
+    let path = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("zero-shadow.png");
+    let scale = 2.0;
+    let mut node = shadow_node(Rect::new(40.0, 20.0, 100.0, 40.0), true);
+    node.shadow.as_mut().ok_or("no shadow")?.color.alpha = 0.0;
+    claude_sessions_macos::ui::render_png(&one_node_scene(node), scale, Appearance::Light, &path)?;
+    // The top-left corner arc, 14 pt of margin in: the box around it holds the anti-aliased edge.
+    for y in (30.0 * scale) as usize..(50.0 * scale) as usize {
+        for x in (50.0 * scale) as usize..(70.0 * scale) as usize {
+            let (_, p) = read_png_pixel(&path, x, y)?;
+            if p[3] > 0.004 {
+                return Err(format!("pixel ({x}, {y}) is not transparent: {p:?}"));
+            }
+        }
     }
     Ok(())
 }
@@ -1290,12 +1372,24 @@ fn main() {
         second_resize_retargets_the_shadow_animation(),
     ));
     results.push((
+        "fading_node_field_is_disabled",
+        fading_node_field_is_disabled(),
+    ));
+    results.push((
+        "spinner_created_on_a_live_panel_spins",
+        spinner_created_on_a_live_panel_spins(),
+    ));
+    results.push((
         "node_without_shadow_has_none",
         node_without_shadow_has_none(),
     ));
     results.push((
         "render_png_pads_margin_and_draws_shadow",
         render_png_pads_margin_and_draws_shadow(),
+    ));
+    results.push((
+        "zero_alpha_shadow_leaves_the_png_transparent",
+        zero_alpha_shadow_leaves_the_png_transparent(),
     ));
     results.push((
         "text_centres_vertically_in_taller_rect",

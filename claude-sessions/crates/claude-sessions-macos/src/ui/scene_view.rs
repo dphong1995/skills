@@ -176,10 +176,10 @@ impl SceneView {
 
     /// Spinners turn only while the panel is on screen; pulses go with them.
     fn apply_motion(&self) {
-        let spin = self.ivars().live.get();
+        let live = self.ivars().live.get();
         for view in self.ivars().nodes.borrow().values() {
-            view.set_spin(spin);
-            if !spin {
+            view.set_spin(live);
+            if !live {
                 view.clear_pulses();
             }
         }
@@ -294,7 +294,7 @@ impl SceneView {
     /// redraw that node alone, changed frames animate in Core Animation, new and removed nodes fade.
     pub fn set_scene(&self, scene: &Scene) {
         let mtm = self.mtm();
-        let spin = self.ivars().live.get();
+        let live = self.ivars().live.get();
         let ivars = self.ivars();
         register_images(&scene.images);
         let old = ivars.scene.replace(scene.clone());
@@ -337,7 +337,7 @@ impl SceneView {
             let view = NodeView::new(mtm, &node.key.0, start);
             view.set_cmds(&node.cmds, false);
             created_field = view.set_fields(&node.fields, &sink).or(created_field);
-            view.set_spinner(node.spinner, spin);
+            view.set_spinner(node.spinner, live);
             view.set_tips(&node.tips);
             view.setAlphaValue(0.0);
             match (&host, scrolled.contains(&node.key)) {
@@ -352,6 +352,7 @@ impl SceneView {
             if let Some(view) = nodes.remove(*key) {
                 view.set_spin(false);
                 view.clear_pulses();
+                view.retire_fields(self);
                 fading_out.push(view);
             }
         }
@@ -363,7 +364,7 @@ impl SceneView {
                 continue;
             };
             if update.cmds_changed {
-                view.set_cmds(&update.node.cmds, true);
+                view.set_cmds(&update.node.cmds, live);
             }
             // Only what differs from the node's previous version is touched.
             let prev = before.get(&update.node.key);
@@ -378,7 +379,7 @@ impl SceneView {
                     .or(created_field);
             }
             if prev.is_none_or(|p| p.spinner != update.node.spinner) {
-                view.set_spinner(update.node.spinner, spin);
+                view.set_spinner(update.node.spinner, live);
             }
             if prev.is_none_or(|p| p.tips != update.node.tips) {
                 view.set_tips(&update.node.tips);
@@ -453,14 +454,6 @@ impl SceneView {
         let (resized, slid): (Vec<_>, Vec<_>) = moved
             .into_iter()
             .partition(|(view, frame)| view.frame().size != ns_rect(*frame).size);
-        let remove = {
-            let fading_out = fading_out.clone();
-            move || {
-                for view in &fading_out {
-                    view.removeFromSuperview();
-                }
-            }
-        };
         if !resized.is_empty() {
             motion::group(
                 motion::OPEN_SECS,
@@ -499,7 +492,7 @@ impl SceneView {
             );
         }
         if !fading_out.is_empty() {
-            let gone = Rc::new(remove);
+            let leaving = fading_out.clone();
             motion::group(
                 motion::FADE_SECS,
                 false,
@@ -508,7 +501,11 @@ impl SceneView {
                         view.animator().setAlphaValue(0.0);
                     }
                 },
-                move || gone(),
+                move || {
+                    for view in &leaving {
+                        view.removeFromSuperview();
+                    }
+                },
             );
         }
         if !(diff.added.is_empty() && diff.removed.is_empty() && diff.updated.is_empty())
