@@ -15,7 +15,7 @@ use objc2_app_kit::{
     NSTextAlignment,
 };
 use objc2_foundation::{
-    NSAttributedString, NSDictionary, NSMutableAttributedString, NSRect, NSSize, NSString,
+    NSAttributedString, NSDictionary, NSMutableAttributedString, NSPoint, NSRect, NSSize, NSString,
 };
 
 pub(crate) type Attributes = Retained<NSDictionary<NSString, AnyObject>>;
@@ -143,6 +143,32 @@ pub(crate) fn text_rect(rect: NSRect, spec: &FontSpec, max_lines: u32) -> NSRect
     NSRect::new(
         rect.origin,
         NSSize::new(rect.size.width, rect.size.height.min(height)),
+    )
+}
+
+/// `area` moved down so text of laid-out height `laid_out(width)` sits in the middle of `rect` when `rect` is taller than the
+/// text; otherwise `area` unchanged. A rect no taller than one line cannot be taller than its text, so it skips the layout.
+pub(crate) fn centred(
+    area: NSRect,
+    rect: NSRect,
+    spec: &FontSpec,
+    max_lines: u32,
+    laid_out: impl FnOnce(f64) -> f64,
+) -> NSRect {
+    let line = line_height(&ns_font(spec));
+    if rect.size.height <= line {
+        return area;
+    }
+    let mut h = laid_out(area.size.width).ceil();
+    if max_lines > 0 {
+        h = h.min(line * f64::from(max_lines));
+    }
+    if rect.size.height <= h {
+        return area;
+    }
+    NSRect::new(
+        NSPoint::new(area.origin.x, area.origin.y + (rect.size.height - h) / 2.0),
+        NSSize::new(area.size.width, h),
     )
 }
 

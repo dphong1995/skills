@@ -1,23 +1,24 @@
 //! One layer-backed view per scene node: draws its own commands and hosts its fields and spinner.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::sync::OnceLock;
 
 use claude_sessions_core::scene::{
-    Appearance, DrawCmd, Field, Rect, Tip, appeared_symbols, colors_only_changed,
+    Appearance, DrawCmd, Field, Rect, Shadow, Tip, appeared_symbols, colors_only_changed,
 };
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Bool, ProtocolObject, Sel};
 use objc2::{DefinedClass, MainThreadOnly, define_class, msg_send, sel};
 use objc2_app_kit::{
-    NSAppearanceCustomization, NSColor, NSControl, NSControlTextEditingDelegate, NSEvent,
-    NSTextField, NSTextFieldDelegate, NSTextView, NSView,
+    NSAnimatablePropertyContainer, NSAnimationContext, NSAppearanceCustomization, NSColor,
+    NSControl, NSControlTextEditingDelegate, NSEvent, NSTextField, NSTextFieldDelegate, NSTextView,
+    NSView,
 };
 use objc2_core_foundation::{CGPoint, CGRect, CGSize};
 use objc2_core_graphics::CGPath;
 use objc2_foundation::{
-    MainThreadMarker, NSNotification, NSNumber, NSObject, NSObjectProtocol, NSRect, NSString,
-    ns_string,
+    MainThreadMarker, NSNotification, NSNumber, NSObject, NSObjectProtocol, NSRect, NSSize,
+    NSString, ns_string,
 };
 use objc2_quartz_core::{
     CABasicAnimation, CALayer, CAMediaTiming, CAShapeLayer, CATransaction, CATransition,
@@ -36,6 +37,8 @@ pub(crate) struct NodeIvars {
     pulses: RefCell<Vec<Retained<CAShapeLayer>>>,
     /// AppKit does not retain a tooltip's owner, so the strings live here.
     tips: RefCell<Vec<Retained<NSString>>>,
+    /// The layer shadow the node casts, if any; `shadowPath` follows the view's size.
+    shadow: Cell<Option<Shadow>>,
 }
 
 /// A native text field of the node and its delegate (AppKit keeps delegates unretained).
@@ -129,6 +132,22 @@ define_class!(
             true
         }
 
+        // The shadow's path is the node's own rounded rect, so it must follow every size change.
+        #[unsafe(method(setFrameSize:))]
+        fn set_frame_size(&self, size: NSSize) {
+            // SAFETY: NSView's own setter, with the same argument.
+            let _: () = unsafe { msg_send![super(self), setFrameSize: size] };
+            self.sync_shadow_path();
+        }
+
+        // Moving into a window can swap the backing layer, which drops the shadow set on the old one.
+        #[unsafe(method(viewDidMoveToWindow))]
+        fn view_did_move_to_window(&self) {
+            // SAFETY: NSView's own notification, no arguments.
+            let _: () = unsafe { msg_send![super(self), viewDidMoveToWindow] };
+            self.set_shadow(self.ivars().shadow.get());
+        }
+
         #[unsafe(method(drawRect:))]
         fn draw_rect(&self, _dirty: NSRect) {
             if frame_log() {
@@ -150,11 +169,76 @@ impl NodeView {
             spinner: RefCell::new(None),
             pulses: RefCell::new(Vec::new()),
             tips: RefCell::new(Vec::new()),
+            shadow: Cell::new(None),
         });
         // SAFETY: `initWithFrame:` is NSView's designated initialiser.
         let this: Retained<Self> = unsafe { msg_send![super(this), initWithFrame: ns_rect(frame)] };
         this.setWantsLayer(true);
         this
+    }
+
+    /// Sets (or clears) the layer shadow. It is a `CALayer` shadow with an explicit path: the render server draws it and
+    /// nothing is redrawn per frame.
+    pub(crate) fn set_shadow(&self, shadow: Option<Shadow>) {
+        self.ivars().shadow.set(shadow);
+        let Some(layer) = self.layer() else { return };
+        match shadow {
+            Some(shadow) => {
+                let [r, g, b, a] = shadow.color.resolve(Appearance::Dark);
+                layer.setShadowColor(Some(
+                    &NSColor::colorWithSRGBRed_green_blue_alpha(r, g, b, 1.0).CGColor(),
+                ));
+                layer.setShadowOpacity(a as f32);
+                layer.setShadowRadius(shadow.radius);
+                // A flipped view's backing layer has flipped geometry: there a positive offset already points down.
+                let y = if layer.isGeometryFlipped() {
+                    shadow.offset.y
+                } else {
+                    -shadow.offset.y
+                };
+                layer.setShadowOffset(CGSize::new(shadow.offset.x, y));
+            }
+            None => {
+                layer.setShadowOpacity(0.0);
+                layer.setShadowPath(None);
+            }
+        }
+        self.sync_shadow_path();
+    }
+
+    /// The rounded rect of the view's bounds as the layer's `shadowPath`.
+    fn sync_shadow_path(&self) {
+        let (Some(shadow), Some(layer)) = (self.ivars().shadow.get(), self.layer()) else {
+            return;
+        };
+        let size = self.bounds().size;
+        let corner = shadow.corner.min(size.width / 2.0).min(size.height / 2.0);
+        let rect = CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(size.width, size.height));
+        // SAFETY: a null transform means identity.
+        let path = unsafe { CGPath::with_rounded_rect(rect, corner, corner, std::ptr::null()) };
+        layer.setShadowPath(Some(&path));
+    }
+
+    /// Animates the frame (inside the caller's animation group) and the shadow path with it, so the shadow never lags.
+    pub(crate) fn animate_frame(&self, frame: Rect) {
+        let old = self.layer().and_then(|l| l.shadowPath());
+        self.animator().setFrame(ns_rect(frame));
+        let (Some(old), Some(layer)) = (old, self.layer()) else {
+            return;
+        };
+        let Some(new) = layer.shadowPath() else {
+            return;
+        };
+        let animation = CABasicAnimation::animationWithKeyPath(Some(ns_string!("shadowPath")));
+        // SAFETY: a CGPath is the value type of the `shadowPath` key path; Core Animation takes it as an object.
+        unsafe {
+            animation.setFromValue(Some(&*(&*old as *const _ as *const AnyObject)));
+            animation.setToValue(Some(&*(&*new as *const _ as *const AnyObject)));
+        }
+        let context = NSAnimationContext::currentContext();
+        animation.setDuration(context.duration());
+        animation.setTimingFunction(context.timingFunction().as_deref());
+        layer.addAnimation_forKey(&animation, Some(ns_string!("shadowPath")));
     }
 
     /// With `animate`, a pure recolour cross-fades and a sparkle that was not there pulses once.

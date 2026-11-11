@@ -7,7 +7,7 @@ use crate::hits::Target;
 use crate::theme;
 use claude_sessions_core::feed::{self, BlockState, FeedQuestion};
 use claude_sessions_core::layout::{
-    BLOCK_GAP, BUTTON_H, CARD_INSET, FIELD_H, NOTE_H, OPTION_DESC_H, OPTION_H, OTHER_ROW_H,
+    BLOCK_GAP, BUTTON_H, CARD_INSET, FIELD_H, NOTE_H, OPTION_ROW_H, OTHER_ROW_H, QUESTION_GAP,
     QUESTION_PROMPT_H, TEXT_W, other_open, question_state,
 };
 use claude_sessions_core::scene::{Align, Field, Rect, ThemeColor, Weight};
@@ -59,6 +59,9 @@ fn form(ctx: &mut Ctx, c: &mut Canvas, s: &Session, q: &FeedQuestion, block: Rec
     let open = other_open(s, view.panel);
     let mut y = block.y + BLOCK_GAP;
     for (i, item) in q.questions.iter().enumerate() {
+        if i > 0 {
+            y += QUESTION_GAP;
+        }
         let mut x = CARD_INSET;
         if let Some(h) = &item.header {
             let w = ctx.text_w(h, &theme::CAPTION_FONT) + 12.0;
@@ -84,26 +87,17 @@ fn form(ctx: &mut Ctx, c: &mut Canvas, s: &Session, q: &FeedQuestion, block: Rec
         let picked = answers.get(i).map_or(&[][..], Vec::as_slice);
         for (j, o) in item.options.iter().enumerate() {
             let on = picked.contains(&o.label);
-            let h = if o.description.is_some() {
-                OPTION_DESC_H
-            } else {
-                OPTION_H
-            };
-            let row = Rect::new(CARD_INSET, y, TEXT_W, h);
-            // Mockup `.opt`: a light row with a numbered badge; the picked one is blue-tinted with a blue border and badge.
-            let face = Rect::new(row.x, y + 1.0, row.w, h - 2.0);
+            let row = Rect::new(CARD_INSET, y, TEXT_W, OPTION_ROW_H);
+            // A picked row is blue-tinted with a blue border and badge; the others are bare rows with a quiet badge.
             if on {
                 c.rrect(
-                    face,
-                    8.0,
+                    Rect::new(row.x, y + 1.0, row.w, OPTION_ROW_H - 2.0),
+                    7.0,
                     Some(theme::tint(ThemeColor::Blue, 0.20)),
                     Some(theme::tint(ThemeColor::Blue, 0.60)),
                 );
-            } else {
-                c.rrect(face, 8.0, Some(theme::tint(ThemeColor::Text, 0.035)), None);
             }
-            let top = 6.0;
-            let badge = Rect::new(row.x + 8.0, y + top, 18.0, 18.0);
+            let badge = Rect::new(row.x + 8.0, y + (OPTION_ROW_H - 18.0) / 2.0, 18.0, 18.0);
             c.rrect(
                 badge,
                 5.0,
@@ -127,8 +121,12 @@ fn form(ctx: &mut Ctx, c: &mut Canvas, s: &Session, q: &FeedQuestion, block: Rec
                     Align::Center,
                 );
             }
+            // Label and description share the one line; the description takes what the label leaves and is cut with `…`.
+            let text_x = row.x + 34.0;
+            let text_w = row.w - 42.0;
+            let label_w = ctx.text_w(&o.label, &theme::BUTTON_FONT).ceil().min(text_w);
             c.text(
-                Rect::new(row.x + 34.0, y + top, row.w - 42.0, 16.0),
+                Rect::new(text_x, y, label_w, OPTION_ROW_H),
                 &o.label,
                 theme::BUTTON_FONT,
                 theme::solid(ThemeColor::Text),
@@ -137,14 +135,17 @@ fn form(ctx: &mut Ctx, c: &mut Canvas, s: &Session, q: &FeedQuestion, block: Rec
             );
             if let Some(d) = &o.description {
                 c.tip(row, d);
-                c.text(
-                    Rect::new(row.x + 34.0, y + 25.0, row.w - 42.0, 16.0),
-                    d,
-                    theme::META_FONT,
-                    theme::solid(ThemeColor::TextSecondary),
-                    1,
-                    Align::Left,
-                );
+                let dx = label_w + 10.0;
+                if dx < text_w {
+                    c.text(
+                        Rect::new(text_x + dx, y, text_w - dx, OPTION_ROW_H),
+                        d,
+                        theme::META_FONT,
+                        theme::solid(ThemeColor::TextSecondary),
+                        1,
+                        Align::Left,
+                    );
+                }
             }
             c.hit(
                 row,
@@ -154,13 +155,18 @@ fn form(ctx: &mut Ctx, c: &mut Canvas, s: &Session, q: &FeedQuestion, block: Rec
                     label: o.label.clone(),
                 },
             );
-            y += h;
+            y += OPTION_ROW_H;
         }
         let typed = others.get(&i).map(|t| t.trim()).filter(|t| !t.is_empty());
         let other_row = Rect::new(CARD_INSET, y, TEXT_W, OTHER_ROW_H);
         c.symbol(
             "pencil",
-            Rect::new(other_row.x + 8.0, y + 7.0, 14.0, 14.0),
+            Rect::new(
+                other_row.x + 8.0,
+                y + (OTHER_ROW_H - 14.0) / 2.0,
+                14.0,
+                14.0,
+            ),
             theme::solid(ThemeColor::TextSecondary),
             Weight::Regular,
         );
@@ -169,7 +175,7 @@ fn form(ctx: &mut Ctx, c: &mut Canvas, s: &Session, q: &FeedQuestion, block: Rec
             _ => "Khác…".to_string(),
         };
         c.text(
-            Rect::new(other_row.x + 34.0, y + 6.0, other_row.w - 42.0, 16.0),
+            Rect::new(other_row.x + 34.0, y, other_row.w - 42.0, OTHER_ROW_H),
             &label,
             theme::BUTTON_FONT,
             theme::solid(ThemeColor::Text),
@@ -210,11 +216,11 @@ fn form(ctx: &mut Ctx, c: &mut Canvas, s: &Session, q: &FeedQuestion, block: Rec
         c.hit(send, Target::Answer(s.id.clone()));
     }
     let countdown = feed::countdown(q, view.now);
-    let cw = ctx.text_w(&countdown, &theme::META_MONO_FONT) + 4.0;
+    let cw = ctx.text_w(&countdown, &theme::META_FONT) + 4.0;
     c.label(
         Rect::new(send.x + send.w + 10.0, y, cw, BUTTON_H),
         &countdown,
-        theme::META_MONO_FONT,
+        theme::META_FONT,
         theme::solid(ThemeColor::TextSecondary),
         Align::Left,
     );

@@ -28,8 +28,9 @@ pub fn ring_sweep(percent: i64) -> f64 {
 pub fn groups_width(snap: &Snapshot) -> f64 {
     let widths: Vec<f64> = pill_groups(snap)
         .into_iter()
-        .filter(|n| *n > 0)
-        .map(pill_group_width)
+        .enumerate()
+        .filter(|(_, n)| *n > 0)
+        .map(|(i, n)| pill_group_width(i, n))
         .collect();
     match widths.len() {
         0 => 0.0,
@@ -55,7 +56,7 @@ pub fn draw_groups(c: &mut Canvas, snap: &Snapshot, x: f64, cy: f64) -> f64 {
             x += PILL_GAP;
         }
         first = false;
-        let w = pill_group_width(n);
+        let w = pill_group_width(i, n);
         let label = n.to_string();
         match i {
             0 => {
@@ -76,7 +77,7 @@ pub fn draw_groups(c: &mut Canvas, snap: &Snapshot, x: f64, cy: f64) -> f64 {
             }
             1 => {
                 // A circle for one digit, a capsule for more.
-                let badge = Rect::new(x, cy - 9.0, if n < 10 { 18.0 } else { w - 4.0 }, 18.0);
+                let badge = Rect::new(x, cy - 9.0, w, 18.0);
                 c.rrect(badge, 9.0, Some(theme::solid(tokens[i])), None);
                 c.text(
                     Rect::new(badge.x, cy - 8.0, badge.w, 16.0),
@@ -89,13 +90,13 @@ pub fn draw_groups(c: &mut Canvas, snap: &Snapshot, x: f64, cy: f64) -> f64 {
             }
             _ => {
                 c.rrect(
-                    Rect::new(x + 2.0, cy - 3.5, 7.0, 7.0),
+                    Rect::new(x, cy - 3.5, 7.0, 7.0),
                     3.5,
                     Some(theme::solid(tokens[i])),
                     None,
                 );
                 c.text(
-                    Rect::new(x + 14.0, cy - 8.0, w - 14.0, 16.0),
+                    Rect::new(x + 12.0, cy - 8.0, w - 12.0, 16.0),
                     &label,
                     theme::COUNT_FONT,
                     theme::solid(ThemeColor::TextSecondary),
@@ -162,5 +163,7 @@ pub fn node(ctx: &mut Ctx) -> Node {
             Align::Left,
         );
     }
-    ctx.node(KEY, Rect::new(0.0, 0.0, w, HEADER_HEIGHT), c)
+    let mut node = ctx.node(KEY, Rect::new(0.0, 0.0, w, HEADER_HEIGHT), c);
+    node.shadow = Some(theme::PILL_SHADOW);
+    node
 }

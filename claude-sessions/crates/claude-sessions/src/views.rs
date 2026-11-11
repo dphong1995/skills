@@ -301,6 +301,7 @@ impl Ctx<'_> {
             spinner: canvas.spinner,
             tips: canvas.tips,
             scroll: None,
+            shadow: None,
         }
     }
 
@@ -350,7 +351,9 @@ fn expanded(ctx: &mut Ctx) -> Scene {
         Some(theme::solid(ThemeColor::Panel)),
         Some(theme::solid(ThemeColor::PanelStroke)),
     );
-    let mut nodes = vec![ctx.node("panel", Rect::new(0.0, 0.0, l.size.w, l.size.h), bg)];
+    let mut panel = ctx.node("panel", Rect::new(0.0, 0.0, l.size.w, l.size.h), bg);
+    panel.shadow = Some(theme::PANEL_SHADOW);
+    let mut nodes = vec![panel];
     for item in &l.items {
         if let Item::Section { y, .. } | Item::Empty { y } = item
             && l.content_h > l.size.h

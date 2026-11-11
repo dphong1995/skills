@@ -150,7 +150,7 @@ fn question_card_grows_per_option_row() {
     q.questions[0].options.push(extra);
     assert_eq!(
         question_height(&q, BlockState::Form, None) - base,
-        layout::OPTION_H
+        layout::OPTION_ROW_H
     );
     assert!(question_height(&q, BlockState::Form, Some(0)) > base);
     assert!(question_height(&q, BlockState::Sent, None) < base);

@@ -39,9 +39,7 @@ pub fn node(ctx: &mut Ctx, s: &Session, y: f64, layout: &CardLayout) -> Node {
     let fresh = snap.unseen.get(&s.id).is_some_and(|m| m.claude);
     let selected = panel.keyboard && panel.selected.as_deref() == Some(&s.id);
     let hovered = panel.hovered_row.as_deref() == Some(&s.id);
-    let fill = if fresh {
-        theme::card_fresh_fill()
-    } else if hovered {
+    let fill = if hovered {
         theme::card_hover_fill()
     } else {
         theme::card_fill()
@@ -52,9 +50,18 @@ pub fn node(ctx: &mut Ctx, s: &Session, y: f64, layout: &CardLayout) -> Node {
         Some(fill),
         selected.then(theme::selection_ring),
     );
+    if fresh {
+        // A warm tint over the normal card surface, so a new card stays a grey card.
+        c.rrect(
+            Rect::new(0.0, 0.0, CARD_W, layout.height),
+            theme::CARD_RADIUS,
+            Some(theme::card_fresh_fill()),
+            None,
+        );
+    }
 
     // Status icon; a running card shows the spinner instead.
-    let icon = Rect::new(12.0, 11.0, theme::ICON, theme::ICON);
+    let icon = Rect::new(12.0, CARD_PAD_Y + 1.0, theme::ICON, theme::ICON);
     if s.color_status() == "busy" && !s.waits_in_background() {
         c.spinner = Some(icon);
     } else {
@@ -283,7 +290,7 @@ fn right_column(ctx: &Ctx, c: &mut Canvas, s: &Session) {
             Rect::new(col_x, CARD_PAD_Y, 56.0, 15.0),
             &text::elapsed(s.since, now),
             theme::TIME_FONT,
-            theme::solid(ThemeColor::TextFaint),
+            theme::solid(ThemeColor::TextSecondary),
             1,
             Align::Right,
         );
@@ -299,7 +306,12 @@ fn right_column(ctx: &Ctx, c: &mut Canvas, s: &Session) {
     let slot = snap
         .send_state(&SendKey::new(&s.id, SendKind::Reply), now)
         .or_else(|| snap.send_state(&SendKey::new(&s.id, SendKind::Stop), now));
-    let rect = Rect::new(CARD_W - CARD_PAD_RIGHT - 26.0, 28.0, 26.0, 26.0);
+    let rect = Rect::new(
+        CARD_W - CARD_PAD_RIGHT - 24.0,
+        CARD_PAD_Y + 15.0,
+        24.0,
+        24.0,
+    );
     let fill = if armed {
         theme::tint(ThemeColor::Orange, 0.35)
     } else {

@@ -655,3 +655,54 @@ fn open_menus_cleared_on_collapse() {
     assert!(panel.open_menus.is_empty());
     // The re-layout after `on_collapse` is asserted in the app crate: `views::collapsing_drops_the_open_link_list`.
 }
+
+fn composite(over: [f64; 4], base: [f64; 3]) -> [f64; 3] {
+    let a = over[3];
+    [0, 1, 2].map(|i| over[i] * a + base[i] * (1.0 - a))
+}
+
+fn luminance(c: [f64; 3]) -> f64 {
+    let lin = |v: f64| {
+        if v <= 0.03928 {
+            v / 12.92
+        } else {
+            ((v + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2])
+}
+
+#[test]
+fn surface_tokens_are_neutral() {
+    use claude_sessions_core::scene::{Appearance, ThemeColor};
+    for appearance in [Appearance::Dark, Appearance::Light] {
+        for token in [
+            ThemeColor::Panel,
+            ThemeColor::Row,
+            ThemeColor::PanelStroke,
+            ThemeColor::Button,
+        ] {
+            let [r, g, b, _] = token.rgba(appearance);
+            let spread = r.max(g).max(b) - r.min(g).min(b);
+            assert!(spread <= 0.01, "{token:?} {appearance:?} spread {spread}");
+        }
+    }
+    let [r, g, b, a] = ThemeColor::Panel.rgba(Appearance::Dark);
+    for (got, want) in [(r, 0.110), (g, 0.110), (b, 0.118)] {
+        assert!((got - want).abs() <= 0.005, "dark panel {got} vs {want}");
+    }
+    assert_eq!(a, 0.96);
+}
+
+#[test]
+fn secondary_text_contrast_meets_4_5() {
+    use claude_sessions_core::scene::{Appearance, ThemeColor};
+    for (appearance, backdrop) in [(Appearance::Dark, [0.0; 3]), (Appearance::Light, [1.0; 3])] {
+        let panel = composite(ThemeColor::Panel.rgba(appearance), backdrop);
+        let card = composite(ThemeColor::Row.rgba(appearance), panel);
+        let text = composite(ThemeColor::TextSecondary.rgba(appearance), card);
+        let (a, b) = (luminance(text), luminance(card));
+        let ratio = (a.max(b) + 0.05) / (a.min(b) + 0.05);
+        assert!(ratio >= 4.5, "{appearance:?} contrast {ratio}");
+    }
+}

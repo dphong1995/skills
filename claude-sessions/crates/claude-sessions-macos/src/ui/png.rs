@@ -4,14 +4,17 @@ use std::ffi::c_void;
 use std::path::Path;
 use std::ptr::NonNull;
 
-use claude_sessions_core::scene::{Appearance, DrawCmd, Point, Scene, ThemeColor};
+use claude_sessions_core::layout::MARGIN;
+use claude_sessions_core::scene::{Appearance, DrawCmd, Node, Point, Scene, ThemeColor};
 use objc2::AnyThread;
 use objc2_app_kit::{
     NSApplication, NSBitmapImageFileType, NSBitmapImageRep, NSColorSpace, NSGraphicsContext,
     NSTextField,
 };
 use objc2_core_foundation::{CFRetained, CGPoint, CGRect, CGSize};
-use objc2_core_graphics::{CGBitmapContextCreateImage, CGColorSpace, CGContext, kCGColorSpaceSRGB};
+use objc2_core_graphics::{
+    CGBitmapContextCreateImage, CGColor, CGColorSpace, CGContext, CGPath, kCGColorSpaceSRGB,
+};
 use objc2_foundation::{MainThreadMarker, NSData, NSDictionary, NSString};
 
 use super::draw::{draw_cmds, ns_rect, register_images};
@@ -33,7 +36,8 @@ unsafe extern "C" {
 /// `kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little`.
 const BGRA_PREMULTIPLIED: u32 = 2 | (2 << 12);
 
-/// Draws `scene` at `scale` into a PNG at `path`. Main thread only.
+/// Draws `scene` at `scale` into a PNG at `path`, padded by `MARGIN` points on every side (where the live window's shadows
+/// fall). Main thread only.
 pub fn render_png(
     scene: &Scene,
     scale: f64,
@@ -42,8 +46,8 @@ pub fn render_png(
 ) -> Result<(), String> {
     let mtm = MainThreadMarker::new().ok_or("render_png must run on the main thread")?;
     NSApplication::sharedApplication(mtm);
-    let width = (scene.size.w * scale).ceil() as usize;
-    let height = (scene.size.h * scale).ceil() as usize;
+    let width = ((scene.size.w + 2.0 * MARGIN) * scale).ceil() as usize;
+    let height = ((scene.size.h + 2.0 * MARGIN) * scale).ceil() as usize;
     let space = // SAFETY: a plain extern constant.
     CGColorSpace::with_name(Some(unsafe { kCGColorSpaceSRGB })).ok_or("no colour space")?;
     // SAFETY: a null data pointer asks CoreGraphics to own the pixel memory; the colour space outlives the call.
@@ -64,6 +68,7 @@ pub fn render_png(
     // Flip to a top-left origin and scale to pixels.
     CGContext::translate_ctm(Some(&ctx), 0.0, height as f64);
     CGContext::scale_ctm(Some(&ctx), scale, -scale);
+    CGContext::translate_ctm(Some(&ctx), MARGIN, MARGIN);
 
     let gc = NSGraphicsContext::graphicsContextWithCGContext_flipped(&ctx, true);
     NSGraphicsContext::saveGraphicsState_class();
@@ -80,6 +85,7 @@ pub fn render_png(
             CGContext::clip_to_rect(Some(&ctx), ns_rect(viewport));
         }
         CGContext::translate_ctm(Some(&ctx), node.frame.x, node.frame.y);
+        draw_shadow(&ctx, node, scale);
         CGContext::clip_to_rect(
             Some(&ctx),
             CGRect::new(
@@ -126,6 +132,42 @@ pub fn render_png(
     }
     .ok_or("PNG encoding failed")?;
     std::fs::write(path, data.to_vec()).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// The node's shadow, outside its shape only (the live one is a layer shadow under the node): the rounded rect is filled with
+/// a shadow while the clip keeps its own fill out. The context's origin is the node's top-left.
+fn draw_shadow(ctx: &CGContext, node: &Node, scale: f64) {
+    let Some(shadow) = node.shadow else { return };
+    let (w, h) = (node.frame.w, node.frame.h);
+    let corner = shadow.corner.min(w / 2.0).min(h / 2.0);
+    let shape = CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(w, h));
+    // SAFETY: a null transform means identity.
+    let path = unsafe { CGPath::with_rounded_rect(shape, corner, corner, std::ptr::null()) };
+    let [r, g, b, a] = shadow.color.resolve(Appearance::Dark);
+    let Some(space) = CGColorSpace::with_name(Some(unsafe { kCGColorSpaceSRGB })) else {
+        return;
+    };
+    // SAFETY: four components for an RGB colour space.
+    let color = unsafe { CGColor::new(Some(&space), [r, g, b, a].as_ptr()) };
+    CGContext::save_g_state(Some(ctx));
+    // Everything but the shape: the even-odd clip of a huge rect with the shape cut out.
+    CGContext::add_rect(
+        Some(ctx),
+        CGRect::new(CGPoint::new(-1.0e4, -1.0e4), CGSize::new(2.0e4, 2.0e4)),
+    );
+    CGContext::add_path(Some(ctx), Some(&path));
+    CGContext::eo_clip(Some(ctx));
+    // Shadow offsets live in the context's base space (y up, device pixels), not in the flipped, scaled user space.
+    CGContext::set_shadow_with_color(
+        Some(ctx),
+        CGSize::new(shadow.offset.x * scale, -shadow.offset.y * scale),
+        shadow.radius * scale,
+        color.as_deref(),
+    );
+    CGContext::set_rgb_fill_color(Some(ctx), 0.0, 0.0, 0.0, 1.0);
+    CGContext::add_path(Some(ctx), Some(&path));
+    CGContext::fill_path(Some(ctx));
+    CGContext::restore_g_state(Some(ctx));
 }
 
 /// Pixel size of the PNG at `path` and the colour (r, g, b, a in 0..1, not premultiplied) at pixel `(x, y)`.

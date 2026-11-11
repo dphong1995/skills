@@ -350,6 +350,8 @@ impl SceneView {
                 (Some(doc), true) => doc.addSubview(&view),
                 _ => self.addSubview(&view),
             }
+            // After the view has a superview: AppKit may swap the backing layer when it moves in.
+            view.set_shadow(node.shadow);
             nodes.insert(node.key.clone(), view);
         }
         for key in &diff.removed {
@@ -368,6 +370,12 @@ impl SceneView {
             };
             if update.cmds_changed {
                 view.set_cmds(&update.node.cmds, animate);
+            }
+            if before
+                .get(&update.node.key)
+                .is_none_or(|p| p.shadow != update.node.shadow)
+            {
+                view.set_shadow(update.node.shadow);
             }
             // Only what differs from the node's previous version is touched.
             let prev = before.get(&update.node.key);
@@ -472,7 +480,7 @@ impl SceneView {
                     true,
                     move || {
                         for (view, frame) in &resized {
-                            view.animator().setFrame(ns_rect(*frame));
+                            view.animate_frame(*frame);
                         }
                     },
                     || {},

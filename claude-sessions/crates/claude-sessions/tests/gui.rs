@@ -117,8 +117,8 @@ fn mixed_hover_renders_to_png() -> Result<(), String> {
     render_png(&scene, SCALE, Appearance::Dark, &png)?;
     let (size, _) = read_png_pixel(&png, 0, 0)?;
     let want = (
-        (scene.size.w * SCALE) as usize,
-        (scene.size.h * SCALE) as usize,
+        ((scene.size.w + 2.0 * claude_sessions_core::layout::MARGIN) * SCALE) as usize,
+        ((scene.size.h + 2.0 * claude_sessions_core::layout::MARGIN) * SCALE) as usize,
     );
     if size != want {
         return Err(format!("PNG is {size:?} pixels, want {want:?}"));
@@ -134,6 +134,38 @@ fn mixed_hover_renders_to_png() -> Result<(), String> {
         return Err("the render is one flat colour".into());
     }
     println!("mixed_hover_renders_to_png: {}", png.display());
+    Ok(())
+}
+
+/// Phase 2 height targets with the real `CoreTextMeasure`: the mixed hover panel and the two-question card.
+fn heights_meet_polish_targets() -> Result<(), String> {
+    const TARGET: f64 = 340.0;
+    let (_, f) = STATES
+        .iter()
+        .find(|(n, _)| *n == "07-mixed-hover")
+        .ok_or("no 07-mixed-hover state")?;
+    let dir = tempfile::tempdir().map_err(|e| e.to_string())?;
+    let (snap, panel) = f(dir.path(), fixed_now());
+    let h = claude_sessions_core::layout::expanded_size(&snap, &panel, &CoreTextMeasure).h;
+    if h > TARGET {
+        return Err(format!("07-mixed-hover is {h} pt tall, want <= {TARGET}"));
+    }
+    let (name, f) = STATES
+        .iter()
+        .find(|(n, _)| *n == "question-4-two-questions")
+        .ok_or("no question-4 state")?;
+    let scene = scene_of(name, *f);
+    let card = scene
+        .nodes
+        .iter()
+        .find(|n| n.key.0.starts_with("card-"))
+        .ok_or("no card")?;
+    if card.frame.h > TARGET {
+        return Err(format!(
+            "the question card is {} pt tall, want <= {TARGET}",
+            card.frame.h
+        ));
+    }
     Ok(())
 }
 
@@ -238,8 +270,9 @@ fn main() {
         println!("gui tests skipped (set CLAUDE_SESSIONS_GUI_TESTS=1)");
         return;
     }
-    let cases: [(&str, Case); 5] = [
+    let cases: [(&str, Case); 6] = [
         ("mixed_hover_renders_to_png", mixed_hover_renders_to_png),
+        ("heights_meet_polish_targets", heights_meet_polish_targets),
         ("snapshots", snapshots),
         (
             "edit_menu_handles_clipboard_shortcuts",

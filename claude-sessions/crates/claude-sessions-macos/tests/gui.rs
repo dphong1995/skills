@@ -253,6 +253,7 @@ fn field_scene(text: &str, label: &str) -> claude_sessions_core::scene::Scene {
             spinner: None,
             tips: vec![],
             scroll: None,
+            shadow: None,
         }],
         images: Default::default(),
     }
@@ -356,6 +357,7 @@ fn scroll_host_is_removed() -> Result<(), String> {
             spinner: None,
             tips: vec![],
             scroll: Some(Size { w: 200.0, h: 400.0 }),
+            shadow: None,
         },
     );
     let base = view.subviews().len();
@@ -386,6 +388,7 @@ fn panel_scroll_scene(with_scroll: bool) -> claude_sessions_core::scene::Scene {
         spinner: None,
         tips: vec![],
         scroll,
+        shadow: None,
     };
     let mut nodes = vec![
         node("panel", Rect::new(0.0, 0.0, 200.0, 100.0), None),
@@ -477,6 +480,7 @@ fn scroll_view_stays_above_a_node_added_later_before_it() -> Result<(), String> 
             spinner: None,
             tips: vec![],
             scroll: None,
+            shadow: None,
         },
     );
     view.set_scene(&scene);
@@ -514,6 +518,7 @@ fn scroll_offset_follows_the_clip_view() -> Result<(), String> {
             spinner: None,
             tips: vec![],
             scroll: Some(Size { w: 200.0, h: 400.0 }),
+            shadow: None,
         },
     );
     view.set_scene(&scene);
@@ -572,6 +577,7 @@ fn png_draws_fields_and_clips_scroll() -> Result<(), String> {
             spinner: None,
             tips: vec![],
             scroll,
+            shadow: None,
         }
     };
     scene.nodes.push(node(
@@ -585,13 +591,217 @@ fn png_draws_fields_and_clips_scroll() -> Result<(), String> {
         .push(node("c", Rect::new(0.0, 0.0, 200.0, 60.0), None, true));
     let clipped = dir.join("scroll-clipped.png");
     claude_sessions_macos::ui::render_png(&scene, 1.0, Appearance::Light, &clipped)?;
-    let (_, inside) = read_png_pixel(&clipped, 100, 10)?;
-    let (_, outside) = read_png_pixel(&clipped, 100, 50)?;
+    let (_, inside) = read_png_pixel(&clipped, 114, 24)?;
+    let (_, outside) = read_png_pixel(&clipped, 114, 64)?;
     if inside == outside {
         return Err("content below the viewport was painted".into());
     }
     Ok(())
 }
+
+fn shadow_node(
+    frame: claude_sessions_core::scene::Rect,
+    shadow: bool,
+) -> claude_sessions_core::scene::Node {
+    use claude_sessions_core::scene::{Color, Node, Point, Shadow, ThemeColor};
+    Node {
+        key: "card".into(),
+        frame,
+        cmds: vec![],
+        hits: vec![],
+        fields: vec![],
+        spinner: None,
+        tips: vec![],
+        scroll: None,
+        shadow: shadow.then_some(Shadow {
+            color: Color {
+                token: ThemeColor::Black,
+                alpha: 0.4,
+            },
+            radius: 10.0,
+            offset: Point { x: 0.0, y: 3.0 },
+            corner: 12.0,
+        }),
+    }
+}
+
+fn one_node_scene(node: claude_sessions_core::scene::Node) -> claude_sessions_core::scene::Scene {
+    use claude_sessions_core::scene::{Scene, Size};
+    Scene {
+        size: Size { w: 200.0, h: 100.0 },
+        nodes: vec![node],
+        images: Default::default(),
+    }
+}
+
+/// The node view's layer (the one subview of a one-node scene).
+fn node_layer(
+    view: &claude_sessions_macos::ui::SceneView,
+) -> Result<objc2::rc::Retained<objc2_quartz_core::CALayer>, String> {
+    view.subviews()
+        .iter()
+        .next()
+        .and_then(|v| v.layer())
+        .ok_or_else(|| "no node layer".to_string())
+}
+
+fn node_shadow_sets_layer_shadow_path() -> Result<(), String> {
+    use claude_sessions_core::scene::Rect;
+    use claude_sessions_macos::ui::SceneView;
+    use objc2_core_graphics::CGPath;
+    use objc2_foundation::{MainThreadMarker, NSSize};
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(200.0, 100.0));
+    view.set_scene(&one_node_scene(shadow_node(
+        Rect::new(10.0, 10.0, 100.0, 40.0),
+        true,
+    )));
+    let layer = node_layer(&view)?;
+    if layer.shadowOpacity() <= 0.0 {
+        return Err(format!("shadowOpacity {}", layer.shadowOpacity()));
+    }
+    if layer.shadowRadius() != 10.0 {
+        return Err(format!("shadowRadius {}", layer.shadowRadius()));
+    }
+    let path = layer.shadowPath().ok_or("no shadowPath")?;
+    let b = CGPath::bounding_box(Some(&path));
+    if (b.size.width, b.size.height) != (100.0, 40.0) {
+        return Err(format!("shadowPath bounds {b:?}"));
+    }
+    Ok(())
+}
+
+fn shadow_path_follows_frame_change() -> Result<(), String> {
+    use claude_sessions_core::scene::Rect;
+    use claude_sessions_macos::ui::SceneView;
+    use objc2_core_graphics::CGPath;
+    use objc2_foundation::{MainThreadMarker, NSSize};
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(200.0, 100.0));
+    view.set_scene(&one_node_scene(shadow_node(
+        Rect::new(10.0, 10.0, 100.0, 40.0),
+        true,
+    )));
+    view.set_scene(&one_node_scene(shadow_node(
+        Rect::new(10.0, 10.0, 100.0, 70.0),
+        true,
+    )));
+    let layer = node_layer(&view)?;
+    let path = layer.shadowPath().ok_or("no shadowPath")?;
+    let b = CGPath::bounding_box(Some(&path));
+    if (b.size.width, b.size.height) != (100.0, 70.0) {
+        return Err(format!("shadowPath bounds {b:?}"));
+    }
+    Ok(())
+}
+
+fn node_without_shadow_has_none() -> Result<(), String> {
+    use claude_sessions_core::scene::Rect;
+    use claude_sessions_macos::ui::SceneView;
+    use objc2_foundation::{MainThreadMarker, NSSize};
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(200.0, 100.0));
+    view.set_scene(&one_node_scene(shadow_node(
+        Rect::new(10.0, 10.0, 100.0, 40.0),
+        false,
+    )));
+    let layer = node_layer(&view)?;
+    if layer.shadowOpacity() != 0.0 {
+        return Err(format!("shadowOpacity {}", layer.shadowOpacity()));
+    }
+    Ok(())
+}
+
+fn render_png_pads_margin_and_draws_shadow() -> Result<(), String> {
+    use claude_sessions_core::scene::{Appearance, Rect};
+    let path = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("shadow.png");
+    let scale = 2.0;
+    let scene = one_node_scene(shadow_node(Rect::new(40.0, 20.0, 100.0, 40.0), true));
+    claude_sessions_macos::ui::render_png(&scene, scale, Appearance::Light, &path)?;
+    // Node bottom edge at scene y 60, so bitmap y (60 + 14 + 4) pt; centred horizontally at (40 + 50 + 14) pt.
+    let (size, below) = read_png_pixel(&path, (104.0 * scale) as usize, (78.0 * scale) as usize)?;
+    if size
+        != (
+            ((200.0 + 28.0) * scale) as usize,
+            ((100.0 + 28.0) * scale) as usize,
+        )
+    {
+        return Err(format!("png size {size:?}"));
+    }
+    if below[3] <= 0.05 {
+        return Err(format!("no shadow below the node: {below:?}"));
+    }
+    let (_, corner) = read_png_pixel(&path, 0, 0)?;
+    if corner[3] >= 0.02 {
+        return Err(format!("corner is not transparent: {corner:?}"));
+    }
+    Ok(())
+}
+
+/// Rows (in px) where a render of `"H"` in a rect of height `h` has ink, as (first, last).
+fn ink_rows(h: f64, name: &str) -> Result<(usize, usize), String> {
+    use claude_sessions_core::scene::{
+        Align, Appearance, DrawCmd, FontSpec, Rect, Size, ThemeColor, Weight,
+    };
+    let path = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(name);
+    let scale = 4.0;
+    let mut node = shadow_node(Rect::new(0.0, 0.0, 60.0, h), false);
+    node.cmds = vec![DrawCmd::Text {
+        rect: Rect::new(0.0, 0.0, 60.0, h),
+        text: "H".into(),
+        font: FontSpec {
+            size: 13.0,
+            weight: Weight::Regular,
+            mono: false,
+        },
+        color: ThemeColor::Text.opaque(),
+        max_lines: 1,
+        align: Align::Left,
+    }];
+    let mut scene = one_node_scene(node);
+    scene.size = Size { w: 60.0, h };
+    claude_sessions_macos::ui::render_png(&scene, scale, Appearance::Light, &path)?;
+    // The PNG may be padded around the scene; find the pad from its width.
+    let (size, _) = read_png_pixel(&path, 0, 0)?;
+    let margin = (size.0 - (60.0 * scale) as usize) / 2;
+    let rows = (h * scale) as usize;
+    let mut first = None;
+    let mut last = 0;
+    for y in 0..rows {
+        let mut ink = false;
+        for x in 0..(20.0 * scale) as usize {
+            let (_, p) = read_png_pixel(&path, margin + x, margin + y)?;
+            ink |= p[3] > 0.3;
+        }
+        if ink {
+            first.get_or_insert(y);
+            last = y;
+        }
+    }
+    first.map(|f| (f, last)).ok_or_else(|| "no ink".to_string())
+}
+
+fn text_centres_vertically_in_taller_rect() -> Result<(), String> {
+    let (first, last) = ink_rows(40.0, "centre.png")?;
+    let centre = (first + last + 1) as f64 / 2.0 / 4.0;
+    if (centre - 20.0).abs() > 0.5 {
+        return Err(format!("ink centre {centre} pt, rect centre 20"));
+    }
+    Ok(())
+}
+
+fn single_line_text_keeps_position() -> Result<(), String> {
+    // A rect one line tall: 13 pt system font, line height 16.
+    let (first, _) = ink_rows(16.0, "one-line.png")?;
+    let top = first as f64 / 4.0;
+    if (top - PINNED_INK_TOP).abs() > 0.5 {
+        return Err(format!("ink top {top} pt, pinned {PINNED_INK_TOP}"));
+    }
+    Ok(())
+}
+
+/// Measured on the code before vertical centring existed.
+const PINNED_INK_TOP: f64 = 3.75;
 
 fn chimes_use_the_swift_sounds() -> Result<(), String> {
     use claude_sessions_core::pull_requests::Chime;
@@ -677,6 +887,30 @@ fn main() {
     results.push((
         "png_draws_fields_and_clips_scroll",
         png_draws_fields_and_clips_scroll(),
+    ));
+    results.push((
+        "node_shadow_sets_layer_shadow_path",
+        node_shadow_sets_layer_shadow_path(),
+    ));
+    results.push((
+        "shadow_path_follows_frame_change",
+        shadow_path_follows_frame_change(),
+    ));
+    results.push((
+        "node_without_shadow_has_none",
+        node_without_shadow_has_none(),
+    ));
+    results.push((
+        "render_png_pads_margin_and_draws_shadow",
+        render_png_pads_margin_and_draws_shadow(),
+    ));
+    results.push((
+        "text_centres_vertically_in_taller_rect",
+        text_centres_vertically_in_taller_rect(),
+    ));
+    results.push((
+        "single_line_text_keeps_position",
+        single_line_text_keeps_position(),
     ));
     results.push(("chimes_use_the_swift_sounds", chimes_use_the_swift_sounds()));
     results.push(("login_item_gate", login_item_gate()));

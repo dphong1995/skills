@@ -33,13 +33,13 @@ fn token(section: Section) -> ThemeColor {
 pub fn node(ctx: &mut Ctx, section: Section, count: usize, y: f64) -> Node {
     let mut c = Canvas::default();
     c.rrect(
-        Rect::new(12.0, 14.0, 7.0, 7.0),
+        Rect::new(12.0, (SECTION_TITLE_H - 7.0) / 2.0, 7.0, 7.0),
         3.5,
         Some(theme::solid(token(section))),
         None,
     );
     c.text(
-        Rect::new(28.0, 10.0, CARD_W - 40.0, 14.0),
+        Rect::new(28.0, 0.0, CARD_W - 40.0, SECTION_TITLE_H),
         &format!("{} · {count}", title(section)),
         theme::SECTION_FONT,
         theme::solid(ThemeColor::TextFaint),

@@ -1,5 +1,6 @@
 use crate::support::{FakeMeasure, snapshot};
 use claude_sessions::hits::{Click, ClickEnv, PanelChange, Target};
+use claude_sessions::theme;
 use claude_sessions::views::{Built, View, build};
 use claude_sessions_core::feed::{BlockState, FeedItem, FeedOption, FeedQuestion};
 use claude_sessions_core::layout::{self, expanded_layout, expanded_size};
@@ -1414,4 +1415,181 @@ fn a_status_icon_is_a_solid_circle_with_a_plain_glyph() {
     assert!(node.cmds.iter().any(|c| matches!(c,
         DrawCmd::RoundedRect { rect, fill: Some(f), .. }
             if rect.w == rect.h && f.token == ThemeColor::Orange && f.alpha == 1.0)));
+}
+
+#[test]
+fn panel_node_has_shadow() {
+    let (snap, _) = mixed();
+    let built = render(&snap, &open());
+    let panel = built.scene.nodes.iter().find(|n| n.key.0 == "panel");
+    assert_eq!(panel.and_then(|n| n.shadow), Some(theme::PANEL_SHADOW));
+}
+
+#[test]
+fn pill_node_has_shadow() {
+    let (snap, _) = mixed();
+    let built = render(&snap, &PanelState::default());
+    assert_eq!(built.scene.nodes[0].shadow, Some(theme::PILL_SHADOW));
+}
+
+#[test]
+fn shadows_fit_the_margin() {
+    for s in [theme::PANEL_SHADOW, theme::PILL_SHADOW] {
+        assert!(s.radius + s.offset.y.abs() <= layout::MARGIN, "{s:?}");
+    }
+}
+
+#[test]
+fn other_nodes_have_no_shadow() {
+    let (snap, _) = mixed();
+    let built = render(&snap, &open());
+    for node in built.scene.nodes.iter().filter(|n| n.key.0 != "panel") {
+        assert!(node.shadow.is_none(), "{}", node.key.0);
+    }
+}
+
+fn fixture_built(name: &str) -> Built {
+    let (_, f) = claude_sessions_core::fixtures::STATES
+        .iter()
+        .find(|(n, _)| *n == name)
+        .unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let now = claude_sessions_core::fixtures::fixed_now();
+    let (snap, panel) = f(dir.path(), now);
+    let clock = |_: SystemTime| "14:30".to_string();
+    build(&View {
+        snap: &snap,
+        panel: &panel,
+        measure: &FakeMeasure,
+        now: claude_sessions_core::fixtures::view_now(name, now),
+        clock: &clock,
+    })
+}
+
+fn option_hit_rects(b: &Built, node: &Node) -> Vec<claude_sessions_core::scene::Rect> {
+    node.hits
+        .iter()
+        .filter(|h| matches!(b.targets.get(h.id), Some(Target::PickOption { .. })))
+        .map(|h| h.rect)
+        .collect()
+}
+
+#[test]
+fn question_rows_are_one_line() {
+    let built = fixture_built("question-4-two-questions");
+    let node = built
+        .scene
+        .nodes
+        .iter()
+        .find(|n| {
+            n.hits
+                .iter()
+                .any(|h| matches!(built.targets.get(h.id), Some(Target::PickOption { .. })))
+        })
+        .unwrap();
+    let rows = option_hit_rects(&built, node);
+    assert!(!rows.is_empty());
+    assert!(rows.iter().all(|r| r.h == layout::OPTION_ROW_H), "{rows:?}");
+    let numbers: Vec<&str> = texts(node)
+        .into_iter()
+        .filter(|t| t.len() == 1 && t.chars().all(|c| c.is_ascii_digit()))
+        .collect();
+    let want: Vec<String> = (1..=rows.len()).map(|n| n.to_string()).collect();
+    assert_eq!(numbers, want, "option numbers 1..n in order");
+    // A picked row is the only kind of option row with a fill that is as wide as the row; the others have none.
+    let fills = |node: &Node| {
+        node.cmds
+            .iter()
+            .filter(|c| {
+                matches!(c, DrawCmd::RoundedRect { rect, fill: Some(f), .. }
+                    if f.token == ThemeColor::Blue && rect.w == rows[0].w)
+            })
+            .count()
+    };
+    let (_, panel) = fixture_state("question-4-two-questions");
+    let picked: usize = panel.answers.values().flatten().map(Vec::len).sum();
+    assert_eq!(fills(node), picked, "only picked rows have a fill");
+}
+
+fn fixture_state(name: &str) -> (Snapshot, PanelState) {
+    let (_, f) = claude_sessions_core::fixtures::STATES
+        .iter()
+        .find(|(n, _)| *n == name)
+        .unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    f(dir.path(), claude_sessions_core::fixtures::fixed_now())
+}
+
+#[test]
+fn long_option_description_stays_one_line() {
+    let mut s = two_questions();
+    let long = "x".repeat(300);
+    s.question.as_mut().unwrap().questions[0].options[0].description = Some(long.clone());
+    let snap = snapshot(vec![s]);
+    let (built, _) = only_card(&snap, &open());
+    let node = card(&built.scene, "ask");
+    let rows = option_hit_rects(&built, node);
+    assert!(rows.iter().all(|r| r.h == layout::OPTION_ROW_H));
+    let desc = node
+        .cmds
+        .iter()
+        .find_map(|c| match c {
+            DrawCmd::Text {
+                text, max_lines, ..
+            } if *text == long => Some(*max_lines),
+            _ => None,
+        })
+        .expect("the description is drawn");
+    assert_eq!(desc, 1);
+    assert!(
+        node.tips
+            .iter()
+            .any(|t| t.text == long && t.rect.h == layout::OPTION_ROW_H)
+    );
+}
+
+#[test]
+fn countdown_is_not_mono() {
+    let (built, _) = only_card(&snapshot(vec![two_questions()]), &open());
+    let node = card(&built.scene, "ask");
+    let font = node
+        .cmds
+        .iter()
+        .find_map(|c| match c {
+            DrawCmd::Text { text, font, .. } if text.starts_with("còn ") => Some(*font),
+            _ => None,
+        })
+        .unwrap();
+    assert!(!font.mono);
+}
+
+#[test]
+fn pill_group_gaps_are_equal() {
+    let built = fixture_built("06-mixed-collapsed");
+    let node = &built.scene.nodes[0];
+    // Group content in draw order: [x0, x1] per group; a group starts at the first cmd after a text cmd that is a count.
+    let mut spans: Vec<(f64, f64)> = Vec::new();
+    let mut start: Option<f64> = None;
+    for c in &node.cmds {
+        match c {
+            DrawCmd::Symbol { rect, .. } => start = Some(rect.x),
+            DrawCmd::RoundedRect {
+                rect,
+                fill: Some(f),
+                ..
+            } if f.token != ThemeColor::Panel && rect.h <= 18.0 => start = Some(rect.x),
+            DrawCmd::Text { rect, text, .. } if text.chars().all(|c| c.is_ascii_digit()) => {
+                let s = start.take().unwrap_or(rect.x);
+                // The badge is a capsule that holds its digit: it ends where its own rect ends.
+                spans.push((s, rect.x + rect.w));
+            }
+            _ => {}
+        }
+    }
+    assert!(spans.len() >= 3, "{spans:?}");
+    let gaps: Vec<f64> = spans.windows(2).map(|w| w[1].0 - w[0].1).collect();
+    assert!(
+        gaps.iter().all(|g| (g - gaps[0]).abs() <= 0.5),
+        "{gaps:?} {spans:?}"
+    );
 }

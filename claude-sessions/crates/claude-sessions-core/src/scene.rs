@@ -28,6 +28,7 @@ pub enum ThemeColor {
     OnAccent,
     /// White in both appearances (the count inside the red badge).
     White,
+    Black,
     Red,
     Orange,
     Green,
@@ -41,17 +42,18 @@ impl ThemeColor {
         let dark = appearance == Appearance::Dark;
         let pick = |d: [f64; 4], l: [f64; 4]| if dark { d } else { l };
         match self {
-            Self::Panel => pick([0.10, 0.11, 0.14, 0.94], [0.97, 0.97, 0.98, 0.95]),
+            Self::Panel => pick([0.110, 0.110, 0.118, 0.96], [0.965, 0.965, 0.97, 0.95]),
             Self::PanelStroke => pick([1.0, 1.0, 1.0, 0.10], [0.0, 0.0, 0.0, 0.12]),
-            Self::Row => pick([1.0, 1.0, 1.0, 0.06], [0.0, 0.0, 0.0, 0.05]),
+            Self::Row => pick([1.0, 1.0, 1.0, 0.07], [0.0, 0.0, 0.0, 0.05]),
             Self::RowAttention => pick([1.0, 0.75, 0.2, 0.10], [1.0, 0.6, 0.0, 0.12]),
             Self::Code => pick([0.0, 0.0, 0.0, 0.35], [0.0, 0.0, 0.0, 0.07]),
             Self::Button => pick([1.0, 1.0, 1.0, 0.14], [0.0, 0.0, 0.0, 0.08]),
             Self::Text => pick([1.0, 1.0, 1.0, 0.92], [0.0, 0.0, 0.0, 0.88]),
-            Self::TextSecondary => pick([0.60, 0.61, 0.64, 1.0], [0.0, 0.0, 0.0, 0.58]),
+            Self::TextSecondary => pick([0.65, 0.65, 0.67, 1.0], [0.0, 0.0, 0.0, 0.58]),
             Self::TextFaint => pick([0.42, 0.43, 0.46, 1.0], [0.0, 0.0, 0.0, 0.38]),
             Self::OnAccent => pick([0.03, 0.15, 0.06, 1.0], [1.0, 1.0, 1.0, 1.0]),
             Self::White => [1.0, 1.0, 1.0, 1.0],
+            Self::Black => [0.0, 0.0, 0.0, 1.0],
             Self::Red => pick([1.0, 0.38, 0.35, 1.0], [0.85, 0.15, 0.12, 1.0]),
             Self::Orange => pick([1.0, 0.72, 0.25, 1.0], [0.85, 0.5, 0.0, 1.0]),
             Self::Green => pick([0.2, 0.84, 0.35, 1.0], [0.1, 0.62, 0.2, 1.0]),
@@ -208,6 +210,16 @@ impl From<&str> for NodeKey {
     }
 }
 
+/// A soft drop shadow under a node's rounded rect; `offset.y` positive is down in the flipped scene.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Shadow {
+    pub color: Color,
+    pub radius: f64,
+    pub offset: Point,
+    /// Corner radius of the shape that casts it.
+    pub corner: f64,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Node {
     pub key: NodeKey,
@@ -224,6 +236,8 @@ pub struct Node {
     /// `Some(content size)` makes this node a scroll viewport (its `frame`): every node after it in `Scene::nodes` lives in the
     /// scrolled content, keeping its scene position, so content point = scene point - the viewport's origin.
     pub scroll: Option<Size>,
+    /// Cast by the node's whole frame (a rounded rect of radius `corner`), outside it.
+    pub shadow: Option<Shadow>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -348,6 +362,7 @@ mod tests {
             spinner: None,
             tips: vec![],
             scroll: None,
+            shadow: None,
         }
     }
 

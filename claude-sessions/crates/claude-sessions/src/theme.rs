@@ -1,7 +1,8 @@
 //! Design tokens of the redesign, from `plans/2026-11-11-claude-sessions-rust/mockups/src/base.css`: colours (resolved per
 //! appearance by `ThemeColor`), radii, spacing and font sizes. Dark and light share one layout.
 
-use claude_sessions_core::scene::{Color, FontSpec, ThemeColor, Weight};
+use claude_sessions_core::layout::HEADER_HEIGHT;
+use claude_sessions_core::scene::{Color, FontSpec, Point, Shadow, ThemeColor, Weight};
 use claude_sessions_core::store::Session;
 
 pub use claude_sessions_core::layout::{REPLY_FONT, STATE_FONT, SUB_FONT, TITLE_FONT};
@@ -12,6 +13,26 @@ pub const BUTTON_RADIUS: f64 = 7.0;
 pub const CMD_RADIUS: f64 = 8.0;
 pub const CHIP_RADIUS: f64 = 6.0;
 pub const ICON: f64 = 16.0;
+
+/// Soft shadows cast into the window's transparent margin (`layout::MARGIN`): radius + vertical offset must fit it.
+pub const PANEL_SHADOW: Shadow = Shadow {
+    color: Color {
+        token: ThemeColor::Black,
+        alpha: 0.40,
+    },
+    radius: 10.0,
+    offset: Point { x: 0.0, y: 3.0 },
+    corner: PANEL_RADIUS,
+};
+pub const PILL_SHADOW: Shadow = Shadow {
+    color: Color {
+        token: ThemeColor::Black,
+        alpha: 0.30,
+    },
+    radius: 6.0,
+    offset: Point { x: 0.0, y: 2.0 },
+    corner: HEADER_HEIGHT / 2.0,
+};
 
 pub const fn solid(token: ThemeColor) -> Color {
     token.opaque()
@@ -57,9 +78,9 @@ pub fn card_hover_fill() -> Color {
     tint(ThemeColor::Text, 0.09)
 }
 
-/// A card with a fresh Claude mark.
+/// Laid over the card fill of a card with a fresh Claude mark.
 pub fn card_fresh_fill() -> Color {
-    tint(ThemeColor::Yellow, 0.10)
+    tint(ThemeColor::Yellow, 0.04)
 }
 
 pub fn selection_ring() -> Color {

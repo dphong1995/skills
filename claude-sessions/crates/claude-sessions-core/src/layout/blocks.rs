@@ -15,14 +15,14 @@ use crate::transcript::PendingState;
 pub const PANEL_PAD: f64 = 10.0;
 pub const CARD_GAP: f64 = 4.0;
 pub const CARD_W: f64 = EXPANDED_WIDTH - 2.0 * PANEL_PAD;
-pub const CARD_PAD_Y: f64 = 10.0;
+pub const CARD_PAD_Y: f64 = 9.0;
 /// The status icon sits in this inset; all card text starts after it.
 pub const CARD_INSET: f64 = 38.0;
 pub const CARD_PAD_RIGHT: f64 = 12.0;
 /// Time label, `Trả lời` / `Dừng` button.
 pub const RIGHT_COLUMN: f64 = 64.0;
 pub const TEXT_W: f64 = CARD_W - CARD_INSET - CARD_PAD_RIGHT;
-pub const SECTION_TITLE_H: f64 = 28.0;
+pub const SECTION_TITLE_H: f64 = 20.0;
 pub const SUB_H: f64 = 15.0;
 /// One `Todo` / activity line including the 5 pt above it.
 pub const LINE_ROW_H: f64 = 20.0;
@@ -40,9 +40,11 @@ pub const BUTTON_H: f64 = 24.0;
 pub const BLOCK_GAP: f64 = 8.0;
 pub const FIELD_H: f64 = 28.0;
 pub const QUESTION_PROMPT_H: f64 = 22.0;
-pub const OPTION_H: f64 = 30.0;
-pub const OPTION_DESC_H: f64 = 47.0;
-pub const OTHER_ROW_H: f64 = 29.0;
+/// Space above every question after the first.
+pub const QUESTION_GAP: f64 = 6.0;
+/// Every option is one line: number, label and its description cut with `…`.
+pub const OPTION_ROW_H: f64 = 24.0;
+pub const OTHER_ROW_H: f64 = 26.0;
 pub const NOTE_H: f64 = 24.0;
 /// The one-line approve/deny result that replaces the approval block.
 pub const SENT_LINE_H: f64 = 24.0;
@@ -52,7 +54,7 @@ pub const CHIPS_H: f64 = 26.0;
 pub const LINK_SECTION_H: f64 = 16.0;
 pub const LINK_ROW_H: f64 = 22.0;
 /// A card with a right-column button is at least this tall.
-pub const CARD_MIN_BUTTON_H: f64 = 60.0;
+pub const CARD_MIN_BUTTON_H: f64 = 54.0;
 pub const CLOSED_ROW_H: f64 = 26.0;
 pub const CLOSED_ITEM_H: f64 = 24.0;
 pub const EMPTY_H: f64 = 40.0;
@@ -219,22 +221,13 @@ pub fn question_height(q: &FeedQuestion, state: BlockState, other_open: Option<u
         .iter()
         .enumerate()
         .map(|(i, item)| {
-            let options: f64 = item
-                .options
-                .iter()
-                .map(|o| {
-                    if o.description.is_some() {
-                        OPTION_DESC_H
-                    } else {
-                        OPTION_H
-                    }
-                })
-                .sum();
+            let options = OPTION_ROW_H * item.options.len() as f64;
             let other = if other_open == Some(i) { FIELD_H } else { 0.0 };
             QUESTION_PROMPT_H + options + OTHER_ROW_H + other
         })
         .sum();
-    BLOCK_GAP + questions + BLOCK_GAP + BUTTON_H
+    let gaps = QUESTION_GAP * q.questions.len().saturating_sub(1) as f64;
+    BLOCK_GAP + questions + gaps + BLOCK_GAP + BUTTON_H
 }
 
 /// The reply, at most 2 lines, with the gap above it.
@@ -520,10 +513,16 @@ pub const PILL_GAP: f64 = 10.0;
 /// The quota ring plus `86%`.
 pub const PILL_QUOTA_W: f64 = 58.0;
 
-/// Width of one pill group: icon, gap and the digits of its count.
-pub fn pill_group_width(count: usize) -> f64 {
+/// Width of the pill group `index` (see `pill_groups`) as drawn: the sparkle, the `Cần bạn` badge or the dot, then the
+/// digits of its count. It is the group's visible width, so the gap between groups is `PILL_GAP` everywhere.
+pub fn pill_group_width(index: usize, count: usize) -> f64 {
     let digits = count.to_string().len() as f64;
-    18.0 + 4.0 + 7.5 * digits
+    match index {
+        0 => 18.0 + 4.0 + 7.5 * digits,
+        1 if count < 10 => 18.0,
+        1 => 18.0 + 7.5 * digits,
+        _ => 7.0 + 5.0 + 7.5 * digits,
+    }
 }
 
 /// The collapsed pill: padding, one group per non-zero count, the quota ring from 80%. Without any session the pill keeps
@@ -531,8 +530,9 @@ pub fn pill_group_width(count: usize) -> f64 {
 pub fn collapsed_width(snap: &Snapshot) -> f64 {
     let mut parts: Vec<f64> = pill_groups(snap)
         .into_iter()
-        .filter(|n| *n > 0)
-        .map(pill_group_width)
+        .enumerate()
+        .filter(|(_, n)| *n > 0)
+        .map(|(i, n)| pill_group_width(i, n))
         .collect();
     if snap.quota.as_ref().and_then(|q| q.pill_percent()).is_some() {
         parts.push(PILL_QUOTA_W);

@@ -74,9 +74,24 @@ pub(crate) fn draw_cmds(cmds: &[DrawCmd], appearance: Appearance) {
             } => {
                 let attrs = text::attributes(font, color.resolve(appearance), *align);
                 let area = text::text_rect(ns_rect(*rect), font, *max_lines);
+                let string = NSString::from_str(text);
+                let area = text::centred(area, ns_rect(*rect), font, *max_lines, |width| {
+                    // SAFETY: plain call on an owned string with attributes built by `text::attributes`.
+                    unsafe {
+                        string
+                            .boundingRectWithSize_options_attributes_context(
+                                NSSize::new(width, 1.0e6),
+                                text::draw_options(*max_lines),
+                                Some(&attrs),
+                                None,
+                            )
+                            .size
+                            .height
+                    }
+                });
                 // SAFETY: plain draw call with attributes built by `text::attributes`.
                 unsafe {
-                    NSString::from_str(text).drawWithRect_options_attributes_context(
+                    string.drawWithRect_options_attributes_context(
                         area,
                         text::draw_options(*max_lines),
                         Some(&attrs),
@@ -94,6 +109,16 @@ pub(crate) fn draw_cmds(cmds: &[DrawCmd], appearance: Appearance) {
             } => {
                 let string = text::rich_string(runs, font, color.resolve(appearance), *align);
                 let area = text::text_rect(ns_rect(*rect), font, *max_lines);
+                let area = text::centred(area, ns_rect(*rect), font, *max_lines, |width| {
+                    string
+                        .boundingRectWithSize_options_context(
+                            NSSize::new(width, 1.0e6),
+                            text::draw_options(*max_lines),
+                            None,
+                        )
+                        .size
+                        .height
+                });
                 string.drawWithRect_options_context(area, text::draw_options(*max_lines), None);
             }
             DrawCmd::Symbol {

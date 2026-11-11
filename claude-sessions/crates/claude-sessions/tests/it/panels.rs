@@ -13,6 +13,7 @@ fn node(key: &str, frame: Rect, scroll: Option<Size>) -> Node {
         spinner: None,
         tips: vec![],
         scroll,
+        shadow: None,
     }
 }
 
