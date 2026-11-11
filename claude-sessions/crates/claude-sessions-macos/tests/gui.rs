@@ -374,6 +374,121 @@ fn scroll_host_is_removed() -> Result<(), String> {
     Ok(())
 }
 
+/// Scene with the real list's node order: panel background, header, the scroll node, one scrolled card.
+fn panel_scroll_scene(with_scroll: bool) -> claude_sessions_core::scene::Scene {
+    use claude_sessions_core::scene::{Node, Rect, Scene, Size};
+    let node = |key: &str, frame: Rect, scroll: Option<Size>| Node {
+        key: key.into(),
+        frame,
+        cmds: vec![],
+        hits: vec![],
+        fields: vec![],
+        spinner: None,
+        tips: vec![],
+        scroll,
+    };
+    let mut nodes = vec![
+        node("panel", Rect::new(0.0, 0.0, 200.0, 100.0), None),
+        node("header", Rect::new(0.0, 0.0, 200.0, 20.0), None),
+    ];
+    if with_scroll {
+        nodes.push(node(
+            "scroll",
+            Rect::new(0.0, 20.0, 200.0, 80.0),
+            Some(Size { w: 200.0, h: 400.0 }),
+        ));
+        nodes.push(node("card", Rect::new(0.0, 20.0, 200.0, 40.0), None));
+    }
+    Scene {
+        size: Size { w: 200.0, h: 100.0 },
+        nodes,
+        images: Default::default(),
+    }
+}
+
+/// The SceneView's subviews bottom to top as "scroll" or "node".
+fn subview_kinds(view: &claude_sessions_macos::ui::SceneView) -> Vec<&'static str> {
+    use objc2::ClassType;
+    use objc2_app_kit::NSScrollView;
+    use objc2_foundation::NSObjectProtocol;
+    view.subviews()
+        .iter()
+        .map(|v| {
+            if v.isKindOfClass(NSScrollView::class()) {
+                "scroll"
+            } else {
+                "node"
+            }
+        })
+        .collect()
+}
+
+/// Views stack in scene node order: panel, header, then the scroll view (the scroll node's place); the scroll view must not sit
+/// under the panel background.
+fn scroll_view_stacks_above_panel_when_in_first_scene() -> Result<(), String> {
+    use claude_sessions_macos::ui::SceneView;
+    use objc2_foundation::{MainThreadMarker, NSSize};
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(200.0, 100.0));
+    view.set_scene(&panel_scroll_scene(true));
+    let kinds = subview_kinds(&view);
+    if kinds != ["node", "node", "scroll"] {
+        return Err(format!(
+            "subviews bottom to top {kinds:?}, want [\"node\", \"node\", \"scroll\"] (panel, header, scroll)"
+        ));
+    }
+    Ok(())
+}
+
+/// The same order when the scroll node only appears in a later scene.
+fn scroll_view_stacks_above_panel_when_added_later() -> Result<(), String> {
+    use claude_sessions_macos::ui::SceneView;
+    use objc2_foundation::{MainThreadMarker, NSSize};
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(200.0, 100.0));
+    view.set_scene(&panel_scroll_scene(false));
+    view.set_scene(&panel_scroll_scene(true));
+    let kinds = subview_kinds(&view);
+    if kinds != ["node", "node", "scroll"] {
+        return Err(format!(
+            "subviews bottom to top {kinds:?}, want [\"node\", \"node\", \"scroll\"] (panel, header, scroll)"
+        ));
+    }
+    Ok(())
+}
+
+/// A node added in a later scene before the scroll node in scene order stays under the scroll view.
+fn scroll_view_stays_above_a_node_added_later_before_it() -> Result<(), String> {
+    use claude_sessions_core::scene::{Node, Rect};
+    use claude_sessions_macos::ui::SceneView;
+    use objc2_foundation::{MainThreadMarker, NSSize};
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(200.0, 100.0));
+    let mut scene = panel_scroll_scene(true);
+    view.set_scene(&scene);
+    scene.nodes.insert(
+        2,
+        Node {
+            key: "banner".into(),
+            frame: Rect::new(0.0, 0.0, 200.0, 10.0),
+            cmds: vec![],
+            hits: vec![],
+            fields: vec![],
+            spinner: None,
+            tips: vec![],
+            scroll: None,
+        },
+    );
+    view.set_scene(&scene);
+    let kinds = subview_kinds(&view);
+    if kinds != ["node", "node", "node", "scroll"] {
+        return Err(format!(
+            "subviews bottom to top {kinds:?}, want node, node, node, scroll"
+        ));
+    }
+    Ok(())
+}
+
 /// `scroll_offset` is 0 without a scroll host and follows the clip view's bounds origin once the list scrolls.
 fn scroll_offset_follows_the_clip_view() -> Result<(), String> {
     use claude_sessions_core::scene::{Node, Rect, Size};
@@ -546,6 +661,18 @@ fn main() {
     results.push((
         "scroll_offset_follows_the_clip_view",
         scroll_offset_follows_the_clip_view(),
+    ));
+    results.push((
+        "scroll_view_stacks_above_panel_when_in_first_scene",
+        scroll_view_stacks_above_panel_when_in_first_scene(),
+    ));
+    results.push((
+        "scroll_view_stacks_above_panel_when_added_later",
+        scroll_view_stacks_above_panel_when_added_later(),
+    ));
+    results.push((
+        "scroll_view_stays_above_a_node_added_later_before_it",
+        scroll_view_stays_above_a_node_added_later_before_it(),
     ));
     results.push((
         "png_draws_fields_and_clips_scroll",

@@ -10,7 +10,7 @@ use objc2::rc::Retained;
 use objc2::rc::Weak;
 use objc2::{DefinedClass, MainThreadOnly, define_class, msg_send};
 use objc2_app_kit::{NSAnimatablePropertyContainer, NSCursor, NSEvent, NSTextField, NSView};
-use objc2_app_kit::{NSScrollView, NSScrollerStyle};
+use objc2_app_kit::{NSScrollView, NSScrollerStyle, NSWindowOrderingMode};
 use objc2_foundation::{MainThreadMarker, NSObjectProtocol, NSPoint, NSRect, NSSize};
 
 use super::draw::{ns_rect, register_images};
@@ -411,6 +411,36 @@ impl SceneView {
         {
             // The nodes are back in this view; the scroll view, its clip view and its document must leave it too.
             old.view.removeFromSuperview();
+        }
+        // Direct subviews stack in scene order with the scroll view in the scroll node's place, so the panel
+        // background never covers the list. Fading-out views stay where they are.
+        let want: Vec<Retained<NSView>> = scene
+            .nodes
+            .iter()
+            .enumerate()
+            .filter_map(|(i, n)| {
+                if Some(i) == scroll_at {
+                    let scroll = ivars.scroll.borrow();
+                    scroll
+                        .as_ref()
+                        .map(|h| Retained::into_super(h.view.clone()))
+                } else if scrolled.contains(&n.key) {
+                    None
+                } else {
+                    nodes.get(&n.key).map(|v| Retained::into_super(v.clone()))
+                }
+            })
+            .collect();
+        let have = self.subviews();
+        let have: Vec<_> = have.iter().filter(|v| want.contains(v)).collect();
+        if have.len() != want.len() || have.iter().zip(&want).any(|(a, b)| **a != **b) {
+            for pair in want.windows(2) {
+                self.addSubview_positioned_relativeTo(
+                    &pair[1],
+                    NSWindowOrderingMode::Above,
+                    Some(&pair[0]),
+                );
+            }
         }
 
         let appear: Vec<_> = diff
