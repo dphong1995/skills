@@ -1,8 +1,10 @@
 //! Main-queue turns and the 1 s timer.
 
 use std::ptr::NonNull;
+use std::time::Duration;
 
 use block2::RcBlock;
+use dispatch2::DispatchTime;
 use objc2::rc::Retained;
 use objc2_foundation::{MainThreadMarker, NSTimer};
 
@@ -19,9 +21,12 @@ impl<F: FnOnce()> MainOnly<F> {
 }
 
 /// `work` runs on the main thread in a later run-loop turn, so nothing of the current callback is still borrowed.
-/// Does nothing off the main thread.
+/// `work` is not `Send`, so off the main thread it cannot be handed to the main queue soundly: it is dropped (a debug
+/// build asserts). Callers that wait for the work (`apple_script::run_later`) check the thread themselves.
 pub fn async_main(work: impl FnOnce() + 'static) {
-    if MainThreadMarker::new().is_none() {
+    let on_main = MainThreadMarker::new().is_some();
+    debug_assert!(on_main, "async_main called off the main thread");
+    if !on_main {
         return;
     }
     let work = MainOnly(work);
@@ -33,16 +38,18 @@ pub fn wake_main(f: fn()) {
     dispatch2::DispatchQueue::main().exec_async(f);
 }
 
-/// Runs `work` once on the main thread after `seconds`.
+/// Runs `work` once on the main thread after `seconds`, in every run-loop mode (menus and modal panels included).
+/// Main thread only, like `async_main`.
 pub fn after(seconds: f64, work: impl FnOnce() + 'static) {
-    let work = std::cell::Cell::new(Some(work));
-    let block = RcBlock::new(move |_: NonNull<NSTimer>| {
-        if let Some(work) = work.take() {
-            work();
-        }
-    });
-    // SAFETY: the block is copied by the timer and only runs on the main run loop.
-    unsafe { NSTimer::scheduledTimerWithTimeInterval_repeats_block(seconds, false, &block) };
+    let on_main = MainThreadMarker::new().is_some();
+    debug_assert!(on_main, "after called off the main thread");
+    if !on_main {
+        return;
+    }
+    let delay = Duration::try_from_secs_f64(seconds.max(0.0)).unwrap_or_default();
+    let when = DispatchTime::try_from(delay).unwrap_or(DispatchTime::NOW);
+    let work = MainOnly(work);
+    let _ = dispatch2::DispatchQueue::main().after(when, move || work.run());
 }
 
 /// A repeating timer on the main run loop; invalidated when dropped.

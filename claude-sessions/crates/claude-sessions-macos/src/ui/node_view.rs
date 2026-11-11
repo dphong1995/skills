@@ -7,28 +7,101 @@ use claude_sessions_core::scene::{
     Appearance, DrawCmd, Field, Rect, Tip, appeared_symbols, colors_only_changed,
 };
 use objc2::rc::Retained;
-use objc2::runtime::AnyObject;
-use objc2::{DefinedClass, MainThreadOnly, define_class, msg_send};
-use objc2_app_kit::{NSAppearanceCustomization, NSColor, NSEvent, NSTextField, NSView};
+use objc2::runtime::{AnyObject, Bool, ProtocolObject, Sel};
+use objc2::{DefinedClass, MainThreadOnly, define_class, msg_send, sel};
+use objc2_app_kit::{
+    NSAppearanceCustomization, NSColor, NSControl, NSControlTextEditingDelegate, NSEvent,
+    NSTextField, NSTextFieldDelegate, NSTextView, NSView,
+};
 use objc2_core_foundation::{CGPoint, CGRect, CGSize};
 use objc2_core_graphics::CGPath;
-use objc2_foundation::{MainThreadMarker, NSNumber, NSObjectProtocol, NSRect, NSString, ns_string};
+use objc2_foundation::{
+    MainThreadMarker, NSNotification, NSNumber, NSObject, NSObjectProtocol, NSRect, NSString,
+    ns_string,
+};
 use objc2_quartz_core::{
     CABasicAnimation, CALayer, CAMediaTiming, CAShapeLayer, CATransaction, CATransition,
 };
 
 use super::draw::{draw_cmds, ns_rect};
 use super::motion;
+use super::{EventHandler, UiEvent};
 
 pub(crate) struct NodeIvars {
     key: String,
     cmds: RefCell<Vec<DrawCmd>>,
-    fields: RefCell<Vec<(String, Retained<NSTextField>)>>,
+    fields: RefCell<Vec<FieldSlot>>,
     spinner: RefCell<Option<Retained<CAShapeLayer>>>,
     /// One-shot sparkle pulses still running; each removes itself when done.
     pulses: RefCell<Vec<Retained<CAShapeLayer>>>,
     /// AppKit does not retain a tooltip's owner, so the strings live here.
     tips: RefCell<Vec<Retained<NSString>>>,
+}
+
+/// A native text field of the node, its delegate (AppKit keeps delegates unretained) and the text the scene last set.
+struct FieldSlot {
+    key: String,
+    view: Retained<NSTextField>,
+    _delegate: Retained<FieldDelegate>,
+    applied: String,
+}
+
+pub(crate) struct DelegateIvars {
+    key: String,
+    sink: EventHandler,
+}
+
+define_class!(
+    /// Turns what happens in one text field into `UiEvent`s.
+    #[unsafe(super = NSObject)]
+    #[thread_kind = MainThreadOnly]
+    #[ivars = DelegateIvars]
+    pub(crate) struct FieldDelegate;
+
+    unsafe impl NSObjectProtocol for FieldDelegate {}
+
+    unsafe impl NSControlTextEditingDelegate for FieldDelegate {
+        #[unsafe(method(controlTextDidChange:))]
+        fn control_text_did_change(&self, note: &NSNotification) {
+            let Some(object) = note.object() else { return };
+            let Some(field) = object.downcast_ref::<NSTextField>() else {
+                return;
+            };
+            (self.ivars().sink)(UiEvent::FieldChanged {
+                key: self.ivars().key.clone(),
+                text: field.stringValue().to_string(),
+            });
+        }
+
+        #[unsafe(method(control:textView:doCommandBySelector:))]
+        unsafe fn control_text_view_do_command_by_selector(
+            &self,
+            _control: &NSControl,
+            _text_view: &NSTextView,
+            command: Sel,
+        ) -> Bool {
+            if command != sel!(insertNewline:) {
+                return Bool::NO;
+            }
+            (self.ivars().sink)(UiEvent::FieldSubmit {
+                key: self.ivars().key.clone(),
+            });
+            Bool::YES
+        }
+    }
+
+    unsafe impl NSTextFieldDelegate for FieldDelegate {}
+);
+
+impl FieldDelegate {
+    fn new(mtm: MainThreadMarker, key: &str, sink: EventHandler) -> Retained<Self> {
+        let this = Self::alloc(mtm).set_ivars(DelegateIvars {
+            key: key.to_owned(),
+            sink,
+        });
+        // SAFETY: `init` is NSObject's designated initialiser.
+        unsafe { msg_send![super(this), init] }
+    }
 }
 
 /// `CLAUDE_SESSIONS_FRAME_LOG=1`: one stderr line per node redraw.
@@ -173,39 +246,58 @@ impl NodeView {
         }
     }
 
-    /// Adds, moves and removes the native text fields; a field being edited keeps the user's text.
-    pub(crate) fn set_fields(&self, fields: &[Field]) {
+    /// Adds, moves and removes the native text fields. The text is set only when the scene's text for a field changed and
+    /// the field is not being edited, so what the user typed survives a scene that did not change it; `sink` gets the
+    /// field's `FieldChanged` and `FieldSubmit` events.
+    pub(crate) fn set_fields(&self, fields: &[Field], sink: &EventHandler) {
         let mtm = self.mtm();
         let mut have = self.ivars().fields.borrow_mut();
-        have.retain(|(key, view)| {
-            let keep = fields.iter().any(|f| &f.key == key);
+        have.retain(|slot| {
+            let keep = fields.iter().any(|f| f.key == slot.key);
             if !keep {
-                view.removeFromSuperview();
+                slot.view.removeFromSuperview();
             }
             keep
         });
         for field in fields {
-            let existing = have
-                .iter()
-                .find(|(key, _)| *key == field.key)
-                .map(|(_, v)| v.clone());
-            let view = existing.unwrap_or_else(|| {
-                let view = NSTextField::initWithFrame(mtm.alloc(), ns_rect(field.rect));
-                self.addSubview(&view);
-                have.push((field.key.clone(), view.clone()));
-                view
-            });
-            view.setFrame(ns_rect(field.rect));
-            view.setPlaceholderString(Some(&NSString::from_str(&field.placeholder)));
-            if view.currentEditor().is_none() && view.stringValue().to_string() != field.text {
-                view.setStringValue(&NSString::from_str(&field.text));
+            let at = match have.iter().position(|slot| slot.key == field.key) {
+                Some(at) => at,
+                None => {
+                    let view = NSTextField::initWithFrame(mtm.alloc(), ns_rect(field.rect));
+                    let delegate = FieldDelegate::new(mtm, &field.key, sink.clone());
+                    // SAFETY: the delegate lives in the slot as long as the field does.
+                    unsafe { view.setDelegate(Some(ProtocolObject::from_ref(&*delegate))) };
+                    self.addSubview(&view);
+                    view.setStringValue(&NSString::from_str(&field.text));
+                    have.push(FieldSlot {
+                        key: field.key.clone(),
+                        view,
+                        _delegate: delegate,
+                        applied: field.text.clone(),
+                    });
+                    have.len() - 1
+                }
+            };
+            let slot = &mut have[at];
+            slot.view.setFrame(ns_rect(field.rect));
+            slot.view
+                .setPlaceholderString(Some(&NSString::from_str(&field.placeholder)));
+            if slot.applied != field.text && slot.view.currentEditor().is_none() {
+                slot.applied.clone_from(&field.text);
+                if slot.view.stringValue().to_string() != field.text {
+                    slot.view.setStringValue(&NSString::from_str(&field.text));
+                }
             }
         }
     }
 
     /// The first native text field of this node, if any.
     pub(crate) fn first_field(&self) -> Option<Retained<NSTextField>> {
-        self.ivars().fields.borrow().first().map(|(_, v)| v.clone())
+        self.ivars()
+            .fields
+            .borrow()
+            .first()
+            .map(|slot| slot.view.clone())
     }
 
     /// A ring in `rect`; `None` removes it. With `spin` it rotates (in the render server), otherwise it stands still: the

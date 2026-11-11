@@ -6,12 +6,16 @@ use std::ptr::NonNull;
 
 use claude_sessions_core::scene::{Appearance, DrawCmd, Point, Scene, ThemeColor};
 use objc2::AnyThread;
-use objc2_app_kit::{NSApplication, NSBitmapImageFileType, NSBitmapImageRep, NSGraphicsContext};
+use objc2_app_kit::{
+    NSApplication, NSBitmapImageFileType, NSBitmapImageRep, NSColorSpace, NSGraphicsContext,
+    NSTextField,
+};
 use objc2_core_foundation::{CFRetained, CGPoint, CGRect, CGSize};
 use objc2_core_graphics::{CGBitmapContextCreateImage, CGColorSpace, CGContext, kCGColorSpaceSRGB};
-use objc2_foundation::{MainThreadMarker, NSData, NSDictionary};
+use objc2_foundation::{MainThreadMarker, NSData, NSDictionary, NSString};
 
-use super::draw::{draw_cmds, register_images};
+use super::draw::{draw_cmds, ns_rect, register_images};
+use super::node_view::NodeView;
 
 #[link(name = "CoreGraphics", kind = "framework")]
 unsafe extern "C" {
@@ -65,8 +69,16 @@ pub fn render_png(
     NSGraphicsContext::saveGraphicsState_class();
     NSGraphicsContext::setCurrentContext(Some(&gc));
     register_images(&scene.images);
-    for node in &scene.nodes {
+    // Nodes after the scroll node are its content: the live view shows them only through the viewport (at scroll offset 0).
+    let scroll_at = scene.nodes.iter().position(|n| n.scroll.is_some());
+    for (i, node) in scene.nodes.iter().enumerate() {
         gc.saveGraphicsState();
+        if let Some(viewport) = scroll_at
+            .filter(|at| i > *at)
+            .map(|at| scene.nodes[at].frame)
+        {
+            CGContext::clip_to_rect(Some(&ctx), ns_rect(viewport));
+        }
         CGContext::translate_ctm(Some(&ctx), node.frame.x, node.frame.y);
         CGContext::clip_to_rect(
             Some(&ctx),
@@ -76,6 +88,18 @@ pub fn render_png(
             ),
         );
         draw_cmds(&node.cmds, appearance);
+        for field in &node.fields {
+            // The live field is an `NSTextField`: its own cell draws the text, or the placeholder when empty.
+            let rect = ns_rect(field.rect);
+            let view = NSTextField::initWithFrame(mtm.alloc(), rect);
+            view.setStringValue(&NSString::from_str(&field.text));
+            view.setPlaceholderString(Some(&NSString::from_str(&field.placeholder)));
+            if let Some(cell) = view.cell() {
+                // A flipped control view, as in the live view, so the text is not drawn upside down.
+                let flipped = NodeView::new(mtm, "png-field", field.rect);
+                cell.drawWithFrame_inView(rect, &flipped);
+            }
+        }
         if let Some(r) = node.spinner {
             // The live spinner is a Core Animation layer; an offscreen render draws it still, at the same place and size.
             draw_cmds(
@@ -110,13 +134,15 @@ pub fn read_png_pixel(
     x: usize,
     y: usize,
 ) -> Result<((usize, usize), [f64; 4]), String> {
-    let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let rep = NSBitmapImageRep::imageRepWithData(&NSData::with_bytes(&bytes))
-        .ok_or("not a readable image")?;
+    let rep = decode(path)?;
     let size = (rep.pixelsWide() as usize, rep.pixelsHigh() as usize);
     let color = rep
         .colorAtX_y(x as isize, y as isize)
         .ok_or("pixel is outside the image")?;
+    // `redComponent` and friends raise on a colour that is not RGB (a grey PNG, say).
+    let color = color
+        .colorUsingColorSpace(&NSColorSpace::sRGBColorSpace())
+        .ok_or("pixel colour has no sRGB form")?;
     Ok((
         size,
         [

@@ -72,13 +72,13 @@ pub(crate) fn draw_cmds(cmds: &[DrawCmd], appearance: Appearance) {
                 max_lines,
                 align,
             } => {
-                let attrs = text::attributes(font, color.resolve(appearance), *align, *max_lines);
+                let attrs = text::attributes(font, color.resolve(appearance), *align);
                 let area = text::text_rect(ns_rect(*rect), font, *max_lines);
                 // SAFETY: plain draw call with attributes built by `text::attributes`.
                 unsafe {
                     NSString::from_str(text).drawWithRect_options_attributes_context(
                         area,
-                        text::draw_options(),
+                        text::draw_options(*max_lines),
                         Some(&attrs),
                         None,
                     );
@@ -92,10 +92,9 @@ pub(crate) fn draw_cmds(cmds: &[DrawCmd], appearance: Appearance) {
                 max_lines,
                 align,
             } => {
-                let string =
-                    text::rich_string(runs, font, color.resolve(appearance), *align, *max_lines);
+                let string = text::rich_string(runs, font, color.resolve(appearance), *align);
                 let area = text::text_rect(ns_rect(*rect), font, *max_lines);
-                string.drawWithRect_options_context(area, text::draw_options(), None);
+                string.drawWithRect_options_context(area, text::draw_options(*max_lines), None);
             }
             DrawCmd::Symbol {
                 name,

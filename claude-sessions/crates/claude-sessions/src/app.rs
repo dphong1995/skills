@@ -501,6 +501,8 @@ fn handle_event(weak: &WeakState, key: &str, event: UiEvent) {
             let weak = weak.clone();
             main_queue::async_main(move || show_menu(&weak, &view, at));
         }
+        // Wired by a later change.
+        UiEvent::FieldChanged { .. } | UiEvent::FieldSubmit { .. } => {}
     }
 }
 

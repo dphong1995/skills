@@ -7,6 +7,7 @@ use std::process::Command;
 
 use claude_sessions_core::kv::KeyValueStore;
 use claude_sessions_macos::defaults::UserDefaultsStore;
+use claude_sessions_macos::ui::read_png_pixel;
 use serde_json::{Map, Value, json};
 
 const CLOSED_SESSIONS: &[u8] =
@@ -203,6 +204,225 @@ fn open_https_guards_the_scheme() -> Result<(), String> {
     Ok(())
 }
 
+/// Transcript links may be `http`; every other guard stays.
+fn open_link_allow_http_guards() -> Result<(), String> {
+    use claude_sessions_macos::workspace::open_link_allow_http_with;
+    let opened = |input: &str| -> bool {
+        let url = url::Url::parse(input).unwrap();
+        let mut called = false;
+        let ok = open_link_allow_http_with(&url, |_| {
+            called = true;
+            true
+        });
+        assert_eq!(ok, called);
+        called
+    };
+    for good in ["http://example.com/a", "https://example.com/a"] {
+        if !opened(good) {
+            return Err(format!("{good} was refused"));
+        }
+    }
+    for bad in [
+        "file:///tmp/x",
+        "ftp://example.com/",
+        "http://u:p@example.com/",
+        "https://u@example.com/",
+    ] {
+        if opened(bad) {
+            return Err(format!("{bad} reached the opener"));
+        }
+    }
+    Ok(())
+}
+
+fn field_scene(text: &str, label: &str) -> claude_sessions_core::scene::Scene {
+    use claude_sessions_core::scene::{Field, Node, NodeKey, Rect, Scene, Size};
+    Scene {
+        size: Size { w: 200.0, h: 60.0 },
+        nodes: vec![Node {
+            key: NodeKey("form".into()),
+            frame: Rect::new(0.0, 0.0, 200.0, 60.0),
+            cmds: vec![],
+            hits: vec![],
+            fields: vec![Field {
+                key: "email".into(),
+                rect: Rect::new(10.0, 10.0, 180.0, 24.0),
+                text: text.into(),
+                placeholder: label.into(),
+            }],
+            spinner: None,
+            tips: vec![],
+            scroll: None,
+        }],
+        images: Default::default(),
+    }
+}
+
+/// Typed text reaches the app as events and survives scenes that did not change the field's text.
+fn field_text_flows_and_survives() -> Result<(), String> {
+    use claude_sessions_macos::ui::{SceneView, UiEvent};
+    use objc2::sel;
+    use objc2_app_kit::{
+        NSControlTextDidChangeNotification, NSControlTextEditingDelegate, NSTextView,
+    };
+    use objc2_foundation::{MainThreadMarker, NSNotificationCenter, NSSize};
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(200.0, 60.0));
+    let events: Rc<RefCell<Vec<UiEvent>>> = Rc::default();
+    let sink = events.clone();
+    view.set_handler(Rc::new(move |e| sink.borrow_mut().push(e)));
+    view.set_scene(&field_scene("", "Email"));
+    let field = view.first_field().ok_or("no field was created")?;
+
+    // The user types; the scene is re-sent with the same (empty) text but another placeholder.
+    field.setStringValue(&objc2_foundation::NSString::from_str("me@x.io"));
+    // SAFETY: a plain notification post for the field, which is its own delegate source.
+    unsafe {
+        NSNotificationCenter::defaultCenter()
+            .postNotificationName_object(NSControlTextDidChangeNotification, Some(&field));
+    }
+    view.set_scene(&field_scene("", "Email address"));
+    if field.stringValue().to_string() != "me@x.io" {
+        return Err(format!("typed text wiped: {:?}", field.stringValue()));
+    }
+    // The scene asks for another text: it is applied.
+    view.set_scene(&field_scene("other", "Email address"));
+    if field.stringValue().to_string() != "other" {
+        return Err(format!("scene text ignored: {:?}", field.stringValue()));
+    }
+
+    let delegate = field.delegate().ok_or("no delegate")?;
+    let text_view = NSTextView::new(mtm);
+    // SAFETY: plain delegate calls with live objects.
+    let (newline, other) = unsafe {
+        (
+            delegate.control_textView_doCommandBySelector(&field, &text_view, sel!(insertNewline:)),
+            delegate.control_textView_doCommandBySelector(&field, &text_view, sel!(moveLeft:)),
+        )
+    };
+    if !newline || other {
+        return Err(format!(
+            "Return consumed {newline}, other keys consumed {other}"
+        ));
+    }
+    let want = vec![
+        UiEvent::FieldChanged {
+            key: "email".into(),
+            text: "me@x.io".into(),
+        },
+        UiEvent::FieldSubmit {
+            key: "email".into(),
+        },
+    ];
+    if *events.borrow() != want {
+        return Err(format!("events: {:?}", events.borrow()));
+    }
+    Ok(())
+}
+
+/// A scroll host that went away takes its scroll view out of the view tree.
+fn scroll_host_is_removed() -> Result<(), String> {
+    use claude_sessions_core::scene::{Node, Rect, Size};
+    use claude_sessions_macos::ui::SceneView;
+    use objc2_foundation::{MainThreadMarker, NSSize};
+
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(200.0, 60.0));
+    let mut scene = field_scene("", "x");
+    let plain = scene.clone();
+    scene.nodes.insert(
+        0,
+        Node {
+            key: "scroller".into(),
+            frame: Rect::new(0.0, 0.0, 200.0, 60.0),
+            cmds: vec![],
+            hits: vec![],
+            fields: vec![],
+            spinner: None,
+            tips: vec![],
+            scroll: Some(Size { w: 200.0, h: 400.0 }),
+        },
+    );
+    let base = view.subviews().len();
+    for _ in 0..3 {
+        view.set_scene(&scene);
+        view.set_scene(&plain);
+    }
+    let after = view.subviews().len();
+    // Without the scroll node every subview is a node view (the faded-out ones may still be leaving).
+    let nodes = plain.nodes.len();
+    if after > base + nodes {
+        return Err(format!(
+            "{after} subviews after 3 cycles, started with {base}"
+        ));
+    }
+    Ok(())
+}
+
+/// Fields draw their text and nodes after the scroll node stay inside its viewport.
+fn png_draws_fields_and_clips_scroll() -> Result<(), String> {
+    use claude_sessions_core::scene::{Appearance, Rect, Size};
+    let dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
+    let blank = dir.join("field-blank.png");
+    let filled = dir.join("field-filled.png");
+    claude_sessions_macos::ui::render_png(&field_scene("", ""), 1.0, Appearance::Light, &blank)?;
+    claude_sessions_macos::ui::render_png(
+        &field_scene("hello", ""),
+        1.0,
+        Appearance::Light,
+        &filled,
+    )?;
+    let diff = claude_sessions_macos::ui::compare_png(&blank, &filled, 8)?;
+    if diff.differing == 0 {
+        return Err("a field with text renders like an empty one".into());
+    }
+    // A node after the scroll node, partly below the viewport, must not paint outside it.
+    let mut scene = field_scene("", "");
+    scene.nodes.clear();
+    let node = |key: &str, frame: Rect, scroll: Option<Size>, fill: bool| {
+        use claude_sessions_core::scene::{DrawCmd, Node, ThemeColor};
+        Node {
+            key: key.into(),
+            frame,
+            cmds: if fill {
+                vec![DrawCmd::RoundedRect {
+                    rect: Rect::new(0.0, 0.0, frame.w, frame.h),
+                    radius: 0.0,
+                    fill: Some(ThemeColor::Blue.opaque()),
+                    stroke: None,
+                }]
+            } else {
+                vec![]
+            },
+            hits: vec![],
+            fields: vec![],
+            spinner: None,
+            tips: vec![],
+            scroll,
+        }
+    };
+    scene.nodes.push(node(
+        "v",
+        Rect::new(0.0, 0.0, 200.0, 30.0),
+        Some(Size { w: 200.0, h: 60.0 }),
+        false,
+    ));
+    scene
+        .nodes
+        .push(node("c", Rect::new(0.0, 0.0, 200.0, 60.0), None, true));
+    let clipped = dir.join("scroll-clipped.png");
+    claude_sessions_macos::ui::render_png(&scene, 1.0, Appearance::Light, &clipped)?;
+    let (_, inside) = read_png_pixel(&clipped, 100, 10)?;
+    let (_, outside) = read_png_pixel(&clipped, 100, 50)?;
+    if inside == outside {
+        return Err("content below the viewport was painted".into());
+    }
+    Ok(())
+}
+
 fn chimes_use_the_swift_sounds() -> Result<(), String> {
     use claude_sessions_core::pull_requests::Chime;
     use claude_sessions_macos::sound::sound_name;
@@ -261,6 +481,16 @@ fn main() {
     results.push((
         "open_https_guards_the_scheme",
         open_https_guards_the_scheme(),
+    ));
+    results.push(("open_link_allow_http_guards", open_link_allow_http_guards()));
+    results.push((
+        "field_text_flows_and_survives",
+        field_text_flows_and_survives(),
+    ));
+    results.push(("scroll_host_is_removed", scroll_host_is_removed()));
+    results.push((
+        "png_draws_fields_and_clips_scroll",
+        png_draws_fields_and_clips_scroll(),
     ));
     results.push(("chimes_use_the_swift_sounds", chimes_use_the_swift_sounds()));
     results.push(("login_item_gate", login_item_gate()));

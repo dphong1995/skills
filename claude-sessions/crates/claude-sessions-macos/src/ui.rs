@@ -21,7 +21,7 @@ pub use png::{PngDiff, compare_png, read_png_pixel, render_png};
 pub use scene_view::SceneView;
 
 /// What the user did in the scene; `at` is in scene points (top-left origin).
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum UiEvent {
     Click(HitId),
     RightClick {
@@ -34,6 +34,15 @@ pub enum UiEvent {
         start: Point,
         raw: Point,
         clamped: Point,
+    },
+    /// The user typed in the native text field with this `Field.key`; `text` is its whole content now.
+    FieldChanged {
+        key: String,
+        text: String,
+    },
+    /// Return was pressed in the text field with this `Field.key` (the key press is consumed).
+    FieldSubmit {
+        key: String,
     },
 }
 

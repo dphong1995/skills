@@ -49,8 +49,6 @@ pub struct SceneIvars {
 struct ScrollHost {
     view: Retained<NSScrollView>,
     doc: Retained<NodeView>,
-    /// Scene y of the viewport's top; a scrolled node sits at its frame.y - top in the document.
-    top: f64,
 }
 
 define_class!(
@@ -284,13 +282,8 @@ impl SceneView {
             let doc = NodeView::new(mtm, "scroll-document", node.frame);
             view.setDocumentView(Some(&doc));
             self.addSubview(&view);
-            ScrollHost {
-                view,
-                doc,
-                top: node.frame.y,
-            }
+            ScrollHost { view, doc }
         });
-        host.top = node.frame.y;
         host.view.setFrame(ns_rect(node.frame));
         host.doc.setFrameSize(NSSize::new(content.w, content.h));
     }
@@ -323,6 +316,14 @@ impl SceneView {
             .borrow()
             .as_ref()
             .map(|h| Retained::into_super(h.doc.clone()));
+        let sink: EventHandler = {
+            let weak = Weak::new(self);
+            Rc::new(move |event| {
+                if let Some(view) = weak.load() {
+                    view.emit(event);
+                }
+            })
+        };
         let mut nodes = ivars.nodes.borrow_mut();
         let mut fading_out = Vec::new();
 
@@ -333,7 +334,7 @@ impl SceneView {
             }
             let view = NodeView::new(mtm, &node.key.0, start);
             view.set_cmds(&node.cmds, false);
-            view.set_fields(&node.fields);
+            view.set_fields(&node.fields, &sink);
             view.set_spinner(node.spinner, spin);
             view.set_tips(&node.tips);
             if animate {
@@ -352,6 +353,8 @@ impl SceneView {
                 fading_out.push(view);
             }
         }
+        let before: HashMap<&NodeKey, &claude_sessions_core::scene::Node> =
+            old.nodes.iter().map(|n| (&n.key, n)).collect();
         let mut moved = Vec::new();
         for update in &diff.updated {
             let Some(view) = nodes.get(&update.node.key) else {
@@ -360,9 +363,17 @@ impl SceneView {
             if update.cmds_changed {
                 view.set_cmds(&update.node.cmds, animate);
             }
-            view.set_fields(&update.node.fields);
-            view.set_spinner(update.node.spinner, spin);
-            view.set_tips(&update.node.tips);
+            // Only what differs from the node's previous version is touched.
+            let prev = before.get(&update.node.key);
+            if prev.is_none_or(|p| p.fields != update.node.fields) {
+                view.set_fields(&update.node.fields, &sink);
+            }
+            if prev.is_none_or(|p| p.spinner != update.node.spinner) {
+                view.set_spinner(update.node.spinner, spin);
+            }
+            if prev.is_none_or(|p| p.tips != update.node.tips) {
+                view.set_tips(&update.node.tips);
+            }
             if update.frame_changed {
                 moved.push((view.clone(), place(update.node)));
             }
@@ -387,8 +398,11 @@ impl SceneView {
                 view.setFrame(ns_rect(place(node)));
             }
         }
-        if scroll_at.is_none() {
-            *ivars.scroll.borrow_mut() = None;
+        if scroll_at.is_none()
+            && let Some(old) = ivars.scroll.borrow_mut().take()
+        {
+            // The nodes are back in this view; the scroll view, its clip view and its document must leave it too.
+            old.view.removeFromSuperview();
         }
 
         let appear: Vec<_> = diff

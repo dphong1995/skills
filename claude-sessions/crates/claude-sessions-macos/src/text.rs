@@ -1,5 +1,7 @@
 //! Text attributes shared by drawing and measuring, and the `TextMeasure` implementation.
 
+use std::cell::RefCell;
+
 use claude_sessions_core::layout::TextMeasure;
 use claude_sessions_core::scene::{Align, FontSpec, Run, Size, Weight};
 use objc2::AnyThread;
@@ -30,7 +32,23 @@ pub(crate) fn font_weight(weight: Weight) -> NSFontWeight {
     }
 }
 
+/// Fonts by spec: every draw and measure asks for the same few; AppKit objects stay on the main thread.
 fn ns_font(spec: &FontSpec) -> Retained<NSFont> {
+    thread_local! {
+        static FONTS: RefCell<Vec<(FontSpec, Retained<NSFont>)>> = const { RefCell::new(Vec::new()) };
+    }
+    FONTS.with(|fonts| {
+        let mut fonts = fonts.borrow_mut();
+        if let Some((_, font)) = fonts.iter().find(|(s, _)| s == spec) {
+            return font.clone();
+        }
+        let font = make_font(spec);
+        fonts.push((*spec, font.clone()));
+        font
+    })
+}
+
+fn make_font(spec: &FontSpec) -> Retained<NSFont> {
     let weight = font_weight(spec.weight);
     if spec.mono {
         NSFont::monospacedSystemFontOfSize_weight(spec.size, weight)
@@ -44,17 +62,11 @@ fn line_height(font: &NSFont) -> f64 {
     (font.ascender() - font.descender() + font.leading()).ceil()
 }
 
-/// `max_lines` 0 wraps without limit; otherwise the last allowed line is cut with an ellipsis.
-pub(crate) fn attributes(
-    spec: &FontSpec,
-    color: [f64; 4],
-    align: Align,
-    max_lines: u32,
-) -> Attributes {
-    attributes_for(&ns_font(spec), color, align, max_lines)
+pub(crate) fn attributes(spec: &FontSpec, color: [f64; 4], align: Align) -> Attributes {
+    attributes_for(&ns_font(spec), color, align)
 }
 
-fn attributes_for(font: &NSFont, color: [f64; 4], align: Align, max_lines: u32) -> Attributes {
+fn attributes_for(font: &NSFont, color: [f64; 4], align: Align) -> Attributes {
     let color = NSColor::colorWithSRGBRed_green_blue_alpha(color[0], color[1], color[2], color[3]);
     let style = NSMutableParagraphStyle::new();
     style.setAlignment(match align {
@@ -62,11 +74,9 @@ fn attributes_for(font: &NSFont, color: [f64; 4], align: Align, max_lines: u32) 
         Align::Center => NSTextAlignment::Center,
         Align::Right => NSTextAlignment::Right,
     });
-    style.setLineBreakMode(if max_lines == 0 {
-        NSLineBreakMode::ByWordWrapping
-    } else {
-        NSLineBreakMode::ByTruncatingTail
-    });
+    // Word wrapping always: `ByTruncatingTail` makes string drawing treat the text as one line. `max_lines` truncates through
+    // `draw_options` and the height cap of `text_rect`.
+    style.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
     // SAFETY: the keys are AppKit's own constants and every value is an object of the type the key documents.
     unsafe {
         NSDictionary::from_slices(
@@ -86,7 +96,6 @@ pub(crate) fn rich_string(
     spec: &FontSpec,
     color: [f64; 4],
     align: Align,
-    max_lines: u32,
 ) -> Retained<NSMutableAttributedString> {
     let out = NSMutableAttributedString::new();
     for run in runs {
@@ -102,7 +111,7 @@ pub(crate) fn rich_string(
                 .fontDescriptorWithSymbolicTraits(NSFontDescriptorSymbolicTraits::TraitItalic);
             font = NSFont::fontWithDescriptor_size(&descriptor, run_spec.size).unwrap_or(font);
         }
-        let attrs = attributes_for(&font, color, align, max_lines);
+        let attrs = attributes_for(&font, color, align);
         // SAFETY: the attributes hold AppKit's keys with values of their documented types.
         let piece = unsafe {
             NSAttributedString::initWithString_attributes(
@@ -116,8 +125,13 @@ pub(crate) fn rich_string(
     out
 }
 
-pub(crate) fn draw_options() -> NSStringDrawingOptions {
-    NSStringDrawingOptions::UsesLineFragmentOrigin
+pub(crate) fn draw_options(max_lines: u32) -> NSStringDrawingOptions {
+    if max_lines == 0 {
+        NSStringDrawingOptions::UsesLineFragmentOrigin
+    } else {
+        NSStringDrawingOptions::UsesLineFragmentOrigin
+            | NSStringDrawingOptions::TruncatesLastVisibleLine
+    }
 }
 
 /// The rect text is laid out in: `max_lines` caps the height so truncation happens at the right line.
@@ -137,13 +151,13 @@ pub struct CoreTextMeasure;
 
 impl TextMeasure for CoreTextMeasure {
     fn measure(&self, text: &str, font: &FontSpec, max_width: f64, max_lines: u32) -> Size {
-        let attrs = attributes(font, [0.0; 4], Align::Left, max_lines);
+        let attrs = attributes(font, [0.0; 4], Align::Left);
         let unlimited = NSSize::new(max_width, 1.0e6);
         // SAFETY: plain call on an owned string with attributes built above.
         let bounds = unsafe {
             NSString::from_str(text).boundingRectWithSize_options_attributes_context(
                 unlimited,
-                draw_options(),
+                draw_options(max_lines),
                 Some(&attrs),
                 None,
             )
@@ -156,5 +170,60 @@ impl TextMeasure for CoreTextMeasure {
             w: bounds.size.width.ceil(),
             h,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const LONG: &str = "A long card title that has to wrap over several lines when the column is only a hundred points wide";
+
+    fn font() -> FontSpec {
+        FontSpec {
+            size: 13.0,
+            weight: Weight::Regular,
+            mono: false,
+        }
+    }
+
+    /// One line's measured height.
+    fn one_line() -> f64 {
+        CoreTextMeasure.measure("A", &font(), 100.0, 0).h
+    }
+
+    #[test]
+    fn unlimited_text_wraps_over_many_lines() {
+        let h = CoreTextMeasure.measure(LONG, &font(), 100.0, 0).h;
+        assert!(h >= 4.0 * one_line() - 4.0, "wrapped height {h}");
+    }
+
+    #[test]
+    fn max_lines_caps_the_wrapped_height() {
+        let line = line_height(&ns_font(&font()));
+        let two = CoreTextMeasure.measure(LONG, &font(), 100.0, 2).h;
+        let one = CoreTextMeasure.measure(LONG, &font(), 100.0, 1).h;
+        assert!((two - 2.0 * line).abs() < 1.0, "two lines: {two} vs {line}");
+        assert!((one - line).abs() < 1.0, "one line: {one} vs {line}");
+        assert!(
+            two > one + 5.0,
+            "max_lines 2 must be taller than max_lines 1"
+        );
+    }
+
+    #[test]
+    fn the_layout_height_wraps_before_the_cap() {
+        // The bounding rect itself (before the cap) must be taller than one line for max_lines 2: it truncates, not clips.
+        let attrs = attributes(&font(), [0.0; 4], Align::Left);
+        // SAFETY: plain call on an owned string with attributes built above.
+        let rect = unsafe {
+            NSString::from_str(LONG).boundingRectWithSize_options_attributes_context(
+                NSSize::new(100.0, 1.0e6),
+                draw_options(2),
+                Some(&attrs),
+                None,
+            )
+        };
+        assert!(rect.size.height > one_line() * 1.5, "{:?}", rect.size);
     }
 }

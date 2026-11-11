@@ -179,12 +179,23 @@ impl KeyValueStore for UserDefaultsStore {
     }
 }
 
-/// Local `HH:mm` of a Unix time in seconds (the `clock` input of the views).
+/// Local `HH:mm` of a Unix time in seconds (the `clock` input of the views). One formatter serves every call (it is costly
+/// to build); `NSDateFormatter` is not thread safe, so it lives per thread.
 pub fn clock_text(unix_secs: f64) -> String {
-    use objc2_foundation::{NSDate, NSDateFormatter};
-    let formatter = NSDateFormatter::new();
-    formatter.setDateFormat(Some(&NSString::from_str("HH:mm")));
-    formatter
-        .stringFromDate(&NSDate::dateWithTimeIntervalSince1970(unix_secs))
-        .to_string()
+    use objc2::rc::Retained;
+    use objc2_foundation::{NSDate, NSDateFormatter, NSTimeZone};
+    thread_local! {
+        static FORMATTER: Retained<NSDateFormatter> = {
+            let formatter = NSDateFormatter::new();
+            formatter.setDateFormat(Some(&NSString::from_str("HH:mm")));
+            formatter
+        };
+    }
+    FORMATTER.with(|formatter| {
+        // A formatter keeps the zone it saw first; follow a change of the system zone.
+        formatter.setTimeZone(Some(&NSTimeZone::localTimeZone()));
+        formatter
+            .stringFromDate(&NSDate::dateWithTimeIntervalSince1970(unix_secs))
+            .to_string()
+    })
 }

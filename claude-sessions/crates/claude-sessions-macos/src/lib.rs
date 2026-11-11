@@ -16,6 +16,7 @@ pub mod menu;
 pub mod mouse;
 mod observer;
 pub mod panel;
+pub mod process;
 pub mod screens;
 pub mod sound;
 pub mod text;

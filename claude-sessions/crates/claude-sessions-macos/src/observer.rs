@@ -7,7 +7,7 @@ use objc2::runtime::AnyObject;
 use objc2::runtime::ProtocolObject;
 use objc2_app_kit::NSEvent;
 use objc2_foundation::{
-    NSNotification, NSNotificationCenter, NSNotificationName, NSObjectProtocol,
+    NSNotification, NSNotificationCenter, NSNotificationName, NSObjectProtocol, NSOperationQueue,
 };
 use std::ptr::NonNull;
 
@@ -34,7 +34,7 @@ pub struct NotificationObserver {
 }
 
 impl NotificationObserver {
-    /// Calls `callback` on the posting thread (the main thread for AppKit notifications) while the observer lives.
+    /// Calls `callback` on the main thread while the observer lives.
     pub(crate) fn new(
         name: &NSNotificationName,
         object: Option<&AnyObject>,
@@ -56,9 +56,14 @@ impl NotificationObserver {
         callback: impl Fn() + 'static,
     ) -> Self {
         let block = RcBlock::new(move |_: NonNull<NSNotification>| callback());
-        // SAFETY: the block is copied by the center; the callback is only run on the posting (main) thread.
+        // SAFETY: the block is copied by the center; `mainQueue` runs the callback on the main thread.
         let token = unsafe {
-            center.addObserverForName_object_queue_usingBlock(Some(name), object, None, &block)
+            center.addObserverForName_object_queue_usingBlock(
+                Some(name),
+                object,
+                Some(&NSOperationQueue::mainQueue()),
+                &block,
+            )
         };
         Self {
             center: center.retain(),

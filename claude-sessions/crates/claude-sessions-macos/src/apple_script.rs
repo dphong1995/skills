@@ -8,8 +8,12 @@ use crate::main_queue;
 
 /// Runs `body` under `with timeout of <timeout_s> seconds` on a later main-queue turn, so no borrow of the caller is
 /// held while the script runs; `done(true)` when it ran without an AppleScript error, on the main thread right after.
-/// Does nothing off the main thread.
+/// Off the main thread nothing runs and `done(false)` is called at once, so a caller's button never waits forever.
 pub fn run_later(body: String, timeout_s: u32, done: impl FnOnce(bool) + 'static) {
+    if MainThreadMarker::new().is_none() {
+        done(false);
+        return;
+    }
     main_queue::async_main(move || done(run(&body, timeout_s)));
 }
 

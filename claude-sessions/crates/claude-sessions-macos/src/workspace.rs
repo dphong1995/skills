@@ -15,7 +15,22 @@ pub fn open_https(url: &Url) -> bool {
 
 /// `open_https` with the opener injected: `opener` runs only for an `https` URL with a host and without userinfo.
 pub fn open_https_with(url: &Url, opener: impl FnOnce(&Url) -> bool) -> bool {
-    let plain = url.scheme() == "https"
+    open_checked(url, &["https"], opener)
+}
+
+/// Like `open_https` but `http` is allowed too: for links in a transcript's markdown, which may be plain `http`. The
+/// token page and PR links stay on `open_https`.
+pub fn open_link_allow_http(url: &Url) -> bool {
+    open_link_allow_http_with(url, open_url)
+}
+
+/// `open_link_allow_http` with the opener injected.
+pub fn open_link_allow_http_with(url: &Url, opener: impl FnOnce(&Url) -> bool) -> bool {
+    open_checked(url, &["https", "http"], opener)
+}
+
+fn open_checked(url: &Url, schemes: &[&str], opener: impl FnOnce(&Url) -> bool) -> bool {
+    let plain = schemes.contains(&url.scheme())
         && url.host_str().is_some_and(|h| !h.is_empty())
         && url.username().is_empty()
         && url.password().is_none();
