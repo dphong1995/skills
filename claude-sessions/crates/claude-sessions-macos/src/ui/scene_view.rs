@@ -16,7 +16,7 @@ use objc2_foundation::{MainThreadMarker, NSObjectProtocol, NSPoint, NSRect, NSSi
 use super::draw::{ns_rect, register_images};
 use super::motion;
 use super::node_view::NodeView;
-use super::{EventHandler, UiEvent};
+use super::{ClampHandler, EventHandler, UiEvent};
 
 /// Pointer travel (points) before a press becomes a drag, as Swift's `Layout.isDrag`.
 const DRAG_THRESHOLD: f64 = 4.0;
@@ -26,12 +26,17 @@ struct Drag {
     mouse0: NSPoint,
     origin0: NSPoint,
     moving: bool,
+    /// The origin the pointer asked for and the one the window got after the clamp hook.
+    raw: NSPoint,
+    clamped: NSPoint,
 }
 
 pub struct SceneIvars {
     scene: RefCell<Scene>,
     nodes: RefCell<HashMap<NodeKey, Retained<NodeView>>>,
     handler: RefCell<Option<EventHandler>>,
+    /// Maps the window origin a drag asks for to the one it gets (keeps the card on its screen).
+    clamp: RefCell<Option<ClampHandler>>,
     drag: Cell<Option<Drag>>,
     /// The panel is on screen: only then may a spinner turn. Starts false until the panel is shown.
     live: Cell<bool>,
@@ -74,6 +79,8 @@ define_class!(
                 mouse0: NSEvent::mouseLocation(),
                 origin0: window.frame().origin,
                 moving: false,
+                raw: window.frame().origin,
+                clamped: window.frame().origin,
             }));
         }
 
@@ -89,7 +96,16 @@ define_class!(
                 self.ivars().drag.set(Some(drag));
             }
             if drag.moving {
-                window.setFrameOrigin(NSPoint::new(drag.origin0.x + dx, drag.origin0.y + dy));
+                let raw = Point {
+                    x: drag.origin0.x + dx,
+                    y: drag.origin0.y + dy,
+                };
+                let clamp = self.ivars().clamp.borrow().clone();
+                let clamped = clamp.map_or(raw, |c| c(raw));
+                drag.raw = NSPoint::new(raw.x, raw.y);
+                drag.clamped = NSPoint::new(clamped.x, clamped.y);
+                self.ivars().drag.set(Some(drag));
+                window.setFrameOrigin(drag.clamped);
             }
         }
 
@@ -97,7 +113,12 @@ define_class!(
         fn mouse_up(&self, event: &NSEvent) {
             let Some(drag) = self.ivars().drag.take() else { return };
             if drag.moving {
-                self.emit(UiEvent::Dragged);
+                let p = |p: NSPoint| Point { x: p.x, y: p.y };
+                self.emit(UiEvent::Dragged {
+                    start: p(drag.origin0),
+                    raw: p(drag.raw),
+                    clamped: p(drag.clamped),
+                });
             } else if let Some(id) = self.hit_at(self.local_point(event)) {
                 self.emit(UiEvent::Click(id));
             }
@@ -138,6 +159,7 @@ impl SceneView {
             scene: RefCell::new(Scene::default()),
             nodes: RefCell::new(HashMap::new()),
             handler: RefCell::new(None),
+            clamp: RefCell::new(None),
             drag: Cell::new(None),
             live: Cell::new(false),
             reduce_observer: RefCell::new(None),
@@ -176,6 +198,10 @@ impl SceneView {
                 view.clear_pulses();
             }
         }
+    }
+
+    pub fn set_clamp(&self, clamp: ClampHandler) {
+        *self.ivars().clamp.borrow_mut() = Some(clamp);
     }
 
     pub fn set_handler(&self, handler: EventHandler) {

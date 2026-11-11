@@ -11,19 +11,36 @@ use crate::ui::WidgetPanelHandle;
 
 pub const KEY_CODE_ESCAPE: u16 = 53;
 
+/// What a key-down event carries that keyboard mode reads.
+pub struct KeyInfo {
+    pub key_code: u16,
+    /// `charactersIgnoringModifiers`, empty when absent.
+    pub chars: String,
+    /// `modifierFlags.rawValue`.
+    pub flags: u64,
+}
+
 /// A local `keyDown` monitor; dropped to stop.
 pub struct KeyMonitor {
     _monitor: EventMonitor,
 }
 
 impl KeyMonitor {
-    /// `handler` gets the key code and returns true to consume the key; false lets it reach the focused field.
-    pub fn new(handler: impl Fn(u16) -> bool + 'static) -> Option<Self> {
+    /// `handler` returns true to consume the key; false lets it reach the focused field.
+    pub fn new(handler: impl Fn(&KeyInfo) -> bool + 'static) -> Option<Self> {
         MainThreadMarker::new()?;
         let block = RcBlock::new(move |event: NonNull<NSEvent>| {
             // SAFETY: AppKit passes a live event for the length of the call.
-            let code = unsafe { event.as_ref() }.keyCode();
-            if handler(code) {
+            let event_ref = unsafe { event.as_ref() };
+            let info = KeyInfo {
+                key_code: event_ref.keyCode(),
+                chars: event_ref
+                    .charactersIgnoringModifiers()
+                    .map(|s| s.to_string())
+                    .unwrap_or_default(),
+                flags: event_ref.modifierFlags().bits() as u64,
+            };
+            if handler(&info) {
                 std::ptr::null_mut()
             } else {
                 event.as_ptr()

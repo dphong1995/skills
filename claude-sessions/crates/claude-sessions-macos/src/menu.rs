@@ -4,7 +4,9 @@ use claude_sessions_core::scene::Point;
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::{DefinedClass, MainThreadOnly, define_class, msg_send, sel};
-use objc2_app_kit::{NSApplication, NSMenu, NSMenuItem};
+use objc2_app_kit::{
+    NSApplication, NSEvent, NSEventModifierFlags, NSEventType, NSMenu, NSMenuItem,
+};
 use objc2_foundation::{
     MainThreadMarker, NSObject, NSObjectProtocol, NSPoint, NSString, ns_string,
 };
@@ -102,4 +104,28 @@ pub fn popup(
         menu.addItem(&entry_item);
     }
     menu.popUpMenuPositioningItem_atLocation_inView(None, NSPoint::new(at.x, at.y), Some(view))
+}
+
+/// Whether the main menu answers ⌘`key` (tests: the Edit items must handle the clipboard shortcuts).
+pub fn handles_command_key(key: &str) -> bool {
+    let Some(mtm) = MainThreadMarker::new() else {
+        return false;
+    };
+    let Some(menu) = NSApplication::sharedApplication(mtm).mainMenu() else {
+        return false;
+    };
+    let ns_key = NSString::from_str(key);
+    NSEvent::keyEventWithType_location_modifierFlags_timestamp_windowNumber_context_characters_charactersIgnoringModifiers_isARepeat_keyCode(
+        NSEventType::KeyDown,
+        NSPoint::new(0.0, 0.0),
+        NSEventModifierFlags::Command,
+        0.0,
+        0,
+        None,
+        &ns_key,
+        &ns_key,
+        false,
+        0,
+    )
+    .is_some_and(|event| menu.performKeyEquivalent(&event))
 }

@@ -8,17 +8,22 @@
 
 use std::path::{Path, PathBuf};
 
-use claude_sessions::views::{View, build};
+use claude_sessions::hits::Target;
+use claude_sessions::views::{Built, View, build};
 use claude_sessions_core::fixtures::{CLOCK, STATES, fixed_now, view_now};
-use claude_sessions_core::scene::{Appearance, Scene};
+use claude_sessions_core::scene::{Appearance, HitId, Point, Rect, Scene};
 use claude_sessions_macos::text::CoreTextMeasure;
-use claude_sessions_macos::ui::{compare_png, read_png_pixel, render_png};
+use claude_sessions_macos::ui::{
+    WidgetPanelHandle, compare_png, read_png_pixel, render_png, testing,
+};
+use std::cell::RefCell;
+use std::rc::Rc;
 
 const SCALE: f64 = 2.0;
 const CHANNEL_TOLERANCE: u8 = 2;
 const MAX_DIFFERING: f64 = 0.005;
 
-fn scene_of(name: &str, build_state: claude_sessions_core::fixtures::StateFn) -> Scene {
+fn built_of(name: &str, build_state: claude_sessions_core::fixtures::StateFn) -> Built {
     let dir = tempfile::Builder::new()
         .prefix("claude-sessions-snapshot-")
         .tempdir()
@@ -33,7 +38,10 @@ fn scene_of(name: &str, build_state: claude_sessions_core::fixtures::StateFn) ->
         now: view_now(name, now),
         clock: &clock,
     })
-    .scene
+}
+
+fn scene_of(name: &str, build_state: claude_sessions_core::fixtures::StateFn) -> Scene {
+    built_of(name, build_state).scene
 }
 
 fn snapshots_out() -> PathBuf {
@@ -129,6 +137,100 @@ fn mixed_hover_renders_to_png() -> Result<(), String> {
     Ok(())
 }
 
+/// The Edit items answer ⌘X, ⌘C, ⌘V, ⌘A and ⌘Z (Swift `editMenuHandlesClipboardShortcuts`).
+fn edit_menu_handles_clipboard_shortcuts() -> Result<(), String> {
+    if !claude_sessions_macos::menu::install_main_menu() {
+        return Err("no main menu (not the main thread?)".into());
+    }
+    for key in ["x", "c", "v", "a", "z"] {
+        if !claude_sessions_macos::menu::handles_command_key(key) {
+            return Err(format!("Cmd-{key} is not handled"));
+        }
+    }
+    Ok(())
+}
+
+/// A point on the first card body that no control above it covers, in scene points, and the session it belongs to.
+fn card_body_point(built: &Built) -> Result<(Point, String), String> {
+    let (id, session) = built
+        .targets
+        .0
+        .iter()
+        .find_map(|(id, t)| match t {
+            Target::Jump(s) => Some((*id, s.clone())),
+            _ => None,
+        })
+        .ok_or("no Jump target in the scene")?;
+    for node in &built.scene.nodes {
+        let Some(hit) = node.hits.iter().find(|h| h.id == id) else {
+            continue;
+        };
+        let r = hit.rect;
+        for gy in 1..20 {
+            for gx in 1..20 {
+                let local = Point::new(
+                    r.x + r.w * f64::from(gx) / 20.0,
+                    r.y + r.h * f64::from(gy) / 20.0,
+                );
+                let first = node.hits.iter().find(|h| h.rect.contains(local));
+                if first.is_some_and(|h| h.id == id) {
+                    return Ok((
+                        Point::new(node.frame.x + local.x, node.frame.y + local.y),
+                        session,
+                    ));
+                }
+            }
+        }
+    }
+    Err("the card body is fully covered by controls".into())
+}
+
+/// A press and release on a card body reaches the panel's handler as that card's `Jump`; the panel is never ordered on
+/// screen and the events are dispatched to its view, not posted (Swift `ClickTests`).
+fn click_row(dragged: bool) -> Result<(), String> {
+    let (name, build_state) = STATES
+        .iter()
+        .find(|(n, _)| *n == "07-mixed-hover")
+        .ok_or("no 07-mixed-hover state")?;
+    let built = built_of(name, *build_state);
+    let (at, session) = card_body_point(&built)?;
+    let clicked: Rc<RefCell<Vec<HitId>>> = Rc::default();
+    let sink = clicked.clone();
+    let size = built.scene.size;
+    let window = WidgetPanelHandle::new(
+        Rect::new(0.0, 0.0, size.w, size.h),
+        Rc::new(move |event| {
+            if let claude_sessions_macos::ui::UiEvent::Click(id) = event {
+                sink.borrow_mut().push(id);
+            }
+        }),
+    )
+    .ok_or("no panel (not the main thread?)")?;
+    window.set_scene(&built.scene);
+    if !testing::click(&window.view(), at, dragged) {
+        return Err("could not make mouse events".into());
+    }
+    window.close();
+    let got: Vec<Target> = clicked
+        .borrow()
+        .iter()
+        .filter_map(|id| built.targets.get(*id).cloned())
+        .collect();
+    if got == [Target::Jump(session.clone())] {
+        Ok(())
+    } else {
+        Err(format!("clicked {got:?}, want Jump({session})"))
+    }
+}
+
+fn tap_records_session_id() -> Result<(), String> {
+    click_row(false)
+}
+
+fn small_move_still_clicks() -> Result<(), String> {
+    click_row(true)
+}
+
 type Case = fn() -> Result<(), String>;
 
 fn main() {
@@ -136,9 +238,15 @@ fn main() {
         println!("gui tests skipped (set CLAUDE_SESSIONS_GUI_TESTS=1)");
         return;
     }
-    let cases: [(&str, Case); 2] = [
+    let cases: [(&str, Case); 5] = [
         ("mixed_hover_renders_to_png", mixed_hover_renders_to_png),
         ("snapshots", snapshots),
+        (
+            "edit_menu_handles_clipboard_shortcuts",
+            edit_menu_handles_clipboard_shortcuts,
+        ),
+        ("tap_records_session_id", tap_records_session_id),
+        ("small_move_still_clicks", small_move_still_clicks),
     ];
     let mut failed = false;
     for (name, case) in cases {

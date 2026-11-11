@@ -19,3 +19,10 @@ pub fn run() {
         NSApplication::sharedApplication(mtm).run();
     }
 }
+
+/// `NSApplication.terminate(nil)`.
+pub fn quit() {
+    if let Some(mtm) = MainThreadMarker::new() {
+        NSApplication::sharedApplication(mtm).terminate(None);
+    }
+}

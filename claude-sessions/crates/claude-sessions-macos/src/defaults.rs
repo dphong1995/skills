@@ -178,3 +178,13 @@ impl KeyValueStore for UserDefaultsStore {
         self.defaults.removeObjectForKey(&NSString::from_str(key));
     }
 }
+
+/// Local `HH:mm` of a Unix time in seconds (the `clock` input of the views).
+pub fn clock_text(unix_secs: f64) -> String {
+    use objc2_foundation::{NSDate, NSDateFormatter};
+    let formatter = NSDateFormatter::new();
+    formatter.setDateFormat(Some(&NSString::from_str("HH:mm")));
+    formatter
+        .stringFromDate(&NSDate::dateWithTimeIntervalSince1970(unix_secs))
+        .to_string()
+}

@@ -1,6 +1,8 @@
 //! Keyboard mode input: `NSEvent` key fields to the core `KeyEvent` (Swift `WidgetView.handleKey`). No AppKit types.
 
-use claude_sessions_core::keyboard::{KeyEvent, Mods};
+use claude_sessions_core::keyboard::{KeyEvent, KeyOutcome, Mods, handle_key};
+use claude_sessions_core::panel_state::PanelState;
+use claude_sessions_core::store::Snapshot;
 
 /// `NSEvent.ModifierFlags` bits the key table reads; shift, caps lock, fn and the device-dependent low bits are dropped.
 pub const FLAG_CONTROL: u64 = 1 << 18;
@@ -18,4 +20,15 @@ pub fn key_event(key_code: u16, chars: &str, modifier_flags: u64) -> KeyEvent {
             option: modifier_flags & FLAG_OPTION != 0,
         },
     }
+}
+
+/// The local key monitor's answer, synchronously: the key table runs on `snapshot` and may change `panel`.
+pub fn handle(
+    key_code: u16,
+    chars: &str,
+    modifier_flags: u64,
+    snapshot: &Snapshot,
+    panel: &mut PanelState,
+) -> KeyOutcome {
+    handle_key(&key_event(key_code, chars, modifier_flags), snapshot, panel)
 }

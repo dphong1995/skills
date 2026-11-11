@@ -5,6 +5,7 @@ pub mod motion;
 mod node_view;
 mod png;
 mod scene_view;
+pub mod testing;
 
 use std::rc::Rc;
 
@@ -27,12 +28,20 @@ pub enum UiEvent {
         hit: Option<HitId>,
         at: Point,
     },
-    /// The panel was dragged and dropped; its frame already moved.
-    Dragged,
+    /// The panel was dragged and dropped; its frame already moved. Window origins in screen points: where the drag
+    /// started, where the pointer asked for, and where the clamp hook left the window.
+    Dragged {
+        start: Point,
+        raw: Point,
+        clamped: Point,
+    },
 }
 
 /// Receives what the user does in a scene.
 pub type EventHandler = Rc<dyn Fn(UiEvent)>;
+
+/// Maps the window origin a drag asks for to the origin the window takes.
+pub type ClampHandler = Rc<dyn Fn(Point) -> Point>;
 
 /// A panel with its scene view. Frames are in screen points with AppKit's bottom-left origin.
 #[derive(Clone)]
@@ -76,6 +85,24 @@ impl WidgetPanelHandle {
     pub fn hide(&self) {
         self.view.set_motion_live(false);
         self.panel.orderOut(None);
+    }
+
+    pub fn set_clamp(&self, clamp: ClampHandler) {
+        self.view.set_clamp(clamp);
+    }
+
+    /// Moves the panel without animating; `size` is the frame size, `origin` the bottom-left corner.
+    pub fn set_frame(&self, frame: Rect) {
+        self.panel.setFrame_display(ns_rect(frame), false);
+    }
+
+    pub fn is_visible(&self) -> bool {
+        self.panel.isVisible()
+    }
+
+    /// Whether the panel is on the active Space (a `canJoinAllSpaces` panel always should be).
+    pub fn is_on_active_space(&self) -> bool {
+        self.panel.isOnActiveSpace()
     }
 
     pub fn close(&self) {
