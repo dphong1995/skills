@@ -263,3 +263,16 @@ fn wants_key_and_close() {
     assert!(p.should_hand_back_key(true, false));
     assert!(!p.should_hand_back_key(true, true));
 }
+
+#[test]
+fn open_context_menu_holds_hover() {
+    let mut p = PanelState::new();
+    p.hovering = true;
+    p.menu_open = true;
+    assert!(p.pointer_wants(false));
+    p.menu_open = false;
+    assert!(!p.pointer_wants(false));
+    p.menu_open = true;
+    p.hovering = false;
+    assert!(!p.pointer_wants(true));
+}

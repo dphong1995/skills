@@ -605,7 +605,8 @@ fn show_menu(
         return;
     };
     let commands = built.commands;
-    let weak = weak.clone();
+    set_menu_open(weak, true);
+    let pick_weak = weak.clone();
     mac_menu::popup(view, &built.entries, at, move |id| {
         let Some(command) = usize::try_from(id)
             .ok()
@@ -614,8 +615,21 @@ fn show_menu(
         else {
             return;
         };
-        let weak = weak.clone();
+        let weak = pick_weak.clone();
         main_queue::run_loop_later(move || apply_command(&weak, &command));
+    });
+    set_menu_open(weak, false);
+}
+
+/// Holds the panels' hover while the context menu runs; closing it re-checks the pointer, so the card collapses then if it left.
+fn set_menu_open(weak: &WeakState, open: bool) {
+    with_state(weak, |s| {
+        for host in &mut s.panels {
+            host.state.menu_open = open;
+        }
+        if !open {
+            s.track_mouse();
+        }
     });
 }
 

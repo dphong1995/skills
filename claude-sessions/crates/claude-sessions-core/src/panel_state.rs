@@ -37,6 +37,8 @@ pub struct PanelState {
     /// then left the card.
     pub pinned_open: bool,
     pub pinned_entered: bool,
+    /// The widget's own context menu is open: `pointer_wants` holds `hovering` as it is, because the menu floats outside the card.
+    pub menu_open: bool,
     pub editing: Option<Editing>,
     pub anchor: Anchor,
     pub measured_height: Option<f64>,
@@ -111,6 +113,9 @@ impl PanelState {
     /// One mouse tick: updates the pin and returns whether the card should be hovered. A pinned card the mouse entered closes on the
     /// next leave, except in keyboard mode, which keeps it open until the keyboard mode ends.
     pub fn pointer_wants(&mut self, inside: bool) -> bool {
+        if self.menu_open {
+            return self.hovering;
+        }
         if !self.pinned_open {
             return inside;
         }
