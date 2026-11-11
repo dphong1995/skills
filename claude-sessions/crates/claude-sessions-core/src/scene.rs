@@ -2,35 +2,7 @@
 
 use std::collections::HashMap;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct Point {
-    pub x: f64,
-    pub y: f64,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct Size {
-    pub w: f64,
-    pub h: f64,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct Rect {
-    pub x: f64,
-    pub y: f64,
-    pub w: f64,
-    pub h: f64,
-}
-
-impl Rect {
-    pub const fn new(x: f64, y: f64, w: f64, h: f64) -> Self {
-        Self { x, y, w, h }
-    }
-
-    pub fn contains(&self, p: Point) -> bool {
-        p.x >= self.x && p.x < self.x + self.w && p.y >= self.y && p.y < self.y + self.h
-    }
-}
+pub use crate::geometry::{Point, Rect, Size};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Appearance {

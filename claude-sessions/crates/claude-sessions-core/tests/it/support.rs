@@ -254,6 +254,14 @@ pub fn rabbit_inline(id: i64, raw: &str, at: &str, parent: Option<i64>) -> Value
     c
 }
 
+/// CodeRabbit's summary and one unanswered finding (Swift `pendingFinding`).
+pub fn pending_finding(count: i64, at: &str) -> Vec<Value> {
+    vec![
+        rabbit_comment(&format!("**Actionable comments posted: {count}**"), at),
+        rabbit_inline(1, "nit", at, None),
+    ]
+}
+
 /// A comment without the CodeRabbit marker, e.g. a human reply to a finding.
 pub fn human_reply(
     id: i64,
@@ -511,4 +519,173 @@ pub fn make_socket_dir() -> tempfile::TempDir {
         .prefix("fs-")
         .tempdir_in("/tmp")
         .unwrap()
+}
+
+// ---- Bitbucket / Jira fakes (Swift `FakeBitbucket`, `FakeJira`) ----
+
+use claude_sessions_core::bitbucket::{BitbucketApi, BitbucketError};
+use claude_sessions_core::jira::{JiraApi, JiraError};
+use std::collections::HashMap;
+use url::Url;
+
+/// Canned Bitbucket. A route matches when the requested path contains its key; the longest matching key wins.
+/// Every request is recorded; `fail_all` makes every call fail.
+#[derive(Default)]
+pub struct FakeBitbucket {
+    routes: Mutex<HashMap<String, Result<Vec<u8>, BitbucketError>>>,
+    pub fail_all: Mutex<Option<BitbucketError>>,
+    requests: Mutex<Vec<String>>,
+    posts: Mutex<Vec<(String, Value)>>,
+    pub post_result: Mutex<Option<Result<Vec<u8>, BitbucketError>>>,
+    /// When set, `post` blocks until the sender side sends or drops.
+    pub post_gate: Mutex<Option<std::sync::mpsc::Receiver<()>>>,
+}
+
+impl FakeBitbucket {
+    pub fn set(&self, key: &str, json: Value) {
+        self.routes
+            .lock()
+            .unwrap()
+            .insert(key.to_string(), Ok(serde_json::to_vec(&json).unwrap()));
+    }
+
+    pub fn set_error(&self, key: &str, e: BitbucketError) {
+        self.routes.lock().unwrap().insert(key.to_string(), Err(e));
+    }
+
+    pub fn remove(&self, key: &str) {
+        self.routes.lock().unwrap().remove(key);
+    }
+
+    pub fn requests(&self) -> Vec<String> {
+        self.requests.lock().unwrap().clone()
+    }
+
+    pub fn requests_containing(&self, s: &str) -> usize {
+        self.requests().iter().filter(|r| r.contains(s)).count()
+    }
+
+    pub fn posts(&self) -> Vec<(String, Value)> {
+        self.posts.lock().unwrap().clone()
+    }
+}
+
+impl BitbucketApi for FakeBitbucket {
+    fn get(&self, path: &str) -> Result<Vec<u8>, BitbucketError> {
+        self.requests.lock().unwrap().push(path.to_string());
+        if let Some(e) = *self.fail_all.lock().unwrap() {
+            return Err(e);
+        }
+        let routes = self.routes.lock().unwrap();
+        let key = routes
+            .keys()
+            .filter(|k| path.contains(k.as_str()))
+            .max_by_key(|k| k.len())
+            .ok_or(BitbucketError::Http(404))?;
+        routes[key].clone()
+    }
+
+    fn post(&self, path: &str, json: &Value) -> Result<Vec<u8>, BitbucketError> {
+        self.posts
+            .lock()
+            .unwrap()
+            .push((path.to_string(), json.clone()));
+        if let Some(gate) = self.post_gate.lock().unwrap().take() {
+            let _ = gate.recv();
+        }
+        self.post_result
+            .lock()
+            .unwrap()
+            .clone()
+            .unwrap_or_else(|| Ok(b"{}".to_vec()))
+    }
+}
+
+/// Routes for the user, an open list and default passing CI status / no comments.
+pub fn fake(open: Vec<Value>) -> Arc<FakeBitbucket> {
+    let api = Arc::new(FakeBitbucket::default());
+    api.set("/2.0/user", json!({"uuid": "{me}"}));
+    api.set(
+        "/2.0/workspaces/t6engineering/pullrequests/",
+        json!({"values": open}),
+    );
+    api.set("/statuses", json!({"values": [{"state": "SUCCESSFUL"}]}));
+    api.set("/comments", json!({"values": []}));
+    api
+}
+
+#[derive(Default)]
+pub struct FakeJira {
+    /// `(host, keys)` per `bulk_fetch` call.
+    pub calls: Mutex<Vec<(String, Vec<String>)>>,
+    pub issues: Mutex<HashMap<String, (String, Option<String>)>>,
+    /// Key to `(issue type name, icon url)`.
+    pub types: Mutex<HashMap<String, (String, String)>>,
+    pub icon_data: Mutex<HashMap<Url, Vec<u8>>>,
+    pub icon_fail: Mutex<Option<JiraError>>,
+    pub icon_calls: Mutex<Vec<Url>>,
+    pub fail: Mutex<Option<JiraError>>,
+}
+
+impl FakeJira {
+    pub fn call_count(&self) -> usize {
+        self.calls.lock().unwrap().len()
+    }
+
+    pub fn call_keys(&self, i: usize) -> Vec<String> {
+        self.calls.lock().unwrap()[i].1.clone()
+    }
+
+    pub fn icon_call_count(&self) -> usize {
+        self.icon_calls.lock().unwrap().len()
+    }
+}
+
+impl JiraApi for FakeJira {
+    fn bulk_fetch(&self, host: &str, keys: &[String]) -> Result<Vec<u8>, JiraError> {
+        self.calls
+            .lock()
+            .unwrap()
+            .push((host.to_string(), keys.to_vec()));
+        if let Some(e) = *self.fail.lock().unwrap() {
+            return Err(e);
+        }
+        let issues = self.issues.lock().unwrap();
+        let types = self.types.lock().unwrap();
+        let found: Vec<Value> = keys
+            .iter()
+            .filter_map(|k| {
+                let (title, status) = issues.get(k)?;
+                let mut fields = json!({"summary": title});
+                if let Some(s) = status {
+                    fields["status"] = json!({"name": s});
+                }
+                if let Some((name, icon)) = types.get(k) {
+                    fields["issuetype"] = json!({"name": name, "iconUrl": icon});
+                }
+                Some(json!({"key": k, "fields": fields}))
+            })
+            .collect();
+        Ok(serde_json::to_vec(&json!({"issues": found})).unwrap())
+    }
+
+    fn myself(&self, _host: &str) -> Result<Vec<u8>, JiraError> {
+        if let Some(e) = *self.fail.lock().unwrap() {
+            return Err(e);
+        }
+        Ok(b"{}".to_vec())
+    }
+
+    fn icon(&self, url: &Url) -> Result<Vec<u8>, JiraError> {
+        self.icon_calls.lock().unwrap().push(url.clone());
+        if let Some(e) = *self.icon_fail.lock().unwrap() {
+            return Err(e);
+        }
+        self.icon_data
+            .lock()
+            .unwrap()
+            .get(url)
+            .cloned()
+            .ok_or(JiraError::Http(404))
+    }
 }
