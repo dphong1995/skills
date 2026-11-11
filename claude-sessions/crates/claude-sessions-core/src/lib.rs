@@ -1,4 +1,4 @@
-//! Claude Sessions core: no UI and no `objc2`. Phase 1 holds only the scene description the AppKit layer renders.
+//! Claude Sessions core: no UI and no `objc2`. The session store, quota, PR/Jira/CodeRabbit monitors, feed, layout and the scene description the AppKit layer renders.
 #![forbid(unsafe_code)]
 
 pub mod action;

@@ -863,3 +863,22 @@ fn connection_texts() {
         "Jira: ✗ chưa có token"
     );
 }
+
+/// A successful poll that changes nothing visible leaves the snapshot alone; `pr_stale_since` shows only while stale.
+#[test]
+fn snapshot_ignores_a_fresh_pr_success() {
+    let api = fake(vec![plain_pr(7571)]);
+    let (mut store, _d, _p) = pr_store(&api, pr_reply(&[7571]));
+    store.refresh(pr_t0());
+    let first = store.snapshot();
+    assert_eq!(first.pr_stale_since, None);
+    store.refresh(at(61));
+    assert_eq!(store.pr_last_success, Some(at(61)));
+    assert_eq!(store.snapshot(), first);
+
+    *api.fail_all.lock().unwrap() = Some(BitbucketError::Transport);
+    store.refresh(at(122));
+    store.refresh(at(362));
+    assert!(store.snapshot().pr_stale);
+    assert_eq!(store.snapshot().pr_stale_since, Some(at(61)));
+}

@@ -22,7 +22,7 @@ use crate::pr_monitor::{PRMonitor, PRTarget};
 use crate::pull_requests::{self, PRRef, PRStatus};
 use crate::quota::QuotaReader;
 use crate::tasks::{self, Todo};
-use crate::time::{add_secs, from_unix_secs, secs_since};
+use crate::time::{add_secs, secs_since};
 use crate::transcript::{self, MainTurn, PendingState};
 use crate::transcript_scanner::{ScanResult, ScanTarget, TranscriptScanner};
 use std::collections::{HashMap, HashSet};
@@ -160,7 +160,7 @@ pub struct Store {
     /// The OMC usage cache's 5h and weekly quota.
     pub quota: Option<crate::quota::Quota>,
     /// Sessions whose process ended, newest first; saved to the closed store whenever a refresh changes it.
-    pub closed: ClosedSessions,
+    pub(crate) closed: ClosedSessions,
     pub peek_until: Option<SystemTime>,
     pub muted: bool,
     pub bg_opacity: f64,
@@ -382,6 +382,19 @@ impl Store {
             .is_some_and(|s| secs_since(self.now, s) > PR_STALE_AFTER)
     }
 
+    /// The last successful open-list call, only while `pr_stale`: a fresh success changes nothing a panel shows.
+    fn pr_stale_since(&self) -> Option<SystemTime> {
+        self.pr_last_success.filter(|_| self.pr_stale())
+    }
+
+    /// Takes the given ids out of the closed list (they run again) and saves the list.
+    pub fn revive_closed(&mut self, ids: &HashSet<String>) {
+        self.closed.revive(ids);
+        if let Some(store) = &self.closed_store {
+            store.save(&self.closed);
+        }
+    }
+
     pub fn hidden(&self) -> bool {
         self.empty_since
             .is_some_and(|e| secs_since(self.now, e) >= HIDE_AFTER)
@@ -402,7 +415,7 @@ impl Store {
             surface_misses: self.surface_misses.clone(),
             connections: self.connections.clone(),
             issue_icons: self.issue_icons.clone(),
-            pr_last_success: self.pr_last_success,
+            pr_stale_since: self.pr_stale_since(),
             pr_stale: self.pr_stale(),
             hidden: self.hidden(),
             peeking: self.peeking(),

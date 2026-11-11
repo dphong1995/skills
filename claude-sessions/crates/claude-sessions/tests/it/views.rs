@@ -666,7 +666,7 @@ fn pr_session() -> Session {
 fn pr_rows_show_counts_the_rabbit_chip_and_their_buttons() {
     let mut snap = snapshot(vec![pr_session()]);
     snap.pr_stale = true;
-    snap.pr_last_success = Some(now() - Duration::from_secs(7 * 60));
+    snap.pr_stale_since = Some(now() - Duration::from_secs(7 * 60));
     let built = render(&snap, &open());
     let node = card(&built.scene, "done");
     let t = texts(node);

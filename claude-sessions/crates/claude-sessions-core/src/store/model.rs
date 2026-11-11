@@ -273,7 +273,7 @@ pub struct Snapshot {
     pub surface_misses: HashSet<String>,
     pub connections: HashMap<Service, ConnectionLine>,
     pub issue_icons: HashMap<Url, Vec<u8>>,
-    pub pr_last_success: Option<SystemTime>,
+    pub pr_stale_since: Option<SystemTime>,
     pub pr_stale: bool,
     pub hidden: bool,
     pub peeking: bool,

@@ -47,7 +47,7 @@ pub fn next_rebuild(
         }
     }
     if snap.pr_stale
-        && let Some(t) = snap.pr_last_success
+        && let Some(t) = snap.pr_stale_since
     {
         at(now + next_label_change(t, now));
     }

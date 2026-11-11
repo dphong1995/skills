@@ -153,3 +153,14 @@ fn resume_rejects_non_uuid_id() {
         Some(format!("cd '/tmp/it'\\''s' && claude --resume '{UUID}'").as_str())
     );
 }
+
+#[test]
+fn out_of_range_closed_at_loads_as_empty_without_panic() {
+    for bad in ["1e300", "-1e300"] {
+        let kv = MemoryStore::default();
+        let json = format!(r#"[{{"id":"a","title":"t","cwd":"/x","closedAt":{bad}}}]"#);
+        kv.set_bytes("closedSessions", json.as_bytes());
+        let store = ClosedStore::new(Box::new(kv));
+        assert!(store.load(SystemTime::now()).items().is_empty());
+    }
+}

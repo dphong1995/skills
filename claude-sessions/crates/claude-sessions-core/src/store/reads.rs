@@ -1,6 +1,7 @@
 //! The per-session file reads of a refresh: session JSON, transcript head and tail, running-tool line, task list.
 
 use super::*;
+use crate::time::checked_from_unix_secs;
 
 impl Store {
     pub(super) fn running(&self, pid: i32) -> bool {
@@ -151,9 +152,7 @@ impl Store {
         };
         let window = transcript::ACTIVITY_WINDOW;
         let tail_start = size.saturating_sub(window);
-        #[allow(clippy::needless_late_init)]
-        let from;
-        match &cached {
+        let from = match &cached {
             Some(c) if size >= c.offset => {
                 if size == c.offset {
                     return ActivityRead {
@@ -162,10 +161,10 @@ impl Store {
                         agents: c.agents.iter().map(|a| a.1.clone()).collect(),
                     };
                 }
-                from = c.offset.max(tail_start);
+                c.offset.max(tail_start)
             }
-            _ => from = tail_start,
-        }
+            _ => tail_start,
+        };
         let continuing = Some(from) == cached.as_ref().map(|c| c.offset);
         let at_line_start = from == 0 || continuing;
         self.activity_reads += 1;
@@ -270,7 +269,7 @@ impl Store {
         s.since = o
             .get("statusUpdatedAt")
             .and_then(|v| v.as_f64())
-            .map(|ms| from_unix_secs(ms / 1000.0));
+            .and_then(|ms| checked_from_unix_secs(ms / 1000.0));
         s.pid = pid;
         s.name_source = text("nameSource");
         // Skipped like a spare: `claude -p` / SDK runs (entrypoint `sdk-*`) are not sessions the user opened.

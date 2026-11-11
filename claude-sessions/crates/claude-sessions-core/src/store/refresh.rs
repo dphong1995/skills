@@ -82,25 +82,22 @@ impl Store {
         }
         list.retain(|s| newest.get(&s.id).map(|n| n.1) == Some(s.pid));
         // After the dedupe, so two processes sharing a sessionId cannot reset each other's cached activity.
-        #[allow(clippy::needless_range_loop)]
-        for i in 0..list.len() {
-            let s = list[i].clone();
+        for s in &mut list {
             let url = self.transcript_url(&s.id, &s.cwd, s.since);
             let size = sizes.get(&s.id).copied().unwrap_or(0);
-            let a = self.read_activity(&s, url.as_deref(), size);
+            let a = self.read_activity(s, url.as_deref(), size);
             if let Some(MainTurn::Ended { background: n, at }) = a.turn {
-                list[i].background_agents = Some(n);
+                s.background_agents = Some(n);
                 if n == 0
                     && let (Some(at), Some(since)) = (at, s.since)
                 {
-                    list[i].busy_after_turn = since > at;
+                    s.busy_after_turn = since > at;
                 }
                 // The first loop skipped the reply read: the row was still `busy` then.
-                let ended = list[i].clone();
-                list[i].last_reply = self.read_tail(&ended, url.as_deref(), size).0;
+                s.last_reply = self.read_tail(s, url.as_deref(), size).0;
             } else {
-                list[i].activity = a.text;
-                list[i].agents = a.agents;
+                s.activity = a.text;
+                s.agents = a.agents;
             }
         }
 
@@ -387,6 +384,7 @@ impl Store {
             }
             self.closed = now_closed;
         }
+        self.last_status.retain(|k, _| live.contains(k));
         self.last_question.retain(|k, _| live.contains(k));
         self.announced_question.retain(|k, _| live.contains(k));
         let asking = |id: &String| list.iter().any(|s| &s.id == id && is_busy_or_waiting(s));

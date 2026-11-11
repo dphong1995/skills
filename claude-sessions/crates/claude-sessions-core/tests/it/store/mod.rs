@@ -1474,6 +1474,38 @@ fn snapshot_stable_without_change() {
     assert_eq!(store.snapshot(), first);
 }
 
+#[test]
+fn out_of_range_status_updated_at_is_missing() {
+    for bad in ["1e300", "-1e300"] {
+        let (dir, projects) = (make_temp_dir(), make_temp_dir());
+        let mut store = with_projects(dir.path(), projects.path());
+        put(dir.path(), "a", "idle", None, 5.0);
+        let file = dir.path().join("a.json");
+        let text = std::fs::read_to_string(&file).unwrap();
+        let mut o: serde_json::Value = serde_json::from_str(&text).unwrap();
+        o["statusUpdatedAt"] = serde_json::from_str(bad).unwrap();
+        std::fs::write(&file, serde_json::to_vec(&o).unwrap()).unwrap();
+        store.refresh(SystemTime::now());
+        assert_eq!(store.sessions.len(), 1);
+        assert_eq!(store.sessions[0].since, None);
+    }
+}
+
+#[test]
+fn resumed_id_does_not_inherit_the_last_status() {
+    let (dir, projects) = (make_temp_dir(), make_temp_dir());
+    let mut store = with_projects(dir.path(), projects.path());
+    let t0 = SystemTime::now();
+    put(dir.path(), "a", "busy", None, 5.0);
+    store.refresh(t0);
+    std::fs::remove_file(dir.path().join("a.json")).unwrap();
+    store.refresh(secs(t0, 1));
+    put(dir.path(), "a", "idle", None, 5.0);
+    store.refresh(secs(t0, 2));
+    assert!(!store.snapshot().unseen.contains_key("a"));
+    assert_eq!(store.chime, None);
+}
+
 mod activity;
 mod chime;
 mod closed_feed;

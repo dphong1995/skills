@@ -3,7 +3,6 @@
 
 use crate::support::*;
 use claude_sessions_core::bitbucket::BitbucketError;
-use claude_sessions_core::closed_sessions::{ClosedSession, ClosedSessions};
 use claude_sessions_core::code_rabbit::{self, Rabbit};
 use claude_sessions_core::feed::FeedMonitor;
 use claude_sessions_core::jira_monitor::JiraMonitor;
@@ -570,32 +569,12 @@ fn approval_replaced_by_sent_line() {
     assert_eq!(store.send_state(&k), Some(SendState::Sent));
 }
 
-fn closed_two(now: SystemTime) -> ClosedSessions {
-    ClosedSessions::new(vec![
-        ClosedSession {
-            id: "x".into(),
-            title: "Sửa lỗi đăng nhập".into(),
-            cwd: BACKEND.into(),
-            branch: Some("feat/login".into()),
-            closed_at: now - Duration::from_secs(12 * 60),
-        },
-        ClosedSession {
-            id: "y".into(),
-            title: "ocr-service-a1".into(),
-            cwd: "/Users/phong/ocr-service".into(),
-            branch: None,
-            closed_at: now - Duration::from_secs(3 * 3600),
-        },
-    ])
-}
-
 #[test]
 fn closed_row_shows_opening() {
     let dir = make_temp_dir();
     let mut store = make_store(dir.path());
     let now = SystemTime::now();
     store.refresh(now);
-    store.closed = closed_two(now);
     assert!(store.begin_send(SendKey::new("x", SendKind::Resume), now));
     store.finish_send(&SendKey::new("y", SendKind::Resume), false, now);
     assert_eq!(

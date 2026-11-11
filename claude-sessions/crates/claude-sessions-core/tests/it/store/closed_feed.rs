@@ -2,7 +2,7 @@
 //! (`exitedButUnreapedPidIsFiltered` through `clearKeepsPidSoNothingIsClosed`).
 
 use super::*;
-use claude_sessions_core::closed_sessions::ClosedStore;
+use claude_sessions_core::closed_sessions::{ClosedSession, ClosedSessions, ClosedStore};
 use claude_sessions_core::feed::{BlockState, FeedMonitor};
 use claude_sessions_core::kv::MemoryStore;
 use claude_sessions_core::store::Paths;
@@ -63,7 +63,7 @@ fn dead_session_goes_to_closed() {
     );
     write_session(dir.path(), "dead", 999_999, "idle", 10.0, "dead", "/tmp");
     store.refresh(SystemTime::now());
-    assert!(store.closed.items().is_empty());
+    assert!(store.snapshot().closed.is_empty());
     let child = spawn_sleeper();
     write_session(
         dir.path(),
@@ -75,17 +75,18 @@ fn dead_session_goes_to_closed() {
         FRONTEND,
     );
     store.refresh(SystemTime::now());
-    assert!(store.closed.items().is_empty());
+    assert!(store.snapshot().closed.is_empty());
     end_process(child);
     store.refresh(SystemTime::now());
-    let c = &store.closed.items()[0];
+    let closed = store.snapshot().closed;
+    let c = &closed[0];
     assert_eq!(c.id, "a");
     assert_eq!(c.title, "frontend");
     assert_eq!(c.cwd, FRONTEND);
     assert_eq!(c.branch.as_deref(), Some("feat/x"));
     write_session(dir.path(), "a", me(), "idle", 10.0, "frontend", FRONTEND);
     store.refresh(SystemTime::now());
-    assert!(store.closed.items().is_empty());
+    assert!(store.snapshot().closed.is_empty());
 }
 
 fn store_with_closed(dir: &std::path::Path, kv: &MemoryStore) -> Store {
@@ -125,7 +126,8 @@ fn closed_persists_across_stores() {
     store.refresh(SystemTime::now());
     let other = make_temp_dir();
     let again = store_with_closed(other.path(), &kv);
-    let got: Vec<&str> = again.closed.items().iter().map(|c| c.id.as_str()).collect();
+    let closed = again.snapshot().closed;
+    let got: Vec<&str> = closed.iter().map(|c| c.id.as_str()).collect();
     assert_eq!(got, vec!["a"]);
 }
 
@@ -296,10 +298,11 @@ fn close_is_found_when_the_file_goes_before_the_process() {
     std::fs::remove_file(dir.path().join("a.json")).unwrap();
     store.refresh(SystemTime::now());
     assert!(store.sessions.is_empty());
-    assert!(store.closed.items().is_empty());
+    assert!(store.snapshot().closed.is_empty());
     end_process(child);
     store.refresh(SystemTime::now());
-    let got: Vec<&str> = store.closed.items().iter().map(|c| c.id.as_str()).collect();
+    let closed = store.snapshot().closed;
+    let got: Vec<&str> = closed.iter().map(|c| c.id.as_str()).collect();
     assert_eq!(got, vec!["a"]);
 }
 
@@ -314,7 +317,7 @@ fn clear_keeps_pid_so_nothing_is_closed() {
     write_session(dir.path(), "b", me(), "idle", 10.0, "b", FRONTEND);
     store.refresh(SystemTime::now());
     assert_eq!(ids(&store), vec!["b"]);
-    assert!(store.closed.items().is_empty());
+    assert!(store.snapshot().closed.is_empty());
 }
 
 #[test]
@@ -376,4 +379,24 @@ fn answer_valid_only_while_its_question_is_live() {
     store.refresh(secs(t0, 1));
     assert!(!store.still_valid(&ok));
     assert!(!store.allows(&editing));
+}
+
+#[test]
+fn revive_closed_saves_the_list() {
+    let (dir, kv) = (make_temp_dir(), MemoryStore::default());
+    let now = SystemTime::now();
+    let make = |id: &str| ClosedSession {
+        id: id.into(),
+        title: id.into(),
+        cwd: "/tmp/x".into(),
+        branch: None,
+        closed_at: now,
+    };
+    ClosedStore::new(Box::new(kv.clone())).save(&ClosedSessions::new(vec![make("x"), make("y")]));
+    let mut store = store_with_closed(dir.path(), &kv);
+    store.revive_closed(&set(["x"]));
+    let saved = ClosedStore::new(Box::new(kv.clone())).load(now);
+    let got: Vec<&str> = saved.items().iter().map(|c| c.id.as_str()).collect();
+    assert_eq!(got, ["y"]);
+    assert_eq!(store.snapshot().closed.len(), 1);
 }

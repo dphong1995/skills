@@ -7,6 +7,7 @@ use crate::pull_requests::{self, PRRef, PRStatus};
 use crate::transcript::{label_for, project_prefix};
 use crate::transcript_scanner::ScanResult;
 use std::collections::{HashMap, HashSet};
+use unicode_segmentation::UnicodeSegmentation;
 use url::Url;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -88,8 +89,10 @@ pub(super) fn ticket_text(key: &str, issue: Option<&JiraIssue>) -> String {
     let Some(title) = issue.and_then(|i| i.title.as_ref()) else {
         return key.to_string();
     };
-    let cut = if title.chars().count() > 60 {
-        format!("{}…", title.chars().take(60).collect::<String>())
+    let mut graphemes = title.graphemes(true);
+    let head: String = graphemes.by_ref().take(60).collect();
+    let cut = if graphemes.next().is_some() {
+        format!("{head}…")
     } else {
         title.clone()
     };
@@ -190,4 +193,34 @@ pub(super) fn menu(
     .into_iter()
     .filter(|s| !s.items.is_empty())
     .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn issue(title: &str) -> JiraIssue {
+        JiraIssue {
+            title: Some(title.into()),
+            status: None,
+            issue_type: None,
+            icon_url: None,
+            tone: None,
+        }
+    }
+
+    #[test]
+    fn title_cut_never_splits_a_grapheme() {
+        // 59 letters, then a family emoji (one grapheme of several chars) at the cut, then more text.
+        let family = "👨\u{200d}👩\u{200d}👧";
+        let title = format!("{}{family}tail", "a".repeat(59));
+        let text = ticket_text("K-1", Some(&issue(&title)));
+        assert_eq!(text, format!("K-1  {}{family}…", "a".repeat(59)));
+        // Exactly 60 graphemes (the last one a combining sequence) is not cut.
+        let exact = format!("{}e\u{301}", "a".repeat(59));
+        assert_eq!(
+            ticket_text("K-1", Some(&issue(&exact))),
+            format!("K-1  {exact}")
+        );
+    }
 }

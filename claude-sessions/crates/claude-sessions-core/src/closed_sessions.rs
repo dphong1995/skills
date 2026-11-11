@@ -1,7 +1,7 @@
 //! The recently closed sessions, kept so they can be resumed with `claude --resume`.
 
 use crate::kv::KeyValueStore;
-use crate::time::{from_unix_secs, secs_since, unix_secs};
+use crate::time::{checked_from_unix_secs, secs_since, unix_secs};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashSet;
 use std::time::SystemTime;
@@ -15,7 +15,8 @@ fn serialize_date<S: Serializer>(t: &SystemTime, s: S) -> Result<S::Ok, S::Error
 }
 
 fn deserialize_date<'de, D: Deserializer<'de>>(d: D) -> Result<SystemTime, D::Error> {
-    Ok(from_unix_secs(f64::deserialize(d)? + REFERENCE_OFFSET))
+    checked_from_unix_secs(f64::deserialize(d)? + REFERENCE_OFFSET)
+        .ok_or_else(|| serde::de::Error::custom("closedAt out of range"))
 }
 
 /// A session whose process ended. Serialized as Swift's `JSONEncoder` does, so both builds read each other's data.

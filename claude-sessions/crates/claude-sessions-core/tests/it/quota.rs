@@ -96,11 +96,7 @@ fn missing_and_stale() {
 fn forecast_linear() {
     let t0 = at(1_000_000.0);
     let t1 = t0 + Duration::from_secs(20 * 60);
-    let f = QuotaReader::forecast(
-        &[(t0, 20), (t1, 40)],
-        t1,
-        t0 + Duration::from_secs(3 * 3600),
-    );
+    let f = QuotaReader::forecast(&[(t0, 20), (t1, 40)], t0 + Duration::from_secs(3 * 3600));
     assert_eq!(f, Some(t0 + Duration::from_secs(80 * 60)));
 }
 
@@ -108,12 +104,9 @@ fn forecast_linear() {
 fn forecast_needs_two_samples() {
     let t0 = at(1_000_000.0);
     let reset = t0 + Duration::from_secs(3 * 3600);
-    assert_eq!(QuotaReader::forecast(&[(t0, 20)], t0, reset), None);
+    assert_eq!(QuotaReader::forecast(&[(t0, 20)], reset), None);
     let t1 = t0 + Duration::from_secs(4 * 60);
-    assert_eq!(
-        QuotaReader::forecast(&[(t0, 20), (t1, 40)], t1, reset),
-        None
-    );
+    assert_eq!(QuotaReader::forecast(&[(t0, 20), (t1, 40)], reset), None);
 }
 
 #[test]
@@ -121,7 +114,7 @@ fn forecast_not_before_reset() {
     let t0 = at(1_000_000.0);
     let t1 = t0 + Duration::from_secs(20 * 60);
     assert_eq!(
-        QuotaReader::forecast(&[(t0, 20), (t1, 40)], t1, t0 + Duration::from_secs(60 * 60)),
+        QuotaReader::forecast(&[(t0, 20), (t1, 40)], t0 + Duration::from_secs(60 * 60)),
         None
     );
 }
@@ -134,7 +127,7 @@ fn window_change_clears_samples() {
     write_cache(
         &url,
         Cache {
-            five: 20.0,
+            five: 60.0,
             five_reset: "2026-11-06T14:00:00.171Z",
             last: t0,
             ..Cache::default()
@@ -144,7 +137,7 @@ fn window_change_clears_samples() {
     write_cache(
         &url,
         Cache {
-            five: 40.0,
+            five: 90.0,
             five_reset: "2026-11-06T14:00:00.171Z",
             last: t0 + 20.0 * 60.0 * 1000.0,
             ..Cache::default()
@@ -176,4 +169,62 @@ fn levels() {
     assert_eq!(QuotaLevel::level(80), QuotaLevel::Warn);
     assert_eq!(QuotaLevel::level(94), QuotaLevel::Warn);
     assert_eq!(QuotaLevel::level(95), QuotaLevel::High);
+}
+
+#[test]
+fn forecast_does_not_depend_on_the_read_time() {
+    let (_d, url) = cache_url();
+    let now = at(LAST / 1000.0 + 60.0);
+    let mut reader = QuotaReader::new(url.clone());
+    write_cache(
+        &url,
+        Cache {
+            five: 20.0,
+            last: LAST - 1_200_000.0,
+            ..Cache::default()
+        },
+    );
+    reader.read(now);
+    write_cache(
+        &url,
+        Cache {
+            five: 90.0,
+            ..Cache::default()
+        },
+    );
+    let a = reader.read(now + Duration::from_secs(20)).unwrap();
+    // Same values rewritten much later: the forecast stays where it was.
+    write_cache(
+        &url,
+        Cache {
+            five: 90.0,
+            ..Cache::default()
+        },
+    );
+    let b = reader.read(now + Duration::from_secs(300)).unwrap();
+    assert!(a.forecast.is_some());
+    assert_eq!(a, b);
+}
+
+#[test]
+fn out_of_range_last_success_is_missing() {
+    for bad in [1e300, -1e300, f64::INFINITY] {
+        let (_d, url) = cache_url();
+        write_cache(
+            &url,
+            Cache {
+                last: bad,
+                ..Cache::default()
+            },
+        );
+        assert_eq!(QuotaReader::new(url).read(at(LAST / 1000.0)), None);
+    }
+    // NaN is not valid JSON; a null is missing as well.
+    let (_d, url) = cache_url();
+    fs::write(
+        &url,
+        br#"{"data":{"fiveHourPercent":1,"fiveHourResetsAt":"2026-11-06T11:00:00.171Z","weeklyPercent":1,"weeklyResetsAt":"2026-11-13T06:00:00.171Z"},"lastSuccessAt":null}"#,
+    )
+    .unwrap();
+    assert_eq!(QuotaReader::new(url).read(at(LAST / 1000.0)), None);
 }

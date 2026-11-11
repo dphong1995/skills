@@ -129,11 +129,7 @@ pub fn draw(ctx: &mut Ctx, c: &mut Canvas, s: &Session, index: usize, block: Rec
             right = state_line(ctx, c, state, right, cy);
         }
     }
-    let mut parts = text::pr_parts(
-        pr,
-        view.now,
-        snap.pr_stale.then_some(snap.pr_last_success).flatten(),
-    );
+    let mut parts = text::pr_parts(pr, view.now, snap.pr_stale_since);
     if let Some(i) = parts.iter().position(|p| p.kind == PartKind::Rabbit) {
         let p = parts.remove(i);
         if let Some(r) = &pr.rabbit {

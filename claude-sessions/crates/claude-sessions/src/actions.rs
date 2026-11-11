@@ -318,7 +318,7 @@ pub fn complete(c: Completion, store: &mut Store, runner: &mut dyn EffectRunner,
         Completion::Resumed(closed, key, ok) => {
             store.finish_send(&key, ok, now);
             if ok {
-                store.closed.revive(&[closed.id.clone()].into());
+                store.revive_closed(&[closed.id.clone()].into());
                 return;
             }
             if let Some(command) = closed.shell_command() {
