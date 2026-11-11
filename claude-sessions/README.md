@@ -21,7 +21,7 @@ Bấm phím tắt mở widget (`⌃⌥Space`) thì thẻ được chọn bằng 
 | `R` | mở ô trả lời (session xong, chạy trong cmux) |
 | `1`-`9` | chọn đáp án thứ n của câu hỏi (đánh số liên tục qua các câu hỏi) |
 | `⌘↩` | gửi câu trả lời khi mọi câu hỏi đã có lựa chọn |
-| `Esc` | đang gõ: thôi gõ; không gõ: đóng widget và trả phím cho app trước |
+| `Esc` | đang gõ: thôi gõ (đóng ô, giữ chế độ bàn phím); không gõ: đóng widget và trả phím cho app trước |
 
 Phím không áp dụng cho thẻ đang chọn thì kêu beep; phím không gán thì đi tiếp tới app đang dùng. Chế độ bàn phím chỉ bật khi bấm phím tắt mở widget (bấm khi widget đang mở do rê chuột thì chuyển sang chế độ bàn phím thay vì đóng; thẻ đóng khi bấm lại phím tắt, bấm `Esc`, hoặc chuột rời khung nếu chuột đã vào nó, còn thẻ mở bằng phím tắt mà chuột chưa vào thì giữ mở đến khi bấm phím tắt; bấm sang app khác chỉ kết thúc chế độ bàn phím, bấm phím tắt lần nữa (ví dụ sau khi `↩` nhảy sang cmux) thì bật lại); chỉ rê chuột thì không bao giờ lấy phím, và rê chuột vào widget khi đang gõ ở terminal không cướp phím.
 
