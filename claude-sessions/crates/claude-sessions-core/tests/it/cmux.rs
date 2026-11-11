@@ -142,3 +142,22 @@ fn cli_path_is_inside_the_bundle() {
         Path::new("/Applications/cmux.app/Contents/Resources/bin/cmux")
     );
 }
+
+#[test]
+fn open_link_sends_no_keys() {
+    use claude_sessions_core::action::Action;
+    let url = url::Url::parse("https://x.y").unwrap();
+    assert!(keys_for(&Action::OpenLink("s".into(), url)).is_empty());
+}
+
+#[test]
+fn answer_sends_no_keystrokes() {
+    use claude_sessions_core::action::Action;
+    let a = Action::Answer {
+        session: "a".into(),
+        request_id: "R".into(),
+        answers: vec![vec!["x".into()]],
+        other: Default::default(),
+    };
+    assert!(keys_for(&a).is_empty());
+}

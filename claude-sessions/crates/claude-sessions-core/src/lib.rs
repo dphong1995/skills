@@ -15,6 +15,7 @@ pub mod git_branch;
 pub mod hotkeys;
 pub mod jira;
 pub mod jira_monitor;
+pub mod keyboard;
 pub mod kv;
 pub mod layout;
 pub mod panel_state;

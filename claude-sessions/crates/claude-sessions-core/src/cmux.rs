@@ -1,6 +1,7 @@
 //! The cmux side of a jump or a keystroke: the CLI calls and the AppleScript bodies. Running the AppleScript and finding the
 //! app by its bundle id need AppKit and belong to the app layer.
 
+use crate::action::Action;
 use crate::closed_sessions::ClosedSession;
 use crate::shell::run_process;
 use regex::Regex;
@@ -136,6 +137,24 @@ pub fn reply_keys(text: &str) -> Vec<Key> {
 
 pub fn stop_keys() -> Vec<Key> {
     vec![Key::Raw("\\x1b".into())]
+}
+
+/// The keystrokes an action types into its session; none for actions that only open things or go through cmux's socket.
+pub fn keys_for(a: &Action) -> Vec<Key> {
+    match a {
+        Action::Approve { .. } => approve_keys(),
+        Action::Deny { reason, .. } => deny_keys(reason),
+        Action::AskClaude { prompt, .. } => ask_claude_keys(prompt),
+        Action::Reply { text, .. } => reply_keys(text),
+        Action::Stop(_) => stop_keys(),
+        Action::Jump(_)
+        | Action::OpenLink(..)
+        | Action::Connect(_)
+        | Action::NudgeRabbit(..)
+        | Action::Resume(_)
+        | Action::Answer { .. }
+        | Action::MarkSeen(_) => vec![],
+    }
 }
 
 /// An AppleScript string literal: backslashes and double quotes escaped.

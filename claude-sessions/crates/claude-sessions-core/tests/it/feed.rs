@@ -468,3 +468,64 @@ fn refuses_a_socket_path_that_is_not_a_socket() {
             .is_ok()
     );
 }
+
+#[test]
+fn vanished_item_falls_back() {
+    let dir = make_temp_dir();
+    let t = FakeFeedTransport::new();
+    *t.items.lock().unwrap() = vec![feed_item("R1", "a", SystemTime::now())];
+    let mut store = make_store_with(
+        dir.path(),
+        StoreSetup {
+            feed: Some(FeedMonitor::without_worker(t.clone())),
+            ..Default::default()
+        },
+    );
+    write_session_with(
+        dir.path(),
+        "a",
+        me(),
+        "waiting",
+        0.0,
+        "a",
+        FRONTEND,
+        SessionOpts {
+            waiting_for: Some("input needed"),
+            ..SessionOpts::default()
+        },
+    );
+    let t0 = SystemTime::now();
+    store.refresh(t0);
+    let s = store.sessions[0].clone();
+    assert!(s.question.as_ref().map(|q| q.request_id.as_str()) == Some("R1") && s.question_live);
+    assert_eq!(
+        feed::block_state(
+            s.question.as_ref().unwrap(),
+            s.question_live,
+            false,
+            false,
+            t0
+        ),
+        BlockState::Form
+    );
+    // The item leaves feed.list (answered in the terminal, or the 120 s hook gave up) while the session still waits.
+    t.items.lock().unwrap().clear();
+    let t1 = after(t0, 1);
+    store.refresh(t1);
+    let s = store.sessions[0].clone();
+    assert!(s.question.as_ref().map(|q| q.request_id.as_str()) == Some("R1") && !s.question_live);
+    assert_eq!(
+        feed::block_state(
+            s.question.as_ref().unwrap(),
+            s.question_live,
+            false,
+            false,
+            t1
+        ),
+        BlockState::Fallback
+    );
+    // The session runs again: the block is gone.
+    write_session(dir.path(), "a", me(), "busy", 0.0, "a", FRONTEND);
+    store.refresh(after(t0, 2));
+    assert!(store.sessions[0].question.is_none());
+}

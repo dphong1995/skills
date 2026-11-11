@@ -337,6 +337,11 @@ impl Store {
         }
     }
 
+    /// Lines the transcript scanner has parsed so far, for tests.
+    pub fn parsed_lines(&self) -> usize {
+        self.scanner.parsed_lines()
+    }
+
     /// Entry count of every per-session cache, by name, for tests.
     pub fn cache_counts(&self) -> HashMap<&'static str, usize> {
         HashMap::from([
