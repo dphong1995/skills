@@ -9,12 +9,20 @@ name = "ClaudeSessions"
 path = "src/main.rs"
 
 [[test]]
+name = "it"
+path = "tests/it/main.rs"
+
+[[test]]
 name = "gui"
 harness = false
 
 [dependencies]
 claude-sessions-core.workspace = true
 claude-sessions-macos.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
 
 [lints]
 workspace = true

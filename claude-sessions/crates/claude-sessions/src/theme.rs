@@ -1,0 +1,92 @@
+//! Design tokens of the redesign, from `plans/2026-11-11-claude-sessions-rust/mockups/src/base.css`: colours (resolved per
+//! appearance by `ThemeColor`), radii, spacing and font sizes. Dark and light share one layout.
+
+use claude_sessions_core::scene::{Color, FontSpec, ThemeColor, Weight};
+use claude_sessions_core::store::Session;
+
+pub use claude_sessions_core::layout::{REPLY_FONT, STATE_FONT, SUB_FONT, TITLE_FONT};
+
+pub const PANEL_RADIUS: f64 = 18.0;
+pub const CARD_RADIUS: f64 = 12.0;
+pub const BUTTON_RADIUS: f64 = 7.0;
+pub const CMD_RADIUS: f64 = 8.0;
+pub const CHIP_RADIUS: f64 = 6.0;
+pub const ICON: f64 = 16.0;
+
+pub const fn solid(token: ThemeColor) -> Color {
+    token.opaque()
+}
+
+pub const fn tint(token: ThemeColor, alpha: f64) -> Color {
+    Color { token, alpha }
+}
+
+pub const fn font(size: f64, weight: Weight) -> FontSpec {
+    FontSpec {
+        size,
+        weight,
+        mono: false,
+    }
+}
+
+pub const HEADER_TITLE_FONT: FontSpec = font(13.0, Weight::Semibold);
+pub const COUNT_FONT: FontSpec = font(12.0, Weight::Semibold);
+pub const QUOTA_FONT: FontSpec = font(11.0, Weight::Regular);
+pub const SECTION_FONT: FontSpec = font(10.5, Weight::Semibold);
+pub const TIME_FONT: FontSpec = font(11.5, Weight::Regular);
+pub const META_FONT: FontSpec = font(11.5, Weight::Regular);
+pub const BUTTON_FONT: FontSpec = font(12.0, Weight::Semibold);
+pub const MONO_FONT: FontSpec = FontSpec {
+    size: 12.0,
+    weight: Weight::Regular,
+    mono: true,
+};
+
+/// The row/card fill (`--card`).
+pub fn card_fill() -> Color {
+    tint(ThemeColor::Row, 0.92)
+}
+
+pub fn card_hover_fill() -> Color {
+    tint(ThemeColor::Text, 0.09)
+}
+
+/// A card with a fresh Claude mark.
+pub fn card_fresh_fill() -> Color {
+    tint(ThemeColor::Yellow, 0.10)
+}
+
+pub fn selection_ring() -> Color {
+    tint(ThemeColor::Text, 0.85)
+}
+
+/// Colour of a `color_status`: waiting red, done orange, running blue.
+pub fn status_token(color_status: &str) -> ThemeColor {
+    match color_status {
+        "waiting" => ThemeColor::Red,
+        "idle" => ThemeColor::Orange,
+        _ => ThemeColor::Blue,
+    }
+}
+
+pub fn status_color(s: &Session) -> Color {
+    solid(status_token(s.color_status()))
+}
+
+/// The status icon of a card (SF Symbol names as Swift `Theme.Symbols.status`, filled-circle variants as in the mockups).
+pub fn status_symbol(s: &Session) -> &'static str {
+    if s.status == "waiting" {
+        return if s.is_permission_prompt() {
+            "exclamationmark.circle.fill"
+        } else {
+            "questionmark.circle.fill"
+        };
+    }
+    if s.waits_in_background() {
+        return "hourglass.circle.fill";
+    }
+    match s.shown_status() {
+        "idle" => "checkmark.circle.fill",
+        _ => "circle.dotted",
+    }
+}

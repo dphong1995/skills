@@ -21,11 +21,18 @@ pub enum ThemeColor {
     Button,
     Text,
     TextSecondary,
+    /// Timestamps, section titles and other third-level text.
+    TextFaint,
+    /// Label on a filled accent (the green `Cho phép` button).
+    OnAccent,
+    /// White in both appearances (the count inside the red badge).
+    White,
     Red,
     Orange,
     Green,
     Blue,
     Yellow,
+    Purple,
 }
 
 impl ThemeColor {
@@ -40,12 +47,16 @@ impl ThemeColor {
             Self::Code => pick([0.0, 0.0, 0.0, 0.35], [0.0, 0.0, 0.0, 0.07]),
             Self::Button => pick([1.0, 1.0, 1.0, 0.14], [0.0, 0.0, 0.0, 0.08]),
             Self::Text => pick([1.0, 1.0, 1.0, 0.92], [0.0, 0.0, 0.0, 0.88]),
-            Self::TextSecondary => pick([1.0, 1.0, 1.0, 0.55], [0.0, 0.0, 0.0, 0.55]),
+            Self::TextSecondary => pick([0.60, 0.61, 0.64, 1.0], [0.0, 0.0, 0.0, 0.58]),
+            Self::TextFaint => pick([0.42, 0.43, 0.46, 1.0], [0.0, 0.0, 0.0, 0.38]),
+            Self::OnAccent => pick([0.03, 0.15, 0.06, 1.0], [1.0, 1.0, 1.0, 1.0]),
+            Self::White => [1.0, 1.0, 1.0, 1.0],
             Self::Red => pick([1.0, 0.38, 0.35, 1.0], [0.85, 0.15, 0.12, 1.0]),
             Self::Orange => pick([1.0, 0.72, 0.25, 1.0], [0.85, 0.5, 0.0, 1.0]),
             Self::Green => pick([0.2, 0.84, 0.35, 1.0], [0.1, 0.62, 0.2, 1.0]),
             Self::Blue => pick([0.35, 0.65, 1.0, 1.0], [0.0, 0.4, 0.9, 1.0]),
             Self::Yellow => pick([1.0, 0.82, 0.1, 1.0], [0.8, 0.6, 0.0, 1.0]),
+            Self::Purple => pick([0.75, 0.48, 1.0, 1.0], [0.55, 0.25, 0.85, 1.0]),
         }
     }
 

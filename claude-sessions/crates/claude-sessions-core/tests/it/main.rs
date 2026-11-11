@@ -21,6 +21,7 @@ mod pull_requests;
 mod quota;
 mod rabbit_replay;
 mod shell;
+mod size_model;
 mod store;
 mod tasks;
 mod text;

@@ -4,6 +4,9 @@
 use crate::geometry::{Point, Rect, Size};
 use crate::scene::FontSpec;
 
+mod blocks;
+pub use blocks::*;
+
 pub trait TextMeasure {
     /// The size `text` takes in `font` when wrapped at `max_width` and cut at `max_lines` (0 = unlimited).
     fn measure(&self, text: &str, font: &FontSpec, max_width: f64, max_lines: u32) -> Size;

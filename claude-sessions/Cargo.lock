@@ -66,6 +66,8 @@ version = "0.0.1"
 dependencies = [
  "claude-sessions-core",
  "claude-sessions-macos",
+ "tempfile",
+ "url",
 ]
 
 [[package]]
