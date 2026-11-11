@@ -568,6 +568,59 @@ fn fading_node_field_is_disabled() -> Result<(), String> {
     Ok(())
 }
 
+/// A field that is being edited when its node is removed ends the edit: the window keeps no field editor for it. The
+/// window is never ordered in, so nothing shows and the app is not activated.
+fn fading_node_ends_field_edit() -> Result<(), String> {
+    use objc2::rc::Retained;
+    use objc2_app_kit::{NSBackingStoreType, NSWindow, NSWindowStyleMask};
+    use objc2_foundation::{MainThreadMarker, NSPoint, NSRect, NSSize};
+
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = claude_sessions_macos::ui::SceneView::new(mtm, NSSize::new(200.0, 80.0));
+    // SAFETY: NSWindow's designated initialiser with valid arguments; the window is owned by `Retained` and released
+    // normally, never ordered in.
+    let window: Retained<NSWindow> = unsafe {
+        NSWindow::initWithContentRect_styleMask_backing_defer(
+            mtm.alloc(),
+            NSRect::new(NSPoint::new(-10000.0, -10000.0), NSSize::new(200.0, 80.0)),
+            NSWindowStyleMask::Borderless,
+            NSBackingStoreType::Buffered,
+            false,
+        )
+    };
+    // SAFETY: the window is owned by `Retained`; closing must not release it a second time.
+    unsafe { window.setReleasedWhenClosed(false) };
+    window.setAlphaValue(0.0);
+    window.setContentView(Some(&view));
+    view.set_scene(&field_scene("", "Email"));
+    let field = view.field("email").ok_or("no field")?;
+    if !window.makeFirstResponder(Some(&field)) {
+        return Err("the window refused the field as first responder".into());
+    }
+    if field.currentEditor().is_none() {
+        return Err("the field got no editor, so the editing branch cannot run".into());
+    }
+    view.set_scene(&claude_sessions_core::scene::Scene::default());
+    if field.currentEditor().is_some() {
+        return Err("the removed field is still being edited".into());
+    }
+    let first = window.firstResponder();
+    let is_field = first.as_ref().is_some_and(|r| {
+        std::ptr::eq(
+            &**r as *const _ as *const u8,
+            &*field as *const _ as *const u8,
+        )
+    });
+    if is_field {
+        return Err("the field is still the first responder".into());
+    }
+    if first.is_some_and(|r| r.downcast::<objc2_app_kit::NSText>().is_ok()) {
+        return Err("a field editor is still the first responder".into());
+    }
+    window.setContentView(None);
+    Ok(())
+}
+
 /// A scroll host that went away takes its scroll view out of the view tree.
 fn scroll_host_is_removed() -> Result<(), String> {
     use claude_sessions_core::scene::{Node, Rect, Size};
@@ -1375,6 +1428,7 @@ fn main() {
         "fading_node_field_is_disabled",
         fading_node_field_is_disabled(),
     ));
+    results.push(("fading_node_ends_field_edit", fading_node_ends_field_edit()));
     results.push((
         "spinner_created_on_a_live_panel_spins",
         spinner_created_on_a_live_panel_spins(),

@@ -416,16 +416,16 @@ impl NodeView {
             .map(|slot| slot.view.clone())
     }
 
-    /// The node is leaving: its fields stop taking input and emit no more events. A field that is being edited first hands
-    /// the cursor to `parent`.
-    pub(crate) fn retire_fields(&self, parent: &NSView) {
+    /// The node is leaving: its fields stop taking input and emit no more events. A field that is being edited first ends
+    /// the edit; the window becomes first responder, as AppKit does when a first-responder view leaves the window.
+    pub(crate) fn retire_fields(&self) {
         let fields = self.ivars().fields.borrow();
         if let Some(window) = self.window()
             && fields
                 .iter()
                 .any(|slot| slot.view.currentEditor().is_some())
         {
-            window.makeFirstResponder(Some(parent));
+            window.makeFirstResponder(None);
         }
         for slot in fields.iter() {
             slot.view.setEnabled(false);

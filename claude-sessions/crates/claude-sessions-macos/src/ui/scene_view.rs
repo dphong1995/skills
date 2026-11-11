@@ -352,7 +352,7 @@ impl SceneView {
             if let Some(view) = nodes.remove(*key) {
                 view.set_spin(false);
                 view.clear_pulses();
-                view.retire_fields(self);
+                view.retire_fields();
                 fading_out.push(view);
             }
         }
