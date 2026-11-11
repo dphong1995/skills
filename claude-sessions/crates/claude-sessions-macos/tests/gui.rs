@@ -2,6 +2,9 @@
 //!
 //! `defaults_reads_swift_values` uses only the throwaway suite `claude-sessions-test-<pid>` (removed at the end, also on
 //! failure); it never touches the real `local.claude-sessions` domain and opens no window.
+//!
+//! `CLAUDE_SESSIONS_FOCUS_TESTS=1` also runs the cases that take key status or run a modal session on the real window
+//! server (they pull keystrokes from the app you are typing in): run it only when nobody is using the machine.
 
 use std::process::Command;
 
@@ -376,14 +379,21 @@ fn field_panel(key: bool) -> Result<FieldPanel, String> {
     Ok((panel, events))
 }
 
+/// True when `CLAUDE_SESSIONS_FOCUS_TESTS=1` is set; otherwise prints a skip note for `name`.
+fn focus_tests_enabled(name: &str) -> bool {
+    let on = std::env::var_os("CLAUDE_SESSIONS_FOCUS_TESTS").is_some();
+    if !on {
+        println!("{name} skipped (set CLAUDE_SESSIONS_FOCUS_TESTS=1)");
+    }
+    on
+}
+
 /// The alert window is above the panel level while its modal session runs (the test aborts the session itself). The
 /// alert is invisible (alpha 0, offscreen) and the app is not activated, but it is still a real modal session, so it is
-/// opt-in: set `CLAUDE_SESSIONS_MODAL_TESTS=1` (besides `CLAUDE_SESSIONS_GUI_TESTS=1`) to run it.
+/// opt-in: set `CLAUDE_SESSIONS_FOCUS_TESTS=1` (besides `CLAUDE_SESSIONS_GUI_TESTS=1`) to run it, like every case that makes
+/// a window key.
 fn alert_level_is_above_panel_while_modal() -> Result<(), String> {
-    if std::env::var_os("CLAUDE_SESSIONS_MODAL_TESTS").is_none() {
-        println!(
-            "alert_level_is_above_panel_while_modal skipped (set CLAUDE_SESSIONS_MODAL_TESTS=1)"
-        );
+    if !focus_tests_enabled("alert_level_is_above_panel_while_modal") {
         return Ok(());
     }
     let (level, alpha) = claude_sessions_macos::ui::testing::alert_level_during_modal()
@@ -404,6 +414,9 @@ fn alert_level_is_above_panel_while_modal() -> Result<(), String> {
 /// A field created by a scene update while the window is key takes the cursor; the newest one wins.
 fn newly_created_field_takes_focus() -> Result<(), String> {
     use claude_sessions_macos::ui::testing::field;
+    if !focus_tests_enabled("newly_created_field_takes_focus") {
+        return Ok(());
+    }
     let (panel, _events) = field_panel(true)?;
     let view = panel.view();
     view.set_scene(&claude_sessions_core::scene::Scene::default());
