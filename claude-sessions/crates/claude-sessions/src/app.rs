@@ -622,20 +622,26 @@ fn show_menu(
 }
 
 /// Holds the panels' hover while the context menu runs; closing it re-checks the pointer, so the card collapses then if it left.
-/// A refused borrow is retried on a later run-loop turn: a flag left set would keep every panel's hover open.
+/// A refused borrow on clear is retried on a later run-loop turn: a flag left set would keep every panel's hover open.
 fn set_menu_open(weak: &WeakState, open: bool) {
-    apply_or_defer(weak, move |s: &mut AppState| {
+    let apply = move |s: &mut AppState| {
         for host in &mut s.panels {
             host.state.menu_open = open;
         }
         if !open {
             s.track_mouse();
         }
-    });
+    };
+    if open {
+        // Never deferred: a retried set would run after the clear and leave the flag stuck.
+        try_apply(weak, &apply);
+    } else {
+        apply_or_defer(weak, apply);
+    }
 }
 
 /// Runs `apply` on the state now, or on a later run-loop turn if the state is borrowed right now (until it is free).
-fn apply_or_defer<T: 'static>(weak: &Weak<RefCell<T>>, apply: impl Fn(&mut T) + Clone + 'static) {
+fn apply_or_defer<T: 'static>(weak: &Weak<RefCell<T>>, apply: impl Fn(&mut T) + 'static) {
     if try_apply(weak, &apply) {
         return;
     }
@@ -1295,7 +1301,14 @@ fn register_hotkeys(weak: &WeakState) {
 
 /// Whether the context menu is tracking (any panel holds `menu_open`); a borrowed state counts as not open.
 fn menu_open(weak: &WeakState) -> bool {
-    with_state(weak, |s| s.panels.iter().any(|h| h.state.menu_open)).unwrap_or(false)
+    weak.upgrade()
+        .and_then(|shared| {
+            shared
+                .try_borrow()
+                .ok()
+                .map(|s| s.panels.iter().any(|h| h.state.menu_open))
+        })
+        .unwrap_or(false)
 }
 
 /// The hotkey callback: runs its action on a later main-queue turn. While a dialog or the context menu is open it only beeps: the action
