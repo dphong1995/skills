@@ -1,7 +1,13 @@
 //! Claude Sessions core: no UI and no `objc2`. Phase 1 holds only the scene description the AppKit layer renders.
 #![forbid(unsafe_code)]
 
+pub mod basic_auth_http;
+pub mod bitbucket;
 pub mod closed_sessions;
+pub mod cmux;
+pub mod code_rabbit;
+pub mod credentials;
+pub mod feed;
 pub mod file_stamp;
 pub mod git_branch;
 pub mod jira;
@@ -15,3 +21,4 @@ pub mod tasks;
 pub mod time;
 pub mod transcript;
 pub mod transcript_scanner;
+pub mod url_guard;

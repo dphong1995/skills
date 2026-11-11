@@ -3,9 +3,18 @@
 mod support;
 
 mod closed_sessions;
+mod cmux;
+mod code_rabbit;
+mod credentials;
+mod feed;
+mod feed_e2e;
 mod git_branch;
+mod jira;
+mod pull_requests;
 mod quota;
+mod rabbit_replay;
 mod shell;
 mod tasks;
 mod transcript;
 mod transcript_scanner;
+mod url_guard;
