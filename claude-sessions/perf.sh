@@ -254,6 +254,7 @@ ab_verdict() {
 ab_main() {
     local round app first
     AB_ROWS=()
+    AB_SETTLE=()
     AB_UNSETTLED=0
     for round in $(seq 1 "$AB_ROUNDS"); do
         if [ $((round % 2)) -eq 1 ]; then first=swift; else first=rust; fi
@@ -262,6 +263,7 @@ ab_main() {
             if [ "$app" = swift ]; then BIN=$SWIFT_BIN; else BIN=$RUST_BIN; fi
             RESULTS=(); FAILED=0
             start_and_settle
+            AB_SETTLE+=("$round $app ${settle}")
             if [ "$FAILED" -ne 0 ]; then
                 # An unsettled or dead app must not feed the medians: fail the verdict and skip this round's numbers.
                 AB_UNSETTLED=1
@@ -314,6 +316,12 @@ ab_main() {
     echo
     echo "raw rounds: round app phase footprint_mb growth_mb cpu_pct wakeups_per_s"
     printf '%s\n' "${AB_ROWS[@]}"
+    echo
+    echo "settle time (s, no rule): round app seconds"
+    printf '%s\n' "${AB_SETTLE[@]}"
+    for app in swift rust; do
+        echo "settle median $app: $(printf '%s\n' "${AB_SETTLE[@]}" | awk -v a="$app" '$2 == a { print $3 }' | median) s"
+    done
     return "$ab_failed"
 }
 
