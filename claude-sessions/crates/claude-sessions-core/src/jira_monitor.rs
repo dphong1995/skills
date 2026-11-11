@@ -108,12 +108,18 @@ impl JiraMonitor {
             return;
         }
         let inner = self.inner.clone();
-        self.worker.submit(move || {
-            let p = inner.shared().pending.take();
-            if let Some((targets, now)) = p {
-                inner.tick(&targets, now);
-            }
-        });
+        let on_dead = self.inner.clone();
+        self.worker.submit_or_else(
+            move || {
+                let p = inner.shared().pending.take();
+                if let Some((targets, now)) = p {
+                    inner.tick(&targets, now);
+                }
+            },
+            move || {
+                on_dead.shared().pending = None;
+            },
+        );
     }
 
     pub fn take_snapshot(&self) -> JiraSnapshot {

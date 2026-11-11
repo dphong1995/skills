@@ -111,7 +111,7 @@ pub fn account_from_attributes(out: &str) -> Option<String> {
 }
 
 /// The characters Swift's `Character.isNewline` accepts.
-fn is_newline(c: char) -> bool {
+pub(crate) fn is_newline(c: char) -> bool {
     matches!(
         c,
         '\n' | '\r' | '\u{0B}' | '\u{0C}' | '\u{85}' | '\u{2028}' | '\u{2029}'

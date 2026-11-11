@@ -94,3 +94,21 @@ fn no_redirects_for_basic_auth() {
         "the redirect target got a request"
     );
 }
+
+#[test]
+fn basic_auth_refuses_other_hosts_and_plain_http() {
+    let http = BasicAuthHttp::new(Service::Jira, "a@b.c", "tok");
+    let auth = http.current_auth().unwrap();
+    // Neither request leaves the process: the guard refuses before any connection.
+    for url in [
+        "http://acme.atlassian.net/rest/api/3/myself",
+        "https://evil.example/rest/api/3/myself",
+        "https://api.bitbucket.org/2.0/user",
+        "https://acme.atlassian.net:8443/x",
+        "http://localhost:1/x",
+    ] {
+        let url = url::Url::parse(url).unwrap();
+        let result = http.send(&HttpRequest::get(url.clone(), &auth));
+        assert!(result.is_err(), "{url} was sent");
+    }
+}

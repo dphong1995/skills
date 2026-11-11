@@ -5,7 +5,8 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-/// Runs `path` (an absolute path, never looked up in `PATH`) and returns its stdout, or `None` when it cannot start or times out.
+/// Runs `path` (an absolute path, never looked up in `PATH`) and returns its stdout, or `None` when it cannot start.
+/// A timeout gives `None` with `require_success`; without it the stdout read so far is returned (as Swift does).
 /// With `require_success` a non-zero exit status also gives `None`.
 /// `input`, when given, is written to the process's stdin, which is then closed. stderr goes to null.
 pub fn run_process(

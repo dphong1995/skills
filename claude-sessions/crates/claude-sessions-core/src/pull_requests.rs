@@ -27,6 +27,10 @@ pub fn refs(text: &str) -> Vec<PRRef> {
         let Ok(id) = m[3].parse::<i64>() else {
             continue;
         };
+        // The `url` crate resolves `.` and `..` segments: such a ref would steer a request to another API path.
+        if [&m[1], &m[2]].iter().any(|seg| matches!(*seg, "." | "..")) {
+            continue;
+        }
         let r = PRRef {
             workspace: m[1].to_string(),
             repo: m[2].to_string(),
@@ -138,6 +142,9 @@ static REMOTE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
 /// `(workspace, repo)` of a Bitbucket git remote URL.
 pub fn repo_from_remote(s: &str) -> Option<(String, String)> {
     let m = REMOTE_REGEX.captures(s.trim())?;
+    if matches!(&m[1], "." | "..") || matches!(&m[2], "." | "..") {
+        return None;
+    }
     Some((m[1].to_string(), m[2].to_string()))
 }
 

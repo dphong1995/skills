@@ -529,3 +529,35 @@ fn vanished_item_falls_back() {
     store.refresh(after(t0, 2));
     assert!(store.sessions[0].question.is_none());
 }
+
+/// The first request panics; later ones return a captured list.
+struct PanicOnce(std::sync::atomic::AtomicBool);
+
+impl FeedTransport for PanicOnce {
+    fn request(
+        &self,
+        _method: &str,
+        _params: &Value,
+        _timeout: Duration,
+    ) -> Result<Vec<u8>, claude_sessions_core::feed::TransportError> {
+        if !self.0.swap(true, std::sync::atomic::Ordering::SeqCst) {
+            panic!("injected panic in a worker job");
+        }
+        Ok(CAPTURED_LIST.as_bytes().to_vec())
+    }
+}
+
+#[test]
+fn panicking_poll_does_not_stop_the_worker() {
+    let m = FeedMonitor::new(Arc::new(PanicOnce(Default::default())));
+    let now = SystemTime::now();
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while m.take_snapshot().is_empty() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the worker stopped after a panicking job"
+        );
+        m.update(true, now);
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}

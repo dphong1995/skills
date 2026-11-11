@@ -10,6 +10,7 @@ use crate::time::{add_secs, secs_since};
 use crate::worker::Worker;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime};
@@ -219,12 +220,18 @@ impl PRMonitor {
             return;
         }
         let inner = self.inner.clone();
-        self.worker.submit(move || {
-            let p = inner.shared().pending.take();
-            if let Some((targets, now)) = p {
-                inner.tick(&targets, now);
-            }
-        });
+        let on_dead = self.inner.clone();
+        self.worker.submit_or_else(
+            move || {
+                let p = inner.shared().pending.take();
+                if let Some((targets, now)) = p {
+                    inner.tick(&targets, now);
+                }
+            },
+            move || {
+                on_dead.shared().pending = None;
+            },
+        );
     }
 
     /// The current state; drains `events` and `event_refs`.
@@ -247,11 +254,25 @@ impl PRMonitor {
         }
         let inner = self.inner.clone();
         let ref_ = ref_.clone();
-        self.worker.submit(move || {
-            let ok = inner.nudge_work(&ref_);
-            inner.shared().nudging.remove(&ref_);
-            done(ok);
-        });
+        // `done` is reachable from the job and from the dead-worker path; whichever runs first takes it.
+        let done = Arc::new(Mutex::new(Some(done)));
+        let (done_dead, inner_dead, ref_dead) = (done.clone(), self.inner.clone(), ref_.clone());
+        self.worker.submit_or_else(
+            move || {
+                let ok =
+                    catch_unwind(AssertUnwindSafe(|| inner.nudge_work(&ref_))).unwrap_or(false);
+                inner.shared().nudging.remove(&ref_);
+                if let Some(done) = done.lock().unwrap_or_else(|e| e.into_inner()).take() {
+                    done(ok);
+                }
+            },
+            move || {
+                inner_dead.shared().nudging.remove(&ref_dead);
+                if let Some(done) = done_dead.lock().unwrap_or_else(|e| e.into_inner()).take() {
+                    done(false);
+                }
+            },
+        );
     }
 }
 

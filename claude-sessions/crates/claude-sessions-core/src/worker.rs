@@ -1,5 +1,6 @@
 //! The one worker thread of a monitor (Swift's serial `DispatchQueue`): jobs run in submission order, off the UI thread.
 
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::mpsc::{Sender, channel};
 
 pub(crate) type Job = Box<dyn FnOnce() + Send>;
@@ -10,14 +11,17 @@ pub(crate) struct Worker(Option<Sender<Job>>);
 impl Worker {
     pub(crate) fn spawn(name: &str) -> Self {
         let (tx, rx) = channel::<Job>();
-        let spawned = std::thread::Builder::new()
+        // A thread that cannot start is fatal: falling back to inline would run blocking HTTP on the UI thread.
+        std::thread::Builder::new()
             .name(name.into())
             .spawn(move || {
                 for job in rx {
-                    job();
+                    // A panicking job must not end the loop: later jobs would be dropped and their callbacks lost.
+                    let _ = catch_unwind(AssertUnwindSafe(job));
                 }
-            });
-        Worker(spawned.ok().map(|_| tx))
+            })
+            .expect("cannot start a monitor worker thread");
+        Worker(Some(tx))
     }
 
     pub(crate) fn inline() -> Self {
@@ -28,10 +32,13 @@ impl Worker {
         self.0.is_none()
     }
 
-    pub(crate) fn submit(&self, job: impl FnOnce() + Send + 'static) {
+    /// Queues `job`; `dead` runs on the caller instead when the worker thread is gone (the job is dropped).
+    pub(crate) fn submit_or_else(&self, job: impl FnOnce() + Send + 'static, dead: impl FnOnce()) {
         match &self.0 {
             Some(tx) => {
-                let _ = tx.send(Box::new(job));
+                if tx.send(Box::new(job)).is_err() {
+                    dead();
+                }
             }
             None => job(),
         }

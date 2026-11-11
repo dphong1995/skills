@@ -237,3 +237,15 @@ fn approvers_from_participants() {
     assert_eq!(pr(true).approvers, set(&["{r1}", "{tin}"]));
     assert_eq!(pr(false).approvers, set(&["{r1}"]));
 }
+
+#[test]
+fn dot_segments_are_not_refs() {
+    assert!(pull_requests::refs("https://bitbucket.org/../x/pull-requests/1").is_empty());
+    assert!(pull_requests::refs("https://bitbucket.org/ws/../pull-requests/1").is_empty());
+    assert!(pull_requests::refs("https://bitbucket.org/./x/pull-requests/1").is_empty());
+    assert!(pull_requests::repo_from_remote("git@bitbucket.org:../x.git").is_none());
+    assert_eq!(
+        pull_requests::refs("https://bitbucket.org/a.b/c..d/pull-requests/1").len(),
+        1
+    );
+}

@@ -529,21 +529,31 @@ pub fn tool_summary(name: &str, input: &Value) -> String {
     cut(&s, 120)
 }
 
-fn finder(needle: &'static str) -> Finder<'static> {
-    Finder::new(needle.as_bytes())
-}
+static TOOL_USE: LazyLock<Finder<'static>> = LazyLock::new(|| Finder::new(b"\"tool_use\""));
+static OPEN_MARKERS: LazyLock<[Finder<'static>; 2]> = LazyLock::new(|| {
+    [
+        Finder::new(b"\"name\":\"Agent\""),
+        Finder::new(b"\"name\":\"Task\""),
+    ]
+});
+static TURN_MARKERS: LazyLock<[Finder<'static>; 3]> = LazyLock::new(|| {
+    [
+        Finder::new(b"\"turn_duration\""),
+        Finder::new(b"\"type\":\"user\""),
+        Finder::new(b"\"type\":\"assistant\""),
+    ]
+});
 
-fn has(line: &[u8], f: &Finder) -> bool {
+pub(crate) fn has(line: &[u8], f: &Finder) -> bool {
     f.find(line).is_some()
 }
 
 /// The last main-thread tool call in `data`; only lines holding `"tool_use"` are parsed.
 pub fn last_tool_use(data: &[u8]) -> Option<String> {
-    let marker = finder("\"tool_use\"");
     for line in split_lines(data)
         .into_iter()
         .rev()
-        .filter(|l| has(l, &marker))
+        .filter(|l| has(l, &TOOL_USE))
     {
         let Some(o) = parse_line(line) else { continue };
         if str_field(&o, "type") != Some("assistant") || flag(&o, "isSidechain") {
@@ -577,14 +587,13 @@ fn tool_use_id_mark(id: &str) -> Vec<u8> {
 /// `"name":"Agent"`/`"name":"Task"` (compact JSON, as Claude writes it) or, with agents open (`open`, plus those opened in
 /// `lines`), the `"tool_use_id":"<open id>"` of one of them.
 pub fn agent_changes(lines: &[u8], open: &[String]) -> AgentChanges {
-    let open_markers = [finder("\"name\":\"Agent\""), finder("\"name\":\"Task\"")];
     let mut changes = AgentChanges::default();
     let mut open_marks: HashMap<String, Finder<'static>> = open
         .iter()
         .map(|id| (id.clone(), Finder::new(&tool_use_id_mark(id)).into_owned()))
         .collect();
     for line in split_lines(lines) {
-        let opens = open_markers.iter().any(|m| has(line, m));
+        let opens = OPEN_MARKERS.iter().any(|m| has(line, m));
         if !opens && !open_marks.values().any(|m| has(line, m)) {
             continue;
         }
@@ -646,15 +655,10 @@ pub fn agent_changes(lines: &[u8], open: &[String]) -> AgentChanges {
 
 /// The state given by the last main-thread user/assistant/`turn_duration` line of `data`; `None` when it has none.
 pub fn main_turn(data: &[u8]) -> Option<MainTurn> {
-    let markers = [
-        finder("\"turn_duration\""),
-        finder("\"type\":\"user\""),
-        finder("\"type\":\"assistant\""),
-    ];
     for line in split_lines(data)
         .into_iter()
         .rev()
-        .filter(|l| markers.iter().any(|m| has(l, m)))
+        .filter(|l| TURN_MARKERS.iter().any(|m| has(l, m)))
     {
         let Some(o) = parse_line(line) else { continue };
         if flag(&o, "isSidechain") {

@@ -25,7 +25,7 @@ url = "2"
 memchr = "2"
 base64 = "0.23"
 rustix = { version = "1", features = ["process"] }
-ureq = { version = "3", default-features = false, features = ["rustls"] }
+ureq = { version = "3", default-features = false, features = ["rustls", "platform-verifier"] }
 tempfile = "3"
 claude-sessions-core = { path = "crates/claude-sessions-core" }
 claude-sessions-macos = { path = "crates/claude-sessions-macos" }

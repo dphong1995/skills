@@ -3,7 +3,7 @@
 use crate::jira;
 use crate::pull_requests::{self, PRRef};
 use crate::time::secs_since;
-use crate::transcript::{self, flag, text_of};
+use crate::transcript::{self, flag, has, text_of};
 use memchr::memmem::Finder;
 use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
@@ -120,28 +120,49 @@ impl TranscriptScanner {
         if self.worker.is_none() {
             return self.inner.tick(&targets, now);
         }
-        self.inner.shared.lock().unwrap().pending = Some((targets, now));
+        self.inner
+            .shared
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .pending = Some((targets, now));
         self.inner.wake.notify_one();
     }
 
     pub fn take_snapshot(&self) -> HashMap<String, ScanResult> {
-        self.inner.shared.lock().unwrap().snapshot.clone()
+        self.inner
+            .shared
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .snapshot
+            .clone()
     }
 
     /// JSON parses done, for tests.
     pub fn parsed_lines(&self) -> usize {
-        self.inner.shared.lock().unwrap().parsed
+        self.inner
+            .shared
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .parsed
     }
 
     /// Called on the scan thread after each session's result is published, for tests.
     pub fn set_on_publish(&self, f: OnPublish) {
-        *self.inner.on_publish.lock().unwrap() = Some(f);
+        *self
+            .inner
+            .on_publish
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = Some(f);
     }
 }
 
 impl Drop for TranscriptScanner {
     fn drop(&mut self) {
-        self.inner.shared.lock().unwrap().shutdown = true;
+        self.inner
+            .shared
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .shutdown = true;
         self.inner.wake.notify_one();
         if let Some(w) = self.worker.take() {
             let _ = w.join();
@@ -153,7 +174,7 @@ impl Inner {
     fn run(&self) {
         loop {
             let (targets, now) = {
-                let mut shared = self.shared.lock().unwrap();
+                let mut shared = self.shared.lock().unwrap_or_else(|e| e.into_inner());
                 loop {
                     if shared.shutdown {
                         return;
@@ -161,7 +182,7 @@ impl Inner {
                     if let Some(p) = shared.pending.take() {
                         break p;
                     }
-                    shared = self.wake.wait(shared).unwrap();
+                    shared = self.wake.wait(shared).unwrap_or_else(|e| e.into_inner());
                 }
             };
             self.tick(&targets, now);
@@ -169,28 +190,38 @@ impl Inner {
     }
 
     fn tick(&self, targets: &[ScanTarget], now: SystemTime) {
-        let mut states = self.states.lock().unwrap();
+        let mut states = self.states.lock().unwrap_or_else(|e| e.into_inner());
         for t in targets {
             let (Some(url), Some(size)) = (&t.transcript, t.size) else {
                 continue;
             };
-            let mut s = states
-                .remove(&t.session_id)
-                .unwrap_or_else(|| State::new(url.clone(), now));
+            let known = states.remove(&t.session_id);
+            let mut fresh = known.is_none();
+            let mut s = known.unwrap_or_else(|| State::new(url.clone(), now));
             if s.url != *url || size < s.offset {
                 s = State::new(url.clone(), now);
+                fresh = true;
             }
             s.last_seen = now;
+            let before = s.offset;
             let n = scan(&mut s, size);
             {
-                let mut shared = self.shared.lock().unwrap();
-                shared
-                    .snapshot
-                    .insert(t.session_id.clone(), s.result.clone());
+                let mut shared = self.shared.lock().unwrap_or_else(|e| e.into_inner());
+                // Copy the result only for a new state or when this scan read something.
+                if fresh || s.offset != before {
+                    shared
+                        .snapshot
+                        .insert(t.session_id.clone(), s.result.clone());
+                }
                 shared.parsed += n;
             }
             states.insert(t.session_id.clone(), s);
-            if let Some(f) = self.on_publish.lock().unwrap().as_mut() {
+            if let Some(f) = self
+                .on_publish
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .as_mut()
+            {
                 f(&t.session_id);
             }
         }
@@ -198,11 +229,11 @@ impl Inner {
         states.retain(|id, s| {
             live.contains(id.as_str()) || secs_since(now, s.last_seen) <= FORGET_AFTER
         });
-        let results = states
-            .iter()
-            .map(|(k, s)| (k.clone(), s.result.clone()))
-            .collect();
-        self.shared.lock().unwrap().snapshot = results;
+        self.shared
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .snapshot
+            .retain(|id, _| states.contains_key(id));
     }
 }
 
@@ -281,10 +312,6 @@ static SIDECHAIN: LazyLock<Finder<'static>> =
 /// How Claude Code writes a tool_use block's start; the id follows up to the next quote.
 static TOOL_USE_ID_MARK: LazyLock<Finder<'static>> =
     LazyLock::new(|| Finder::new(b"\"type\":\"tool_use\",\"id\":\""));
-
-fn has(line: &[u8], f: &Finder) -> bool {
-    f.find(line).is_some()
-}
 
 /// Remembers the tool_use ids of a main-thread assistant line, so a later report of that agent continues the turn.
 fn record_tool_use(line: &[u8], s: &mut State) {

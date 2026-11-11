@@ -1740,3 +1740,42 @@ fn author_parsed() {
         Some("{author}")
     );
 }
+
+/// Wraps the fake API; the first `post` panics.
+struct PanicOnFirstPost {
+    inner: Api,
+    armed: AtomicUsize,
+}
+
+impl BitbucketApi for PanicOnFirstPost {
+    fn get(&self, path: &str) -> Result<Vec<u8>, BitbucketError> {
+        self.inner.get(path)
+    }
+
+    fn post(&self, path: &str, json: &Value) -> Result<Vec<u8>, BitbucketError> {
+        if self.armed.fetch_add(1, Ordering::SeqCst) == 0 {
+            panic!("injected panic in a worker job");
+        }
+        self.inner.post(path, json)
+    }
+}
+
+#[test]
+fn panicking_job_does_not_stop_later_jobs() {
+    let api = fake(vec![]);
+    set_open(&api, vec![pr_a(7583, 3, false)]);
+    set_statuses(&api, Some(rs("Review completed", STARTED)));
+    answered_thread(&api);
+    let wrapped = Arc::new(PanicOnFirstPost {
+        inner: api.clone(),
+        armed: AtomicUsize::new(0),
+    });
+    let m = PRMonitor::with_options(wrapped, true, Arc::new(|_| None), 45.0);
+    m.update(&refs(&[pr_ref(7583)]), t0());
+    barrier(&m);
+    // The first post panics inside the job: `done(false)` still runs and the PR is not stuck as "in flight".
+    assert!(!nudge_result(&m, &pr_ref(7583)));
+    // The worker survived: the next job runs and the same PR can be nudged again.
+    assert!(nudge_result(&m, &pr_ref(7583)));
+    assert_eq!(api.posts().len(), 1);
+}

@@ -1,15 +1,15 @@
 //! The pending `AskUserQuestion` items of cmux Feed: parsing, answers, the control-socket transport and the monitor.
 
 use crate::shell::parse_iso_date;
+use crate::worker::Worker;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
-use std::sync::mpsc::{Sender, channel};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
 
 /// A pending AskUserQuestion item of cmux Feed.
 #[derive(Clone, Debug, PartialEq)]
@@ -294,20 +294,31 @@ impl FeedTransport for UnixFeedTransport {
         stream
             .write_all(&encode_request(method, params))
             .map_err(|_| TransportError)?;
+        let deadline = Instant::now() + timeout;
         let mut line = Vec::new();
         let mut chunk = vec![0u8; 65536];
-        while !line.contains(&b'\n') {
+        loop {
+            // The socket timeout is per call: shrink it to what is left so a slow peer cannot hold the worker.
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                return Err(TransportError);
+            }
+            // Best effort: macOS refuses to set it once the peer has closed, and the deadline check above still ends the loop.
+            let _ = stream.set_read_timeout(Some(left));
             let n = match stream.read(&mut chunk) {
                 Ok(0) | Err(_) => return Err(TransportError),
                 Ok(n) => n,
             };
+            let start = line.len();
             line.extend_from_slice(&chunk[..n]);
             if line.len() >= MAX_REPLY {
                 return Err(TransportError);
             }
+            if let Some(i) = chunk[..n].iter().position(|&b| b == b'\n') {
+                line.truncate(start + i);
+                return Ok(line);
+            }
         }
-        line.truncate(line.iter().position(|&b| b == b'\n').unwrap_or(line.len()));
-        Ok(line)
     }
 }
 
@@ -382,61 +393,53 @@ impl Inner {
     }
 }
 
-type Job = Box<dyn FnOnce() + Send>;
-
 /// Polls `feed.list` off the main thread while a session may be asking, and sends answers. Any transport or parse
 /// error empties the snapshot and pauses polling for `RETRY_AFTER`, so a cmux protocol change only turns the feature off.
 pub struct FeedMonitor {
     inner: Arc<Inner>,
-    worker: Option<Sender<Job>>,
+    worker: Worker,
 }
 
 impl FeedMonitor {
     pub fn new(transport: Arc<dyn FeedTransport>) -> Self {
-        let (tx, rx) = channel::<Job>();
-        let spawned = std::thread::Builder::new()
-            .name("claude-sessions.feed-monitor".into())
-            .spawn(move || {
-                for job in rx {
-                    job();
-                }
-            });
-        FeedMonitor {
-            inner: Arc::new(Inner {
-                transport,
-                state: Mutex::new(State::default()),
-            }),
-            worker: spawned.ok().map(|_| tx),
-        }
+        Self::with_worker(transport, Worker::spawn("claude-sessions.feed-monitor"))
     }
 
     /// Runs everything inline on the calling thread (tests).
     pub fn without_worker(transport: Arc<dyn FeedTransport>) -> Self {
+        Self::with_worker(transport, Worker::inline())
+    }
+
+    fn with_worker(transport: Arc<dyn FeedTransport>, worker: Worker) -> Self {
         FeedMonitor {
             inner: Arc::new(Inner {
                 transport,
                 state: Mutex::new(State::default()),
             }),
-            worker: None,
+            worker,
         }
     }
 
     /// Cheap: queues one poll when `active`; otherwise forgets the questions. Calls made while one is queued replace its arguments.
     pub fn update(&self, active: bool, now: SystemTime) {
-        let Some(worker) = &self.worker else {
+        if self.worker.is_inline() {
             return self.inner.tick(active, now);
-        };
+        }
         let queued = self.inner.lock().pending.replace((active, now)).is_some();
         if queued {
             return;
         }
         let inner = self.inner.clone();
-        let _ = worker.send(Box::new(move || {
-            let p = inner.lock().pending.take();
-            if let Some((active, now)) = p {
-                inner.tick(active, now);
-            }
-        }));
+        let on_dead = self.inner.clone();
+        self.worker.submit_or_else(
+            move || {
+                let p = inner.lock().pending.take();
+                if let Some((active, now)) = p {
+                    inner.tick(active, now);
+                }
+            },
+            move || on_dead.lock().pending = None,
+        );
     }
 
     pub fn take_snapshot(&self) -> Vec<FeedQuestion> {
@@ -453,12 +456,25 @@ impl FeedMonitor {
     ) {
         let inner = self.inner.clone();
         let (q, answers, other) = (q.clone(), answers.to_vec(), other.clone());
-        let run = move || completion(inner.reply(&q, &answers, &other));
-        match &self.worker {
-            Some(w) => {
-                let _ = w.send(Box::new(run));
-            }
-            None => run(),
-        }
+        // `completion` is reachable from the job and from the dead-worker path; whichever runs first takes it.
+        let completion = Arc::new(Mutex::new(Some(completion)));
+        let completion_dead = completion.clone();
+        self.worker.submit_or_else(
+            move || {
+                let ok = inner.reply(&q, &answers, &other);
+                if let Some(c) = completion.lock().unwrap_or_else(|e| e.into_inner()).take() {
+                    c(ok);
+                }
+            },
+            move || {
+                if let Some(c) = completion_dead
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .take()
+                {
+                    c(false);
+                }
+            },
+        );
     }
 }

@@ -2,6 +2,7 @@
 //! Redirects are disabled: a redirect would carry the `Authorization` header to another host.
 
 use crate::credentials::{self, Service};
+use crate::url_guard::{TokenHost, token_url};
 use base64::Engine;
 use std::fmt;
 use std::sync::Mutex;
@@ -89,7 +90,13 @@ fn read_auth(service: Service) -> Option<String> {
 impl BasicAuthHttp {
     /// Uses the given credentials until `reload()`; no Keychain read.
     pub fn new(service: Service, account: &str, token: &str) -> Self {
+        // Trust the macOS Keychain roots like URLSession does (corporate TLS inspection). The system proxy is not supported.
         let agent = ureq::Agent::config_builder()
+            .tls_config(
+                ureq::tls::TlsConfig::builder()
+                    .root_certs(ureq::tls::RootCerts::PlatformVerifier)
+                    .build(),
+            )
             .max_redirects(0)
             .http_status_as_error(false)
             .timeout_global(Some(Duration::from_secs(15)))
@@ -117,8 +124,32 @@ impl BasicAuthHttp {
         auth.clone()
     }
 
+    /// The Basic header goes only to https on this service's host, or to a loopback IP (it never leaves the machine).
+    fn may_carry_auth(&self, url: &Url) -> bool {
+        match url.scheme() {
+            "https" => {
+                let kind = match self.service {
+                    Service::Jira => TokenHost::Jira,
+                    Service::Bitbucket => TokenHost::Bitbucket,
+                };
+                url.host_str()
+                    .and_then(|h| token_url(h, "/", kind))
+                    .is_some_and(|_| url.port().is_none() && url.username().is_empty())
+            }
+            "http" => match url.host() {
+                Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+                Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
     /// A 401 forgets the cached header so the next call reads the Keychain again.
     pub fn send(&self, req: &HttpRequest) -> Result<Vec<u8>, Failure> {
+        if !self.may_carry_auth(&req.url) {
+            return Err(Failure::Transport);
+        }
         let url = req.url.as_str();
         let mut response = match req.method {
             Method::Get => {

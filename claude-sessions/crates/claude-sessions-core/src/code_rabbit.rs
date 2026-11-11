@@ -1,5 +1,6 @@
 //! CodeRabbit's state on a pull request, derived from Bitbucket's build statuses and comments. `derive` is pure.
 
+use crate::credentials::is_newline;
 use crate::pull_requests::RabbitThreads;
 use crate::shell::parse_iso_date;
 use crate::time::secs_since;
@@ -524,14 +525,6 @@ pub fn facts(values: &[Value], me: Option<&str>, author: Option<&str>) -> Rabbit
         approval_failed_reason,
         others_pending,
     }
-}
-
-/// The characters Swift's `Character.isNewline` accepts.
-fn is_newline(c: char) -> bool {
-    matches!(
-        c,
-        '\n' | '\r' | '\u{0B}' | '\u{0C}' | '\u{85}' | '\u{2028}' | '\u{2029}'
-    )
 }
 
 /// The displayed state from the raw status, the PR's approvers and the comment facts.
