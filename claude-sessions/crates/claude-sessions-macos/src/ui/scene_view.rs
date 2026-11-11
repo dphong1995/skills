@@ -371,14 +371,11 @@ impl SceneView {
             if update.cmds_changed {
                 view.set_cmds(&update.node.cmds, animate);
             }
-            if before
-                .get(&update.node.key)
-                .is_none_or(|p| p.shadow != update.node.shadow)
-            {
-                view.set_shadow(update.node.shadow);
-            }
             // Only what differs from the node's previous version is touched.
             let prev = before.get(&update.node.key);
+            if prev.is_none_or(|p| p.shadow != update.node.shadow) {
+                view.set_shadow(update.node.shadow);
+            }
             if prev.is_none_or(|p| p.fields != update.node.fields)
                 || view.field_text_differs(&update.node.fields)
             {

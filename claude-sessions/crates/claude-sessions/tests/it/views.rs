@@ -5,7 +5,7 @@ use claude_sessions::views::{Built, View, build};
 use claude_sessions_core::feed::{BlockState, FeedItem, FeedOption, FeedQuestion};
 use claude_sessions_core::layout::{self, expanded_layout, expanded_size};
 use claude_sessions_core::panel_state::PanelState;
-use claude_sessions_core::scene::{DrawCmd, Node, Scene, ThemeColor};
+use claude_sessions_core::scene::{Align, DrawCmd, Node, Scene, ThemeColor};
 use claude_sessions_core::store::{Action, SendKey, SendKind, SendState, Session, Snapshot};
 use claude_sessions_core::transcript::{Pending, PendingState};
 use std::time::{Duration, SystemTime};
@@ -1509,6 +1509,17 @@ fn question_rows_are_one_line() {
     let (_, panel) = fixture_state("question-4-two-questions");
     let picked: usize = panel.answers.values().flatten().map(Vec::len).sum();
     assert_eq!(fills(node), picked, "only picked rows have a fill");
+    // No row-wide filled rect of any colour sits at an unpicked row.
+    let filled_at_unpicked = node
+        .cmds
+        .iter()
+        .filter(|c| {
+            matches!(c, DrawCmd::RoundedRect { rect, fill: Some(f), .. }
+                if rect.w == rows[0].w && f.token != ThemeColor::Blue
+                    && rows.iter().any(|r| r.y == rect.y))
+        })
+        .count();
+    assert_eq!(filled_at_unpicked, 0, "unpicked rows have no fill");
 }
 
 fn fixture_state(name: &str) -> (Snapshot, PanelState) {
@@ -1578,10 +1589,18 @@ fn pill_group_gaps_are_equal() {
                 fill: Some(f),
                 ..
             } if f.token != ThemeColor::Panel && rect.h <= 18.0 => start = Some(rect.x),
-            DrawCmd::Text { rect, text, .. } if text.chars().all(|c| c.is_ascii_digit()) => {
+            DrawCmd::Text {
+                rect, text, align, ..
+            } if text.chars().all(|c| c.is_ascii_digit()) => {
                 let s = start.take().unwrap_or(rect.x);
-                // The badge is a capsule that holds its digit: it ends where its own rect ends.
-                spans.push((s, rect.x + rect.w));
+                // The badge is a capsule that holds its digit: it ends where its own rect ends. Left-aligned digits end
+                // after their ink (7.5 pt per digit), not at the end of their rect.
+                let end = if *align == Align::Left {
+                    rect.x + 7.5 * text.len() as f64
+                } else {
+                    rect.x + rect.w
+                };
+                spans.push((s, end));
             }
             _ => {}
         }
@@ -1592,4 +1611,58 @@ fn pill_group_gaps_are_equal() {
         gaps.iter().all(|g| (g - gaps[0]).abs() <= 0.5),
         "{gaps:?} {spans:?}"
     );
+}
+
+/// `FakeMeasure` with a narrow `1`, like a proportional font.
+struct NarrowOne;
+
+impl TextMeasure for NarrowOne {
+    fn measure(
+        &self,
+        text: &str,
+        font: &claude_sessions_core::scene::FontSpec,
+        max_width: f64,
+        max_lines: u32,
+    ) -> claude_sessions_core::geometry::Size {
+        let mut size = FakeMeasure.measure(text, font, max_width, max_lines);
+        size.w -= 3.0 * text.matches('1').count() as f64;
+        size
+    }
+}
+
+#[test]
+fn shortcut_label_stays_put_while_the_countdown_ticks() {
+    let shortcut_x = |elapsed: u64| {
+        let mut s = two_questions();
+        let created = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000 - elapsed);
+        s.question.as_mut().unwrap().created_at = created;
+        let snap = snapshot(vec![s]);
+        let clock = |_: SystemTime| "14:30".to_string();
+        let built = build(&View {
+            snap: &snap,
+            panel: &open(),
+            measure: &NarrowOne,
+            now: SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000),
+            clock: &clock,
+        });
+        let node = card(&built.scene, "ask");
+        let countdown = texts(node)
+            .into_iter()
+            .find(|t| t.starts_with("còn "))
+            .map(str::to_string)
+            .unwrap();
+        let x = node
+            .cmds
+            .iter()
+            .find_map(|c| match c {
+                DrawCmd::Text { rect, text, .. } if text == "⌘↩" => Some(rect.x),
+                _ => None,
+            })
+            .unwrap();
+        (countdown, x)
+    };
+    let (a, ax) = shortcut_x(9);
+    let (b, bx) = shortcut_x(112);
+    assert_eq!((a.as_str(), b.as_str()), ("còn 1:51", "còn 0:08"));
+    assert_eq!(ax, bx);
 }

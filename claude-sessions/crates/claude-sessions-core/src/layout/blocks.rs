@@ -518,29 +518,38 @@ pub const PILL_QUOTA_W: f64 = 58.0;
 pub fn pill_group_width(index: usize, count: usize) -> f64 {
     let digits = count.to_string().len() as f64;
     match index {
-        0 => 18.0 + 4.0 + 7.5 * digits,
+        0 => 18.0 + 7.5 * digits,
         1 if count < 10 => 18.0,
         1 => 18.0 + 7.5 * digits,
         _ => 7.0 + 5.0 + 7.5 * digits,
     }
 }
 
-/// The collapsed pill: padding, one group per non-zero count, the quota ring from 80%. Without any session the pill keeps
-/// `COLLAPSED.w` for its idle text.
-pub fn collapsed_width(snap: &Snapshot) -> f64 {
-    let mut parts: Vec<f64> = pill_groups(snap)
+/// Total width of the count groups of `snap` with `PILL_GAP` between them (0 without any).
+pub fn groups_width(snap: &Snapshot) -> f64 {
+    let widths: Vec<f64> = pill_groups(snap)
         .into_iter()
         .enumerate()
         .filter(|(_, n)| *n > 0)
         .map(|(i, n)| pill_group_width(i, n))
         .collect();
-    if snap.quota.as_ref().and_then(|q| q.pill_percent()).is_some() {
-        parts.push(PILL_QUOTA_W);
+    match widths.len() {
+        0 => 0.0,
+        n => widths.iter().sum::<f64>() + PILL_GAP * (n - 1) as f64,
     }
-    if parts.is_empty() {
-        return COLLAPSED.w;
+}
+
+/// The collapsed pill: padding, one group per non-zero count, the quota ring from 80%. Without any session the pill keeps
+/// `COLLAPSED.w` for its idle text.
+pub fn collapsed_width(snap: &Snapshot) -> f64 {
+    let groups = groups_width(snap);
+    let quota = snap.quota.as_ref().and_then(|q| q.pill_percent()).is_some();
+    match (groups > 0.0, quota) {
+        (false, false) => COLLAPSED.w,
+        (true, false) => 2.0 * PILL_PAD + groups,
+        (false, true) => 2.0 * PILL_PAD + PILL_QUOTA_W,
+        (true, true) => 2.0 * PILL_PAD + groups + PILL_GAP + PILL_QUOTA_W,
     }
-    2.0 * PILL_PAD + parts.iter().sum::<f64>() + PILL_GAP * (parts.len() - 1) as f64
 }
 
 /// The size the panel shows: the pill, or the expanded card while `panel.expanded`.

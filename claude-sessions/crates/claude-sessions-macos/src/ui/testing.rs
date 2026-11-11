@@ -6,6 +6,8 @@ use objc2_app_kit::{NSEvent, NSEventModifierFlags, NSEventType};
 use objc2_foundation::NSPoint;
 
 use super::SceneView;
+use super::motion;
+use super::node_view::NodeView;
 
 fn event(view: &SceneView, kind: NSEventType, at: Point) -> Option<objc2::rc::Retained<NSEvent>> {
     // The view is flipped: scene y runs down, window y runs up.
@@ -37,5 +39,27 @@ pub fn click(view: &SceneView, at: Point, dragged: bool) -> bool {
         view.mouseDragged(&drag);
     }
     view.mouseUp(&up);
+    true
+}
+
+/// Moves the first node view of `view` to `frame` through `NodeView::animate_frame` inside an animation group, the path a
+/// resize takes when motion is on (`set_scene` skips it under Reduce Motion). False when `view` has no node view.
+pub fn animate_first_node_frame(
+    view: &SceneView,
+    frame: claude_sessions_core::scene::Rect,
+) -> bool {
+    let Some(node) = view
+        .subviews()
+        .iter()
+        .find_map(|v| v.downcast::<NodeView>().ok())
+    else {
+        return false;
+    };
+    motion::group(
+        motion::OPEN_SECS,
+        true,
+        move || node.animate_frame(frame),
+        || {},
+    );
     true
 }

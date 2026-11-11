@@ -12,12 +12,10 @@ use objc2_app_kit::{
     NSTextField,
 };
 use objc2_core_foundation::{CFRetained, CGPoint, CGRect, CGSize};
-use objc2_core_graphics::{
-    CGBitmapContextCreateImage, CGColor, CGColorSpace, CGContext, CGPath, kCGColorSpaceSRGB,
-};
+use objc2_core_graphics::{CGBitmapContextCreateImage, CGColorSpace, CGContext, kCGColorSpaceSRGB};
 use objc2_foundation::{MainThreadMarker, NSData, NSDictionary, NSString};
 
-use super::draw::{draw_cmds, ns_rect, register_images};
+use super::draw::{draw_cmds, ns_color, ns_rect, register_images, shadow_path};
 use super::node_view::NodeView;
 
 #[link(name = "CoreGraphics", kind = "framework")]
@@ -138,17 +136,8 @@ pub fn render_png(
 /// a shadow while the clip keeps its own fill out. The context's origin is the node's top-left.
 fn draw_shadow(ctx: &CGContext, node: &Node, scale: f64) {
     let Some(shadow) = node.shadow else { return };
-    let (w, h) = (node.frame.w, node.frame.h);
-    let corner = shadow.corner.min(w / 2.0).min(h / 2.0);
-    let shape = CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(w, h));
-    // SAFETY: a null transform means identity.
-    let path = unsafe { CGPath::with_rounded_rect(shape, corner, corner, std::ptr::null()) };
-    let [r, g, b, a] = shadow.color.resolve(Appearance::Dark);
-    let Some(space) = CGColorSpace::with_name(Some(unsafe { kCGColorSpaceSRGB })) else {
-        return;
-    };
-    // SAFETY: four components for an RGB colour space.
-    let color = unsafe { CGColor::new(Some(&space), [r, g, b, a].as_ptr()) };
+    let path = shadow_path(&shadow, node.frame.w, node.frame.h);
+    let color = ns_color(shadow.color, Appearance::Dark).CGColor();
     CGContext::save_g_state(Some(ctx));
     // Everything but the shape: the even-odd clip of a huge rect with the shape cut out.
     CGContext::add_rect(
@@ -162,7 +151,7 @@ fn draw_shadow(ctx: &CGContext, node: &Node, scale: f64) {
         Some(ctx),
         CGSize::new(shadow.offset.x * scale, -shadow.offset.y * scale),
         shadow.radius * scale,
-        color.as_deref(),
+        Some(&color),
     );
     CGContext::set_rgb_fill_color(Some(ctx), 0.0, 0.0, 0.0, 1.0);
     CGContext::add_path(Some(ctx), Some(&path));

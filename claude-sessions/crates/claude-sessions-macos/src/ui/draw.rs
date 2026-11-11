@@ -4,13 +4,15 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use claude_sessions_core::scene::{Appearance, Color, DrawCmd, Rect};
+use claude_sessions_core::scene::{Appearance, Color, DrawCmd, Rect, Shadow};
 use objc2::AnyThread;
 use objc2::rc::Retained;
 use objc2_app_kit::{
     NSAttributedStringNSExtendedStringDrawing, NSBezierPath, NSColor, NSCompositingOperation,
     NSImage, NSImageSymbolConfiguration, NSStringNSExtendedStringDrawing,
 };
+use objc2_core_foundation::{CFRetained, CGPoint, CGRect, CGSize};
+use objc2_core_graphics::CGPath;
 use objc2_foundation::{NSData, NSPoint, NSRect, NSSize, NSString};
 
 use crate::text;
@@ -33,6 +35,14 @@ pub(crate) fn register_images(images: &HashMap<String, Arc<Vec<u8>>>) {
 
 pub(crate) fn ns_rect(r: Rect) -> NSRect {
     NSRect::new(NSPoint::new(r.x, r.y), NSSize::new(r.w, r.h))
+}
+
+/// The rounded rect of a `w` x `h` node as the path its `shadow` is cast from.
+pub(crate) fn shadow_path(shadow: &Shadow, w: f64, h: f64) -> CFRetained<CGPath> {
+    let corner = shadow.corner.min(w / 2.0).min(h / 2.0);
+    let rect = CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(w, h));
+    // SAFETY: a null transform means identity.
+    unsafe { CGPath::with_rounded_rect(rect, corner, corner, std::ptr::null()) }
 }
 
 pub(crate) fn ns_color(color: Color, appearance: Appearance) -> Retained<NSColor> {
@@ -73,9 +83,8 @@ pub(crate) fn draw_cmds(cmds: &[DrawCmd], appearance: Appearance) {
                 align,
             } => {
                 let attrs = text::attributes(font, color.resolve(appearance), *align);
-                let area = text::text_rect(ns_rect(*rect), font, *max_lines);
                 let string = NSString::from_str(text);
-                let area = text::centred(area, ns_rect(*rect), font, *max_lines, |width| {
+                let area = text::text_area(ns_rect(*rect), font, *max_lines, |width| {
                     // SAFETY: plain call on an owned string with attributes built by `text::attributes`.
                     unsafe {
                         string
@@ -108,8 +117,7 @@ pub(crate) fn draw_cmds(cmds: &[DrawCmd], appearance: Appearance) {
                 align,
             } => {
                 let string = text::rich_string(runs, font, color.resolve(appearance), *align);
-                let area = text::text_rect(ns_rect(*rect), font, *max_lines);
-                let area = text::centred(area, ns_rect(*rect), font, *max_lines, |width| {
+                let area = text::text_area(ns_rect(*rect), font, *max_lines, |width| {
                     string
                         .boundingRectWithSize_options_context(
                             NSSize::new(width, 1.0e6),

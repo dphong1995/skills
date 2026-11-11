@@ -154,12 +154,17 @@ fn heights_meet_polish_targets() -> Result<(), String> {
         .iter()
         .find(|(n, _)| *n == "question-4-two-questions")
         .ok_or("no question-4 state")?;
-    let scene = scene_of(name, *f);
-    let card = scene
+    let built = built_of(name, *f);
+    let card = built
+        .scene
         .nodes
         .iter()
-        .find(|n| n.key.0.starts_with("card-"))
-        .ok_or("no card")?;
+        .find(|n| {
+            n.hits
+                .iter()
+                .any(|h| matches!(built.targets.get(h.id), Some(Target::PickOption { .. })))
+        })
+        .ok_or("no card with option rows")?;
     if card.frame.h > TARGET {
         return Err(format!(
             "the question card is {} pt tall, want <= {TARGET}",

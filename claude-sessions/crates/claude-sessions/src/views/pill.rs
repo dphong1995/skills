@@ -24,20 +24,6 @@ pub fn ring_sweep(percent: i64) -> f64 {
     360.0 * percent.clamp(0, 100) as f64 / 100.0
 }
 
-/// Total width of the count groups of `snap` (0 without any).
-pub fn groups_width(snap: &Snapshot) -> f64 {
-    let widths: Vec<f64> = pill_groups(snap)
-        .into_iter()
-        .enumerate()
-        .filter(|(_, n)| *n > 0)
-        .map(|(i, n)| pill_group_width(i, n))
-        .collect();
-    match widths.len() {
-        0 => 0.0,
-        n => widths.iter().sum::<f64>() + PILL_GAP * (n - 1) as f64,
-    }
-}
-
 /// Draws the count groups left to right from `x`, centred on `cy`; returns where they end.
 pub fn draw_groups(c: &mut Canvas, snap: &Snapshot, x: f64, cy: f64) -> f64 {
     let mut x = x;

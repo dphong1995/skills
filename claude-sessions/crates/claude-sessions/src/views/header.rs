@@ -1,9 +1,9 @@
 //! The header of the expanded card: title, quota bars with the reset or forecast time, and the count groups.
 
-use super::pill::{draw_groups, groups_width, quota_token};
+use super::pill::{draw_groups, quota_token};
 use super::{Canvas, Ctx};
 use crate::theme;
-use claude_sessions_core::layout::{CARD_W, HEADER_HEIGHT, PANEL_PAD};
+use claude_sessions_core::layout::{CARD_W, HEADER_HEIGHT, PANEL_PAD, groups_width};
 use claude_sessions_core::quota::Quota;
 use claude_sessions_core::scene::{Align, Color, Node, Rect, ThemeColor, Weight};
 

@@ -75,7 +75,7 @@ fn attributes_for(font: &NSFont, color: [f64; 4], align: Align) -> Attributes {
         Align::Right => NSTextAlignment::Right,
     });
     // Word wrapping always: `ByTruncatingTail` makes string drawing treat the text as one line. `max_lines` truncates through
-    // `draw_options` and the height cap of `text_rect`.
+    // `draw_options` and the height cap of `text_area`.
     style.setLineBreakMode(NSLineBreakMode::ByWordWrapping);
     // SAFETY: the keys are AppKit's own constants and every value is an object of the type the key documents.
     unsafe {
@@ -134,35 +134,40 @@ pub(crate) fn draw_options(max_lines: u32) -> NSStringDrawingOptions {
     }
 }
 
-/// The rect text is laid out in: `max_lines` caps the height so truncation happens at the right line.
-pub(crate) fn text_rect(rect: NSRect, spec: &FontSpec, max_lines: u32) -> NSRect {
-    if max_lines == 0 {
-        return rect;
-    }
-    let height = line_height(&ns_font(spec)) * f64::from(max_lines);
-    NSRect::new(
-        rect.origin,
-        NSSize::new(rect.size.width, rect.size.height.min(height)),
-    )
-}
-
-/// `area` moved down so text of laid-out height `laid_out(width)` sits in the middle of `rect` when `rect` is taller than the
-/// text; otherwise `area` unchanged. A rect no taller than one line cannot be taller than its text, so it skips the layout.
-pub(crate) fn centred(
-    area: NSRect,
+/// The rect text is drawn in: `max_lines` caps the height so truncation happens at the right line, and when `rect` is taller
+/// than the text the text is moved down to the middle of it. The text's laid-out height is `laid_out(width)`; a rect no
+/// taller than one line, or text capped to one line (always one line tall), skips the layout.
+pub(crate) fn text_area(
     rect: NSRect,
     spec: &FontSpec,
     max_lines: u32,
     laid_out: impl FnOnce(f64) -> f64,
 ) -> NSRect {
     let line = line_height(&ns_font(spec));
+    let area = if max_lines == 0 {
+        rect
+    } else {
+        NSRect::new(
+            rect.origin,
+            NSSize::new(
+                rect.size.width,
+                rect.size.height.min(line * f64::from(max_lines)),
+            ),
+        )
+    };
     if rect.size.height <= line {
         return area;
     }
-    let mut h = laid_out(area.size.width).ceil();
-    if max_lines > 0 {
-        h = h.min(line * f64::from(max_lines));
-    }
+    let h = if max_lines == 1 {
+        line
+    } else {
+        let h = laid_out(area.size.width).ceil();
+        if max_lines > 0 {
+            h.min(line * f64::from(max_lines))
+        } else {
+            h
+        }
+    };
     if rect.size.height <= h {
         return area;
     }

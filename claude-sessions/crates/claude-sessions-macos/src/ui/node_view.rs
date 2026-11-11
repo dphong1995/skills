@@ -4,7 +4,7 @@ use std::cell::{Cell, RefCell};
 use std::sync::OnceLock;
 
 use claude_sessions_core::scene::{
-    Appearance, DrawCmd, Field, Rect, Shadow, Tip, appeared_symbols, colors_only_changed,
+    Appearance, Color, DrawCmd, Field, Rect, Shadow, Tip, appeared_symbols, colors_only_changed,
 };
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Bool, ProtocolObject, Sel};
@@ -24,7 +24,7 @@ use objc2_quartz_core::{
     CABasicAnimation, CALayer, CAMediaTiming, CAShapeLayer, CATransaction, CATransition,
 };
 
-use super::draw::{draw_cmds, ns_rect};
+use super::draw::{draw_cmds, ns_color, ns_rect, shadow_path};
 use super::motion;
 use super::{EventHandler, UiEvent};
 
@@ -184,11 +184,13 @@ impl NodeView {
         let Some(layer) = self.layer() else { return };
         match shadow {
             Some(shadow) => {
-                let [r, g, b, a] = shadow.color.resolve(Appearance::Dark);
-                layer.setShadowColor(Some(
-                    &NSColor::colorWithSRGBRed_green_blue_alpha(r, g, b, 1.0).CGColor(),
-                ));
-                layer.setShadowOpacity(a as f32);
+                // The colour is opaque; the layer's opacity carries the alpha.
+                let opaque = Color {
+                    alpha: 1.0,
+                    ..shadow.color
+                };
+                layer.setShadowColor(Some(&ns_color(opaque, Appearance::Dark).CGColor()));
+                layer.setShadowOpacity(shadow.color.resolve(Appearance::Dark)[3] as f32);
                 layer.setShadowRadius(shadow.radius);
                 // A flipped view's backing layer has flipped geometry: there a positive offset already points down.
                 let y = if layer.isGeometryFlipped() {
@@ -212,23 +214,26 @@ impl NodeView {
             return;
         };
         let size = self.bounds().size;
-        let corner = shadow.corner.min(size.width / 2.0).min(size.height / 2.0);
-        let rect = CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(size.width, size.height));
-        // SAFETY: a null transform means identity.
-        let path = unsafe { CGPath::with_rounded_rect(rect, corner, corner, std::ptr::null()) };
-        layer.setShadowPath(Some(&path));
+        layer.setShadowPath(Some(&shadow_path(&shadow, size.width, size.height)));
     }
 
     /// Animates the frame (inside the caller's animation group) and the shadow path with it, so the shadow never lags.
     pub(crate) fn animate_frame(&self, frame: Rect) {
-        let old = self.layer().and_then(|l| l.shadowPath());
+        // From what is on screen, so overlapping animations do not make the shadow jump.
+        let old = self.layer().and_then(|l| {
+            // SAFETY: a plain getter; the presentation layer is read on the main thread and not kept.
+            unsafe { l.presentationLayer() }
+                .and_then(|p| p.shadowPath())
+                .or_else(|| l.shadowPath())
+        });
         self.animator().setFrame(ns_rect(frame));
-        let (Some(old), Some(layer)) = (old, self.layer()) else {
+        let (Some(old), Some(shadow), Some(layer)) = (old, self.ivars().shadow.get(), self.layer())
+        else {
             return;
         };
-        let Some(new) = layer.shadowPath() else {
-            return;
-        };
+        // The target size, not the view's: the animated frame has not reached it yet.
+        let new = shadow_path(&shadow, frame.w, frame.h);
+        layer.setShadowPath(Some(&new));
         let animation = CABasicAnimation::animationWithKeyPath(Some(ns_string!("shadowPath")));
         // SAFETY: a CGPath is the value type of the `shadowPath` key path; Core Animation takes it as an object.
         unsafe {

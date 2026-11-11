@@ -216,7 +216,9 @@ fn form(ctx: &mut Ctx, c: &mut Canvas, s: &Session, q: &FeedQuestion, block: Rec
         c.hit(send, Target::Answer(s.id.clone()));
     }
     let countdown = feed::countdown(q, view.now);
-    let cw = ctx.text_w(&countdown, &theme::META_FONT) + 4.0;
+    // Measured from the countdown with every digit as `0`, so `⌘↩` stays put while the digits tick.
+    let template = countdown.replace(|c: char| c.is_ascii_digit(), "0");
+    let cw = ctx.text_w(&template, &theme::META_FONT) + 4.0;
     c.label(
         Rect::new(send.x + send.w + 10.0, y, cw, BUTTON_H),
         &countdown,

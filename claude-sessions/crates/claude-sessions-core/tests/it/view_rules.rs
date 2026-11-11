@@ -681,6 +681,7 @@ fn surface_tokens_are_neutral() {
             ThemeColor::Row,
             ThemeColor::PanelStroke,
             ThemeColor::Button,
+            ThemeColor::TextFaint,
         ] {
             let [r, g, b, _] = token.rgba(appearance);
             let spread = r.max(g).max(b) - r.min(g).min(b);
