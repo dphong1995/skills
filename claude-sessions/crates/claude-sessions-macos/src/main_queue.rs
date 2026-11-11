@@ -1,11 +1,13 @@
 //! Main-queue turns and the 1 s timer.
 
+use std::cell::Cell;
 use std::ptr::NonNull;
 use std::time::Duration;
 
 use block2::RcBlock;
 use dispatch2::DispatchTime;
 use objc2::rc::Retained;
+use objc2_core_foundation::{CFRunLoop, kCFRunLoopDefaultMode};
 use objc2_foundation::{MainThreadMarker, NSTimer};
 
 /// Moves a main-thread-only closure into the main dispatch queue.
@@ -31,6 +33,32 @@ pub fn async_main(work: impl FnOnce() + 'static) {
     }
     let work = MainOnly(work);
     dispatch2::DispatchQueue::main().exec_async(move || work.run());
+}
+
+/// Runs `work` on the main thread in a later turn of the main run loop (default mode), outside any dispatch-queue block.
+/// Start a nested run loop (a modal dialog) from here, not from `async_main`: a modal entered from a main-queue block
+/// does not drain that queue, so every `async_main`, `wake_main` and `after` item would wait until it ends. Main thread only.
+pub fn run_loop_later(work: impl FnOnce() + 'static) {
+    let on_main = MainThreadMarker::new().is_some();
+    debug_assert!(on_main, "run_loop_later called off the main thread");
+    if !on_main {
+        return;
+    }
+    let Some(main) = CFRunLoop::main() else {
+        return;
+    };
+    let work = Cell::new(Some(work));
+    let block = RcBlock::new(move || {
+        if let Some(work) = work.take() {
+            work();
+        }
+    });
+    // SAFETY: the block is copied by the run loop and only runs on the main run loop; the mode is a CF constant.
+    unsafe {
+        let mode = kCFRunLoopDefaultMode.map(|m| m.as_ref());
+        main.perform_block(mode, Some(&block));
+    }
+    main.wake_up();
 }
 
 /// Runs `f` on the main thread in a later turn; callable from any thread (a plain `fn` carries no state to share).

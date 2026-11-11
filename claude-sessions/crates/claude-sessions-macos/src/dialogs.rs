@@ -1,5 +1,5 @@
 //! Native modal dialogs (Swift `showDialog` and `editPrompt`). Token entry is always an `NSAlert` with an `NSSecureTextField`,
-//! never a scene field. Both functions spin a nested run loop: call them from `main_queue::async_main`, never from inside an
+//! never a scene field. Both functions spin a nested run loop: call them from `main_queue::run_loop_later` (a modal entered from an `async_main` block starves the main queue), never from inside an
 //! AppKit callback and never with the app state borrowed.
 
 use objc2::rc::Retained;

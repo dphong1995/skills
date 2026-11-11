@@ -615,7 +615,7 @@ fn show_menu(
             return;
         };
         let weak = weak.clone();
-        main_queue::async_main(move || apply_command(&weak, &command));
+        main_queue::run_loop_later(move || apply_command(&weak, &command));
     });
 }
 
@@ -669,7 +669,7 @@ fn connect_dialog(
     account: Option<String>,
 ) {
     let weak = weak.clone();
-    main_queue::async_main(move || {
+    main_queue::run_loop_later(move || {
         let Some((host, saved_account, poster)) = with_state(&weak, |s| {
             (
                 s.store.jira_host(),

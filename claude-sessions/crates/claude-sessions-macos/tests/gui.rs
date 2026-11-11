@@ -404,6 +404,18 @@ fn alert_level_is_above_panel_while_modal() -> Result<(), String> {
     }
 }
 
+/// Main-queue work runs while a dialog is open: the dialog is started the way the app starts it, a `main_queue::async_main`
+/// block is queued during the session, and it must have run before the session ends. Invisible alert, opt-in like the
+/// other modal case.
+fn main_queue_runs_while_dialog_is_open() -> Result<(), String> {
+    focus_tests_enabled()?;
+    if claude_sessions_macos::ui::testing::main_queue_runs_during_modal()? {
+        Ok(())
+    } else {
+        Err("a main-queue block did not run while the modal session was open".into())
+    }
+}
+
 /// A field created by a scene update while the window is key takes the cursor; the newest one wins.
 fn newly_created_field_takes_focus() -> Result<(), String> {
     focus_tests_enabled()?;
@@ -1115,6 +1127,10 @@ fn main() {
     results.push((
         "alert_level_is_above_panel_while_modal",
         alert_level_is_above_panel_while_modal(),
+    ));
+    results.push((
+        "main_queue_runs_while_dialog_is_open",
+        main_queue_runs_while_dialog_is_open(),
     ));
     results.push((
         "newly_created_field_takes_focus",
