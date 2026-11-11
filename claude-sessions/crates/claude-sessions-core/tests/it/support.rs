@@ -625,6 +625,8 @@ pub struct FakeJira {
     pub icon_fail: Mutex<Option<JiraError>>,
     pub icon_calls: Mutex<Vec<Url>>,
     pub fail: Mutex<Option<JiraError>>,
+    /// Key to `statusCategory.key` (`new`, `indeterminate`, `done`).
+    pub categories: Mutex<HashMap<String, String>>,
 }
 
 impl FakeJira {
@@ -659,6 +661,9 @@ impl JiraApi for FakeJira {
                 let mut fields = json!({"summary": title});
                 if let Some(s) = status {
                     fields["status"] = json!({"name": s});
+                    if let Some(c) = self.categories.lock().unwrap().get(k) {
+                        fields["status"]["statusCategory"] = json!({"key": c});
+                    }
                 }
                 if let Some((name, icon)) = types.get(k) {
                     fields["issuetype"] = json!({"name": name, "iconUrl": icon});
@@ -688,4 +693,141 @@ impl JiraApi for FakeJira {
             .cloned()
             .ok_or(JiraError::Http(404))
     }
+}
+
+// ---- Store fixtures (Swift `TestSupport.swift`: `writeSession`, `makeStore`) ----
+
+use claude_sessions_core::jira_monitor::JiraMonitor;
+use claude_sessions_core::pr_monitor::PRMonitor;
+use claude_sessions_core::store::{Paths, Store, StoreOptions};
+use claude_sessions_core::time::unix_secs;
+
+pub const BACKEND: &str = "/Users/phong/talo6-dct-backend";
+
+/// Our own pid keeps fake sessions alive (`kill(pid, 0)`); 999_999 is a dead one.
+pub fn me() -> i32 {
+    rustix::process::getpid().as_raw_nonzero().get()
+}
+
+#[derive(Default)]
+pub struct SessionOpts<'a> {
+    pub waiting_for: Option<&'a str>,
+    pub updated_at: Option<SystemTime>,
+    pub name_source: Option<&'a str>,
+    pub entrypoint: Option<&'a str>,
+}
+
+/// Writes `<dir>/<file>.json` like Claude Code's session registry; the status changed `age_sec` ago unless `updated_at` is set.
+pub fn write_session(
+    dir: &Path,
+    file: &str,
+    pid: i32,
+    status: &str,
+    age_sec: f64,
+    name: &str,
+    cwd: &str,
+) {
+    write_session_with(
+        dir,
+        file,
+        pid,
+        status,
+        age_sec,
+        name,
+        cwd,
+        SessionOpts::default(),
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn write_session_with(
+    dir: &Path,
+    file: &str,
+    pid: i32,
+    status: &str,
+    age_sec: f64,
+    name: &str,
+    cwd: &str,
+    opts: SessionOpts,
+) {
+    let updated = opts
+        .updated_at
+        .map_or(unix_secs(SystemTime::now()) - age_sec, unix_secs);
+    let mut o = json!({"pid": pid, "sessionId": file, "name": name, "cwd": cwd, "status": status,
+                       "statusUpdatedAt": updated * 1000.0});
+    if let Some(w) = opts.waiting_for {
+        o["waitingFor"] = json!(w);
+    }
+    if let Some(n) = opts.name_source {
+        o["nameSource"] = json!(n);
+    }
+    if let Some(e) = opts.entrypoint {
+        o["entrypoint"] = json!(e);
+    }
+    fs::create_dir_all(dir).unwrap();
+    fs::write(
+        dir.join(format!("{file}.json")),
+        serde_json::to_vec(&o).unwrap(),
+    )
+    .unwrap();
+}
+
+#[derive(Default)]
+pub struct StoreSetup {
+    pub projects: Option<PathBuf>,
+    pub tasks: Option<PathBuf>,
+    pub start_hidden: bool,
+    pub prs: Option<PRMonitor>,
+    pub jira: Option<JiraMonitor>,
+    pub branch: Option<claude_sessions_core::store::BranchFn>,
+}
+
+/// A store whose transcript lookups never touch the real `~/.claude/projects` and whose branch reader never touches a real repo.
+/// Without explicit `projects` / `tasks` it uses `_projects` / `_tasks` under `dir` (only `*.json` files there count as sessions).
+pub fn make_store(dir: &Path) -> Store {
+    make_store_with(dir, StoreSetup::default())
+}
+
+pub fn make_store_with(dir: &Path, setup: StoreSetup) -> Store {
+    let paths = Paths {
+        sessions: dir.to_path_buf(),
+        projects: setup.projects.unwrap_or_else(|| dir.join("_projects")),
+        tasks: setup.tasks.unwrap_or_else(|| dir.join("_tasks")),
+    };
+    Store::new(
+        paths,
+        StoreOptions {
+            start_hidden: setup.start_hidden,
+            prs: setup.prs,
+            jira: setup.jira,
+            scanner: claude_sessions_core::transcript_scanner::TranscriptScanner::new(false),
+            branch: Some(setup.branch.unwrap_or_else(|| Box::new(|_| None))),
+            ..StoreOptions::default()
+        },
+    )
+}
+
+pub fn test_pr() -> claude_sessions_core::pull_requests::PRRef {
+    claude_sessions_core::pull_requests::PRRef {
+        workspace: "w".into(),
+        repo: "r".into(),
+        id: 1,
+    }
+}
+
+/// `write_session` for a session named like its id in `FRONTEND`, with an optional `waitingFor`.
+pub fn put(dir: &Path, id: &str, status: &str, waiting_for: Option<&str>, age_sec: f64) {
+    write_session_with(
+        dir,
+        id,
+        me(),
+        status,
+        age_sec,
+        id,
+        FRONTEND,
+        SessionOpts {
+            waiting_for,
+            ..SessionOpts::default()
+        },
+    );
 }

@@ -19,6 +19,7 @@ mod pull_requests;
 mod quota;
 mod rabbit_replay;
 mod shell;
+mod store;
 mod tasks;
 mod transcript;
 mod transcript_scanner;

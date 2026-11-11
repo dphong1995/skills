@@ -7,7 +7,7 @@ use std::time::Duration;
 
 const SECURITY: &str = "/usr/bin/security";
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Service {
     Bitbucket,
     Jira,
