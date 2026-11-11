@@ -296,6 +296,8 @@ mac('widget: dry run with a lock present does no download, quit or copy', () => 
   const r = runWidget(env, { sha: good.sha, dmg: good.dmg, extra: { SKILLS_INSTALL_DRY_EXTERNAL: '1' } });
   assert.equal(r.code, 0, r.out);
   assert.match(r.out, /would install pinned widget-v2\.0\.0-rc\.1/);
+  assert.match(r.out, /Dry run: nothing was downloaded, built, quit or reopened/);
+  assert.ok(!/verified the pinned widget release/.test(r.out), r.out);
   assert.equal(env.calls(), '');
   assert.ok(existsSync(join(env.dir, 'running')));
   assert.ok(existsSync(join(installedApp(env), 'OLD')));
@@ -351,4 +353,6 @@ test('widget without a lock keeps the Swift path', () => {
   });
   assert.equal(r.status, 0);
   assert.match(r.stdout, /would run: claude-sessions\/build\.sh/);
+  assert.match(r.stdout, /Dry run: nothing was downloaded, built, quit or reopened/);
+  assert.ok(!/built the widget from source/.test(r.stdout), r.stdout);
 });

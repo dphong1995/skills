@@ -128,8 +128,18 @@ jobs:
         run: |
           # The artifact comes from a job that ran third-party code: accept nothing but dist/.
           tar="$RUNNER_TEMP/artifact/dist.tar"
-          if tar -tf "$tar" | grep -v -E '^dist(/|$)' | grep -q . || tar -tf "$tar" | grep -q -E '(^|/)\.\.(/|$)'; then
+          list=$(tar -tf "$tar")
+          long=$(tar -tvf "$tar")
+          # Capture each match instead of piping into grep -q: SIGPIPE under pipefail must never skip a check.
+          outside=$(grep -v -E '^dist(/|$)' <<<"$list" || true)
+          dotdot=$(grep -E '(^|/)\.\.(/|$)' <<<"$list" || true)
+          links=$(grep '^l' <<<"$long" || true)
+          if [ -n "$outside" ] || [ -n "$dotdot" ]; then
             echo "dist.tar holds entries outside dist/" >&2
+            exit 1
+          fi
+          if [ -n "$links" ]; then
+            echo "dist.tar holds symlink entries" >&2
             exit 1
           fi
           mkdir -p target
@@ -170,6 +180,8 @@ jobs:
               --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" \
               --keychain "$keychain" >/dev/null
             notarize="--notarize"
+          else
+            echo "::warning::Release is signed but not notarized"
           fi
           # xtask builds outside the unpacked artifact, so nothing in it can shadow the binary run with the secrets.
           CARGO_TARGET_DIR="$RUNNER_TEMP/xtask-target" cargo run --locked -p xtask --no-default-features -- resign --identity "$identity" $notarize

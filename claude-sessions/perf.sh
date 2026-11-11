@@ -269,14 +269,27 @@ ab_main() {
                 stop_app
                 continue
             fi
+            RAW_FP=""; RAW_GROWTH=""; RAW_CPU=""; RAW_WAKE=""
             measure_phase idle "$CPU_IDLE_MAX" wakeups
+            # An app that died mid-phase leaves no numbers: fail the verdict instead of shifting columns in the medians.
+            if ! app_alive || ! is_num "$RAW_FP" || ! is_num "$RAW_GROWTH" || ! is_num "$RAW_CPU" || ! is_num "$RAW_WAKE"; then
+                AB_UNSETTLED=1
+                printf '%s\n' "${RESULTS[@]}"
+                stop_app
+                continue
+            fi
             AB_ROWS+=("$round $app idle $RAW_FP $RAW_GROWTH $RAW_CPU $RAW_WAKE")
             if [ "$GATE" -eq 0 ]; then
                 for i in 0 1 2; do write_session "$i" busy; done
                 ( while true; do for i in 0 1 2; do echo "$TOOL_LINE" >> "$(transcript_of "$i")"; done; sleep 0.5; done ) 2>/dev/null &
                 WRITER_PID=$!
+                RAW_FP=""; RAW_GROWTH=""; RAW_CPU=""
                 measure_phase load "$CPU_LOAD_MAX"
-                AB_ROWS+=("$round $app load $RAW_FP $RAW_GROWTH $RAW_CPU n/a")
+                if ! app_alive || ! is_num "$RAW_FP" || ! is_num "$RAW_GROWTH" || ! is_num "$RAW_CPU"; then
+                    AB_UNSETTLED=1
+                else
+                    AB_ROWS+=("$round $app load $RAW_FP $RAW_GROWTH $RAW_CPU n/a")
+                fi
                 kill "$WRITER_PID" 2>/dev/null; WRITER_PID=""
                 for i in 0 1 2; do write_session "$i" idle; done
             fi

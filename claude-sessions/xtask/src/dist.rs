@@ -67,9 +67,15 @@ pub fn write_sha256(dist: &Path) -> Result<(), String> {
 }
 
 fn valid_version(v: &str) -> bool {
+    // `+meta` and `-rc.1000`+ would silently map to build `.0`: reject them so the tag fails loudly.
+    let rc_ok = match v.find("-rc.") {
+        Some(i) => v[i + 4..].parse::<u32>().is_ok_and(|n| n < 1000),
+        None => true,
+    };
     v.starts_with(|c: char| c.is_ascii_digit())
         && v.chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '+'))
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-'))
+        && rc_ok
 }
 
 /// Numeric `CFBundleVersion` (macOS accepts only dot-separated integers): `X.Y.Z` plus a build number.
@@ -160,7 +166,24 @@ pub fn run(args: &[String]) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::bundle_version;
+    use super::{bundle_version, valid_version};
+
+    #[test]
+    fn valid_version_rejects_forms_that_map_to_build_zero() {
+        for ok in ["2.0.0", "2.0.0-rc.1", "2.0.0-rc.999", "0.0.0-dryrun"] {
+            assert!(valid_version(ok), "{ok}");
+        }
+        for bad in [
+            "2.0.0-rc.1000",
+            "2.0.0-rc.1+meta",
+            "2.0.0+meta",
+            "2.0.0-rc.x",
+            "2.0.0-rc.",
+            "v2.0.0",
+        ] {
+            assert!(!valid_version(bad), "{bad}");
+        }
+    }
 
     #[test]
     fn bundle_version_is_numeric() {

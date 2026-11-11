@@ -202,11 +202,17 @@ install_hud() {
 WIDGET_TMP=""
 WIDGET_DEST=""
 WIDGET_OLD=""
-WIDGET_MODE=""  # swift | pinned | current | skipped: which path ran, for the summary
+WIDGET_MODE=""  # swift | pinned | current | skipped | dry: which path ran, for the summary
+WIDGET_REOPEN=0  # 1 while a widget we quit has not been reopened yet
 widget_cleanup() {
   # An interrupt between the two mv calls leaves only the .old copy: put it back.
   if [ -n "$WIDGET_OLD" ] && [ -e "$WIDGET_OLD" ] && [ ! -e "$WIDGET_DEST" ]; then
     mv "$WIDGET_OLD" "$WIDGET_DEST" >/dev/null 2>&1 || true
+  fi
+  # An interrupt after we quit the widget must not leave it closed.
+  if [ "$WIDGET_REOPEN" = 1 ] && [ -e "$WIDGET_DEST" ]; then
+    WIDGET_REOPEN=0
+    open "$WIDGET_DEST" >/dev/null 2>&1 || true
   fi
   if [ -n "$WIDGET_TMP" ]; then
     hdiutil detach -quiet -force "$WIDGET_TMP/mnt" >/dev/null 2>&1 || true
@@ -235,7 +241,7 @@ widget_wait_exit() {
 }
 
 widget_install_pinned() {  # $1 = lock file ("" when only SKILLS_WIDGET_DMG is set)
-  local lock="$1" tag="" want_sha="" want="" dmg mnt app have dest new old quit=0
+  local lock="$1" tag="" want_sha="" want="" dmg mnt app have dest new old
   dest="$HOME/Applications/ClaudeSessions.app"
   new="$HOME/Applications/.ClaudeSessions.app.new"
   old="$HOME/Applications/.ClaudeSessions.app.old"
@@ -301,7 +307,7 @@ widget_install_pinned() {  # $1 = lock file ("" when only SKILLS_WIDGET_DMG is s
   codesign --verify --deep --strict "$new" >/dev/null 2>&1 \
     || { rm -rf "$new"; widget_fail "copied app signature check failed" || return 1; }
   if pgrep -x ClaudeSessions >/dev/null 2>&1; then
-    quit=1
+    WIDGET_REOPEN=1
     osascript -e 'quit app "ClaudeSessions"' >/dev/null 2>&1 || true
     if ! widget_wait_exit; then
       pkill -x ClaudeSessions >/dev/null 2>&1 || true
@@ -312,17 +318,18 @@ widget_install_pinned() {  # $1 = lock file ("" when only SKILLS_WIDGET_DMG is s
   if [ -e "$dest" ]; then
     if ! mv "$dest" "$old"; then
       rm -rf "$new"
-      [ "$quit" = 1 ] && { open "$dest" >/dev/null 2>&1 || true; }
+      widget_cleanup
       widget_fail "cannot move the old app aside" || return 1
     fi
   fi
   if ! mv "$new" "$dest"; then
     rm -rf "$new"
     if [ -e "$old" ]; then mv "$old" "$dest" || true; fi
-    [ "$quit" = 1 ] && { open "$dest" >/dev/null 2>&1 || true; }
+    widget_cleanup
     widget_fail "cannot move the new app into place" || return 1
   fi
   rm -rf "$old"
+  WIDGET_REOPEN=0
   open "$dest" || true
   echo "  widget ${want:-installed}"
   WIDGET_MODE=pinned
@@ -342,7 +349,7 @@ install_widget() {
       else
         echo "  would install pinned local dmg"
       fi
-      WIDGET_MODE=pinned
+      WIDGET_MODE=dry
       return 0
     fi
     WIDGET_ERR=""
@@ -356,12 +363,13 @@ install_widget() {
     trap - EXIT INT TERM
     return 0
   fi
-  WIDGET_MODE=swift
   # No release.lock yet: build from the Swift sources (removed once a release is pinned).
   if [ "${SKILLS_INSTALL_DRY_EXTERNAL:-}" = "1" ]; then
     run_external claude-sessions/build.sh
+    WIDGET_MODE=dry
     return 0
   fi
+  WIDGET_MODE=swift
   if [ "$(uname -s)" != "Darwin" ] || ! command -v swift >/dev/null 2>&1; then
     echo "  widget skipped: needs macOS and swift (install the Command Line Tools: xcode-select --install)"
     SUMMARY_SKIPPED="$SUMMARY_SKIPPED  widget: needs macOS and swift (xcode-select --install)"$'\n'
@@ -550,6 +558,7 @@ case "$SUMMARY_INSTALLED" in
       pinned) echo "The installer verified the pinned widget release, then quit the running widget and reopened the new one." ;;
       current) echo "The pinned widget release is already installed; the running widget was left alone." ;;
       skipped) echo "The widget install was skipped; the installed widget (if any) is unchanged." ;;
+      dry) echo "Dry run: nothing was downloaded, built, quit or reopened; the installed widget (if any) is unchanged." ;;
       swift) echo "The installer built the widget from source, then quit the running widget and reopened the new one." ;;
     esac
     ;;
