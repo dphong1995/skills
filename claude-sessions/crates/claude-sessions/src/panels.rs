@@ -1,7 +1,9 @@
 //! One panel per display: creation, placement, the scene it shows and the pointer test (`syncPanels`, `trackMouse`).
 
+use std::collections::HashMap;
 use std::time::SystemTime;
 
+use crate::fields;
 use crate::hits::Targets;
 use crate::placement::Placed;
 use crate::rebuild::RebuildGate;
@@ -53,6 +55,32 @@ pub fn place_scene(mut scene: Scene, anchor: layout::Anchor) -> Scene {
     scene
 }
 
+/// Whether `local` (scene points) is over the pill or the card: the first node is the card's background or the pill, and the
+/// scrolled card frames lie past the viewport, so they must not be tested.
+pub fn inside_widget(scene: &Scene, local: Point) -> bool {
+    scene.nodes.first().is_some_and(|n| n.frame.contains(local))
+}
+
+/// The session whose card contains `local` (scene points). Cards after the scroll node live in the scrolled content: they only
+/// answer inside the viewport, at `local` moved down by the scroll `offset`. The app has no scroll offset to give yet, so
+/// it passes 0, which is right until the list is scrolled.
+pub fn row_at(scene: &Scene, local: Point, offset: f64) -> Option<String> {
+    let scrolled_from = scene.nodes.iter().position(|n| n.scroll.is_some());
+    scene.nodes.iter().enumerate().find_map(|(i, node)| {
+        let id = node.key.0.strip_prefix("card-")?;
+        let at = match scrolled_from {
+            Some(from) if i > from => {
+                if !scene.nodes[from].frame.contains(local) {
+                    return None;
+                }
+                Point::new(local.x, local.y + offset)
+            }
+            _ => local,
+        };
+        node.frame.contains(at).then(|| id.to_string())
+    })
+}
+
 impl PanelHost {
     /// A hidden panel at `placed` on `screen`.
     pub fn new(
@@ -92,9 +120,15 @@ impl PanelHost {
         }
     }
 
-    /// Builds the scene for `snap` and gives it to the renderer; `why` is only for the frame log.
-    pub fn render(&mut self, snap: &Snapshot, now: SystemTime, why: &str) {
-        if std::env::var_os("CLAUDE_SESSIONS_FRAME_LOG").is_some() {
+    /// Builds the scene for `snap` and gives it to the renderer; `drafts` fill its text fields, `why` is only for the frame log.
+    pub fn render(
+        &mut self,
+        snap: &Snapshot,
+        drafts: &HashMap<String, String>,
+        now: SystemTime,
+        why: &str,
+    ) {
+        if crate::app::frame_log() {
             eprintln!("rebuild {} {why}", self.key);
         }
         let expanded = self.state.expanded(snap.peeking);
@@ -119,7 +153,7 @@ impl PanelHost {
         if old != new {
             self.state.on_order_change(&old, &new);
         }
-        let built = build(&View {
+        let mut built = build(&View {
             snap,
             panel: &self.state,
             measure: &CoreTextMeasure,
@@ -131,6 +165,7 @@ impl PanelHost {
                 )
             },
         });
+        fields::fill(&mut built.scene, drafts);
         self.visible = built.scene.size;
         let scene = place_scene(built.scene, self.state.anchor);
         self.window.set_scene(&scene);
@@ -143,17 +178,13 @@ impl PanelHost {
     /// Whether the pointer (screen points, bottom-left origin) is over the pill or the card.
     pub fn pointer_inside(&self) -> bool {
         self.local(mouse::pointer())
-            .is_some_and(|local| self.scene.nodes.iter().any(|n| n.frame.contains(local)))
+            .is_some_and(|local| inside_widget(&self.scene, local))
     }
 
     /// The session whose card is under the pointer.
     pub fn row_under_pointer(&self) -> Option<String> {
         let local = self.local(mouse::pointer())?;
-        self.scene
-            .nodes
-            .iter()
-            .find(|n| n.frame.contains(local))
-            .and_then(|n| n.key.0.strip_prefix("card-").map(str::to_string))
+        row_at(&self.scene, local, 0.0)
     }
 
     fn local(&self, pointer: Point) -> Option<Point> {

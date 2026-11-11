@@ -243,33 +243,19 @@ fn reply_editor(c: &mut Canvas, s: &Session, ctx: &Ctx, y: f64) {
         .snap
         .send_state(&SendKey::new(&s.id, SendKind::Reply), ctx.view.now);
     let btn = Rect::new(CARD_W - CARD_PAD_RIGHT - 64.0, y + 8.0, 64.0, 28.0);
-    c.rrect(
-        btn,
-        theme::BUTTON_RADIUS,
-        Some(theme::solid(ThemeColor::Button)),
-        None,
-    );
     c.fields.push(claude_sessions_core::scene::Field {
         key: format!("reply-{}", s.id),
         rect: Rect::new(CARD_INSET, y + 8.0, btn.x - CARD_INSET - 8.0, 28.0),
         text: String::new(),
         placeholder: "Nhắn cho Claude…".into(),
     });
-    let label = match state {
-        None => "Gửi",
-        Some(claude_sessions_core::store::SendState::Sending) => "Đang gửi…",
-        Some(claude_sessions_core::store::SendState::Sent) => "Đã gửi",
-        Some(claude_sessions_core::store::SendState::Failed) => "Lỗi",
-    };
-    c.text(
-        Rect::new(btn.x, btn.y + 6.0, btn.w, 16.0),
-        label,
-        theme::BUTTON_FONT,
+    if c.button(
+        btn,
+        "Gửi",
+        theme::solid(ThemeColor::Button),
         theme::solid(ThemeColor::Text),
-        1,
-        Align::Center,
-    );
-    if state != Some(claude_sessions_core::store::SendState::Sending) {
+        state,
+    ) {
         c.hit(btn, Target::ReplySend(s.id.clone()));
     }
 }

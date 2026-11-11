@@ -35,6 +35,43 @@ pub fn gather(
     (located, focused)
 }
 
+/// A session `⌃⌥→` may jump to: the surface the app already knows, or whether a lookup already failed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Candidate {
+    pub id: String,
+    pub pid: Option<i32>,
+    pub surface: Option<String>,
+    pub missed: bool,
+}
+
+/// Walks `candidates` in order for the first one with a surface (Swift `attempt`): a known surface is used as is, a miss is
+/// skipped, the rest are looked up. Returns the lookups made and `(id, surface)` of the hit. Blocks: worker threads only.
+pub fn first_surface(
+    candidates: &[Candidate],
+    lookup: impl Fn(&str) -> Option<String>,
+) -> (Vec<Located>, Option<(String, String)>) {
+    let mut located = Vec::new();
+    for c in candidates {
+        let surface = match (&c.surface, c.missed) {
+            (Some(s), _) => Some(s.clone()),
+            (None, true) => None,
+            (None, false) => {
+                let found = lookup(&c.id);
+                located.push(Located {
+                    id: c.id.clone(),
+                    pid: c.pid,
+                    surface: found.clone(),
+                });
+                found
+            }
+        };
+        if let Some(surface) = surface {
+            return (located, Some((c.id.clone(), surface)));
+        }
+    }
+    (located, None)
+}
+
 /// Caches the finished lookups, as Swift `resolveSurface` does (a session whose process changed meanwhile is skipped).
 pub fn apply_located(store: &mut Store, located: &[Located]) {
     for l in located {
@@ -77,7 +114,8 @@ pub fn silent_ids<'a>(
 pub enum FocusPlan {
     /// No mark to clear or cmux is not frontmost: forget the pending check.
     Clear,
-    /// Look these sessions up (their marks have no surface yet) and ask cmux for the focused surface when one is known.
+    /// Look these sessions up (their marks have no surface yet) and ask cmux for the focused surface when one is known. With no
+    /// surface known the lookups still run (Swift starts them first); the focused-surface query waits for one of them.
     Check {
         lookups: Vec<(String, Option<i32>)>,
         known_surface: bool,
@@ -104,7 +142,7 @@ pub fn plan(store: &Store, cmux_frontmost: bool, looking_up: &HashSet<String>) -
         .unseen
         .keys()
         .any(|id| store.surfaces.contains_key(id));
-    if !known_surface {
+    if !known_surface && lookups.is_empty() {
         return FocusPlan::Clear;
     }
     FocusPlan::Check {

@@ -3,10 +3,12 @@
 mod actions;
 mod connect;
 mod drag;
+mod fields;
 mod focus;
 mod hotkey;
 mod key_map;
 mod menu;
+mod panels;
 mod placement;
 mod rebuild;
 mod settings;

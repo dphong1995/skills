@@ -54,6 +54,18 @@ pub fn current(store: &Store, pr_prompt: String) -> Settings {
     }
 }
 
+/// `persist` of the store's current values, built only when one of them differs from `saved` (called every tick).
+pub fn persist_store(kv: &dyn KeyValueStore, saved: &mut Settings, store: &Store, pr_prompt: &str) {
+    if store.muted == saved.muted
+        && store.bg_opacity == saved.bg_opacity
+        && pr_prompt == saved.pr_prompt
+        && store.jira_projects == saved.jira_projects
+    {
+        return;
+    }
+    persist(kv, saved, current(store, pr_prompt.to_string()));
+}
+
 /// Writes what differs between `saved` and `now`; `saved` becomes `now`.
 pub fn persist(kv: &dyn KeyValueStore, saved: &mut Settings, now: Settings) {
     if now.muted != saved.muted {

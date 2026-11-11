@@ -13,7 +13,7 @@ use std::sync::mpsc::{Receiver, channel};
 use std::time::{Instant, SystemTime};
 
 use claude_sessions_core::action::Action;
-use claude_sessions_core::bitbucket::BitbucketClient;
+use claude_sessions_core::bitbucket::{BitbucketClient, CredentialReloading};
 use claude_sessions_core::closed_sessions::ClosedStore;
 use claude_sessions_core::cmux;
 use claude_sessions_core::credentials::{self, Service};
@@ -35,18 +35,19 @@ use claude_sessions_macos::keys::{self, KeyInfo, KeyMonitor};
 use claude_sessions_macos::main_queue::{self, Ticker};
 use claude_sessions_macos::menu as mac_menu;
 use claude_sessions_macos::mouse::{self, MouseMonitors};
+use claude_sessions_macos::process;
 use claude_sessions_macos::ui::{UiEvent, WidgetPanelHandle};
 use claude_sessions_macos::{NotificationObserver, app as mac_app, screens, workspace};
 use url::Url;
 
 use crate::actions::{self, Completion, Poster};
 use crate::effects::RealRunner;
-use crate::hits::{Click, ClickEnv};
+use crate::hits::{Click, ClickEnv, Target};
 use crate::hotkey::{Hotkeys, Which};
 use crate::menu::{self, Command, Outcome};
 use crate::panels::PanelHost;
 use crate::settings::{self, Settings};
-use crate::{connect, drag, focus, keyboard_mode, placement};
+use crate::{connect, drag, fields, focus, keyboard_mode, placement};
 
 type Shared = Rc<RefCell<AppState>>;
 type WeakState = Weak<RefCell<AppState>>;
@@ -80,6 +81,11 @@ pub struct AppState {
     saved: Settings,
     pr_prompt: String,
     credentials: Option<Receiver<Credentials>>,
+    /// A real run: not a fixture and not `CLAUDE_SESSIONS_ROOT`. Only a live run reads or writes the Keychain.
+    live: bool,
+    /// The clients the monitors poll with; a saved token is picked up with `reload()` (Swift `bitbucketClient`, `jiraClient`).
+    bitbucket_client: Option<Arc<BitbucketClient>>,
+    jira_client: Option<Arc<JiraClient>>,
     /// Results of cmux lookups, AppleScript and socket calls; `poster` fills it and wakes the main queue.
     completions: Receiver<Completion>,
     poster: Poster,
@@ -94,7 +100,7 @@ pub struct AppState {
 }
 
 /// `CLAUDE_SESSIONS_FRAME_LOG=1` also logs every scene rebuild (the renderer logs every node redraw).
-fn frame_log() -> bool {
+pub(crate) fn frame_log() -> bool {
     std::env::var_os("CLAUDE_SESSIONS_FRAME_LOG").is_some()
 }
 
@@ -142,6 +148,7 @@ fn make_store(root: Option<PathBuf>) -> Store {
             },
             StoreOptions {
                 start_hidden: true,
+                is_running: Some(Box::new(process::is_running)),
                 ..StoreOptions::default()
             },
         ),
@@ -160,6 +167,7 @@ fn make_store(root: Option<PathBuf>) -> Store {
                     )),
                     closed_store: UserDefaultsStore::new(None)
                         .map(|kv| ClosedStore::new(Box::new(kv))),
+                    is_running: Some(Box::new(process::is_running)),
                     ..StoreOptions::default()
                 },
             )
@@ -236,7 +244,7 @@ impl AppState {
     fn render(&mut self, why: &str) {
         let (snap, now) = (self.snapshot(), self.now());
         for host in &mut self.panels {
-            host.render(&snap, now, why);
+            host.render(&snap, &self.store.drafts, now, why);
         }
     }
 
@@ -268,11 +276,14 @@ impl AppState {
             } else {
                 None
             };
-            match (&row, host.state.hovered_row.clone()) {
+            let hovered = host.state.hovered_row.clone();
+            match (&row, &hovered) {
                 (Some(id), _) => host.state.note_row_hover(id, true, now),
-                (None, Some(old)) => host.state.note_row_hover(&old, false, now),
+                (None, Some(old)) => host.state.note_row_hover(old, false, now),
                 (None, None) => {}
             }
+            // The row's hover fill shows with the next scene.
+            changed |= host.state.hovered_row != hovered;
             // Only the card takes clicks, also while pinned open or editing: the rest of the canvas must reach the app beneath.
             if host.window.ignores_mouse() == inside {
                 host.window.set_ignores_mouse(!inside);
@@ -294,11 +305,7 @@ impl AppState {
             if self.ticks.is_multiple_of(2) {
                 self.check_focused_pane();
             }
-            settings::persist(
-                &self.kv,
-                &mut self.saved,
-                settings::current(&self.store, self.pr_prompt.clone()),
-            );
+            settings::persist_store(&self.kv, &mut self.saved, &self.store, &self.pr_prompt);
         }
         let snap = self.snapshot();
         let dropped = self.sync_visibility(&snap);
@@ -324,7 +331,7 @@ impl AppState {
         for host in &mut self.panels {
             let expanded = host.state.expanded(snap.peeking);
             if !seen.is_empty() || host.gate.needs_rebuild(&snap, expanded, now) {
-                host.render(&snap, now, "tick");
+                host.render(&snap, &self.store.drafts, now, "tick");
                 rebuilt = true;
             }
         }
@@ -377,17 +384,20 @@ impl AppState {
         let Ok(found) = rx.try_recv() else { return };
         self.credentials = None;
         self.store.accounts = found.accounts;
-        if let Some((account, token)) = found.bitbucket {
-            self.store.pr_monitor = Some(PRMonitor::new(
-                Arc::new(BitbucketClient::new(&account, &token)),
-                true,
-            ));
+        // A service that already has a client keeps it (`connected` reloads it); only a new one gets a monitor.
+        if self.bitbucket_client.is_none()
+            && let Some((account, token)) = found.bitbucket
+        {
+            let client = Arc::new(BitbucketClient::new(&account, &token));
+            self.store.pr_monitor = Some(PRMonitor::new(client.clone(), true));
+            self.bitbucket_client = Some(client);
         }
-        if let Some((account, token)) = found.jira {
-            self.store.jira_monitor = Some(JiraMonitor::new(
-                Arc::new(JiraClient::new(&account, &token)),
-                true,
-            ));
+        if self.jira_client.is_none()
+            && let Some((account, token)) = found.jira
+        {
+            let client = Arc::new(JiraClient::new(&account, &token));
+            self.store.jira_monitor = Some(JiraMonitor::new(client.clone(), true));
+            self.jira_client = Some(client);
         }
     }
 }
@@ -501,8 +511,26 @@ fn handle_event(weak: &WeakState, key: &str, event: UiEvent) {
             let weak = weak.clone();
             main_queue::async_main(move || show_menu(&weak, &view, at));
         }
-        // Wired by a later change.
-        UiEvent::FieldChanged { .. } | UiEvent::FieldSubmit { .. } => {}
+        UiEvent::FieldChanged { key: field, text } => {
+            with_state(weak, |s| {
+                let snap = s.snapshot();
+                let Some(host) = s.panels.iter_mut().find(|p| p.key == key) else {
+                    return;
+                };
+                fields::changed(&field, &text, &mut s.store.drafts, &mut host.state, &snap);
+                s.render("field");
+            });
+        }
+        UiEvent::FieldSubmit { key: field } => {
+            let target = with_state(weak, |s| {
+                let host = s.panels.iter().find(|p| p.key == key)?;
+                fields::submit_target(&field, &s.store.drafts, &host.state, &host.snapshot)
+            })
+            .flatten();
+            if let Some(target) = target {
+                click_target(weak, key, &target);
+            }
+        }
     }
 }
 
@@ -668,21 +696,38 @@ fn connect_dialog(
 
 /// A click on a hit: an action goes through `Store::apply`, a panel change is applied here.
 fn on_click(weak: &WeakState, key: &str, id: HitId) {
+    let target = with_state(weak, |s| {
+        s.panels
+            .iter()
+            .find(|p| p.key == key)?
+            .targets
+            .get(id)
+            .cloned()
+    })
+    .flatten();
+    if let Some(target) = target {
+        click_target(weak, key, &target);
+    }
+}
+
+/// What clicking `target` (or pressing Enter in its field) does.
+fn click_target(weak: &WeakState, key: &str, target: &Target) {
     let run = with_state(weak, |s| {
         let now = s.now();
         let pr_prompt = s.pr_prompt.clone();
         let host = s.panels.iter_mut().find(|p| p.key == key)?;
-        let target = host.targets.get(id)?.clone();
-        // The text of the field the click belongs to is read by phase 9 with the actions that send it.
         let click = target.click(&ClickEnv {
             snap: &host.snapshot,
             panel: &host.state,
             now,
-            text: "",
+            text: fields::text_for(target, &s.store.drafts),
             pr_prompt: &pr_prompt,
         });
         match click {
-            Click::Stale => None,
+            Click::Stale => {
+                beep();
+                None
+            }
             Click::Panel(change) => {
                 let snap = host.snapshot.clone();
                 change.apply(&mut host.state, &snap, now);
@@ -779,7 +824,9 @@ impl AppState {
 
     /// Every 2 s (Swift `checkFocusedPane`): clears the marks of the session whose pane cmux shows.
     fn check_focused_pane(&mut self) {
-        match focus::plan(&self.store, cmux_frontmost(), &self.looking_up) {
+        // With no mark there is nothing to clear: skip the frontmost-app query.
+        let frontmost = !self.store.unseen.is_empty() && cmux_frontmost();
+        match focus::plan(&self.store, frontmost, &self.looking_up) {
             focus::FocusPlan::Clear => {
                 self.focus_gen += 1;
                 self.store.note_focused(None);
@@ -810,6 +857,10 @@ impl AppState {
     /// The effect of an action the store already claimed (its send button is `Sending`).
     fn run_action(&mut self, action: &Action) {
         let now = self.now();
+        // A cached surface is typed into at once: validate against a fresh store, as Swift's `handle` does.
+        if self.fixture.is_none() && actions::sends_keys(action) {
+            self.refresh_and_chime(now);
+        }
         let mut runner = RealRunner::new(self.poster.clone());
         let close = actions::run(action, &mut self.store, &mut runner, now);
         self.close_editor(close);
@@ -845,6 +896,30 @@ impl AppState {
                 }
                 return;
             }
+            Completion::NextWaiting {
+                order,
+                at,
+                located,
+                found,
+            } => {
+                focus::apply_located(&mut self.store, &located);
+                let Some((id, surface)) = found else {
+                    return beep();
+                };
+                self.store.surfaces.insert(id.clone(), surface);
+                self.store.surface_misses.remove(&id);
+                self.hotkeys.last_next = Some(claude_sessions_core::hotkeys::Cycle {
+                    order,
+                    id: id.clone(),
+                    at,
+                });
+                match self.store.apply(&Action::Jump(id), now) {
+                    Effect::Run(a) => self.run_action(&a),
+                    Effect::Beep => beep(),
+                    Effect::Nothing => {}
+                }
+                return;
+            }
             Completion::Alert {
                 transitions,
                 pr_chime,
@@ -867,7 +942,8 @@ impl AppState {
 
     /// Opens the connect dialog on a later turn unless one is open.
     fn start_connect(&mut self, service: Service) {
-        if self.connecting {
+        // Saving writes the real Keychain: never under a fixture or `CLAUDE_SESSIONS_ROOT`.
+        if self.connecting || !self.live {
             return beep();
         }
         self.connecting = true;
@@ -886,8 +962,28 @@ impl AppState {
         }
         self.connecting = false;
         self.store.accounts.insert(service, account);
-        // Both monitors start again with what the Keychain holds now.
-        self.credentials = Some(read_credentials());
+        // A service with a client re-reads the Keychain off the main thread; one without gets its monitor from the next read.
+        let existing: Option<Arc<dyn CredentialReloading>> = match service {
+            Service::Bitbucket => self
+                .bitbucket_client
+                .clone()
+                .map(|c| c as Arc<dyn CredentialReloading>),
+            Service::Jira => self
+                .jira_client
+                .clone()
+                .map(|c| c as Arc<dyn CredentialReloading>),
+        };
+        match existing {
+            Some(client) => {
+                let spawned = std::thread::Builder::new()
+                    .name("claude-sessions.reload".into())
+                    .spawn(move || client.reload());
+                if let Err(e) = spawned {
+                    eprintln!("reload thread: {e}");
+                }
+            }
+            None => self.credentials = Some(read_credentials()),
+        }
     }
 
     fn close_editor(&mut self, session: Option<String>) {
@@ -1056,10 +1152,11 @@ fn toggle_open(weak: &WeakState) {
     schedule_key_sync(weak);
 }
 
-/// `⌃⌥→`: the session that has waited longest; presses within 5 s move on. Sessions outside cmux are skipped.
+/// `⌃⌥→`: the session that has waited longest; presses within 5 s move on. Sessions outside cmux are skipped: their surfaces
+/// are looked up off the main thread and the first session in cmux wins (Swift `jumpToNextWaiting`).
 fn jump_to_next_waiting(weak: &WeakState) {
-    let picked = with_state(weak, |s| {
-        let now = SystemTime::now();
+    let walk = with_state(weak, |s| {
+        let now = s.now();
         let store = &s.store;
         let (order, first) = advance(
             s.hotkeys.last_next.as_ref(),
@@ -1067,18 +1164,40 @@ fn jump_to_next_waiting(weak: &WeakState) {
             |id| store.pid_of(id).is_some(),
             now,
         )?;
+        let start = order.iter().position(|id| *id == first)?;
+        let candidates: Vec<focus::Candidate> = (0..order.len())
+            .map(|k| &order[(start + k) % order.len()])
+            .filter(|id| store.pid_of(id).is_some())
+            .map(|id| focus::Candidate {
+                id: id.clone(),
+                pid: store.pid_of(id),
+                surface: store.surfaces.get(id).cloned(),
+                missed: store.surface_misses.contains(id),
+            })
+            .collect();
         s.hotkeys.last_next = Some(claude_sessions_core::hotkeys::Cycle {
-            order,
-            id: first.clone(),
+            order: order.clone(),
+            id: first,
             at: now,
         });
-        Some(first)
+        Some((order, candidates, now, s.poster.clone()))
     })
     .flatten();
-    match picked {
-        Some(id) => apply_action(weak, &Action::Jump(id)),
-        None => beep(),
-    }
+    let Some((order, candidates, at, poster)) = walk else {
+        return beep();
+    };
+    spawn_cmux(move || {
+        let cli = workspace::cmux_cli_path();
+        let (located, found) = focus::first_surface(&candidates, |id| {
+            cli.as_deref().and_then(|c| cmux::surface(c, id))
+        });
+        poster(Completion::NextWaiting {
+            order,
+            at,
+            located,
+            found,
+        });
+    });
 }
 
 /// Registers both hotkeys with the saved choices.
@@ -1151,6 +1270,9 @@ fn start() -> Running {
         pr_prompt: saved.pr_prompt.clone(),
         saved,
         credentials: live.then(read_credentials),
+        live,
+        bitbucket_client: None,
+        jira_client: None,
         kv,
         completions,
         poster,

@@ -70,3 +70,18 @@ fn persist_writes_only_what_changed() {
         "a.atlassian.net"
     );
 }
+
+#[test]
+fn persist_store_writes_a_change_and_skips_the_rest() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = store(dir.path());
+    let kv = MemoryStore::default();
+    let mut saved = settings::load(&kv, &mut store);
+    let prompt = saved.pr_prompt.clone();
+    settings::persist_store(&kv, &mut saved, &store, &prompt);
+    assert_eq!(kv.get_bool("muted"), None);
+    store.muted = true;
+    settings::persist_store(&kv, &mut saved, &store, &prompt);
+    assert_eq!(kv.get_bool("muted"), Some(true));
+    assert!(saved.muted);
+}

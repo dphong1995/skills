@@ -52,8 +52,12 @@ impl EffectRunner for RealRunner {
         sound::play(chime);
     }
 
-    fn open_link(&mut self, url: &Url) {
-        workspace::open_https(url);
+    fn open_link(&mut self, url: &Url, allow_http: bool) {
+        if allow_http {
+            workspace::open_link_allow_http(url);
+        } else {
+            workspace::open_https(url);
+        }
     }
 
     fn copy(&mut self, text: &str) {

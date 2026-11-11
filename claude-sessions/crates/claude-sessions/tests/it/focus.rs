@@ -140,9 +140,19 @@ fn the_two_second_check_plans_by_marks_surfaces_and_frontmost() {
     );
     assert_eq!(
         focus::plan(&s, true, &busy),
-        FocusPlan::Clear,
-        "no surface known yet"
+        FocusPlan::Check {
+            lookups: vec![("a".into(), None)],
+            known_surface: false
+        },
+        "no surface known yet: the lookup still runs"
     );
+    s.surface_misses.insert("a".into());
+    assert_eq!(
+        focus::plan(&s, true, &busy),
+        FocusPlan::Clear,
+        "nothing to look up and no surface"
+    );
+    s.surface_misses.clear();
     s.surfaces.insert("a".into(), "S".into());
     s.unseen.insert(
         "b".into(),
@@ -185,4 +195,28 @@ fn a_focused_session_loses_its_mark_after_two_checks() {
     assert!(s.unseen.contains_key("a"));
     s.note_focused(Some("S"));
     assert!(!s.unseen.contains_key("a"));
+}
+
+#[test]
+fn the_next_waiting_walk_skips_sessions_outside_cmux() {
+    use claude_sessions::focus::{Candidate, first_surface};
+    let cand = |id: &str, surface: Option<&str>, missed| Candidate {
+        id: id.into(),
+        pid: Some(1),
+        surface: surface.map(Into::into),
+        missed,
+    };
+    let candidates = [
+        cand("a", None, true),
+        cand("b", None, false),
+        cand("c", None, false),
+        cand("d", Some("S-d"), false),
+    ];
+    let (located, found) = first_surface(&candidates, |id| (id == "c").then(|| "S-c".to_string()));
+    assert_eq!(found, Some(("c".into(), "S-c".into())));
+    // `a` is a known miss (no lookup), `b` missed now, `c` hit; `d` is never reached.
+    let ids: Vec<_> = located.iter().map(|l| l.id.as_str()).collect();
+    assert_eq!(ids, ["b", "c"]);
+    let (_, none) = first_surface(&candidates[..3], |_| None);
+    assert_eq!(none, None);
 }

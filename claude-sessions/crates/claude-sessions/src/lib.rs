@@ -6,6 +6,7 @@ pub mod app;
 pub mod connect;
 pub mod drag;
 pub mod effects;
+pub mod fields;
 pub mod focus;
 pub mod hits;
 pub mod hotkey;

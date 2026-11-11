@@ -9,7 +9,9 @@ use claude_sessions_core::closed_sessions::ClosedSession;
 use claude_sessions_core::cmux::Key;
 use claude_sessions_core::credentials::Service;
 use claude_sessions_core::pull_requests::{Chime, PRRef};
-use claude_sessions_core::store::{NewMark, Paths, SendState, Session, Store, StoreOptions};
+use claude_sessions_core::store::{
+    LinkKind, NewMark, Paths, SendState, Session, Store, StoreOptions,
+};
 use claude_sessions_core::transcript::{Pending as ToolPending, PendingState};
 use claude_sessions_core::transcript_scanner::TranscriptScanner;
 use url::Url;
@@ -48,7 +50,7 @@ impl EffectRunner for Recorder {
     fn play(&mut self, chime: Chime) {
         self.fx.push(Fx::Play(chime));
     }
-    fn open_link(&mut self, url: &Url) {
+    fn open_link(&mut self, url: &Url, _allow_http: bool) {
         self.fx.push(Fx::Open(url.to_string()));
     }
     fn copy(&mut self, text: &str) {
@@ -378,13 +380,66 @@ fn open_link_opens_https_only() {
         let mut rec = Recorder::default();
         let a = Action::OpenLink("a".into(), Url::parse(bad).unwrap());
         run(&a, &mut store, &mut rec);
-        assert!(rec.fx.is_empty(), "{bad}: {:?}", rec.fx);
+        assert_eq!(rec.fx, vec![Fx::Beep], "{bad}");
     }
     let mut rec = Recorder::default();
     let a = Action::OpenLink("a".into(), Url::parse("https://example.com/x").unwrap());
     run(&a, &mut store, &mut rec);
     assert_eq!(rec.fx, vec![Fx::Open("https://example.com/x".into())]);
     assert!(!store.unseen.contains_key("a"));
+}
+
+#[test]
+fn only_a_transcript_link_may_be_plain_http() {
+    use claude_sessions_core::store::{LinkItem, LinkSection};
+    let item = |url: &str, kind| LinkItem {
+        text: "x".into(),
+        url: Url::parse(url).unwrap(),
+        kind,
+        code: String::new(),
+        title: None,
+        status: None,
+        tone: None,
+        icon_url: None,
+        help: None,
+    };
+    let mut s = approval("a");
+    s.menu = vec![LinkSection {
+        title: "Links".into(),
+        items: vec![
+            item("http://docs.example.com/a", LinkKind::Link),
+            item("http://pr.example.com/1", LinkKind::Pr),
+        ],
+    }];
+    let mut store = store_with(vec![s]);
+    for (url, opens) in [
+        ("http://docs.example.com/a", true),
+        ("http://pr.example.com/1", false),
+    ] {
+        let mut rec = Recorder::default();
+        run(
+            &Action::OpenLink("a".into(), Url::parse(url).unwrap()),
+            &mut store,
+            &mut rec,
+        );
+        let want = if opens {
+            Fx::Open(url.into())
+        } else {
+            Fx::Beep
+        };
+        assert_eq!(rec.fx, vec![want], "{url}");
+    }
+}
+
+#[test]
+fn only_actions_that_type_need_a_fresh_store() {
+    assert!(actions::sends_keys(&Action::Stop("a".into())));
+    assert!(actions::sends_keys(&Action::Approve {
+        session: "a".into(),
+        tool_id: "t".into()
+    }));
+    assert!(!actions::sends_keys(&Action::Jump("a".into())));
+    assert!(!actions::sends_keys(&Action::MarkSeen("a".into())));
 }
 
 #[test]

@@ -12,7 +12,7 @@ use claude_sessions_core::cmux::{self, Key};
 use claude_sessions_core::credentials::Service;
 use claude_sessions_core::panel_state::EditKind;
 use claude_sessions_core::pull_requests::Chime;
-use claude_sessions_core::store::{Effect, Store};
+use claude_sessions_core::store::{Effect, LinkKind, Store};
 use claude_sessions_macos::workspace;
 
 use crate::focus::Located;
@@ -58,6 +58,13 @@ pub enum Completion {
         located: Vec<Located>,
         focused: Option<String>,
     },
+    /// The `⌃⌥→` walk finished: `found` is the session and surface to jump to; `order` and `at` are the cycle it belongs to.
+    NextWaiting {
+        order: Vec<String>,
+        at: SystemTime,
+        located: Vec<Located>,
+        found: Option<(String, String)>,
+    },
     /// The cmux check behind a chime finished: `transitions` and `pr_chime` are those of the refresh that started it.
     Alert {
         transitions: HashMap<String, Chime>,
@@ -72,7 +79,8 @@ pub trait EffectRunner {
     fn poster(&self) -> Poster;
     fn beep(&mut self);
     fn play(&mut self, chime: Chime);
-    fn open_link(&mut self, url: &Url);
+    /// Opens `url` in the browser; `allow_http` is for a transcript link, every other link is `https` only.
+    fn open_link(&mut self, url: &Url, allow_http: bool);
     fn copy(&mut self, text: &str);
     /// Looks the session's cmux surface up off the main thread, then posts `Completion::Surface(pending, ..)`.
     fn lookup_surface(&mut self, session: &str, pending: Pending);
@@ -112,6 +120,18 @@ pub fn handle(
     }
 }
 
+/// Whether the action types into a cmux pane, so the store must be fresh before it runs.
+pub fn sends_keys(action: &Action) -> bool {
+    matches!(
+        action,
+        Action::Approve { .. }
+            | Action::Deny { .. }
+            | Action::AskClaude { .. }
+            | Action::Reply { .. }
+            | Action::Stop(_)
+    )
+}
+
 /// The effect of an action the store already claimed (its send button is `Sending`). Returns the session whose editor to
 /// close: a deny, reply or answer closes it at once so a second Enter cannot queue a second send.
 pub fn run(
@@ -123,7 +143,7 @@ pub fn run(
     let id = action.session_id().to_string();
     let key = action.send_key();
     match action {
-        Action::MarkSeen(_) => {}
+        Action::MarkSeen(_) | Action::ShowCommand { .. } => {}
         Action::Connect(service) => {
             if *service == Service::Jira && store.jira_host().is_none() {
                 runner.beep();
@@ -133,10 +153,25 @@ pub fn run(
         }
         Action::OpenLink(_, url) => {
             store.mark_seen(&id);
-            workspace::open_https_with(url, |u| {
-                runner.open_link(u);
+            let allow_http = store
+                .sessions
+                .iter()
+                .filter(|s| s.id == id)
+                .flat_map(|s| &s.menu)
+                .flat_map(|section| &section.items)
+                .any(|item| item.kind == LinkKind::Link && item.url == *url);
+            let opener = |u: &Url| {
+                runner.open_link(u, allow_http);
                 true
-            });
+            };
+            let opened = if allow_http {
+                workspace::open_link_allow_http_with(url, opener)
+            } else {
+                workspace::open_https_with(url, opener)
+            };
+            if !opened {
+                runner.beep();
+            }
         }
         Action::NudgeRabbit(_, pr) => {
             let (Some(key), Some(monitor)) = (key, &store.pr_monitor) else {
@@ -348,6 +383,7 @@ pub fn complete(c: Completion, store: &mut Store, runner: &mut dyn EffectRunner,
         Completion::ConnectDialog(_)
         | Completion::Connected { .. }
         | Completion::Focus { .. }
+        | Completion::NextWaiting { .. }
         | Completion::Alert { .. } => {}
     }
 }
