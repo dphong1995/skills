@@ -81,7 +81,7 @@ Các ticket Jira và PR nhắc trong session thành chip bấm được (chip ti
 ![Ticket và link](docs/images/29-link-list-open.png)
 
 ### Dấu tin mới
-Session vừa chuyển từ đang chạy sang xong/chờ, hoặc PR có sự kiện, được đánh dấu bằng icon sparkle và nền vàng nhạt trên thẻ (hoặc tô tím ở dòng PR) cho đến khi bạn xem.
+Session vừa chuyển từ đang chạy sang xong/chờ, hoặc PR có sự kiện, được đánh dấu bằng icon sparkle và nền ấm nhạt trên thẻ (hoặc tô tím ở dòng PR) cho đến khi bạn xem.
 
 ![Dấu tin mới](docs/images/34-mark-both.png)
 
