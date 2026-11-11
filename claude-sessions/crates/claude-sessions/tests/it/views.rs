@@ -549,6 +549,27 @@ fn a_too_long_command_and_an_unclear_pending_only_jump_to_cmux() {
 }
 
 #[test]
+fn the_jump_line_shows_its_send_state_and_takes_no_click_while_sending() {
+    let mut unclear = approval("appr");
+    unclear.pending = Some(PendingState::Unclear { count: 2 });
+    let mut snap = snapshot(vec![unclear]);
+    let key = SendKey::new("appr", SendKind::Jump);
+    snap.sends.insert(key.clone(), (SendState::Sending, now()));
+    let built = render(&snap, &open());
+    let node = card(&built.scene, "appr");
+    assert!(texts(node).contains(&"Đang gửi…") && !texts(node).contains(&"Cần duyệt trong cmux"));
+    // Only the card body jumps; the line does not take a second click.
+    let jumps = |t: Vec<Target>| t.iter().filter(|t| matches!(t, Target::Jump(_))).count();
+    assert_eq!(jumps(targets(&built, node)), 1);
+
+    snap.sends.insert(key, (SendState::Failed, now()));
+    let built = render(&snap, &open());
+    let node = card(&built.scene, "appr");
+    assert!(texts(node).contains(&"Lỗi — bấm thử lại"));
+    assert_eq!(jumps(targets(&built, node)), 2);
+}
+
+#[test]
 fn denying_adds_the_reason_field_and_a_send_that_resolves_to_deny() {
     let snap = snapshot(vec![approval("appr")]);
     let mut panel = open();

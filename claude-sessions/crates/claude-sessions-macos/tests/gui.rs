@@ -284,9 +284,21 @@ fn field_text_flows_and_survives() -> Result<(), String> {
         NSNotificationCenter::defaultCenter()
             .postNotificationName_object(NSControlTextDidChangeNotification, Some(&field));
     }
-    view.set_scene(&field_scene("", "Email address"));
+    // The draft mirrors what was typed, so the next scene carries it and leaves the field as it is.
+    view.set_scene(&field_scene("me@x.io", "Email address"));
     if field.stringValue().to_string() != "me@x.io" {
         return Err(format!("typed text wiped: {:?}", field.stringValue()));
+    }
+    // The draft is cleared (a send) while the scene itself is the same as before: the field still follows it.
+    view.set_scene(&field_scene("", "Email address"));
+    view.set_scene(&field_scene("", "Email address"));
+    if !field.stringValue().to_string().is_empty() {
+        return Err(format!("cleared draft kept: {:?}", field.stringValue()));
+    }
+    field.setStringValue(&objc2_foundation::NSString::from_str("late"));
+    view.set_scene(&field_scene("", "Address"));
+    if !field.stringValue().to_string().is_empty() {
+        return Err(format!("stale field text kept: {:?}", field.stringValue()));
     }
     // The scene asks for another text: it is applied.
     view.set_scene(&field_scene("other", "Email address"));

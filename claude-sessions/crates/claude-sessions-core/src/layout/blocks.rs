@@ -155,7 +155,23 @@ pub fn approval_look(pending: &PendingState, snap: &Snapshot, m: &dyn TextMeasur
     } else {
         CMD_COLLAPSED_LINES as u32
     };
-    let h = m.measure(&p.text, &CMD_FONT, CMD_TEXT_W, limit).h;
+    // A command not shown whole shows its first lines only: measure that prefix, not a command of up to megabytes.
+    let prefix;
+    let text = if row == ApprovalRow::Buttons {
+        p.text.as_str()
+    } else {
+        // Each line is capped at a length that wraps past the limit on any glyph at least 1 pt wide.
+        let cap = CMD_COLLAPSED_LINES * CMD_TEXT_W as usize;
+        prefix = p
+            .text
+            .split('\n')
+            .take(CMD_COLLAPSED_LINES)
+            .map(|l| l.chars().take(cap).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n");
+        prefix.as_str()
+    };
+    let h = m.measure(text, &CMD_FONT, CMD_TEXT_W, limit).h;
     ApprovalLook::Command {
         lines: ((h / CMD_LINE_H).round() as usize).max(1),
         row,

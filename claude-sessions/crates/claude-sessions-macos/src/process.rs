@@ -12,6 +12,10 @@ const P_WEXIT: i32 = 0x0000_2000;
 /// The pid exists and is not exiting or a zombie. A pid that cannot be inspected (permission, sysctl failure) counts as
 /// running, as in the Swift widget's `Store.isRunning`.
 pub fn is_running(pid: i32) -> bool {
+    // `kill(0, ..)` and `kill(-n, ..)` signal a whole process group, so they must never pass for a pid.
+    if pid <= 0 {
+        return false;
+    }
     // SAFETY: signal 0 only checks that the pid exists and may be signalled.
     let alive = unsafe { libc::kill(pid, 0) } == 0
         || std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM);
@@ -48,6 +52,13 @@ pub fn is_running(pid: i32) -> bool {
 mod tests {
     use super::is_running;
     use std::time::{Duration, Instant};
+
+    #[test]
+    fn a_pid_that_is_zero_or_negative_is_not_running() {
+        assert!(!is_running(0));
+        assert!(!is_running(-1));
+        assert!(!is_running(i32::MIN));
+    }
 
     #[test]
     fn own_pid_is_running() {

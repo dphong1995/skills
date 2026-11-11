@@ -5,11 +5,9 @@ use super::*;
 impl Store {
     /// Claims `k` for a send; `false` (the caller beeps) while another send to the same session is in flight.
     pub fn begin_send(&mut self, k: SendKey, at: SystemTime) -> bool {
-        if self
-            .sends
-            .iter()
-            .any(|(o, e)| o.session == k.session && e.0 == SendState::Sending)
-        {
+        if self.sends.iter().any(|(o, e)| {
+            o.session == k.session && o.kind != SendKind::Jump && e.0 == SendState::Sending
+        }) {
             return false;
         }
         self.sends.insert(k, (SendState::Sending, at));
@@ -140,6 +138,11 @@ impl Store {
             return Effect::Run(a.clone());
         }
         match a.send_key() {
+            // A jump never waits for a send and never makes a send wait: it only shows its own progress.
+            Some(k) if k.kind == SendKind::Jump => {
+                self.sends.insert(k, (SendState::Sending, at));
+                Effect::Run(a.clone())
+            }
             Some(k) if !self.begin_send(k.clone(), at) => Effect::Beep,
             _ => Effect::Run(a.clone()),
         }

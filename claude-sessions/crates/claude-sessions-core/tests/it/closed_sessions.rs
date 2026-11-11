@@ -164,3 +164,18 @@ fn out_of_range_closed_at_loads_as_empty_without_panic() {
         assert!(store.load(SystemTime::now()).items().is_empty());
     }
 }
+
+#[test]
+fn one_bad_item_is_dropped_and_the_good_ones_stay() {
+    let kv = MemoryStore::default();
+    let now = SystemTime::now();
+    let at = now.duration_since(UNIX_EPOCH).unwrap().as_secs_f64() - REFERENCE_OFFSET;
+    let list = serde_json::json!([
+        {"id": "good1", "title": "t", "cwd": "/tmp/a", "closedAt": at},
+        {"id": "bad", "title": "t", "cwd": "/tmp/b", "closedAt": 1e300},
+        {"id": "good2", "title": "t", "cwd": "/tmp/c", "closedAt": at},
+    ]);
+    kv.set_bytes("closedSessions", &serde_json::to_vec(&list).unwrap());
+    let store = ClosedStore::new(Box::new(kv));
+    assert_eq!(ids(&store.load(now)), ["good1", "good2"]);
+}

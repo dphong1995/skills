@@ -7,6 +7,7 @@ use crate::transcript::{self, flag, has, text_of};
 use memchr::memmem::Finder;
 use serde_json::{Map, Value};
 use std::collections::{HashMap, HashSet};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::PathBuf;
 use std::sync::{Arc, Condvar, LazyLock, Mutex};
 use std::thread::JoinHandle;
@@ -185,7 +186,8 @@ impl Inner {
                     shared = self.wake.wait(shared).unwrap_or_else(|e| e.into_inner());
                 }
             };
-            self.tick(&targets, now);
+            // A panic in one tick must not end scanning for good.
+            let _ = catch_unwind(AssertUnwindSafe(|| self.tick(&targets, now)));
         }
     }
 

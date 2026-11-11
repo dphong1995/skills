@@ -115,11 +115,16 @@ impl ClosedStore {
 
     /// The saved list with what is older than 24 h dropped; empty when nothing usable is saved.
     pub fn load(&self, now: SystemTime) -> ClosedSessions {
+        // One item at a time: a bad item (a date out of range) is dropped, not the whole list.
         let items = self
             .kv
             .get_bytes(CLOSED_KEY)
-            .and_then(|b| serde_json::from_slice::<Vec<ClosedSession>>(&b).ok());
-        let mut loaded = ClosedSessions::new(items.unwrap_or_default());
+            .and_then(|b| serde_json::from_slice::<Vec<serde_json::Value>>(&b).ok())
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|v| serde_json::from_value::<ClosedSession>(v).ok())
+            .collect();
+        let mut loaded = ClosedSessions::new(items);
         loaded.prune(now);
         loaded
     }

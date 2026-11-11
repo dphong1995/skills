@@ -33,7 +33,7 @@ pub struct Pending {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Completion {
     Surface(Pending, Option<String>),
-    Jumped(bool),
+    Jumped(Option<SendKey>, bool),
     Sent(Pending, bool),
     Resumed(ClosedSession, SendKey, bool),
     Answered {
@@ -84,8 +84,8 @@ pub trait EffectRunner {
     fn copy(&mut self, text: &str);
     /// Looks the session's cmux surface up off the main thread, then posts `Completion::Surface(pending, ..)`.
     fn lookup_surface(&mut self, session: &str, pending: Pending);
-    /// Activates cmux on `surface`, then posts `Completion::Jumped`.
-    fn jump(&mut self, surface: &str);
+    /// Activates cmux on `surface`, then posts `Completion::Jumped(key, ..)`.
+    fn jump(&mut self, surface: &str, key: Option<SendKey>);
     /// Types `keys` into `surface` (pauses included), then posts `Completion::Sent(pending, ..)`.
     fn send_keys(&mut self, surface: &str, keys: Vec<Key>, pending: Pending);
     /// Opens a cmux workspace that resumes `closed`, then posts `Completion::Resumed`.
@@ -225,7 +225,7 @@ pub fn run(
             resolve_surface(
                 Pending {
                     action: action.clone(),
-                    key: None,
+                    key,
                     pid: store.pid_of(&id),
                 },
                 store,
@@ -292,8 +292,8 @@ fn with_surface(
     let action = pending.action.clone();
     if matches!(action, Action::Jump(_)) {
         match surface {
-            Some(s) => runner.jump(&s),
-            None => runner.beep(),
+            Some(s) => runner.jump(&s, pending.key),
+            None => finish_unclaimed(store, &action, runner, now),
         }
         return;
     }
@@ -326,7 +326,10 @@ pub fn complete(c: Completion, store: &mut Store, runner: &mut dyn EffectRunner,
             }
             with_surface(pending, surface, store, runner, now);
         }
-        Completion::Jumped(ok) => {
+        Completion::Jumped(key, ok) => {
+            if let Some(k) = &key {
+                store.finish_send(k, ok, now);
+            }
             if !ok {
                 runner.beep();
             }

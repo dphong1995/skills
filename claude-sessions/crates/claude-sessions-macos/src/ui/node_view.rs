@@ -38,12 +38,11 @@ pub(crate) struct NodeIvars {
     tips: RefCell<Vec<Retained<NSString>>>,
 }
 
-/// A native text field of the node, its delegate (AppKit keeps delegates unretained) and the text the scene last set.
+/// A native text field of the node and its delegate (AppKit keeps delegates unretained).
 struct FieldSlot {
     key: String,
     view: Retained<NSTextField>,
     _delegate: Retained<FieldDelegate>,
-    applied: String,
 }
 
 pub(crate) struct DelegateIvars {
@@ -273,7 +272,6 @@ impl NodeView {
                         key: field.key.clone(),
                         view,
                         _delegate: delegate,
-                        applied: field.text.clone(),
                     });
                     have.len() - 1
                 }
@@ -282,13 +280,22 @@ impl NodeView {
             slot.view.setFrame(ns_rect(field.rect));
             slot.view
                 .setPlaceholderString(Some(&NSString::from_str(&field.placeholder)));
-            if slot.applied != field.text && slot.view.currentEditor().is_none() {
-                slot.applied.clone_from(&field.text);
-                if slot.view.stringValue().to_string() != field.text {
-                    slot.view.setStringValue(&NSString::from_str(&field.text));
-                }
+            // Typed text reaches the draft (and so the scene) event by event, so a difference means the scene moved on
+            // (a draft cleared after a send); an unchanged text is left alone to keep the cursor and selection.
+            if slot.view.stringValue().to_string() != field.text {
+                slot.view.setStringValue(&NSString::from_str(&field.text));
             }
         }
+    }
+
+    /// Whether a native field shows other text than the scene's, so `set_fields` has to run although the scene is the same.
+    pub(crate) fn field_text_differs(&self, fields: &[Field]) -> bool {
+        let have = self.ivars().fields.borrow();
+        fields.iter().any(|f| {
+            have.iter()
+                .find(|slot| slot.key == f.key)
+                .is_some_and(|slot| slot.view.stringValue().to_string() != f.text)
+        })
     }
 
     /// The first native text field of this node, if any.

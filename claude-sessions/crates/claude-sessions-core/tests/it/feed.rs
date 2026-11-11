@@ -561,3 +561,38 @@ fn panicking_poll_does_not_stop_the_worker() {
         std::thread::sleep(Duration::from_millis(20));
     }
 }
+
+/// Lists the captured question, then panics on the reply.
+struct PanicOnReply;
+
+impl FeedTransport for PanicOnReply {
+    fn request(
+        &self,
+        method: &str,
+        _params: &Value,
+        _timeout: Duration,
+    ) -> Result<Vec<u8>, claude_sessions_core::feed::TransportError> {
+        if method == "feed.question.reply" {
+            panic!("injected panic in the answer job");
+        }
+        Ok(CAPTURED_LIST.as_bytes().to_vec())
+    }
+}
+
+#[test]
+fn panicking_reply_still_completes_as_failed() {
+    let m = FeedMonitor::new(Arc::new(PanicOnReply));
+    let now = SystemTime::now();
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while m.take_snapshot().is_empty() {
+        assert!(std::time::Instant::now() < deadline, "no question listed");
+        m.update(true, now);
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let q = m.take_snapshot().remove(0);
+    let (tx, rx) = std::sync::mpsc::channel();
+    m.reply(&q, &[], &std::collections::HashMap::new(), move |ok| {
+        tx.send(ok).unwrap();
+    });
+    assert_eq!(rx.recv_timeout(Duration::from_secs(5)), Ok(false));
+}

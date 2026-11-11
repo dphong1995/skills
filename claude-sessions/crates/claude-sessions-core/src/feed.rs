@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::os::unix::fs::{FileTypeExt, MetadataExt};
 use std::os::unix::net::UnixStream;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, Instant, SystemTime};
@@ -291,10 +292,10 @@ impl FeedTransport for UnixFeedTransport {
         stream
             .set_write_timeout(Some(timeout))
             .map_err(|_| TransportError)?;
+        let deadline = Instant::now() + timeout;
         stream
             .write_all(&encode_request(method, params))
             .map_err(|_| TransportError)?;
-        let deadline = Instant::now() + timeout;
         let mut line = Vec::new();
         let mut chunk = vec![0u8; 65536];
         loop {
@@ -461,7 +462,9 @@ impl FeedMonitor {
         let completion_dead = completion.clone();
         self.worker.submit_or_else(
             move || {
-                let ok = inner.reply(&q, &answers, &other);
+                // A panic in the transport or the parse must still release the card: the worker swallows it.
+                let ok = catch_unwind(AssertUnwindSafe(|| inner.reply(&q, &answers, &other)))
+                    .unwrap_or(false);
                 if let Some(c) = completion.lock().unwrap_or_else(|e| e.into_inner()).take() {
                     c(ok);
                 }

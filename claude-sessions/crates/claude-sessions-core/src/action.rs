@@ -16,6 +16,8 @@ pub enum SendKind {
     Stop,
     Resume,
     Answer,
+    /// A jump to cmux from a button that shows it (`Cần duyệt trong cmux`); other jumps claim it too, nothing draws it.
+    Jump,
 }
 
 /// One send button of one session; `pr` tells the PR buttons of a session apart, `detail` the prompt of an approve/deny (its tool id).
@@ -111,8 +113,8 @@ impl Action {
             Action::Stop(session) => Some(key(session, SendKind::Stop)),
             Action::Resume(c) => Some(key(&c.id, SendKind::Resume)),
             Action::Answer { session, .. } => Some(key(session, SendKind::Answer)),
-            Action::Jump(_)
-            | Action::OpenLink(..)
+            Action::Jump(session) => Some(key(session, SendKind::Jump)),
+            Action::OpenLink(..)
             | Action::Connect(_)
             | Action::MarkSeen(_)
             | Action::ShowCommand { .. } => None,
@@ -179,7 +181,10 @@ mod tests {
 
     #[test]
     fn opening_actions_have_no_send_key() {
-        assert_eq!(Action::Jump("a".into()).send_key(), None);
+        assert_eq!(
+            Action::Jump("a".into()).send_key(),
+            Some(SendKey::new("a", SendKind::Jump))
+        );
         assert_eq!(Action::MarkSeen("a".into()).send_key(), None);
         assert_eq!(Action::Connect(Service::Jira).send_key(), None);
         assert_eq!(Action::Connect(Service::Jira).session_id(), "");

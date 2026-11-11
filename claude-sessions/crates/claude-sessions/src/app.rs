@@ -511,25 +511,43 @@ fn handle_event(weak: &WeakState, key: &str, event: UiEvent) {
             let weak = weak.clone();
             main_queue::async_main(move || show_menu(&weak, &view, at));
         }
+        // AppKit is inside the delegate method of the field: a render that freed the field (and its delegate) now would
+        // free it while it runs. The draft is kept at once, so it always equals the text on screen when the render runs.
         UiEvent::FieldChanged { key: field, text } => {
-            with_state(weak, |s| {
+            let kept = with_state(weak, |s| {
                 let snap = s.snapshot();
-                let Some(host) = s.panels.iter_mut().find(|p| p.key == key) else {
-                    return;
-                };
+                let host = s.panels.iter_mut().find(|p| p.key == key)?;
                 fields::changed(&field, &text, &mut s.store.drafts, &mut host.state, &snap);
-                s.render("field");
+                Some(())
+            })
+            .flatten();
+            if kept.is_none() {
+                return;
+            }
+            let (weak, key) = (weak.clone(), key.to_string());
+            main_queue::async_main(move || {
+                // Only the panel that owns the field has anything new to show.
+                with_state(&weak, |s| {
+                    let (snap, now) = (s.snapshot(), s.now());
+                    if let Some(host) = s.panels.iter_mut().find(|p| p.key == key) {
+                        host.render(&snap, &s.store.drafts, now, "field");
+                    }
+                });
             });
         }
         UiEvent::FieldSubmit { key: field } => {
-            let target = with_state(weak, |s| {
-                let host = s.panels.iter().find(|p| p.key == key)?;
-                fields::submit_target(&field, &s.store.drafts, &host.state, &host.snapshot)
-            })
-            .flatten();
-            if let Some(target) = target {
-                click_target(weak, key, &target);
-            }
+            let (weak, key) = (weak.clone(), key.to_string());
+            main_queue::async_main(move || {
+                let target = with_state(&weak, |s| {
+                    let host = s.panels.iter().find(|p| p.key == key)?;
+                    fields::submit_target(&field, &s.store.drafts, &host.state, &host.snapshot)
+                })
+                .flatten();
+                match target {
+                    Some(target) => click_target(&weak, &key, &target),
+                    None => beep(),
+                }
+            });
         }
     }
 }
@@ -871,7 +889,8 @@ impl AppState {
     fn on_completion(&mut self, completion: Completion) {
         let now = self.now();
         // Validate against a fresh store right before the first keystroke, as Swift does.
-        if matches!(&completion, Completion::Surface(p, _) if p.key.is_some()) {
+        if matches!(&completion, Completion::Surface(p, _) if p.key.is_some() && actions::sends_keys(&p.action))
+        {
             self.refresh_and_chime(now);
         }
         match completion {
@@ -903,11 +922,11 @@ impl AppState {
                 found,
             } => {
                 focus::apply_located(&mut self.store, &located);
-                let Some((id, surface)) = found else {
+                // `apply_located` cached the surface a lookup found, unless the session's process changed meanwhile; a
+                // surface that was cached already is still there. Caching it here again would skip that check.
+                let Some((id, _)) = found else {
                     return beep();
                 };
-                self.store.surfaces.insert(id.clone(), surface);
-                self.store.surface_misses.remove(&id);
                 self.hotkeys.last_next = Some(claude_sessions_core::hotkeys::Cycle {
                     order,
                     id: id.clone(),

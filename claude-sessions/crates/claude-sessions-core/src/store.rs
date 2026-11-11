@@ -587,9 +587,12 @@ pub enum CommandFit {
 
 /// How much of a command the card can show (Swift `Layout.commandFit`).
 pub fn command_fit(s: &str) -> CommandFit {
-    let lines = s.split('\n').count();
-    let chars = s.graphemes(true).count();
-    if lines > 12 || chars > 1200 {
+    let lines = s.split('\n').take(13).count();
+    if lines > 12 {
+        return CommandFit::TooLong;
+    }
+    let chars = s.graphemes(true).take(1201).count();
+    if chars > 1200 {
         CommandFit::TooLong
     } else if lines <= 4 && chars <= 240 {
         CommandFit::Short

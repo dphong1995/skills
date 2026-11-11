@@ -73,10 +73,10 @@ impl EffectRunner for RealRunner {
         });
     }
 
-    fn jump(&mut self, surface: &str) {
+    fn jump(&mut self, surface: &str, key: Option<SendKey>) {
         let poster = self.poster.clone();
         apple_script::run_later(cmux::jump_script(surface), SCRIPT_TIMEOUT, move |ok| {
-            poster(Completion::Jumped(ok))
+            poster(Completion::Jumped(key, ok))
         });
     }
 

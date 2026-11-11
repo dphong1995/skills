@@ -371,7 +371,9 @@ impl SceneView {
             }
             // Only what differs from the node's previous version is touched.
             let prev = before.get(&update.node.key);
-            if prev.is_none_or(|p| p.fields != update.node.fields) {
+            if prev.is_none_or(|p| p.fields != update.node.fields)
+                || view.field_text_differs(&update.node.fields)
+            {
                 view.set_fields(&update.node.fields, &sink);
             }
             if prev.is_none_or(|p| p.spinner != update.node.spinner) {

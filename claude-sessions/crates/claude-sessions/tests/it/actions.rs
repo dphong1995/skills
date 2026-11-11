@@ -60,7 +60,7 @@ impl EffectRunner for Recorder {
         self.fx.push(Fx::Lookup(session.into()));
         self.pending.push(pending);
     }
-    fn jump(&mut self, surface: &str) {
+    fn jump(&mut self, surface: &str, _key: Option<SendKey>) {
         self.fx.push(Fx::Jump(surface.into()));
     }
     fn send_keys(&mut self, surface: &str, keys: Vec<Key>, pending: Pending) {
@@ -263,7 +263,39 @@ fn jump_marks_seen_and_goes_to_the_cached_surface() {
     run(&Action::Jump("a".into()), &mut store, &mut rec);
     assert_eq!(rec.fx, vec![Fx::Jump(SURFACE.into())]);
     assert!(!store.unseen.contains_key("a"));
-    actions::complete(Completion::Jumped(false), &mut store, &mut rec, t0());
+    actions::complete(Completion::Jumped(None, false), &mut store, &mut rec, t0());
+    assert_eq!(rec.fx.last(), Some(&Fx::Beep));
+}
+
+#[test]
+fn a_jump_claims_its_button_and_the_result_releases_it() {
+    let key = SendKey::new("a", SendKind::Jump);
+    let mut store = store_with(vec![approval("a")]);
+    let mut rec = Recorder::default();
+    run(&Action::Jump("a".into()), &mut store, &mut rec);
+    assert_eq!(store.send_state(&key), Some(SendState::Sending));
+    actions::complete(
+        Completion::Jumped(Some(key.clone()), true),
+        &mut store,
+        &mut rec,
+        t0(),
+    );
+    assert_eq!(store.send_state(&key), Some(SendState::Sent));
+
+    // No surface: the button fails and beeps.
+    let mut store = store_with(vec![approval("a")]);
+    store.surfaces.clear();
+    store.surface_misses.insert("a".into());
+    let mut rec = Recorder::default();
+    run(&Action::Jump("a".into()), &mut store, &mut rec);
+    let pending = rec.pending.remove(0);
+    actions::complete(
+        Completion::Surface(pending, None),
+        &mut store,
+        &mut rec,
+        t0(),
+    );
+    assert_eq!(store.send_state(&key), Some(SendState::Failed));
     assert_eq!(rec.fx.last(), Some(&Fx::Beep));
 }
 

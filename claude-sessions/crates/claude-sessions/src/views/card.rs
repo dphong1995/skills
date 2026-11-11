@@ -138,7 +138,7 @@ pub fn node(ctx: &mut Ctx, s: &Session, y: f64, layout: &CardLayout) -> Node {
         let block = Rect::new(0.0, p.y, CARD_W, p.h);
         match p.block {
             Block::Head => {}
-            Block::Approval => approval::draw(ctx, &mut c, s, block),
+            Block::Approval => approval::draw(ctx, &mut c, s, block, layout.approval),
             Block::SentLine => {
                 if let Some(state) = view.snap.approval_send(&s.id) {
                     c.sent_line(

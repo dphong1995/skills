@@ -1,6 +1,6 @@
 //! The approval block: the command box, `Cho phép` / `Từ chối…` and, while denying, the reason field with its `Gửi`. A long
 //! command shows `Xem đủ` instead of the buttons, a too-long one and an unclear pending a line that jumps to cmux (the
-//! buttons only ever sit under a command shown whole). The look comes from `layout::approval_look`; positions follow
+//! buttons only ever sit under a command shown whole). The look is the one `card_layout` computed; positions follow
 //! `ApprovalLook::height`. The buttons wear their send state (`Canvas::button`); once the approval is
 //! sent the card has no pending command any more and the block is gone with it.
 
@@ -9,35 +9,41 @@ use crate::hits::Target;
 use crate::theme;
 use claude_sessions_core::layout::{
     ApprovalLook, ApprovalRow, BLOCK_GAP, BUTTON_H, CARD_INSET, CMD_LINE_H, CMD_MARGIN, CMD_PAD,
-    FIELD_H, NOTE_H, TEXT_W, approval_look, command_box_height,
+    FIELD_H, NOTE_H, TEXT_W, command_box_height,
 };
 use claude_sessions_core::panel_state::EditKind;
 use claude_sessions_core::scene::{Align, Field, Rect, ThemeColor};
 use claude_sessions_core::store::{SendKey, SendKind, Session};
 
 /// `block` is the rect the card layout placed for `Block::Approval`, relative to the card.
-pub fn draw(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
-    let Some(pending) = s.pending.as_ref() else {
+pub fn draw(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect, look: Option<ApprovalLook>) {
+    if s.pending.is_none() {
         return;
-    };
+    }
     let view = ctx.view;
+    // The button wears the jump's send state; a jump in flight takes no second click.
     let jump = |ctx: &mut Ctx, c: &mut Canvas, y: f64, label: &str| {
         let r = Rect::new(CARD_INSET, y, ctx.button_w(label), NOTE_H);
-        c.button(
+        let state = view
+            .snap
+            .send_state(&SendKey::new(&s.id, SendKind::Jump), view.now);
+        if c.button(
             r,
             label,
             theme::solid(ThemeColor::Button),
             theme::solid(ThemeColor::Text),
-            None,
-        );
-        c.hit(r, Target::Jump(s.id.clone()));
+            state,
+        ) {
+            c.hit(r, Target::Jump(s.id.clone()));
+        }
     };
-    let (lines, row) = match approval_look(pending, view.snap, view.measure) {
-        ApprovalLook::Unclear => {
+    let (lines, row) = match look {
+        None => return,
+        Some(ApprovalLook::Unclear) => {
             jump(ctx, c, block.y + BLOCK_GAP, "Cần duyệt trong cmux");
             return;
         }
-        ApprovalLook::Command { lines, row } => (lines, row),
+        Some(ApprovalLook::Command { lines, row }) => (lines, row),
     };
     let Some(p) = s.approvable() else {
         return;
