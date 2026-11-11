@@ -75,9 +75,10 @@ pub fn field(
         .find_map(|n| n.field(key))
 }
 
-/// Test hook: runs a bare alert through the dialogs' `run_alert` and returns its window level read inside the modal
-/// session, which a main-queue block then aborts (no click needed).
-pub fn alert_level_during_modal() -> Option<isize> {
+/// Test hook: runs a bare, invisible alert (alpha 0, mouse-transparent, offscreen, no app activation) through the
+/// dialogs' `run_alert_above_panel` and returns its window level and alpha read inside the modal session, which a
+/// main-queue block then aborts (no click needed).
+pub fn alert_level_during_modal() -> Option<(isize, f64)> {
     use std::cell::Cell;
     use std::rc::Rc;
 
@@ -89,13 +90,16 @@ pub fn alert_level_during_modal() -> Option<isize> {
     alert.setMessageText(&NSString::from_str("test"));
     let level = Rc::new(Cell::new(None));
     let (seen, window) = (level.clone(), alert.window());
+    window.setAlphaValue(0.0);
+    window.setIgnoresMouseEvents(true);
+    window.setFrameOrigin(objc2_foundation::NSPoint::new(-30000.0, -30000.0));
     // Queued after `run_alert`'s own in-session block, so it reads the level that block left.
     crate::main_queue::async_main(move || {
         crate::main_queue::async_main(move || {
-            seen.set(Some(window.level()));
+            seen.set(Some((window.level(), window.alphaValue())));
             NSApplication::sharedApplication(mtm).abortModal();
         });
     });
-    crate::dialogs::run_alert(mtm, &alert);
+    crate::dialogs::run_alert_above_panel(mtm, &alert);
     level.get()
 }

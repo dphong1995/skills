@@ -376,10 +376,21 @@ fn field_panel(key: bool) -> Result<FieldPanel, String> {
     Ok((panel, events))
 }
 
-/// The alert window is above the panel level while its modal session runs (the test aborts the session itself).
+/// The alert window is above the panel level while its modal session runs (the test aborts the session itself). The
+/// alert is invisible (alpha 0, offscreen) and the app is not activated, but it is still a real modal session, so it is
+/// opt-in: set `CLAUDE_SESSIONS_MODAL_TESTS=1` (besides `CLAUDE_SESSIONS_GUI_TESTS=1`) to run it.
 fn alert_level_is_above_panel_while_modal() -> Result<(), String> {
-    let level = claude_sessions_macos::ui::testing::alert_level_during_modal()
+    if std::env::var_os("CLAUDE_SESSIONS_MODAL_TESTS").is_none() {
+        println!(
+            "alert_level_is_above_panel_while_modal skipped (set CLAUDE_SESSIONS_MODAL_TESTS=1)"
+        );
+        return Ok(());
+    }
+    let (level, alpha) = claude_sessions_macos::ui::testing::alert_level_during_modal()
         .ok_or("the modal session did not report a level")?;
+    if alpha != 0.0 {
+        return Err(format!("alert alpha {alpha} is not 0 inside the session"));
+    }
     let panel = objc2_app_kit::NSStatusWindowLevel;
     if level > panel {
         Ok(())

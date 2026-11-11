@@ -57,6 +57,11 @@ pub(crate) fn run_alert(mtm: MainThreadMarker, alert: &NSAlert) -> isize {
     // `activateIgnoringOtherApps:` is deprecated since macOS 14 but is what Swift calls and still forces activation.
     #[allow(deprecated)]
     NSApplication::sharedApplication(mtm).activateIgnoringOtherApps(true);
+    run_alert_above_panel(mtm, alert)
+}
+
+/// The level handling of `run_alert` without the activation (the test hook must not steal focus).
+pub(crate) fn run_alert_above_panel(_mtm: MainThreadMarker, alert: &NSAlert) -> isize {
     let window = alert.window();
     window.setLevel(NSStatusWindowLevel + 1);
     let in_session = window.clone();
