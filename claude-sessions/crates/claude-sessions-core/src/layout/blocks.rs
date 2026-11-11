@@ -39,6 +39,8 @@ pub const OPTION_H: f64 = 30.0;
 pub const OPTION_DESC_H: f64 = 47.0;
 pub const OTHER_ROW_H: f64 = 29.0;
 pub const NOTE_H: f64 = 24.0;
+/// The one-line approve/deny result that replaces the approval block.
+pub const SENT_LINE_H: f64 = 24.0;
 pub const PR_ROW_H: f64 = 35.0;
 pub const PR_ROW_CLOSED_H: f64 = 31.0;
 pub const CHIPS_H: f64 = 26.0;
@@ -156,6 +158,11 @@ pub fn reply_height(reply_h: f64) -> f64 {
     REPLY_GAP + reply_h
 }
 
+/// The approve/deny result line shown where the approval block was.
+pub fn sent_line_height() -> f64 {
+    SENT_LINE_H
+}
+
 pub fn pr_row_height(open: bool) -> f64 {
     if open { PR_ROW_H } else { PR_ROW_CLOSED_H }
 }
@@ -190,6 +197,8 @@ pub fn closed_height(count: usize, open: bool) -> f64 {
 pub enum Block {
     Head,
     Approval,
+    /// The result of an approve/deny while the pending command is already gone.
+    SentLine,
     Question,
     Reply,
     Todo,
@@ -261,10 +270,17 @@ pub fn card_layout(
             Block::Approval,
             approval_height(command_lines(&p.text), deny),
         );
+    } else if s.pending.is_none() && snap.approval_send(&s.id).is_some() {
+        place(Block::SentLine, sent_line_height());
     } else if let Some(reply) = s.last_reply.as_deref().filter(|_| s.is_finished()) {
+        // Measured on what the view draws: markdown markers are gone.
+        let shown: String = text::markdown_runs(reply)
+            .into_iter()
+            .map(|r| r.text)
+            .collect();
         place(
             Block::Reply,
-            reply_height(m.measure(reply, &REPLY_FONT, TEXT_W, 2).h),
+            reply_height(m.measure(&shown, &REPLY_FONT, TEXT_W, 2).h),
         );
     }
     if s.todo.is_some() {

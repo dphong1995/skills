@@ -129,6 +129,7 @@ fn form(ctx: &mut Ctx, c: &mut Canvas, s: &Session, q: &FeedQuestion, block: Rec
                 Align::Left,
             );
             if let Some(d) = &o.description {
+                c.tip(row, d);
                 c.text(
                     Rect::new(row.x + 40.0, y + 24.0, row.w - 48.0, 16.0),
                     d,

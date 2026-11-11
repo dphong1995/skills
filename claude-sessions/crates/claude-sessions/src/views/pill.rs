@@ -6,7 +6,7 @@ use claude_sessions_core::layout::{
     HEADER_HEIGHT, PILL_GAP, PILL_PAD, PILL_QUOTA_W, collapsed_width, pill_group_width, pill_groups,
 };
 use claude_sessions_core::quota::QuotaLevel;
-use claude_sessions_core::scene::{Align, Node, Rect, ThemeColor, Weight};
+use claude_sessions_core::scene::{Align, Node, Point, Rect, ThemeColor, Weight};
 use claude_sessions_core::store::Snapshot;
 
 pub const KEY: &str = "pill";
@@ -17,6 +17,11 @@ pub fn quota_token(percent: i64) -> ThemeColor {
         QuotaLevel::Warn => ThemeColor::Orange,
         QuotaLevel::High => ThemeColor::Red,
     }
+}
+
+/// How far the quota ring is filled, in degrees clockwise from 12 o'clock.
+pub fn ring_sweep(percent: i64) -> f64 {
+    360.0 * percent.clamp(0, 100) as f64 / 100.0
 }
 
 /// Total width of the count groups of `snap` (0 without any).
@@ -136,13 +141,16 @@ pub fn node(ctx: &mut Ctx) -> Node {
             x += PILL_GAP;
         }
         let token = quota_token(p);
-        // The renderer has no arc command: the ring is a full circle in the level colour.
-        c.rrect(
-            Rect::new(x + 1.0, cy - 8.0, 16.0, 16.0),
-            8.0,
-            None,
-            Some(theme::solid(token)),
+        let ring = Point { x: x + 9.0, y: cy };
+        c.arc(
+            ring,
+            7.0,
+            2.0,
+            0.0,
+            360.0,
+            theme::tint(ThemeColor::Text, 0.15),
         );
+        c.arc(ring, 7.0, 2.0, 0.0, ring_sweep(p), theme::solid(token));
         c.text(
             Rect::new(x + 22.0, cy - 8.0, PILL_QUOTA_W - 22.0, 16.0),
             &format!("{p}%"),

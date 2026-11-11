@@ -188,6 +188,12 @@ pub fn draw(ctx: &mut Ctx, c: &mut Canvas, s: &Session, index: usize, block: Rec
         .filter(|p| p.drop_rank == 0 || p.drop_rank > rank)
     {
         let w = width(p);
+        let help = if p.kind == PartKind::Pr {
+            pr.title.as_deref()
+        } else {
+            p.help.as_deref()
+        };
+        c.tip(Rect::new(x, cy - 10.0, w, 20.0), help.unwrap_or_default());
         if let PartKind::State(tone) = p.kind {
             let color = theme::tone_token(Some(tone));
             let chip = Rect::new(x, cy - 10.0, w, 20.0);
@@ -254,6 +260,9 @@ fn button(
         theme::solid(ThemeColor::Button)
     };
     let text = theme::tint(ThemeColor::Text, if dim { 0.4 } else { 1.0 });
+    if !usable {
+        c.tip(rect, "Chỉ gửi được khi Claude đã xong lượt");
+    }
     let clickable = c.button(rect, label, fill, text, state);
     if clickable && usable {
         c.hit(rect, target());
@@ -263,18 +272,12 @@ fn button(
 
 /// The result of a send whose button is gone (the nudge moved CodeRabbit on) as one line.
 fn state_line(ctx: &Ctx, c: &mut Canvas, state: SendState, right: f64, cy: f64) -> f64 {
-    let (text, color) = match state {
-        SendState::Sending => ("Đang gửi…", ThemeColor::TextSecondary),
-        SendState::Sent => ("Đã gửi ✓", ThemeColor::Green),
-        SendState::Failed => ("Lỗi — bấm thử lại", ThemeColor::Red),
+    let text = match state {
+        SendState::Sending => "Đang gửi…",
+        SendState::Sent => "Đã gửi ✓",
+        SendState::Failed => "Lỗi — bấm thử lại",
     };
     let w = ctx.text_w(text, &theme::META_FONT) + 4.0;
-    c.label(
-        Rect::new(right - w, cy - 8.0, w, 16.0),
-        text,
-        theme::META_FONT,
-        theme::solid(color),
-        Align::Right,
-    );
+    c.sent_line(Rect::new(right - w, cy - 8.0, w, 16.0), state, Align::Right);
     right - w - 8.0
 }

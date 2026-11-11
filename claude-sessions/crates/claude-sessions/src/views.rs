@@ -15,15 +15,33 @@ pub mod pr_row;
 pub mod question;
 pub mod section;
 
+/// The node that scrolls the cards when the content is taller than the capped panel.
+pub const SCROLL_KEY: &str = "scroll";
+
+/// The key of a Jira icon in `Scene::images`.
+pub fn icon_key(url: &url::Url) -> String {
+    url.as_str().to_string()
+}
+
+/// The icon bytes of the snapshot, by `icon_key`.
+fn icon_images(snap: &Snapshot) -> HashMap<String, Arc<Vec<u8>>> {
+    snap.issue_icons
+        .iter()
+        .map(|(u, b)| (icon_key(u), Arc::new(b.clone())))
+        .collect()
+}
+
 use crate::hits::{Target, Targets};
 use crate::theme;
 use claude_sessions_core::layout::{self, Item, TextMeasure};
 use claude_sessions_core::panel_state::PanelState;
 use claude_sessions_core::scene::{
-    Align, Color, Cursor, DrawCmd, Field, FontSpec, Hit, Node, NodeKey, Rect, Run, Scene, Size,
-    ThemeColor, Weight,
+    Align, Color, Cursor, DrawCmd, Field, FontSpec, Hit, Node, NodeKey, Point, Rect, Run, Scene,
+    Size, ThemeColor, Tip, Weight,
 };
 use claude_sessions_core::store::{SendState, Snapshot};
+use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::SystemTime;
 
 /// Everything a view reads. `now` and `clock` (local `HH:mm`) are inputs because the snapshot holds timestamps only.
@@ -49,9 +67,40 @@ pub struct Canvas {
     pub hits: Vec<(Rect, Target)>,
     pub fields: Vec<Field>,
     pub spinner: Option<Rect>,
+    pub tips: Vec<Tip>,
 }
 
 impl Canvas {
+    /// A hover text over `rect`; an empty text adds nothing.
+    pub fn tip(&mut self, rect: Rect, text: &str) {
+        if !text.is_empty() {
+            self.tips.push(Tip {
+                rect,
+                text: text.to_string(),
+            });
+        }
+    }
+
+    /// A stroked arc, degrees clockwise from 12 o'clock.
+    pub fn arc(
+        &mut self,
+        center: Point,
+        radius: f64,
+        width: f64,
+        start: f64,
+        end: f64,
+        color: Color,
+    ) {
+        self.cmds.push(DrawCmd::Arc {
+            center,
+            radius,
+            width,
+            start,
+            end,
+            color,
+        });
+    }
+
     pub fn rrect(&mut self, rect: Rect, radius: f64, fill: Option<Color>, stroke: Option<Color>) {
         self.cmds.push(DrawCmd::RoundedRect {
             rect,
@@ -113,6 +162,16 @@ impl Canvas {
         );
     }
 
+    /// The result of a send whose button is gone, as one line: sending, sent (green) or failed (red).
+    pub fn sent_line(&mut self, rect: Rect, state: SendState, align: Align) {
+        let (text, color) = match state {
+            SendState::Sending => ("Đang gửi…", ThemeColor::TextSecondary),
+            SendState::Sent => ("Đã gửi ✓", ThemeColor::Green),
+            SendState::Failed => ("Lỗi — bấm thử lại", ThemeColor::Red),
+        };
+        self.text(rect, text, theme::META_FONT, theme::solid(color), 1, align);
+    }
+
     /// A labelled button wearing its send state: sending (dimmed, spinner or none, no hit), sent (green), failed (red).
     /// Returns whether it is clickable.
     pub fn button(
@@ -164,6 +223,11 @@ impl Canvas {
             color,
             weight,
         });
+    }
+
+    /// The picture `key` of `Scene::images` in `rect`.
+    pub fn image(&mut self, rect: Rect, key: String) {
+        self.cmds.push(DrawCmd::Image { rect, key });
     }
 
     pub fn hit(&mut self, rect: Rect, target: Target) {
@@ -235,6 +299,8 @@ impl Ctx<'_> {
             hits,
             fields: canvas.fields,
             spinner: canvas.spinner,
+            tips: canvas.tips,
+            scroll: None,
         }
     }
 
@@ -261,6 +327,7 @@ pub fn build(view: &View) -> Built {
         Scene {
             size: Size::new(layout::collapsed_width(view.snap), layout::HEADER_HEIGHT),
             nodes: vec![pill::node(&mut ctx)],
+            images: HashMap::new(),
         }
     };
     Built {
@@ -285,6 +352,20 @@ fn expanded(ctx: &mut Ctx) -> Scene {
     );
     let mut nodes = vec![ctx.node("panel", Rect::new(0.0, 0.0, l.size.w, l.size.h), bg)];
     for item in &l.items {
+        if let Item::Section { y, .. } | Item::Empty { y } = item
+            && l.content_h > l.size.h
+            && !nodes.iter().any(|n| n.key.0 == SCROLL_KEY)
+        {
+            // Everything from the first section on scrolls under the fixed header.
+            let top = *y;
+            let mut scroll = ctx.node(
+                SCROLL_KEY,
+                Rect::new(0.0, top, l.size.w, l.size.h - top),
+                Canvas::default(),
+            );
+            scroll.scroll = Some(Size::new(l.size.w, l.content_h - top));
+            nodes.push(scroll);
+        }
         match item {
             Item::Header { y } => nodes.push(header::node(ctx, *y)),
             Item::Section { section, count, y } => {
@@ -302,5 +383,6 @@ fn expanded(ctx: &mut Ctx) -> Scene {
     Scene {
         size: l.size,
         nodes,
+        images: icon_images(view.snap),
     }
 }

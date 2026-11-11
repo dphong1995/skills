@@ -359,8 +359,10 @@ fn bottom(cmd: &DrawCmd) -> f64 {
         DrawCmd::RoundedRect { rect, .. }
         | DrawCmd::Text { rect, .. }
         | DrawCmd::Rich { rect, .. }
-        | DrawCmd::Symbol { rect, .. } => rect.y + rect.h,
+        | DrawCmd::Symbol { rect, .. }
+        | DrawCmd::Image { rect, .. } => rect.y + rect.h,
         DrawCmd::Line { from, to, .. } => from.y.max(to.y),
+        DrawCmd::Arc { center, radius, .. } => center.y + radius,
     }
 }
 
@@ -959,6 +961,7 @@ fn every_block_takes_the_height_the_size_model_gives_it() {
                 Block::Chips => layout::CHIPS_H,
                 Block::LinkList => link_list_height(s),
                 Block::Editor => editor_height(),
+                Block::SentLine => layout::sent_line_height(),
                 Block::Head | Block::Todo | Block::Activity => p.h,
             };
             assert_eq!(p.h, want, "{} {:?}", s.id, p.block);
@@ -975,4 +978,205 @@ fn every_block_takes_the_height_the_size_model_gives_it() {
             assert!(f.rect.y + f.rect.h <= l.height);
         }
     }
+}
+
+fn approval_send(session: &str, state: SendState) -> (SendKey, (SendState, SystemTime)) {
+    let mut key = SendKey::new(session, SendKind::Approve);
+    key.detail = Some("t1".into());
+    (key, (state, now()))
+}
+
+#[test]
+fn the_approval_result_stays_as_a_sent_line_after_the_command_is_gone() {
+    // Swift state `53-approval-sent-line`: a busy session, no pending command, an approve that was just sent.
+    let plain = snapshot(vec![busy("run")]);
+    let base = card_layout(&plain.sessions[0], &plain, &open(), &FakeMeasure).height;
+    for (state, text) in [
+        (SendState::Sending, "Đang gửi…"),
+        (SendState::Sent, "Đã gửi ✓"),
+        (SendState::Failed, "Lỗi — bấm thử lại"),
+    ] {
+        let mut snap = snapshot(vec![busy("run")]);
+        let (k, v) = approval_send("run", state);
+        snap.sends.insert(k, v);
+        let (built, l) = only_card(&snap, &open());
+        assert!(l.find(Block::SentLine).is_some());
+        assert_eq!(l.height - base, layout::SENT_LINE_H);
+        assert!(texts(card(&built.scene, "run")).contains(&text), "{text}");
+    }
+    // While the command is still pending, the approval block shows and no line.
+    let mut snap = snapshot(vec![approval("appr")]);
+    let (k, v) = approval_send("appr", SendState::Sent);
+    snap.sends.insert(k, v);
+    let (_, l) = only_card(&snap, &open());
+    assert!(l.find(Block::SentLine).is_none() && l.find(Block::Approval).is_some());
+}
+
+fn long_list(n: usize) -> Snapshot {
+    snapshot((0..n).map(|i| finished(&format!("s{i}"))).collect())
+}
+
+#[test]
+fn a_long_list_scrolls_under_the_header_with_the_content_height_of_all_cards() {
+    let snap = long_list(30);
+    let panel = open();
+    let built = render(&snap, &panel);
+    let l = expanded_layout(&snap, &panel, &FakeMeasure);
+    assert_eq!(built.scene.size.h, layout::MAX_EXPANDED_HEIGHT);
+    let scrolls: Vec<_> = built
+        .scene
+        .nodes
+        .iter()
+        .enumerate()
+        .filter(|(_, n)| n.scroll.is_some())
+        .collect();
+    assert_eq!(scrolls.len(), 1);
+    let (at, node) = scrolls[0];
+    let top = layout::PANEL_PAD + layout::header_height();
+    assert_eq!(node.frame.y, top);
+    assert_eq!(node.frame.h, built.scene.size.h - top);
+    let cards_h: f64 = l
+        .items
+        .iter()
+        .filter_map(|i| match i {
+            layout::Item::Card { layout, .. } => Some(layout.height + layout::CARD_GAP),
+            _ => None,
+        })
+        .sum();
+    let content = node.scroll.unwrap();
+    assert_eq!(
+        content.h,
+        layout::section_title_height() + cards_h + layout::PANEL_PAD
+    );
+    // The panel and header stay outside; every card and section is inside.
+    let keys = |r: std::ops::Range<usize>| -> Vec<&str> {
+        built.scene.nodes[r]
+            .iter()
+            .map(|n| n.key.0.as_str())
+            .collect()
+    };
+    assert_eq!(keys(0..at), ["panel", "header"]);
+    assert_eq!(card_keys(&built.scene).len(), 30);
+    assert!(
+        built.scene.nodes[at + 1..]
+            .iter()
+            .all(|n| n.scroll.is_none())
+    );
+
+    let short = render(&long_list(2), &panel);
+    assert!(short.scene.nodes.iter().all(|n| n.scroll.is_none()));
+}
+
+#[test]
+fn tooltips_list_the_agents_and_describe_the_ticket_chips() {
+    let mut run = busy("run");
+    run.agents = vec!["explore src".into(), "review diff".into()];
+    let built = render(&snapshot(vec![run]), &open());
+    let node = card(&built.scene, "run");
+    let tip = node
+        .tips
+        .iter()
+        .find(|t| t.text.contains("explore src"))
+        .expect("agent tip");
+    assert_eq!(tip.text, "explore src\nreview diff");
+    assert!(
+        node.tips.iter().any(|t| t.text == "Dừng (bấm hai lần)"),
+        "the stop button explains itself"
+    );
+
+    let mut s = tickets();
+    s.links[0].help = Some("ABC-12 · Fix parser · In Progress".into());
+    let mut panel = open();
+    panel.open_menus.insert("done".into());
+    let built = render(&snapshot(vec![s]), &panel);
+    let tips: Vec<&str> = card(&built.scene, "done")
+        .tips
+        .iter()
+        .map(|t| t.text.as_str())
+        .collect();
+    assert!(
+        tips.contains(&"ABC-12 · Fix parser · In Progress"),
+        "{tips:?}"
+    );
+    // A menu row without help text shows its own text.
+    assert!(tips.contains(&"ABC-9"), "{tips:?}");
+}
+
+#[test]
+fn pr_tags_carry_their_help_and_the_disabled_ask_button_says_why() {
+    let mut s = pr_session();
+    s.prs[0].title = Some("Fix the parser".into());
+    s.status = "busy".into();
+    let built = render(&snapshot(vec![s]), &open());
+    let tips: Vec<&str> = card(&built.scene, "done")
+        .tips
+        .iter()
+        .map(|t| t.text.as_str())
+        .collect();
+    assert!(tips.contains(&"Fix the parser"), "{tips:?}");
+    assert!(
+        tips.contains(&"Chỉ gửi được khi Claude đã xong lượt"),
+        "{tips:?}"
+    );
+}
+
+#[test]
+fn the_quota_ring_is_an_arc_swept_by_the_percent() {
+    let mut snap = snapshot(vec![finished("done")]);
+    let mut q = claude_sessions_core::quota::Quota {
+        five_hour: 85,
+        five_hour_reset: now(),
+        weekly: 10,
+        weekly_reset: now(),
+        forecast: None,
+    };
+    snap.quota = Some(q.clone());
+    let arcs = |snap: &Snapshot| -> Vec<(f64, f64)> {
+        render(snap, &PanelState::default()).scene.nodes[0]
+            .cmds
+            .iter()
+            .filter_map(|c| match c {
+                DrawCmd::Arc { start, end, .. } => Some((*start, *end)),
+                _ => None,
+            })
+            .collect()
+    };
+    assert_eq!(arcs(&snap), [(0.0, 360.0), (0.0, 306.0)], "track and 85%");
+    q.five_hour = 100;
+    snap.quota = Some(q);
+    assert_eq!(arcs(&snap)[1], (0.0, 360.0));
+}
+
+#[test]
+fn a_ticket_icon_is_an_image_once_its_bytes_are_in_the_snapshot() {
+    let mut snap = snapshot(vec![tickets()]);
+    let icon = url("https://x.atlassian.net/icon.png");
+    let built = render(&snap, &open());
+    assert!(built.scene.images.is_empty());
+    assert!(
+        !card(&built.scene, "done")
+            .cmds
+            .iter()
+            .any(|c| matches!(c, DrawCmd::Image { .. }))
+    );
+    snap.issue_icons.insert(icon.clone(), vec![1, 2, 3]);
+    let built = render(&snap, &open());
+    let images: Vec<_> = card(&built.scene, "done")
+        .cmds
+        .iter()
+        .filter_map(|c| match c {
+            DrawCmd::Image { key, rect } => Some((key.clone(), *rect)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(images.len(), 1);
+    assert_eq!(images[0].0, icon.as_str());
+    assert_eq!(
+        built.scene.images.get(icon.as_str()).map(|b| b.as_slice()),
+        Some(&[1u8, 2, 3][..])
+    );
+    // The placeholder square is gone.
+    assert!(!card(&built.scene, "done").cmds.iter().any(
+        |c| matches!(c, DrawCmd::RoundedRect { rect, .. } if rect.w == 12.0 && rect.h == 12.0)
+    ));
 }

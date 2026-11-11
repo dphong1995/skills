@@ -239,3 +239,33 @@ fn a_failed_send_shows_the_short_fallback_note_so_the_panel_shrinks() {
         "sent and fallback are both one note line"
     );
 }
+
+#[test]
+fn reply_height_is_measured_on_the_text_that_is_drawn() {
+    // 99 chars with markers, 91 without: one line at 98 chars per line.
+    let reply = format!("**{}** **{}**", "a".repeat(45), "a".repeat(45));
+    assert_eq!(reply.chars().count(), 99);
+    let mut s = idle("a");
+    s.last_reply = Some(reply);
+    let marked = card_h(s.clone());
+    s.last_reply = Some(format!("{} {}", "a".repeat(45), "a".repeat(45)));
+    assert_eq!(marked, card_h(s), "markers do not add a line");
+}
+
+#[test]
+fn an_approval_result_line_adds_its_own_height_in_place_of_the_approval_block() {
+    use claude_sessions_core::layout::{Block, SENT_LINE_H, sent_line_height};
+    use claude_sessions_core::store::{SendKey, SendKind, SendState};
+    assert_eq!(sent_line_height(), SENT_LINE_H);
+    let s = Session::new("a", "a", "/x", "waiting");
+    let mut snap = snapshot(vec![s.clone()]);
+    let base = card_layout(&s, &snap, &panel(), &FakeMeasure);
+    assert!(base.find(Block::SentLine).is_none());
+    snap.sends.insert(
+        SendKey::new("a", SendKind::Deny),
+        (SendState::Sent, SystemTime::now()),
+    );
+    let with = card_layout(&s, &snap, &panel(), &FakeMeasure);
+    assert_eq!(with.height - base.height, SENT_LINE_H);
+    assert!(with.find(Block::SentLine).is_some());
+}

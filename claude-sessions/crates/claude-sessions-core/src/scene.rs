@@ -1,6 +1,7 @@
 //! The scene: pure data that views produce and the AppKit layer draws. Origin is top-left (flipped), units are points.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 pub use crate::geometry::{Point, Rect, Size};
 
@@ -152,6 +153,17 @@ pub enum DrawCmd {
         color: Color,
         width: f64,
     },
+    /// A stroked arc of the circle around `center`. Angles are in degrees from 12 o'clock, clockwise; `end` > `start`.
+    Arc {
+        center: Point,
+        radius: f64,
+        width: f64,
+        start: f64,
+        end: f64,
+        color: Color,
+    },
+    /// The picture stored under `key` in `Scene::images`, scaled into `rect`; nothing while the key is absent or undecodable.
+    Image { rect: Rect, key: String },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -168,6 +180,13 @@ pub struct Hit {
     pub rect: Rect,
     pub id: HitId,
     pub cursor: Cursor,
+}
+
+/// A tooltip over a rect of its node.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Tip {
+    pub rect: Rect,
+    pub text: String,
 }
 
 /// A native, editable text field laid over the scene.
@@ -200,12 +219,19 @@ pub struct Node {
     pub fields: Vec<Field>,
     /// The loading spinner's rect relative to the node's top-left, if it shows one.
     pub spinner: Option<Rect>,
+    /// Hover texts, relative to the node's top-left.
+    pub tips: Vec<Tip>,
+    /// `Some(content size)` makes this node a scroll viewport (its `frame`): every node after it in `Scene::nodes` lives in the
+    /// scrolled content, keeping its scene position, so content point = scene point - the viewport's origin.
+    pub scroll: Option<Size>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Scene {
     pub size: Size,
     pub nodes: Vec<Node>,
+    /// Encoded picture bytes (PNG, JPEG...) by the keys of `DrawCmd::Image`.
+    pub images: HashMap<String, Arc<Vec<u8>>>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -271,6 +297,8 @@ mod tests {
             hits: vec![],
             fields: vec![],
             spinner: None,
+            tips: vec![],
+            scroll: None,
         }
     }
 
@@ -278,6 +306,7 @@ mod tests {
         Scene {
             size: Size { w: 100.0, h: 100.0 },
             nodes,
+            images: HashMap::new(),
         }
     }
 

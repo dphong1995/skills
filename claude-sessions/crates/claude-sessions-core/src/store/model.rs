@@ -308,6 +308,18 @@ impl Snapshot {
     pub fn send_state(&self, k: &SendKey, now: SystemTime) -> Option<SendState> {
         shown_send(self.sends.get(k)?, now)
     }
+
+    /// The latest approve/deny result of `session`. The store prunes `sends` at refresh, so presence means it is still shown;
+    /// no clock is needed, which keeps card heights independent of `now`.
+    pub fn approval_send(&self, session: &str) -> Option<SendState> {
+        self.sends
+            .iter()
+            .filter(|(k, _)| {
+                k.session == session && matches!(k.kind, SendKind::Approve | SendKind::Deny)
+            })
+            .max_by_key(|(_, e)| e.1)
+            .map(|(_, e)| e.0)
+    }
 }
 
 pub(super) const SEND_SHOWN: f64 = 3.0;

@@ -96,6 +96,8 @@ fn node(key: &str, frame: Rect, cmds: Vec<DrawCmd>) -> Node {
         hits: vec![],
         fields: vec![],
         spinner: None,
+        tips: vec![],
+        scroll: None,
     }
 }
 
@@ -147,6 +149,7 @@ pub fn pill_scene(cards: &[Card]) -> Scene {
     Scene {
         size: CANVAS,
         nodes: vec![pill],
+        ..Scene::default()
     }
 }
 
@@ -324,6 +327,7 @@ pub fn expanded_scene(cards: &[Card], elapsed: u64, measure: &dyn TextMeasure) -
     Scene {
         size: CANVAS,
         nodes,
+        ..Scene::default()
     }
 }
 

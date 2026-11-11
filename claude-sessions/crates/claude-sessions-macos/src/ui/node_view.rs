@@ -3,7 +3,7 @@
 use std::cell::RefCell;
 use std::sync::OnceLock;
 
-use claude_sessions_core::scene::{Appearance, DrawCmd, Field, Rect};
+use claude_sessions_core::scene::{Appearance, DrawCmd, Field, Rect, Tip};
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::{DefinedClass, MainThreadOnly, define_class, msg_send};
@@ -20,6 +20,8 @@ pub(crate) struct NodeIvars {
     cmds: RefCell<Vec<DrawCmd>>,
     fields: RefCell<Vec<(String, Retained<NSTextField>)>>,
     spinner: RefCell<Option<Retained<CAShapeLayer>>>,
+    /// AppKit does not retain a tooltip's owner, so the strings live here.
+    tips: RefCell<Vec<Retained<NSString>>>,
 }
 
 /// `CLAUDE_SESSIONS_FRAME_LOG=1`: one stderr line per node redraw.
@@ -67,6 +69,7 @@ impl NodeView {
             cmds: RefCell::new(Vec::new()),
             fields: RefCell::new(Vec::new()),
             spinner: RefCell::new(None),
+            tips: RefCell::new(Vec::new()),
         });
         // SAFETY: `initWithFrame:` is NSView's designated initialiser.
         let this: Retained<Self> = unsafe { msg_send![super(this), initWithFrame: ns_rect(frame)] };
@@ -77,6 +80,21 @@ impl NodeView {
     pub(crate) fn set_cmds(&self, cmds: &[DrawCmd]) {
         *self.ivars().cmds.borrow_mut() = cmds.to_vec();
         self.setNeedsDisplay(true);
+    }
+
+    /// Replaces the tooltips; the owner of each is its text (AppKit shows the owner's description).
+    pub(crate) fn set_tips(&self, tips: &[Tip]) {
+        self.removeAllToolTips();
+        let mut owners = self.ivars().tips.borrow_mut();
+        owners.clear();
+        for tip in tips {
+            let owner = NSString::from_str(&tip.text);
+            // SAFETY: the owner is kept alive in `owners` until the tooltips are removed; no user data is used.
+            unsafe {
+                self.addToolTipRect_owner_userData(ns_rect(tip.rect), &owner, std::ptr::null_mut());
+            }
+            owners.push(owner);
+        }
     }
 
     /// Adds, moves and removes the native text fields; a field being edited keeps the user's text.

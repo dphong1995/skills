@@ -11,7 +11,7 @@ use objc2_core_foundation::{CFRetained, CGPoint, CGRect, CGSize};
 use objc2_core_graphics::{CGBitmapContextCreateImage, CGColorSpace, CGContext, kCGColorSpaceSRGB};
 use objc2_foundation::{MainThreadMarker, NSData, NSDictionary};
 
-use super::draw::draw_cmds;
+use super::draw::{draw_cmds, register_images};
 
 #[link(name = "CoreGraphics", kind = "framework")]
 unsafe extern "C" {
@@ -64,6 +64,7 @@ pub fn render_png(
     let gc = NSGraphicsContext::graphicsContextWithCGContext_flipped(&ctx, true);
     NSGraphicsContext::saveGraphicsState_class();
     NSGraphicsContext::setCurrentContext(Some(&gc));
+    register_images(&scene.images);
     for node in &scene.nodes {
         gc.saveGraphicsState();
         CGContext::translate_ctm(Some(&ctx), node.frame.x, node.frame.y);

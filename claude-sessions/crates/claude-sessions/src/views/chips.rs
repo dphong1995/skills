@@ -1,5 +1,5 @@
 //! Ticket chips with the menu count (`Block::Chips`, `layout::CHIPS_H`) and the inline link list (`Block::LinkList`,
-//! `layout::link_list_height`). The Jira icon is a tinted placeholder until `DrawCmd` can draw an image.
+//! `layout::link_list_height`). The Jira icon is the fetched picture, a tinted placeholder until its bytes are in the snapshot.
 
 use super::{Canvas, Ctx};
 use crate::hits::Target;
@@ -7,9 +7,29 @@ use crate::theme;
 use claude_sessions_core::credentials::Service;
 use claude_sessions_core::layout::{CARD_INSET, LINK_ROW_H, LINK_SECTION_H, TEXT_W};
 use claude_sessions_core::scene::{Align, Rect, ThemeColor, Weight};
-use claude_sessions_core::store::{LinkKind, Session};
+use claude_sessions_core::store::{ItemTone, LinkKind, Session, Snapshot};
 
 const CHIP_H: f64 = 22.0;
+
+/// The Jira icon of `url` when the snapshot holds its bytes, else a tinted square.
+fn icon_or_placeholder(
+    snap: &Snapshot,
+    c: &mut Canvas,
+    rect: Rect,
+    url: &url::Url,
+    tone: Option<ItemTone>,
+) {
+    if snap.issue_icons.contains_key(url) {
+        c.image(rect, super::icon_key(url));
+    } else {
+        c.rrect(
+            rect,
+            3.0,
+            Some(theme::tint(theme::tone_token(tone), 0.6)),
+            None,
+        );
+    }
+}
 
 pub fn draw_chips(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
     let view = ctx.view;
@@ -25,14 +45,16 @@ pub fn draw_chips(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
             Some(theme::solid(ThemeColor::Button)),
             None,
         );
-        if link.icon_url.is_some() {
-            c.rrect(
+        if let Some(u) = &link.icon_url {
+            icon_or_placeholder(
+                view.snap,
+                c,
                 Rect::new(x + 7.0, y + 5.0, 12.0, 12.0),
-                3.0,
-                Some(theme::tint(theme::tone_token(link.tone), 0.6)),
-                None,
+                u,
+                link.tone,
             );
         }
+        c.tip(chip, link.help.as_deref().unwrap_or_default());
         c.label(
             Rect::new(x + 8.0 + icon, y, w - 16.0 - icon, CHIP_H),
             &link.label,
@@ -100,12 +122,13 @@ pub fn draw_link_list(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
             let icon = Rect::new(row.x + 4.0, y + 4.0, 14.0, 14.0);
             match item.kind {
                 LinkKind::Ticket => {
-                    if item.icon_url.is_some() {
-                        c.rrect(
+                    if let Some(u) = &item.icon_url {
+                        icon_or_placeholder(
+                            ctx.view.snap,
+                            c,
                             Rect::new(icon.x + 1.0, icon.y + 1.0, 12.0, 12.0),
-                            3.0,
-                            Some(theme::tint(theme::tone_token(item.tone), 0.6)),
-                            None,
+                            u,
+                            item.tone,
                         );
                     }
                 }
@@ -161,6 +184,7 @@ pub fn draw_link_list(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
                     Align::Center,
                 );
             }
+            c.tip(row, item.help.as_deref().unwrap_or(&item.text));
             c.hit(
                 row,
                 Target::Link {

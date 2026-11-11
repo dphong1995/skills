@@ -99,25 +99,45 @@ pub fn node(ctx: &mut Ctx, s: &Session, y: f64, layout: &CardLayout) -> Node {
         1,
         Align::Left,
     );
+    let sub = Rect::new(
+        CARD_INSET,
+        CARD_PAD_Y + layout.title_h,
+        TEXT_W - RIGHT_COLUMN,
+        15.0,
+    );
     c.text(
-        Rect::new(
-            CARD_INSET,
-            CARD_PAD_Y + layout.title_h,
-            TEXT_W - RIGHT_COLUMN,
-            15.0,
-        ),
+        sub,
         &subtitle(s),
         theme::SUB_FONT,
         theme::solid(ThemeColor::TextSecondary),
         1,
         Align::Left,
     );
+    if s.agent_count() > 0 {
+        // The ` · N agent` tail lists the running agents.
+        let full = ctx.text_w(&subtitle(s), &theme::SUB_FONT);
+        let tail = ctx.text_w(&format!(" · {} agent", s.agent_count()), &theme::SUB_FONT);
+        let from = (sub.x + full - tail).min(sub.x + sub.w);
+        c.tip(
+            Rect::new(from, sub.y, (sub.x + full).min(sub.x + sub.w) - from, sub.h),
+            &s.agents.join("\n"),
+        );
+    }
 
     for p in &layout.blocks {
         let block = Rect::new(0.0, p.y, CARD_W, p.h);
         match p.block {
             Block::Head => {}
             Block::Approval => approval::draw(ctx, &mut c, s, block),
+            Block::SentLine => {
+                if let Some(state) = view.snap.approval_send(&s.id) {
+                    c.sent_line(
+                        Rect::new(CARD_INSET, p.y + 4.0, TEXT_W, 16.0),
+                        state,
+                        Align::Left,
+                    );
+                }
+            }
             Block::Question => question::draw(ctx, &mut c, s, block),
             Block::Reply => {
                 if let Some(reply) = s.last_reply.as_deref() {
@@ -294,6 +314,16 @@ fn right_column(ctx: &Ctx, c: &mut Canvas, s: &Session) {
     if !in_cmux {
         color = theme::tint(ThemeColor::TextSecondary, 0.4);
     }
+    c.tip(
+        rect,
+        if !in_cmux {
+            "Chỉ dùng được trong cmux"
+        } else if s.can_ask_claude() {
+            "Trả lời…"
+        } else {
+            "Dừng (bấm hai lần)"
+        },
+    );
     let clickable = c.send_glyph(rect, slot, symbol, color);
     if clickable && in_cmux {
         c.hit(rect, target);
