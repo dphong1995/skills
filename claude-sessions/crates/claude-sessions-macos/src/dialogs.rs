@@ -5,7 +5,7 @@
 use objc2::rc::Retained;
 use objc2_app_kit::{
     NSAlert, NSAlertFirstButtonReturn, NSAlertThirdButtonReturn, NSApplication, NSBorderType,
-    NSScrollView, NSSecureTextField, NSTextField, NSTextView, NSView,
+    NSScrollView, NSSecureTextField, NSStatusWindowLevel, NSTextField, NSTextView, NSView,
 };
 use objc2_foundation::{MainThreadMarker, NSPoint, NSRect, NSSize, NSString};
 
@@ -50,6 +50,20 @@ fn text_field(mtm: MainThreadMarker, frame: NSRect, placeholder: &str) -> Retain
     field
 }
 
+/// Runs `alert` modally the way Swift does: forced activation (`NSApp.activate(ignoringOtherApps: true)`) so the alert is
+/// key, and a window level above the panel's `NSStatusWindowLevel` so the panel cannot cover it. The level is set before
+/// `runModal` and again from inside the modal session, because AppKit may reset it when the session starts.
+pub(crate) fn run_alert(mtm: MainThreadMarker, alert: &NSAlert) -> isize {
+    // `activateIgnoringOtherApps:` is deprecated since macOS 14 but is what Swift calls and still forces activation.
+    #[allow(deprecated)]
+    NSApplication::sharedApplication(mtm).activateIgnoringOtherApps(true);
+    let window = alert.window();
+    window.setLevel(NSStatusWindowLevel + 1);
+    let in_session = window.clone();
+    crate::main_queue::async_main(move || in_session.setLevel(NSStatusWindowLevel + 1));
+    alert.runModal()
+}
+
 fn rect(x: f64, y: f64, w: f64, h: f64) -> NSRect {
     NSRect::new(NSPoint::new(x, y), NSSize::new(w, h))
 }
@@ -86,8 +100,7 @@ pub fn ask_token(title: &str, info: &str, notice: Option<&str>, account: &str) -
     } else {
         alert.window().setInitialFirstResponder(Some(&token));
     }
-    NSApplication::sharedApplication(mtm).activate();
-    let response = alert.runModal();
+    let response = run_alert(mtm, &alert);
     let account = email.stringValue().to_string();
     if response == NSAlertFirstButtonReturn {
         let field: &NSTextField = &token;
@@ -125,8 +138,7 @@ pub fn ask_prompt(current: &str, info: &str) -> PromptAnswer {
         alert.addButtonWithTitle(&NSString::from_str(label));
     }
     alert.window().setInitialFirstResponder(Some(&text));
-    NSApplication::sharedApplication(mtm).activate();
-    let response = alert.runModal();
+    let response = run_alert(mtm, &alert);
     if response == NSAlertFirstButtonReturn {
         PromptAnswer::Save(text.string().to_string())
     } else if response == NSAlertThirdButtonReturn {

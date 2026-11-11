@@ -74,3 +74,28 @@ pub fn field(
         .filter_map(|v| v.downcast::<NodeView>().ok())
         .find_map(|n| n.field(key))
 }
+
+/// Test hook: runs a bare alert through the dialogs' `run_alert` and returns its window level read inside the modal
+/// session, which a main-queue block then aborts (no click needed).
+pub fn alert_level_during_modal() -> Option<isize> {
+    use std::cell::Cell;
+    use std::rc::Rc;
+
+    use objc2_app_kit::{NSAlert, NSApplication};
+    use objc2_foundation::{MainThreadMarker, NSString};
+
+    let mtm = MainThreadMarker::new()?;
+    let alert = NSAlert::new(mtm);
+    alert.setMessageText(&NSString::from_str("test"));
+    let level = Rc::new(Cell::new(None));
+    let (seen, window) = (level.clone(), alert.window());
+    // Queued after `run_alert`'s own in-session block, so it reads the level that block left.
+    crate::main_queue::async_main(move || {
+        crate::main_queue::async_main(move || {
+            seen.set(Some(window.level()));
+            NSApplication::sharedApplication(mtm).abortModal();
+        });
+    });
+    crate::dialogs::run_alert(mtm, &alert);
+    level.get()
+}

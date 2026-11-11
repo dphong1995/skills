@@ -376,6 +376,20 @@ fn field_panel(key: bool) -> Result<FieldPanel, String> {
     Ok((panel, events))
 }
 
+/// The alert window is above the panel level while its modal session runs (the test aborts the session itself).
+fn alert_level_is_above_panel_while_modal() -> Result<(), String> {
+    let level = claude_sessions_macos::ui::testing::alert_level_during_modal()
+        .ok_or("the modal session did not report a level")?;
+    let panel = objc2_app_kit::NSStatusWindowLevel;
+    if level > panel {
+        Ok(())
+    } else {
+        Err(format!(
+            "alert level {level} is not above the panel level {panel}"
+        ))
+    }
+}
+
 /// A field created by a scene update while the window is key takes the cursor; the newest one wins.
 fn newly_created_field_takes_focus() -> Result<(), String> {
     use claude_sessions_macos::ui::testing::field;
@@ -1084,6 +1098,10 @@ fn main() {
     results.push((
         "field_text_flows_and_survives",
         field_text_flows_and_survives(),
+    ));
+    results.push((
+        "alert_level_is_above_panel_while_modal",
+        alert_level_is_above_panel_while_modal(),
     ));
     results.push((
         "newly_created_field_takes_focus",
