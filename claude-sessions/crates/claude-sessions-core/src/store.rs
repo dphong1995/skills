@@ -28,6 +28,7 @@ use crate::transcript_scanner::{ScanResult, ScanTarget, TranscriptScanner};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
+use unicode_segmentation::UnicodeSegmentation;
 
 /// A session that left the list is closed once its process is gone, for at most this long.
 const DEPARTED_WINDOW: f64 = 10.0;
@@ -516,13 +517,9 @@ impl Store {
         self.last_focused = surface.map(String::from);
     }
 
-    /// Whether the card shows the whole of `p`'s command (short, or long and expanded with Xem đủ); only then can it be approved or denied from the widget.
+    /// Whether the card shows the whole of `p`'s command; see `command_is_shown`.
     pub fn is_command_shown(&self, p: &transcript::Pending) -> bool {
-        match command_fit(&p.text) {
-            CommandFit::Short => true,
-            CommandFit::Long => self.shown_commands.contains(&p.tool_id),
-            CommandFit::TooLong => false,
-        }
+        command_is_shown(&self.shown_commands, p)
     }
 
     /// The context-menu line of one service.
@@ -591,7 +588,7 @@ pub enum CommandFit {
 /// How much of a command the card can show (Swift `Layout.commandFit`).
 pub fn command_fit(s: &str) -> CommandFit {
     let lines = s.split('\n').count();
-    let chars = s.chars().count();
+    let chars = s.graphemes(true).count();
     if lines > 12 || chars > 1200 {
         CommandFit::TooLong
     } else if lines <= 4 && chars <= 240 {

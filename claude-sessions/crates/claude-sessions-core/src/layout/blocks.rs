@@ -8,7 +8,7 @@ use crate::feed::{self, BlockState, FeedQuestion};
 use crate::geometry::Size;
 use crate::panel_state::{EditKind, PanelState};
 use crate::scene::{FontSpec, Weight};
-use crate::store::{Section, Session, Snapshot};
+use crate::store::{CommandFit, Section, Session, Snapshot, command_fit};
 use crate::text;
 use crate::transcript::PendingState;
 
@@ -31,7 +31,11 @@ pub const CMD_MARGIN: f64 = 7.0;
 pub const CMD_PAD: f64 = 7.0;
 /// The line pitch of the 12 pt monospaced command text, so the box ends one `CMD_PAD` under its last line.
 pub const CMD_LINE_H: f64 = 15.0;
-pub const CMD_MAX_LINES: usize = 8;
+/// Lines of a command the card shows before `Xem đủ` (Swift `lineLimit(4)`).
+pub const CMD_COLLAPSED_LINES: usize = 4;
+/// The command text sits 10 pt inside its box on both sides.
+pub const CMD_TEXT_W: f64 = TEXT_W - 20.0;
+pub const CMD_FONT: FontSpec = font(12.0, Weight::Regular, true);
 pub const BUTTON_H: f64 = 24.0;
 pub const BLOCK_GAP: f64 = 8.0;
 pub const FIELD_H: f64 = 28.0;
@@ -99,9 +103,63 @@ pub fn other_open(s: &Session, panel: &PanelState) -> Option<usize> {
         .and_then(|i| i.parse().ok())
 }
 
-/// The number of command lines the approval block shows (1 to `CMD_MAX_LINES`).
-pub fn command_lines(command: &str) -> usize {
-    command.split('\n').count().clamp(1, CMD_MAX_LINES)
+/// What the row under the command box is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ApprovalRow {
+    /// `Cho phép` / `Từ chối…`: the whole command is shown.
+    Buttons,
+    /// `Xem đủ`: a long command is cut to `CMD_COLLAPSED_LINES` lines.
+    ShowFull,
+    /// `Lệnh dài, bấm để duyệt trong cmux`: too long for the widget to approve.
+    JumpTooLong,
+}
+
+/// How the approval block of a card looks; the view draws exactly this.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ApprovalLook {
+    /// `Cần duyệt trong cmux`: no single command to show.
+    Unclear,
+    Command {
+        /// The wrapped lines the command box shows.
+        lines: usize,
+        row: ApprovalRow,
+    },
+}
+
+impl ApprovalLook {
+    pub fn height(self, deny_editing: bool) -> f64 {
+        match self {
+            ApprovalLook::Unclear => BLOCK_GAP + NOTE_H,
+            ApprovalLook::Command {
+                lines,
+                row: ApprovalRow::JumpTooLong,
+            } => CMD_MARGIN + command_box_height(lines) + BLOCK_GAP + NOTE_H,
+            ApprovalLook::Command { lines, .. } => approval_height(lines, deny_editing),
+        }
+    }
+}
+
+/// The look of the approval block for a pending state. The command is measured on the width the view draws it at: a
+/// command not shown whole is cut to `CMD_COLLAPSED_LINES` lines, a shown one is not cut.
+pub fn approval_look(pending: &PendingState, snap: &Snapshot, m: &dyn TextMeasure) -> ApprovalLook {
+    let PendingState::One(p) = pending else {
+        return ApprovalLook::Unclear;
+    };
+    let row = match command_fit(&p.text) {
+        CommandFit::TooLong => ApprovalRow::JumpTooLong,
+        _ if snap.is_command_shown(p) => ApprovalRow::Buttons,
+        _ => ApprovalRow::ShowFull,
+    };
+    let limit = if row == ApprovalRow::Buttons {
+        0
+    } else {
+        CMD_COLLAPSED_LINES as u32
+    };
+    let h = m.measure(&p.text, &CMD_FONT, CMD_TEXT_W, limit).h;
+    ApprovalLook::Command {
+        lines: ((h / CMD_LINE_H).round() as usize).max(1),
+        row,
+    }
 }
 
 pub fn header_height() -> f64 {
@@ -117,11 +175,14 @@ pub fn head_height(title_h: f64) -> f64 {
     CARD_PAD_Y + title_h + SUB_H
 }
 
+pub fn command_box_height(lines: usize) -> f64 {
+    2.0 * CMD_PAD + CMD_LINE_H * lines.max(1) as f64
+}
+
 /// Command box (`cmd_lines` lines) and the `Cho phép` / `Từ chối` row; a deny reason field adds its own row.
 pub fn approval_height(cmd_lines: usize, deny_editing: bool) -> f64 {
-    let cmd = 2.0 * CMD_PAD + CMD_LINE_H * cmd_lines.clamp(1, CMD_MAX_LINES) as f64;
     CMD_MARGIN
-        + cmd
+        + command_box_height(cmd_lines)
         + BLOCK_GAP
         + BUTTON_H
         + if deny_editing {
@@ -233,6 +294,8 @@ pub struct CardLayout {
     pub title_h: f64,
     /// Where the title may wrap: the text column less the right column, the state text and the new-mark sparkle.
     pub title_w: f64,
+    /// What `Block::Approval` shows, when the card has one.
+    pub approval: Option<ApprovalLook>,
     pub blocks: Vec<Placed>,
 }
 
@@ -260,6 +323,7 @@ pub fn card_layout(
     let title_h = m.measure(s.title(), &TITLE_FONT, title_w.max(40.0), 2).h;
 
     let mut blocks = Vec::new();
+    let mut approval = None;
     let mut y = 0.0;
     let mut place = |block: Block, h: f64| {
         blocks.push(Placed { block, y, h });
@@ -272,12 +336,22 @@ pub fn card_layout(
             Block::Question,
             question_height(q, question_state(s, q), other_open(s, panel)),
         );
-    } else if let Some(p) = s.approvable().filter(|_| s.is_permission_prompt()) {
-        let deny = editing.is_some_and(|e| e.kind == EditKind::Deny);
-        place(
-            Block::Approval,
-            approval_height(command_lines(&p.text), deny),
-        );
+    } else if let Some(look) = s
+        .pending
+        .as_ref()
+        .filter(|_| s.is_permission_prompt())
+        .map(|p| approval_look(p, snap, m))
+    {
+        let deny = editing.is_some_and(|e| e.kind == EditKind::Deny)
+            && matches!(
+                look,
+                ApprovalLook::Command {
+                    row: ApprovalRow::Buttons,
+                    ..
+                }
+            );
+        place(Block::Approval, look.height(deny));
+        approval = Some(look);
     } else if s.pending.is_none() && snap.approval_send(&s.id).is_some() {
         place(Block::SentLine, sent_line_height());
     } else if let Some(reply) = s.last_reply.as_deref().filter(|_| s.is_finished()) {
@@ -317,6 +391,7 @@ pub fn card_layout(
         height,
         title_h,
         title_w,
+        approval,
         blocks,
     }
 }

@@ -81,7 +81,9 @@ impl Store {
             | Action::Connect(_)
             | Action::NudgeRabbit(..)
             | Action::Resume(_)
-            | Action::MarkSeen(_) => true,
+            | Action::MarkSeen(_)
+            | Action::ShowCommand { .. } => true,
+            // Only a command the card shows whole can be approved or denied from the widget.
             Action::Approve {
                 session: id,
                 tool_id,
@@ -90,11 +92,15 @@ impl Store {
                 session: id,
                 tool_id,
                 ..
-            } => self.allows(&Editing {
-                id: id.clone(),
-                kind: EditKind::Deny,
-                tool_id: Some(tool_id.clone()),
-            }),
+            } => {
+                self.allows(&Editing {
+                    id: id.clone(),
+                    kind: EditKind::Deny,
+                    tool_id: Some(tool_id.clone()),
+                }) && session(id)
+                    .and_then(Session::approvable)
+                    .is_some_and(|p| command_is_shown(&self.shown_commands, p))
+            }
             Action::AskClaude { session: id, .. } | Action::Reply { session: id, .. } => {
                 session(id).is_some_and(Session::can_ask_claude)
             }
@@ -114,6 +120,20 @@ impl Store {
         if let Action::MarkSeen(id) = a {
             self.mark_seen(id);
             return Effect::Nothing;
+        }
+        if let Action::ShowCommand { session, tool_id } = a {
+            let open = self
+                .sessions
+                .iter()
+                .find(|s| &s.id == session)
+                .and_then(Session::approvable)
+                .is_some_and(|p| &p.tool_id == tool_id);
+            if !open {
+                return Effect::Beep;
+            }
+            self.shown_commands.insert(tool_id.clone());
+            // The app re-renders on `Run`, so the card grows at once.
+            return Effect::Run(a.clone());
         }
         match a.send_key() {
             Some(k) if !self.begin_send(k.clone(), at) => Effect::Beep,

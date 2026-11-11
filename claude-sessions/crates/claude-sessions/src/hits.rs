@@ -25,6 +25,11 @@ pub enum Target {
     ReplySend(String),
     /// `Dừng` on a busy card (two clicks).
     Stop(String),
+    /// `Xem đủ`: shows a long command whole, which unlocks `Cho phép` / `Từ chối…`.
+    ShowCommand {
+        session: String,
+        tool_id: String,
+    },
     Approve {
         session: String,
         tool_id: String,
@@ -145,6 +150,10 @@ impl Target {
                     Click::Panel(PanelChange::ArmStop(id.clone()))
                 }
             }
+            Target::ShowCommand { session, tool_id } => Click::Action(Action::ShowCommand {
+                session: session.clone(),
+                tool_id: tool_id.clone(),
+            }),
             Target::Approve { session, tool_id } => Click::Action(Action::Approve {
                 session: session.clone(),
                 tool_id: tool_id.clone(),

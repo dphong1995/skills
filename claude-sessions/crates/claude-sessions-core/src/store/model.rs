@@ -1,5 +1,6 @@
 //! The data the store hands out: `Session`, the link menu, and the `Snapshot` the views read.
 
+use super::{CommandFit, command_fit};
 use crate::closed_sessions::{self, ClosedSession};
 use crate::credentials::Service;
 use crate::feed::{BlockState, FeedQuestion};
@@ -261,6 +262,16 @@ pub enum Section {
     Running,
 }
 
+/// Whether the card shows the whole of `p`'s command (short, or long and expanded with `Xem đủ`); only then can it be
+/// approved or denied from the widget. The one rule the keys, the view and `still_valid` share.
+pub fn command_is_shown(shown: &HashSet<String>, p: &Pending) -> bool {
+    match command_fit(&p.text) {
+        CommandFit::Short => true,
+        CommandFit::Long => shown.contains(&p.tool_id),
+        CommandFit::TooLong => false,
+    }
+}
+
 /// Everything the views read. Holds timestamps, never "now" or formatted elapsed text, so it stays equal across idle ticks.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Snapshot {
@@ -282,6 +293,11 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
+    /// Whether the card shows the whole of `p`'s command; see `command_is_shown`.
+    pub fn is_command_shown(&self, p: &Pending) -> bool {
+        command_is_shown(&self.shown_commands, p)
+    }
+
     /// Session ids grouped by need, in display order: waiting for approval or an answer, done, running (busy and background work).
     pub fn sections(&self) -> Vec<(Section, Vec<String>)> {
         let pick = |want: &str| -> Vec<String> {

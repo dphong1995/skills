@@ -512,3 +512,23 @@ fn handle_key_applies_move_close_edit_and_pick() {
         KeyOutcome::Beep
     );
 }
+
+#[test]
+fn the_keys_and_the_view_share_one_shown_rule() {
+    for text in [
+        "ls".to_string(),
+        long_command(),
+        "x\n".repeat(20),
+        "y".repeat(300),
+    ] {
+        for shown in [false, true] {
+            let (mut snap, panel) = keyboard_setup(vec![waiting(&text)]);
+            if shown {
+                snap.shown_commands.insert("t1".into());
+            }
+            let p = snap.sessions[0].approvable().unwrap().clone();
+            let keyed = press("a", &snap, &panel) != KeyCommand::Beep;
+            assert_eq!(keyed, snap.is_command_shown(&p), "{text:?} shown={shown}");
+        }
+    }
+}

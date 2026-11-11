@@ -3,8 +3,7 @@
 use crate::action::Action;
 use crate::feed::{self, BlockState};
 use crate::panel_state::{EditKind, Editing, PanelState};
-use crate::store::{CommandFit, Snapshot, command_fit};
-use crate::transcript::Pending;
+use crate::store::Snapshot;
 use unicode_segmentation::UnicodeSegmentation;
 
 /// Virtual key codes the keyboard mode reads.
@@ -70,14 +69,6 @@ pub enum KeyOutcome {
     Consumed(Option<Action>),
     Beep,
     PassThrough,
-}
-
-fn command_shown(snapshot: &Snapshot, p: &Pending) -> bool {
-    match command_fit(&p.text) {
-        CommandFit::Short => true,
-        CommandFit::Long => snapshot.shown_commands.contains(&p.tool_id),
-        CommandFit::TooLong => false,
-    }
 }
 
 impl KeyCommand {
@@ -162,7 +153,7 @@ impl KeyCommand {
             return KeyCommand::Pick { question, label };
         }
         match key.as_str() {
-            "a" => match s.approvable().filter(|p| command_shown(snapshot, p)) {
+            "a" => match s.approvable().filter(|p| snapshot.is_command_shown(p)) {
                 Some(p) => KeyCommand::Action(Action::Approve {
                     session: id,
                     tool_id: p.tool_id.clone(),
@@ -170,7 +161,7 @@ impl KeyCommand {
                 None => KeyCommand::Beep,
             },
             // The `Từ chối…` button shows under the same condition.
-            "d" => match s.approvable().filter(|p| command_shown(snapshot, p)) {
+            "d" => match s.approvable().filter(|p| snapshot.is_command_shown(p)) {
                 Some(p) => KeyCommand::Edit(Editing {
                     id,
                     kind: EditKind::Deny,

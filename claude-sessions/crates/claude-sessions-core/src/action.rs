@@ -77,6 +77,11 @@ pub enum Action {
     Connect(Service),
     /// The mouse rested on a fresh row: clears its NEW mark (the hover dwell of the card).
     MarkSeen(String),
+    /// `Xem đủ`: expands a long command so it can be approved or denied from the widget.
+    ShowCommand {
+        session: String,
+        tool_id: String,
+    },
 }
 
 impl Action {
@@ -106,9 +111,11 @@ impl Action {
             Action::Stop(session) => Some(key(session, SendKind::Stop)),
             Action::Resume(c) => Some(key(&c.id, SendKind::Resume)),
             Action::Answer { session, .. } => Some(key(session, SendKind::Answer)),
-            Action::Jump(_) | Action::OpenLink(..) | Action::Connect(_) | Action::MarkSeen(_) => {
-                None
-            }
+            Action::Jump(_)
+            | Action::OpenLink(..)
+            | Action::Connect(_)
+            | Action::MarkSeen(_)
+            | Action::ShowCommand { .. } => None,
         }
     }
 
@@ -124,7 +131,8 @@ impl Action {
             | Action::Deny { session, .. }
             | Action::AskClaude { session, .. }
             | Action::Reply { session, .. }
-            | Action::Answer { session, .. } => session,
+            | Action::Answer { session, .. }
+            | Action::ShowCommand { session, .. } => session,
             Action::Resume(c) => &c.id,
             Action::Connect(_) => "",
         }

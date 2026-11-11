@@ -473,6 +473,81 @@ fn approval_buttons_resolve_to_approve_and_deny() {
     assert!(texts.contains(&"Cho phép") && texts.contains(&"Từ chối…"));
 }
 
+fn approval_with(command: &str) -> Session {
+    let mut s = approval("appr");
+    if let Some(PendingState::One(p)) = &mut s.pending {
+        p.text = command.into();
+    }
+    s
+}
+
+fn has_approve_or_deny(t: &[Target]) -> bool {
+    t.iter()
+        .any(|t| matches!(t, Target::Approve { .. } | Target::Deny { .. }))
+}
+
+#[test]
+fn a_long_command_has_no_buttons_until_xem_du_is_clicked() {
+    let long = "x".repeat(400);
+    let mut snap = snapshot(vec![approval_with(&long)]);
+    let panel = open();
+    let built = render(&snap, &panel);
+    let node = card(&built.scene, "appr");
+    let t = targets(&built, node);
+    assert!(texts(node).contains(&"Xem đủ"));
+    assert!(!texts(node).contains(&"Cho phép"));
+    assert!(!has_approve_or_deny(&t));
+    let show = Target::ShowCommand {
+        session: "appr".into(),
+        tool_id: "t1".into(),
+    };
+    assert!(t.contains(&show));
+    let env = ClickEnv {
+        snap: &snap,
+        panel: &panel,
+        now: now(),
+        text: "",
+        pr_prompt: "",
+    };
+    assert_eq!(
+        show.click(&env),
+        Click::Action(Action::ShowCommand {
+            session: "appr".into(),
+            tool_id: "t1".into()
+        })
+    );
+
+    snap.shown_commands.insert("t1".into());
+    let built = render(&snap, &panel);
+    let node = card(&built.scene, "appr");
+    let t = targets(&built, node);
+    assert!(texts(node).contains(&"Cho phép") && !texts(node).contains(&"Xem đủ"));
+    assert!(has_approve_or_deny(&t) && !t.contains(&show));
+}
+
+#[test]
+fn a_too_long_command_and_an_unclear_pending_only_jump_to_cmux() {
+    let snap = snapshot(vec![approval_with(&"x".repeat(1300))]);
+    let built = render(&snap, &open());
+    let node = card(&built.scene, "appr");
+    assert!(texts(node).contains(&"Lệnh dài, bấm để duyệt trong cmux"));
+    let t = targets(&built, node);
+    assert!(!has_approve_or_deny(&t));
+    assert!(t.contains(&Target::Jump("appr".into())));
+
+    let mut unclear = approval("appr");
+    unclear.pending = Some(PendingState::Unclear { count: 2 });
+    let snap = snapshot(vec![unclear]);
+    let built = render(&snap, &open());
+    let node = card(&built.scene, "appr");
+    assert!(texts(node).contains(&"Cần duyệt trong cmux"));
+    assert!(!has_approve_or_deny(&targets(&built, node)));
+    // The card body and the line both jump.
+    assert!(targets(&built, node).contains(&Target::Jump("appr".into())));
+    let l = card_layout(&snap.sessions[0], &snap, &open(), &FakeMeasure);
+    assert!(l.find(Block::Approval).is_some() && l.find(Block::Reply).is_none());
+}
+
 #[test]
 fn denying_adds_the_reason_field_and_a_send_that_resolves_to_deny() {
     let snap = snapshot(vec![approval("appr")]);
@@ -950,10 +1025,7 @@ fn a_shell_waiting_on_a_background_command_shows_the_hourglass() {
 
 #[test]
 fn every_block_takes_the_height_the_size_model_gives_it() {
-    use layout::{
-        approval_height, command_lines, editor_height, link_list_height, pr_row_height,
-        question_height, reply_height,
-    };
+    use layout::{editor_height, link_list_height, pr_row_height, question_height, reply_height};
     let mut panel = open();
     panel.hovering = true;
     panel.open_menus.insert("done".into());
@@ -972,9 +1044,7 @@ fn every_block_takes_the_height_the_size_model_gives_it() {
         assert_eq!(node.frame.h, l.height, "{}", s.id);
         for p in &l.blocks {
             let want = match p.block {
-                Block::Approval => {
-                    approval_height(command_lines(&s.approvable().unwrap().text), false)
-                }
+                Block::Approval => l.approval.unwrap().height(false),
                 Block::Question => {
                     let q = s.question.as_ref().unwrap();
                     question_height(q, layout::question_state(s, q), None)

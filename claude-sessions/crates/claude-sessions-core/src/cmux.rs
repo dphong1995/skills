@@ -153,7 +153,8 @@ pub fn keys_for(a: &Action) -> Vec<Key> {
         | Action::NudgeRabbit(..)
         | Action::Resume(_)
         | Action::Answer { .. }
-        | Action::MarkSeen(_) => vec![],
+        | Action::MarkSeen(_)
+        | Action::ShowCommand { .. } => vec![],
     }
 }
 

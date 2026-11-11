@@ -2,7 +2,7 @@
 
 use crate::support::*;
 use claude_sessions_core::panel_state::{EditKind, Editing, PanelState};
-use claude_sessions_core::store::{Action, Chime, NewMark, Section, Store};
+use claude_sessions_core::store::{Action, Chime, Effect, NewMark, Section, Store};
 use claude_sessions_core::tasks::Todo;
 use claude_sessions_core::transcript::{Pending, PendingState};
 use std::collections::{HashMap, HashSet};
@@ -1511,3 +1511,49 @@ mod chime;
 mod closed_feed;
 mod prs;
 mod sends;
+
+#[test]
+fn approve_and_deny_are_valid_only_for_a_command_shown_whole() {
+    let (dir, projects) = (make_temp_dir(), make_temp_dir());
+    let mut store = with_projects(dir.path(), projects.path());
+    let long = "x".repeat(300);
+    write_transcript(projects.path(), FRONTEND, "a", &[bash("t1", &long)]);
+    put(dir.path(), "a", "waiting", Some("permission prompt"), 0.0);
+    store.refresh(SystemTime::now());
+    let deny = Action::Deny {
+        session: "a".into(),
+        tool_id: "t1".into(),
+        reason: String::new(),
+    };
+    let show = |tool: &str| Action::ShowCommand {
+        session: "a".into(),
+        tool_id: tool.into(),
+    };
+    assert!(!store.still_valid(&approve("a", "t1")));
+    assert!(!store.still_valid(&deny));
+    // A tool that is not the open one cannot be shown.
+    assert_eq!(store.apply(&show("t9"), SystemTime::now()), Effect::Beep);
+    assert!(!store.still_valid(&approve("a", "t1")));
+    assert!(matches!(
+        store.apply(&show("t1"), SystemTime::now()),
+        Effect::Run(_)
+    ));
+    assert!(store.still_valid(&approve("a", "t1")));
+    assert!(store.still_valid(&deny));
+}
+
+#[test]
+fn a_too_long_command_is_never_valid_to_approve() {
+    let (dir, projects) = (make_temp_dir(), make_temp_dir());
+    let mut store = with_projects(dir.path(), projects.path());
+    write_transcript(
+        projects.path(),
+        FRONTEND,
+        "a",
+        &[bash("t1", &"x".repeat(1300))],
+    );
+    put(dir.path(), "a", "waiting", Some("permission prompt"), 0.0);
+    store.refresh(SystemTime::now());
+    store.shown_commands.insert("t1".into());
+    assert!(!store.still_valid(&approve("a", "t1")));
+}

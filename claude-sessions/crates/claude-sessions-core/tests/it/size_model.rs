@@ -6,7 +6,7 @@ use claude_sessions_core::geometry::Size;
 use claude_sessions_core::layout::{
     self, CARD_GAP, CLOSED_ITEM_H, CLOSED_ROW_H, EXPANDED_WIDTH, HEADER_HEIGHT, Item,
     MAX_EXPANDED_HEIGHT, PANEL_PAD, SECTION_TITLE_H, TextMeasure, approval_height, card_layout,
-    closed_height, collapsed_width, command_lines, expanded_layout, expanded_size, question_height,
+    closed_height, collapsed_width, expanded_layout, expanded_size, question_height,
 };
 use claude_sessions_core::panel_state::{EditKind, Editing, PanelState};
 use claude_sessions_core::quota::Quota;
@@ -138,8 +138,6 @@ fn approval_card_grows_per_command_line() {
     let three = card_h(approval("a", "ls\nls\nls"));
     assert!(three > one);
     assert_eq!(three - one, 2.0 * layout::CMD_LINE_H);
-    assert_eq!(command_lines("a\nb\nc"), 3);
-    assert_eq!(command_lines(&"x\n".repeat(50)), layout::CMD_MAX_LINES);
     assert!(approval_height(1, true) > approval_height(1, false));
 }
 
@@ -308,4 +306,111 @@ fn keyboard_mode_adds_the_hint_line_to_the_panel() {
             - expanded_size(&snap, &panel(), &FakeMeasure).h,
         layout::KEY_HINT_H
     );
+}
+
+use claude_sessions_core::layout::{ApprovalLook, ApprovalRow, Block};
+
+fn look(snap: &Snapshot, s: &Session) -> ApprovalLook {
+    card_layout(s, snap, &panel(), &FakeMeasure)
+        .approval
+        .expect("approval block")
+}
+
+#[test]
+fn command_fit_thresholds() {
+    use claude_sessions_core::store::{CommandFit, command_fit};
+    assert_eq!(command_fit("npm test"), CommandFit::Short);
+    // 4 lines, 240 characters including the 3 newlines
+    let four = [59, 59, 59, 60]
+        .iter()
+        .map(|n| "a".repeat(*n))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert_eq!(four.chars().count(), 240);
+    assert_eq!(command_fit(&four), CommandFit::Short);
+    assert_eq!(command_fit(&["a"; 5].join("\n")), CommandFit::Long);
+    assert_eq!(command_fit(&"a".repeat(241)), CommandFit::Long);
+    assert_eq!(command_fit(&["a"; 13].join("\n")), CommandFit::TooLong);
+    assert_eq!(command_fit(&"a".repeat(1201)), CommandFit::TooLong);
+    // Swift counts graphemes: 200 `e` + combining acute are 400 chars but 200 characters.
+    assert_eq!(command_fit(&"e\u{301}".repeat(200)), CommandFit::Short);
+}
+
+#[test]
+fn a_long_one_line_command_is_cut_until_xem_du_and_then_grows() {
+    // 400 characters wrap to 5 lines at 95 per line.
+    let s = approval("a", &"x".repeat(400));
+    let mut snap = snapshot(vec![s.clone()]);
+    assert_eq!(
+        look(&snap, &s),
+        ApprovalLook::Command {
+            lines: layout::CMD_COLLAPSED_LINES,
+            row: ApprovalRow::ShowFull
+        }
+    );
+    let cut = card_layout(&s, &snap, &panel(), &FakeMeasure);
+    assert_eq!(
+        cut.find(Block::Approval).unwrap().h,
+        approval_height(layout::CMD_COLLAPSED_LINES, false)
+    );
+    snap.shown_commands.insert("t1".into());
+    assert_eq!(
+        look(&snap, &s),
+        ApprovalLook::Command {
+            lines: 5,
+            row: ApprovalRow::Buttons
+        }
+    );
+    let full = card_layout(&s, &snap, &panel(), &FakeMeasure);
+    assert_eq!(full.height - cut.height, layout::CMD_LINE_H);
+}
+
+#[test]
+fn a_short_command_shows_its_buttons_at_once_and_a_200_char_line_wraps() {
+    let s = approval("a", &"x".repeat(200));
+    let snap = snapshot(vec![s.clone()]);
+    assert_eq!(
+        look(&snap, &s),
+        ApprovalLook::Command {
+            lines: 3,
+            row: ApprovalRow::Buttons
+        }
+    );
+}
+
+#[test]
+fn a_too_long_command_gets_the_jump_line_and_no_buttons() {
+    let s = approval("a", &"x".repeat(1201));
+    let mut snap = snapshot(vec![s.clone()]);
+    // Showing it does not help: it is too long for the widget.
+    snap.shown_commands.insert("t1".into());
+    let want = ApprovalLook::Command {
+        lines: layout::CMD_COLLAPSED_LINES,
+        row: ApprovalRow::JumpTooLong,
+    };
+    assert_eq!(look(&snap, &s), want);
+    assert_eq!(
+        card_layout(&s, &snap, &panel(), &FakeMeasure)
+            .find(Block::Approval)
+            .unwrap()
+            .h,
+        layout::CMD_MARGIN
+            + layout::command_box_height(layout::CMD_COLLAPSED_LINES)
+            + layout::BLOCK_GAP
+            + layout::NOTE_H
+    );
+}
+
+#[test]
+fn an_unclear_pending_gets_the_jump_line() {
+    let mut s = approval("a", "ls");
+    s.pending = Some(PendingState::Unclear { count: 2 });
+    let snap = snapshot(vec![s.clone()]);
+    assert_eq!(look(&snap, &s), ApprovalLook::Unclear);
+    let l = card_layout(&s, &snap, &panel(), &FakeMeasure);
+    assert_eq!(
+        l.find(Block::Approval).unwrap().h,
+        layout::BLOCK_GAP + layout::NOTE_H
+    );
+    assert!(l.find(Block::Reply).is_none());
 }
