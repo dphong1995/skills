@@ -26,3 +26,13 @@ pub fn quit() {
         NSApplication::sharedApplication(mtm).terminate(None);
     }
 }
+
+/// Whether a modal session (a dialog's `runModal`) is running: hotkeys and key-taking wait until it ends. False off the
+/// main thread.
+pub fn modal_open() -> bool {
+    MainThreadMarker::new().is_some_and(|mtm| {
+        NSApplication::sharedApplication(mtm)
+            .modalWindow()
+            .is_some()
+    })
+}

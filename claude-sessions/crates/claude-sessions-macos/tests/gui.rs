@@ -410,6 +410,12 @@ fn alert_level_is_above_panel_while_modal() -> Result<(), String> {
     if !seen.key {
         return Err("the alert is not the key window inside the session".into());
     }
+    if !seen.modal_open {
+        return Err("`modal_open` is false inside the modal session".into());
+    }
+    if claude_sessions_macos::app::modal_open() {
+        return Err("`modal_open` is true outside a modal session".into());
+    }
     match seen.server_layer {
         Some(layer) if layer > panel => Ok(()),
         Some(layer) => Err(format!(
@@ -455,7 +461,7 @@ fn newly_created_field_takes_focus() -> Result<(), String> {
     result
 }
 
-/// A window that is not key keeps its first responder: the field waits for `enter_keyboard`.
+/// A hidden (never key) window keeps its first responder: the field waits for `enter_keyboard`.
 fn field_created_while_not_key_is_not_forced() -> Result<(), String> {
     let panel = field_panel(false)?;
     if panel.is_key() {

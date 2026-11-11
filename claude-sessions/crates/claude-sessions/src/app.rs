@@ -509,7 +509,7 @@ fn handle_event(weak: &WeakState, key: &str, event: UiEvent) {
                 return;
             };
             let weak = weak.clone();
-            main_queue::async_main(move || show_menu(&weak, &view, at));
+            main_queue::run_loop_later(move || show_menu(&weak, &view, at));
         }
         // AppKit is inside the delegate method of the field: a render that freed the field (and its delegate) now would
         // free it while it runs. The draft is kept at once, so it always equals the text on screen when the render runs.
@@ -1056,6 +1056,8 @@ fn schedule_key_sync(weak: &WeakState) {
         }
         let steps: Vec<(WidgetPanelHandle, Step)> = with_state(&weak, |s| {
             let hidden = s.hidden();
+            // A dialog keeps key until it ends; the next sync after it takes the key.
+            let modal = mac_app::modal_open();
             let mut steps = Vec::new();
             for host in &mut s.panels {
                 if host.state.keyboard && host.key_monitor.is_none() {
@@ -1064,7 +1066,7 @@ fn schedule_key_sync(weak: &WeakState) {
                     host.key_monitor = None;
                 }
                 if host.state.wants_key() {
-                    if !hidden && !host.window.is_key() {
+                    if !hidden && !modal && !host.window.is_key() {
                         steps.push((host.window.clone(), Step::Take));
                     }
                 } else if host
@@ -1247,10 +1249,14 @@ fn register_hotkeys(weak: &WeakState) {
     });
 }
 
-/// The hotkey callback: runs its action on a later main-queue turn.
+/// The hotkey callback: runs its action on a later main-queue turn. While a dialog is open it only beeps: the action
+/// would take key from the dialog (`toggle_open`) or activate cmux under it (`jump_to_next_waiting`).
 fn hotkey_handler(weak: &WeakState, which: Which) -> impl Fn() + 'static {
     let weak = weak.clone();
     move || {
+        if mac_app::modal_open() {
+            return beep();
+        }
         let weak = weak.clone();
         main_queue::async_main(move || match which {
             Which::Open => toggle_open(&weak),

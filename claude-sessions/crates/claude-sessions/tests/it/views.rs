@@ -738,6 +738,34 @@ fn the_other_field_opens_under_its_question() {
 }
 
 #[test]
+fn the_other_field_needs_an_answer_edit() {
+    let snap = snapshot(vec![two_questions()]);
+    let reply = Editing {
+        id: "ask".into(),
+        kind: EditKind::Reply,
+        tool_id: None,
+    };
+    for editing in [None, Some(reply)] {
+        // The same panel without `other_key`: a reply edit has its own field, so the baseline is per case.
+        let mut plain = open();
+        plain.editing = editing.clone();
+        let (_, base) = only_card(&snap, &plain);
+        let mut panel = open();
+        panel.other_key = Some("ask#1".into());
+        panel.editing = editing;
+        let (built, l) = only_card(&snap, &panel);
+        assert!(
+            card(&built.scene, "ask")
+                .fields
+                .iter()
+                .all(|f| f.key != "other-ask#1"),
+            "no `Khác…` field without an answer edit"
+        );
+        assert_eq!(l.height, base.height, "no FIELD_H in the height");
+    }
+}
+
+#[test]
 fn sent_and_fallback_questions_are_one_note() {
     let mut s = question("ask");
     s.block = Some(BlockState::Sent);

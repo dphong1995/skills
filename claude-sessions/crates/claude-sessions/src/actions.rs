@@ -43,7 +43,7 @@ pub enum Completion {
         ok: bool,
     },
     Nudged(SendKey, bool),
-    /// `Action::Connect` passed its checks: the app shows the token dialog on a later main-queue turn.
+    /// `Action::Connect` passed its checks: the app shows the token dialog on a later run-loop turn.
     ConnectDialog(Service),
     /// The token check and Keychain write of `connect` finished: `failure` is the notice to show, `None` when stored.
     /// Never carries the token.

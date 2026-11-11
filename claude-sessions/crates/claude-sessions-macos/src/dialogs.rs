@@ -1,12 +1,14 @@
-//! Native modal dialogs (Swift `showDialog` and `editPrompt`). Token entry is always an `NSAlert` with an `NSSecureTextField`,
-//! never a scene field. Both functions spin a nested run loop: call them from `main_queue::run_loop_later` (a modal entered from an `async_main` block starves the main queue), never from inside an
-//! AppKit callback and never with the app state borrowed.
+//! Native modal dialogs (Swift `showDialog` and `editPrompt`). Token entry is always an `NSAlert` with an
+//! `NSSecureTextField`, never a scene field. Both functions spin a nested run loop: call them from
+//! `main_queue::run_loop_later` (a modal entered from an `async_main` block starves the main queue), never from inside
+//! an AppKit callback and never with the app state borrowed.
 
+use crate::NotificationObserver;
 use objc2::rc::Retained;
 use objc2_app_kit::{
     NSAlert, NSAlertFirstButtonReturn, NSAlertSecondButtonReturn, NSAlertThirdButtonReturn,
     NSApplication, NSBorderType, NSScrollView, NSSecureTextField, NSStatusWindowLevel, NSTextField,
-    NSTextView, NSView,
+    NSTextView, NSView, NSWindowDidBecomeKeyNotification,
 };
 use objc2_foundation::{MainThreadMarker, NSPoint, NSRect, NSSize, NSString};
 
@@ -64,13 +66,9 @@ pub(crate) fn run_alert(mtm: MainThreadMarker, alert: &NSAlert) -> isize {
 /// The level and `Esc` handling of `run_alert` without the activation.
 pub(crate) fn run_alert_above_panel(alert: &NSAlert) -> isize {
     alert.window().setLevel(NSStatusWindowLevel + 1);
-    let keeper = keep_above_panel(alert);
+    let _keeper = keep_above_panel(alert);
     let _escape = escape_closes(alert);
-    let response = alert.runModal();
-    if let Some(keeper) = keeper {
-        keeper.invalidate();
-    }
-    response
+    alert.runModal()
 }
 
 fn rect(x: f64, y: f64, w: f64, h: f64) -> NSRect {
@@ -157,24 +155,23 @@ pub fn ask_prompt(current: &str, info: &str) -> PromptAnswer {
     }
 }
 
-/// AppKit puts the alert back to `NSModalPanelWindowLevel` (8) when `runModal` orders it on screen, below the panel's 25;
-/// the level set before `runModal` only holds for the first instants. A timer on the modal mode puts it back each time.
-fn keep_above_panel(alert: &NSAlert) -> Option<Retained<objc2_foundation::NSTimer>> {
-    use block2::RcBlock;
-    use objc2_app_kit::NSModalPanelRunLoopMode;
-    use objc2_foundation::{NSRunLoop, NSTimer};
-    MainThreadMarker::new()?;
+/// AppKit puts the alert back to `NSModalPanelWindowLevel` (8) when it becomes key, below the panel's 25; the level set
+/// before `runModal` only holds until then. Each time the alert becomes key (after the session started, and again when the
+/// user comes back to the app) the level is put back, on a later main-queue turn so it lands after AppKit's own change.
+fn keep_above_panel(alert: &NSAlert) -> Vec<NotificationObserver> {
     let window = alert.window();
-    let block = RcBlock::new(move |_: std::ptr::NonNull<NSTimer>| {
-        if window.level() != NSStatusWindowLevel + 1 {
-            window.setLevel(NSStatusWindowLevel + 1);
-        }
-    });
-    // SAFETY: the block is copied by the timer and only runs on the main run loop.
-    let timer = unsafe { NSTimer::timerWithTimeInterval_repeats_block(0.02, true, &block) };
-    // SAFETY: a live timer and a run-loop mode constant, on the main thread.
-    unsafe { NSRunLoop::currentRunLoop().addTimer_forMode(&timer, NSModalPanelRunLoopMode) };
-    Some(timer)
+    // SAFETY: a plain notification-name constant.
+    let became_key = unsafe { NSWindowDidBecomeKeyNotification };
+    let target = window.clone();
+    vec![NotificationObserver::new(
+        became_key,
+        Some(&window),
+        move || {
+            if target.level() != NSStatusWindowLevel + 1 {
+                target.setLevel(NSStatusWindowLevel + 1);
+            }
+        },
+    )]
 }
 
 /// `Esc` ends the session with the second button's code (`Huỷ`) while the alert is key. AppKit binds `Esc` only to a

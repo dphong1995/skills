@@ -47,17 +47,18 @@ pub fn run_loop_later(work: impl FnOnce() + 'static) {
     let Some(main) = CFRunLoop::main() else {
         return;
     };
+    // SAFETY: a CF constant, read on the main thread.
+    let Some(mode) = (unsafe { kCFRunLoopDefaultMode }) else {
+        return;
+    };
     let work = Cell::new(Some(work));
     let block = RcBlock::new(move || {
         if let Some(work) = work.take() {
             work();
         }
     });
-    // SAFETY: the block is copied by the run loop and only runs on the main run loop; the mode is a CF constant.
-    unsafe {
-        let mode = kCFRunLoopDefaultMode.map(|m| m.as_ref());
-        main.perform_block(mode, Some(&block));
-    }
+    // SAFETY: the block is copied by the run loop and only runs on the main run loop; the mode is a live CF constant.
+    unsafe { main.perform_block(Some(mode.as_ref()), Some(&block)) };
     main.wake_up();
 }
 
