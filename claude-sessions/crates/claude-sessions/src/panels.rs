@@ -62,8 +62,7 @@ pub fn inside_widget(scene: &Scene, local: Point) -> bool {
 }
 
 /// The session whose card contains `local` (scene points). Cards after the scroll node live in the scrolled content: they only
-/// answer inside the viewport, at `local` moved down by the scroll `offset`. The app has no scroll offset to give yet, so
-/// it passes 0, which is right until the list is scrolled.
+/// answer inside the viewport, at `local` moved down by the scroll `offset` (`SceneView::scroll_offset`).
 pub fn row_at(scene: &Scene, local: Point, offset: f64) -> Option<String> {
     let scrolled_from = scene.nodes.iter().position(|n| n.scroll.is_some());
     scene.nodes.iter().enumerate().find_map(|(i, node)| {
@@ -184,7 +183,7 @@ impl PanelHost {
     /// The session whose card is under the pointer.
     pub fn row_under_pointer(&self) -> Option<String> {
         let local = self.local(mouse::pointer())?;
-        row_at(&self.scene, local, 0.0)
+        row_at(&self.scene, local, self.window.view().scroll_offset())
     }
 
     fn local(&self, pointer: Point) -> Option<Point> {

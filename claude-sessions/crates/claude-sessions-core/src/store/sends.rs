@@ -83,15 +83,10 @@ impl Store {
             | Action::Resume(_)
             | Action::MarkSeen(_)
             | Action::ShowCommand { .. } => true,
-            // Only a command the card shows whole can be approved or denied from the widget.
+            // Only a command the card shows whole can be approved from the widget; Deny needs only the open tool, as in Swift.
             Action::Approve {
                 session: id,
                 tool_id,
-            }
-            | Action::Deny {
-                session: id,
-                tool_id,
-                ..
             } => {
                 self.allows(&Editing {
                     id: id.clone(),
@@ -101,6 +96,15 @@ impl Store {
                     .and_then(Session::approvable)
                     .is_some_and(|p| command_is_shown(&self.shown_commands, p))
             }
+            Action::Deny {
+                session: id,
+                tool_id,
+                ..
+            } => self.allows(&Editing {
+                id: id.clone(),
+                kind: EditKind::Deny,
+                tool_id: Some(tool_id.clone()),
+            }),
             Action::AskClaude { session: id, .. } | Action::Reply { session: id, .. } => {
                 session(id).is_some_and(Session::can_ask_claude)
             }

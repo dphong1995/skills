@@ -206,6 +206,15 @@ impl SceneView {
         *self.ivars().handler.borrow_mut() = Some(handler);
     }
 
+    /// How far the scrolled list is scrolled: the clip view's bounds origin y, 0 while the scene has no scroll host.
+    pub fn scroll_offset(&self) -> f64 {
+        self.ivars()
+            .scroll
+            .borrow()
+            .as_ref()
+            .map_or(0.0, |s| s.view.contentView().bounds().origin.y)
+    }
+
     /// The first native text field in the scene, to give the keyboard to.
     pub fn first_field(&self) -> Option<Retained<NSTextField>> {
         self.ivars()
@@ -229,15 +238,12 @@ impl SceneView {
 
     fn hit_at(&self, at: Point) -> Option<HitId> {
         let scene = self.ivars().scene.borrow();
-        let scroll = self.ivars().scroll.borrow();
         let scrolled_from = scene
             .nodes
             .iter()
             .position(|n| n.scroll.is_some())
             .unwrap_or(usize::MAX);
-        let offset = scroll
-            .as_ref()
-            .map_or(0.0, |s| s.view.contentView().bounds().origin.y);
+        let offset = self.scroll_offset();
         let viewport = scene.nodes.get(scrolled_from).map(|n| n.frame);
         scene.nodes.iter().enumerate().rev().find_map(|(i, node)| {
             if i == scrolled_from {

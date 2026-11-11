@@ -8,7 +8,7 @@ mod resign;
 
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: cargo xtask bundle | dist --version X.Y.Z[-rc.N] | resign --identity <name> | hid <move x y | click x y | rightclick x y | drag x1 y1 x2 y2 | keys <combo>>";
+const USAGE: &str = "usage: cargo xtask bundle | dist --version X.Y.Z[-rc.N] | resign --identity <name> [--notarize] | hid <move x y | click x y | rightclick x y | drag x1 y1 x2 y2 | keys <combo>>";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();

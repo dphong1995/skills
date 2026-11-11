@@ -1513,7 +1513,7 @@ mod prs;
 mod sends;
 
 #[test]
-fn approve_and_deny_are_valid_only_for_a_command_shown_whole() {
+fn approve_is_valid_only_for_a_command_shown_whole_deny_follows_the_open_tool() {
     let (dir, projects) = (make_temp_dir(), make_temp_dir());
     let mut store = with_projects(dir.path(), projects.path());
     let long = "x".repeat(300);
@@ -1530,7 +1530,13 @@ fn approve_and_deny_are_valid_only_for_a_command_shown_whole() {
         tool_id: tool.into(),
     };
     assert!(!store.still_valid(&approve("a", "t1")));
-    assert!(!store.still_valid(&deny));
+    // Swift's `stillValid` does not gate Deny on the command being shown; only the open tool counts.
+    assert!(store.still_valid(&deny));
+    assert!(!store.still_valid(&Action::Deny {
+        session: "a".into(),
+        tool_id: "t9".into(),
+        reason: String::new(),
+    }));
     // A tool that is not the open one cannot be shown.
     assert_eq!(store.apply(&show("t9"), SystemTime::now()), Effect::Beep);
     assert!(!store.still_valid(&approve("a", "t1")));

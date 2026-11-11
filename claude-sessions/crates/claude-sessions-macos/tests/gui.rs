@@ -362,6 +362,49 @@ fn scroll_host_is_removed() -> Result<(), String> {
     Ok(())
 }
 
+/// `scroll_offset` is 0 without a scroll host and follows the clip view's bounds origin once the list scrolls.
+fn scroll_offset_follows_the_clip_view() -> Result<(), String> {
+    use claude_sessions_core::scene::{Node, Rect, Size};
+    use claude_sessions_macos::ui::SceneView;
+    use objc2::rc::Retained;
+    use objc2_app_kit::NSScrollView;
+    use objc2_foundation::{MainThreadMarker, NSPoint, NSSize};
+
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(200.0, 60.0));
+    let mut scene = field_scene("", "x");
+    if view.scroll_offset() != 0.0 {
+        return Err("offset without a scene".into());
+    }
+    scene.nodes.insert(
+        0,
+        Node {
+            key: "scroller".into(),
+            frame: Rect::new(0.0, 0.0, 200.0, 60.0),
+            cmds: vec![],
+            hits: vec![],
+            fields: vec![],
+            spinner: None,
+            tips: vec![],
+            scroll: Some(Size { w: 200.0, h: 400.0 }),
+        },
+    );
+    view.set_scene(&scene);
+    if view.scroll_offset() != 0.0 {
+        return Err(format!("unscrolled offset {}", view.scroll_offset()));
+    }
+    let host: Retained<NSScrollView> = view
+        .subviews()
+        .iter()
+        .find_map(|v| v.downcast::<NSScrollView>().ok())
+        .ok_or("no scroll view")?;
+    host.contentView().scrollToPoint(NSPoint::new(0.0, 40.0));
+    if view.scroll_offset() != 40.0 {
+        return Err(format!("scrolled offset {}", view.scroll_offset()));
+    }
+    Ok(())
+}
+
 /// Fields draw their text and nodes after the scroll node stay inside its viewport.
 fn png_draws_fields_and_clips_scroll() -> Result<(), String> {
     use claude_sessions_core::scene::{Appearance, Rect, Size};
@@ -488,6 +531,10 @@ fn main() {
         field_text_flows_and_survives(),
     ));
     results.push(("scroll_host_is_removed", scroll_host_is_removed()));
+    results.push((
+        "scroll_offset_follows_the_clip_view",
+        scroll_offset_follows_the_clip_view(),
+    ));
     results.push((
         "png_draws_fields_and_clips_scroll",
         png_draws_fields_and_clips_scroll(),
