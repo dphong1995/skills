@@ -5,7 +5,7 @@ use crate::pull_requests::PRStatus;
 use crate::scene::Run;
 use crate::store::{ItemTone, Session};
 use crate::time::secs_since;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 /// The state line of a card.
 pub fn status_text(s: &Session) -> String {
@@ -46,6 +46,25 @@ pub fn elapsed(since: Option<SystemTime>, now: SystemTime) -> String {
     } else {
         format!("{}h{:02}", s / 3600, (s % 3600) / 60)
     }
+}
+
+/// How long until `elapsed(Some(since), now)` shows a different string: 1 s under a minute, then the time to the next
+/// minute boundary (`12m` and `1h05` change on whole minutes).
+pub fn next_label_change(since: SystemTime, now: SystemTime) -> Duration {
+    let secs = secs_since(now, since).max(0.0);
+    if secs < 60.0 {
+        return Duration::from_secs(1);
+    }
+    let boundary = ((secs / 60.0).floor() + 1.0) * 60.0;
+    Duration::from_secs_f64(boundary - secs)
+}
+
+/// How long until `closed_ago(since, now)` shows a different string: the next minute under an hour, the next hour after.
+pub fn next_closed_change(since: SystemTime, now: SystemTime) -> Duration {
+    let secs = secs_since(now, since).max(0.0);
+    let step = if secs < 3600.0 { 60.0 } else { 3600.0 };
+    let boundary = ((secs / step).floor() + 1.0) * step;
+    Duration::from_secs_f64(boundary - secs)
 }
 
 /// `12p` / `3h` since a session closed.

@@ -1,6 +1,7 @@
 //! The AppKit renderer for a `Scene`: panel handle, scene view, events and the offscreen PNG.
 
 mod draw;
+pub mod motion;
 mod node_view;
 mod png;
 mod scene_view;
@@ -48,6 +49,7 @@ impl WidgetPanelHandle {
         let panel = panel::new_widget_panel(mtm, frame);
         let view = SceneView::new(mtm, frame.size);
         view.set_handler(on_event);
+        SceneView::observe_reduce_motion(&view);
         panel.setContentView(Some(&view));
         Some(Self { panel, view })
     }
@@ -67,9 +69,12 @@ impl WidgetPanelHandle {
 
     pub fn show(&self) {
         self.panel.orderFrontRegardless();
+        self.view.set_motion_live(true);
     }
 
+    /// Hidden panels keep no looping animation.
     pub fn hide(&self) {
+        self.view.set_motion_live(false);
         self.panel.orderOut(None);
     }
 

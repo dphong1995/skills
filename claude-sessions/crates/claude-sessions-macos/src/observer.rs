@@ -1,6 +1,7 @@
 //! Registrations that undo themselves when dropped.
 
 use block2::RcBlock;
+use objc2::Message;
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::runtime::ProtocolObject;
@@ -28,6 +29,7 @@ impl Drop for EventMonitor {
 
 /// A notification-center observer; main thread only.
 pub struct NotificationObserver {
+    center: Retained<NSNotificationCenter>,
     token: Retained<ProtocolObject<dyn NSObjectProtocol>>,
 }
 
@@ -38,23 +40,36 @@ impl NotificationObserver {
         object: Option<&AnyObject>,
         callback: impl Fn() + 'static,
     ) -> Self {
+        Self::on(
+            &NSNotificationCenter::defaultCenter(),
+            name,
+            object,
+            callback,
+        )
+    }
+
+    /// Like `new`, on `center` (the workspace has its own).
+    pub(crate) fn on(
+        center: &NSNotificationCenter,
+        name: &NSNotificationName,
+        object: Option<&AnyObject>,
+        callback: impl Fn() + 'static,
+    ) -> Self {
         let block = RcBlock::new(move |_: NonNull<NSNotification>| callback());
         // SAFETY: the block is copied by the center; the callback is only run on the posting (main) thread.
         let token = unsafe {
-            NSNotificationCenter::defaultCenter().addObserverForName_object_queue_usingBlock(
-                Some(name),
-                object,
-                None,
-                &block,
-            )
+            center.addObserverForName_object_queue_usingBlock(Some(name), object, None, &block)
         };
-        Self { token }
+        Self {
+            center: center.retain(),
+            token,
+        }
     }
 }
 
 impl Drop for NotificationObserver {
     fn drop(&mut self) {
         // SAFETY: `token` came from `addObserverForName...` on the default center.
-        unsafe { NSNotificationCenter::defaultCenter().removeObserver(self.token.as_ref()) };
+        unsafe { self.center.removeObserver(self.token.as_ref()) };
     }
 }

@@ -4,5 +4,6 @@
 pub mod app;
 pub mod hits;
 pub mod panels;
+pub mod rebuild;
 pub mod theme;
 pub mod views;

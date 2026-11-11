@@ -1,6 +1,6 @@
 #!/bin/bash
-# Regenerates docs/images/*.png from the snapshot tests (transparent background, trimmed to the widget).
-# Extra arguments go to `swift test` (e.g. -Xswiftc -plugin-path -Xswiftc <CLT testing plugins dir> in a sandbox).
+# Regenerates docs/images/*.png from the Rust snapshot test (offscreen `render_png`, transparent background, trimmed to the
+# widget): no window is opened. Extra arguments go to `cargo test` (before the `--`).
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -13,12 +13,14 @@ names=(
 
 command -v magick >/dev/null || { echo "magick (ImageMagick) not found" >&2; exit 1; }
 
-rm -rf .build/snapshots
-SNAPSHOT_TRANSPARENT=1 swift test --filter SnapshotTests "$@"
+export PATH="$HOME/.cargo/bin:$PATH"
+snaps=target/snapshots
+rm -rf "$snaps"
+CLAUDE_SESSIONS_GUI_TESTS=1 cargo test -p claude-sessions --test gui "$@"
 
 missing=0
 for n in "${names[@]}"; do
-  if [ ! -f ".build/snapshots/$n.png" ]; then
+  if [ ! -f "$snaps/$n.png" ]; then
     echo "missing snapshot: $n" >&2
     missing=1
   fi
@@ -27,5 +29,5 @@ done
 
 rm -rf docs/images && mkdir -p docs/images
 for n in "${names[@]}"; do
-  magick ".build/snapshots/$n.png" -trim +repage -strip -define png:exclude-chunks=date,time "docs/images/$n.png"
+  magick "$snaps/$n.png" -trim +repage -strip -define png:exclude-chunks=date,time "docs/images/$n.png"
 done

@@ -6,7 +6,7 @@
 
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
-use std::time::SystemTime;
+use std::time::{Instant, SystemTime};
 
 use claude_sessions_core::layout;
 use claude_sessions_core::panel_state::PanelState;
@@ -35,7 +35,15 @@ struct AppState {
     panels: Vec<PanelHost>,
     snap: Snapshot,
     panel: PanelState,
+    /// The scene clock: `base` plus the time since `started`, so labels move while the fixtures stay deterministic at start.
     now: SystemTime,
+    base: SystemTime,
+    started: Instant,
+}
+
+/// `CLAUDE_SESSIONS_FRAME_LOG=1` also logs every scene rebuild (the renderer logs every node redraw).
+fn frame_log() -> bool {
+    std::env::var_os("CLAUDE_SESSIONS_FRAME_LOG").is_some()
 }
 
 /// The fixture state named by `CLAUDE_SESSIONS_FIXTURE` (default `07-mixed-hover`), built in a temp dir that is removed
@@ -104,8 +112,12 @@ fn with_state<R>(weak: &WeakState, f: impl FnOnce(&mut AppState) -> R) -> Option
 }
 
 impl AppState {
-    fn render(&mut self) {
+    /// Rebuilds every panel's scene; `why` is only for the frame log.
+    fn render(&mut self, why: &str) {
         for host in &mut self.panels {
+            if frame_log() {
+                eprintln!("rebuild {} {why}", host.key);
+            }
             let mut panel = self.panel.clone();
             panel.hovering = host.expanded;
             let scene = place(
@@ -120,6 +132,7 @@ impl AppState {
             );
             host.window.set_scene(&scene);
             host.scene = scene;
+            host.gate.built(&self.snap, &panel, host.expanded, self.now);
         }
     }
 
@@ -134,7 +147,7 @@ impl AppState {
             }
         }
         if changed {
-            self.render();
+            self.render("pointer");
         }
         for host in &self.panels {
             let inside = host.pointer_inside();
@@ -144,8 +157,17 @@ impl AppState {
         }
     }
 
+    /// Moves the clock, then rebuilds only the panels whose visible text or snapshot changed.
     fn on_tick(&mut self) {
+        self.now = self.base + self.started.elapsed();
         self.track_mouse();
+        let due = self
+            .panels
+            .iter()
+            .any(|h| h.gate.needs_rebuild(&self.snap, h.expanded, self.now));
+        if due {
+            self.render("tick");
+        }
     }
 }
 
@@ -193,7 +215,7 @@ fn sync_panels(shared: &Shared) {
         log_props(&host, "created");
         state.panels.push(host);
     }
-    state.render();
+    state.render("screens");
 }
 
 fn handle_event(weak: &WeakState, key: &str, event: UiEvent) {
@@ -269,7 +291,7 @@ fn enter_keyboard_mode(weak: &WeakState) {
         host.expanded = true;
         let window = host.window.clone();
         let key = host.key.clone();
-        s.render();
+        s.render("keyboard");
         Some((window, key))
     })
     .flatten();
@@ -330,6 +352,8 @@ fn start() -> Running {
         snap,
         panel,
         now,
+        base: now,
+        started: Instant::now(),
     }));
     sync_panels(&shared);
 

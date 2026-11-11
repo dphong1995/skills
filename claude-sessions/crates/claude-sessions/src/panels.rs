@@ -1,5 +1,6 @@
 //! One panel per display: creation, placement and the pointer test (`syncPanels`, `trackMouse`).
 
+use crate::rebuild::RebuildGate;
 use claude_sessions_core::layout::CANVAS;
 use claude_sessions_core::scene::{Point, Rect, Scene};
 use claude_sessions_macos::NotificationObserver;
@@ -15,6 +16,7 @@ pub struct PanelHost {
     pub expanded: bool,
     pub keyboard: bool,
     pub scene: Scene,
+    pub gate: RebuildGate,
     pub key_monitor: Option<KeyMonitor>,
     _resign: NotificationObserver,
 }
@@ -41,6 +43,7 @@ impl PanelHost {
             expanded: false,
             keyboard: false,
             scene: Scene::default(),
+            gate: RebuildGate::default(),
             key_monitor: None,
             _resign: resign,
         })

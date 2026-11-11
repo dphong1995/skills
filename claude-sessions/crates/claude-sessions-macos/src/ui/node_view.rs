@@ -3,7 +3,9 @@
 use std::cell::RefCell;
 use std::sync::OnceLock;
 
-use claude_sessions_core::scene::{Appearance, DrawCmd, Field, Rect, Tip};
+use claude_sessions_core::scene::{
+    Appearance, DrawCmd, Field, Rect, Tip, appeared_symbols, colors_only_changed,
+};
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::{DefinedClass, MainThreadOnly, define_class, msg_send};
@@ -11,15 +13,20 @@ use objc2_app_kit::{NSAppearanceCustomization, NSColor, NSEvent, NSTextField, NS
 use objc2_core_foundation::{CGPoint, CGRect, CGSize};
 use objc2_core_graphics::CGPath;
 use objc2_foundation::{MainThreadMarker, NSNumber, NSObjectProtocol, NSRect, NSString, ns_string};
-use objc2_quartz_core::{CABasicAnimation, CAMediaTiming, CAShapeLayer};
+use objc2_quartz_core::{
+    CABasicAnimation, CALayer, CAMediaTiming, CAShapeLayer, CATransaction, CATransition,
+};
 
 use super::draw::{draw_cmds, ns_rect};
+use super::motion;
 
 pub(crate) struct NodeIvars {
     key: String,
     cmds: RefCell<Vec<DrawCmd>>,
     fields: RefCell<Vec<(String, Retained<NSTextField>)>>,
     spinner: RefCell<Option<Retained<CAShapeLayer>>>,
+    /// One-shot sparkle pulses still running; each removes itself when done.
+    pulses: RefCell<Vec<Retained<CAShapeLayer>>>,
     /// AppKit does not retain a tooltip's owner, so the strings live here.
     tips: RefCell<Vec<Retained<NSString>>>,
 }
@@ -69,6 +76,7 @@ impl NodeView {
             cmds: RefCell::new(Vec::new()),
             fields: RefCell::new(Vec::new()),
             spinner: RefCell::new(None),
+            pulses: RefCell::new(Vec::new()),
             tips: RefCell::new(Vec::new()),
         });
         // SAFETY: `initWithFrame:` is NSView's designated initialiser.
@@ -77,9 +85,77 @@ impl NodeView {
         this
     }
 
-    pub(crate) fn set_cmds(&self, cmds: &[DrawCmd]) {
-        *self.ivars().cmds.borrow_mut() = cmds.to_vec();
+    /// With `animate`, a pure recolour cross-fades and a sparkle that was not there pulses once.
+    pub(crate) fn set_cmds(&self, cmds: &[DrawCmd], animate: bool) {
+        let old = std::mem::replace(&mut *self.ivars().cmds.borrow_mut(), cmds.to_vec());
+        if animate {
+            if colors_only_changed(&old, cmds)
+                && let Some(layer) = self.layer()
+            {
+                // A transition's default type is a fade; it blends the layer's old and new contents.
+                let fade = CATransition::animation();
+                fade.setDuration(motion::COLOR_SECS);
+                layer.addAnimation_forKey(&fade, Some(ns_string!("colour")));
+            }
+            for rect in appeared_symbols(&old, cmds, "sparkle") {
+                self.pulse(rect);
+            }
+        }
         self.setNeedsDisplay(true);
+    }
+
+    /// A ring that grows and fades once at `rect`, then removes itself. Runs in the render server.
+    fn pulse(&self, rect: Rect) {
+        let Some(host) = self.layer() else { return };
+        let ring = CAShapeLayer::layer();
+        let frame = CGRect::new(CGPoint::new(rect.x, rect.y), CGSize::new(rect.w, rect.h));
+        let inner = CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(rect.w, rect.h));
+        // SAFETY: a null transform means identity.
+        let path = unsafe { CGPath::with_ellipse_in_rect(inner, std::ptr::null()) };
+        ring.setPath(Some(&path));
+        ring.setFillColor(None);
+        ring.setStrokeColor(Some(&NSColor::systemYellowColor().CGColor()));
+        ring.setLineWidth(1.5);
+        ring.setFrame(frame);
+        ring.setOpacity(0.0);
+        let number = |v: f64| -> Retained<AnyObject> { NSNumber::new_f64(v).into() };
+        let animation = |key_path: &objc2_foundation::NSString, from: f64, to: f64| {
+            let a = CABasicAnimation::animationWithKeyPath(Some(key_path));
+            // SAFETY: from/to are NSNumbers, which these key paths take.
+            unsafe {
+                a.setFromValue(Some(&number(from)));
+                a.setToValue(Some(&number(to)));
+            }
+            a.setDuration(motion::SPARKLE_SECS);
+            a
+        };
+        host.addSublayer(&ring);
+        let mut pulses = self.ivars().pulses.borrow_mut();
+        pulses.retain(|l| l.superlayer().is_some());
+        pulses.push(ring.clone());
+        drop(pulses);
+        let me = ring.clone();
+        let done = block2::RcBlock::new(move || me.removeFromSuperlayer());
+        CATransaction::begin();
+        // SAFETY: the block is copied by the transaction and only removes a layer on the main thread.
+        unsafe { CATransaction::setCompletionBlock(Some(&done)) };
+        ring.addAnimation_forKey(
+            &animation(ns_string!("transform.scale"), 1.0, 1.9),
+            Some(ns_string!("pulse-scale")),
+        );
+        ring.addAnimation_forKey(
+            &animation(ns_string!("opacity"), 0.9, 0.0),
+            Some(ns_string!("pulse-fade")),
+        );
+        CATransaction::commit();
+    }
+
+    /// Drops every running one-shot pulse.
+    pub(crate) fn clear_pulses(&self) {
+        for layer in self.ivars().pulses.borrow_mut().drain(..) {
+            layer.removeAllAnimations();
+            layer.removeFromSuperlayer();
+        }
     }
 
     /// Replaces the tooltips; the owner of each is its text (AppKit shows the owner's description).
@@ -132,8 +208,9 @@ impl NodeView {
         self.ivars().fields.borrow().first().map(|(_, v)| v.clone())
     }
 
-    /// A rotating ring in `rect`; `None` removes it. The rotation runs in the render server.
-    pub(crate) fn set_spinner(&self, rect: Option<Rect>) {
+    /// A ring in `rect`; `None` removes it. With `spin` it rotates (in the render server), otherwise it stands still: the
+    /// caller passes `spin` only while the node is visible in an expanded panel and Reduce Motion is off.
+    pub(crate) fn set_spinner(&self, rect: Option<Rect>, spin: bool) {
         let mut slot = self.ivars().spinner.borrow_mut();
         let Some(rect) = rect else {
             if let Some(layer) = slot.take() {
@@ -145,6 +222,7 @@ impl NodeView {
         let frame = CGRect::new(CGPoint::new(rect.x, rect.y), CGSize::new(rect.w, rect.h));
         if let Some(layer) = slot.as_ref() {
             layer.setFrame(frame);
+            set_spinning(layer, spin);
             return;
         }
         let Some(host) = self.layer() else {
@@ -163,17 +241,38 @@ impl NodeView {
         layer.setLineWidth(2.0);
         layer.setStrokeEnd(0.75);
         layer.setFrame(frame);
-        let spin = CABasicAnimation::animationWithKeyPath(Some(ns_string!("transform.rotation.z")));
-        let turn = |angle: f64| -> Retained<AnyObject> { NSNumber::new_f64(angle).into() };
-        // SAFETY: from/to are NSNumbers, which the rotation key path takes.
-        unsafe {
-            spin.setFromValue(Some(&turn(0.0)));
-            spin.setToValue(Some(&turn(std::f64::consts::TAU)));
-        }
-        spin.setDuration(1.0);
-        spin.setRepeatCount(f32::INFINITY);
-        layer.addAnimation_forKey(&spin, Some(ns_string!("spin")));
+        set_spinning(&layer, spin);
         host.addSublayer(&layer);
         *slot = Some(layer);
     }
+
+    /// Starts or stops the rotation of the spinner this node has, if any.
+    pub(crate) fn set_spin(&self, spin: bool) {
+        if let Some(layer) = self.ivars().spinner.borrow().as_ref() {
+            set_spinning(layer, spin);
+        }
+    }
+}
+
+/// Adds the endless rotation to `layer`, or removes every animation from it: a stopped ring costs nothing.
+fn set_spinning(layer: &CAShapeLayer, spin: bool) {
+    let layer: &CALayer = layer;
+    if !spin {
+        layer.removeAnimationForKey(ns_string!("spin"));
+        return;
+    }
+    // SAFETY: a plain getter.
+    if unsafe { layer.animationForKey(ns_string!("spin")) }.is_some() {
+        return;
+    }
+    let spin = CABasicAnimation::animationWithKeyPath(Some(ns_string!("transform.rotation.z")));
+    let turn = |angle: f64| -> Retained<AnyObject> { NSNumber::new_f64(angle).into() };
+    // SAFETY: from/to are NSNumbers, which the rotation key path takes.
+    unsafe {
+        spin.setFromValue(Some(&turn(0.0)));
+        spin.setToValue(Some(&turn(std::f64::consts::TAU)));
+    }
+    spin.setDuration(1.0);
+    spin.setRepeatCount(f32::INFINITY);
+    layer.addAnimation_forKey(&spin, Some(ns_string!("spin")));
 }

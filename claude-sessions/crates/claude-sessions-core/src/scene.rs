@@ -274,6 +274,55 @@ pub fn changed_nodes<'a>(old: &'a Scene, new: &'a Scene) -> SceneDiff<'a> {
     diff
 }
 
+/// `cmd` with every colour replaced by one fixed colour: two commands that are equal this way differ only in colour.
+fn without_colors(cmd: &DrawCmd) -> DrawCmd {
+    let c = Color {
+        token: ThemeColor::Text,
+        alpha: 1.0,
+    };
+    let mut cmd = cmd.clone();
+    match &mut cmd {
+        DrawCmd::RoundedRect { fill, stroke, .. } => {
+            *fill = fill.map(|_| c);
+            *stroke = stroke.map(|_| c);
+        }
+        DrawCmd::Text { color, .. }
+        | DrawCmd::Rich { color, .. }
+        | DrawCmd::Symbol { color, .. }
+        | DrawCmd::Line { color, .. }
+        | DrawCmd::Arc { color, .. } => *color = c,
+        DrawCmd::Image { .. } => {}
+    }
+    cmd
+}
+
+/// The two command lists are the same drawing in different colours (a status change), so the renderer may cross-fade them.
+pub fn colors_only_changed(old: &[DrawCmd], new: &[DrawCmd]) -> bool {
+    old != new
+        && old.len() == new.len()
+        && old
+            .iter()
+            .zip(new)
+            .all(|(a, b)| without_colors(a) == without_colors(b))
+}
+
+/// The rects of the `name` symbols in `new` that `old` did not draw at the same place: a mark that just appeared.
+pub fn appeared_symbols(old: &[DrawCmd], new: &[DrawCmd], name: &str) -> Vec<Rect> {
+    let rects = |cmds: &[DrawCmd]| -> Vec<Rect> {
+        cmds.iter()
+            .filter_map(|c| match c {
+                DrawCmd::Symbol { name: n, rect, .. } if n == name => Some(*rect),
+                _ => None,
+            })
+            .collect()
+    };
+    let before = rects(old);
+    rects(new)
+        .into_iter()
+        .filter(|r| !before.contains(r))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -341,5 +390,41 @@ mod tests {
         assert_eq!(flags, [("b", true, false), ("c", false, true)]);
         let gone = changed_nodes(&new, &old);
         assert_eq!(gone.removed, [&NodeKey::from("d")]);
+    }
+    fn symbol(name: &str, x: f64, token: ThemeColor) -> DrawCmd {
+        DrawCmd::Symbol {
+            name: name.into(),
+            rect: Rect::new(x, 0.0, 10.0, 10.0),
+            color: Color { token, alpha: 1.0 },
+            weight: Weight::Regular,
+        }
+    }
+
+    #[test]
+    fn a_recolour_is_colors_only() {
+        let a = [symbol("circle", 0.0, ThemeColor::Text)];
+        let b = [symbol("circle", 0.0, ThemeColor::Green)];
+        assert!(colors_only_changed(&a, &b));
+        assert!(!colors_only_changed(&a, &a));
+        assert!(!colors_only_changed(
+            &a,
+            &[symbol("circle", 5.0, ThemeColor::Green)]
+        ));
+        assert!(!colors_only_changed(&a, &[]));
+    }
+
+    #[test]
+    fn only_a_new_symbol_appears() {
+        let old = [symbol("sparkle", 0.0, ThemeColor::Text)];
+        let new = [
+            symbol("sparkle", 0.0, ThemeColor::Text),
+            symbol("sparkle", 20.0, ThemeColor::Text),
+            symbol("circle", 40.0, ThemeColor::Text),
+        ];
+        assert_eq!(
+            appeared_symbols(&old, &new, "sparkle"),
+            vec![Rect::new(20.0, 0.0, 10.0, 10.0)]
+        );
+        assert!(appeared_symbols(&new, &new, "sparkle").is_empty());
     }
 }

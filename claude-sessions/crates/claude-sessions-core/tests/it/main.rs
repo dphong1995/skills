@@ -13,6 +13,7 @@ mod hotkeys;
 mod jira;
 mod jira_monitor;
 mod keyboard;
+mod labels;
 mod layout;
 mod panel_state;
 mod performance;

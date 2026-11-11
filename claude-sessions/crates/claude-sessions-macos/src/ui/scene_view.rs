@@ -2,27 +2,24 @@
 
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
-use std::ptr::NonNull;
+use std::rc::Rc;
 
-use block2::RcBlock;
 use claude_sessions_core::scene::{Cursor, HitId, NodeKey, Point, Scene, changed_nodes};
 use objc2::Message;
 use objc2::rc::Retained;
+use objc2::rc::Weak;
 use objc2::{DefinedClass, MainThreadOnly, define_class, msg_send};
-use objc2_app_kit::{
-    NSAnimatablePropertyContainer, NSAnimationContext, NSCursor, NSEvent, NSTextField, NSView,
-    NSWorkspace,
-};
+use objc2_app_kit::{NSAnimatablePropertyContainer, NSCursor, NSEvent, NSTextField, NSView};
 use objc2_app_kit::{NSScrollView, NSScrollerStyle};
 use objc2_foundation::{MainThreadMarker, NSObjectProtocol, NSPoint, NSRect, NSSize};
 
 use super::draw::{ns_rect, register_images};
+use super::motion;
 use super::node_view::NodeView;
 use super::{EventHandler, UiEvent};
 
 /// Pointer travel (points) before a press becomes a drag, as Swift's `Layout.isDrag`.
 const DRAG_THRESHOLD: f64 = 4.0;
-const ANIMATION_SECONDS: f64 = 0.2;
 
 #[derive(Clone, Copy)]
 struct Drag {
@@ -36,6 +33,9 @@ pub struct SceneIvars {
     nodes: RefCell<HashMap<NodeKey, Retained<NodeView>>>,
     handler: RefCell<Option<EventHandler>>,
     drag: Cell<Option<Drag>>,
+    /// The panel is on screen: only then may a spinner turn. Starts false until the panel is shown.
+    live: Cell<bool>,
+    reduce_observer: RefCell<Option<crate::NotificationObserver>>,
     /// The scroll host of the scene's scroll node, while it has one.
     scroll: RefCell<Option<ScrollHost>>,
 }
@@ -139,6 +139,8 @@ impl SceneView {
             nodes: RefCell::new(HashMap::new()),
             handler: RefCell::new(None),
             drag: Cell::new(None),
+            live: Cell::new(false),
+            reduce_observer: RefCell::new(None),
             scroll: RefCell::new(None),
         });
         let frame = NSRect::new(NSPoint::new(0.0, 0.0), size);
@@ -146,6 +148,34 @@ impl SceneView {
         let this: Retained<Self> = unsafe { msg_send![super(this), initWithFrame: frame] };
         this.setWantsLayer(true);
         this
+    }
+
+    /// Re-applies the motion rules whenever the system's Reduce Motion setting changes.
+    pub fn observe_reduce_motion(this: &Retained<Self>) {
+        let weak = Weak::new(&**this);
+        let observer = crate::accessibility::observe_reduce_motion(move || {
+            if let Some(view) = weak.load() {
+                view.apply_motion();
+            }
+        });
+        *this.ivars().reduce_observer.borrow_mut() = Some(observer);
+    }
+
+    /// The panel went on or off screen: a hidden panel keeps no looping animation (spinners stop, pulses are dropped).
+    pub fn set_motion_live(&self, live: bool) {
+        self.ivars().live.set(live);
+        self.apply_motion();
+    }
+
+    /// Spinners turn only while the panel is on screen and Reduce Motion is off; pulses go with either.
+    fn apply_motion(&self) {
+        let spin = self.ivars().live.get() && motion::enabled();
+        for view in self.ivars().nodes.borrow().values() {
+            view.set_spin(spin);
+            if !spin {
+                view.clear_pulses();
+            }
+        }
     }
 
     pub fn set_handler(&self, handler: EventHandler) {
@@ -243,7 +273,8 @@ impl SceneView {
     /// redraw that node alone, changed frames animate in Core Animation, new and removed nodes fade.
     pub fn set_scene(&self, scene: &Scene) {
         let mtm = self.mtm();
-        let animate = !NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceMotion();
+        let animate = motion::enabled();
+        let spin = animate && self.ivars().live.get();
         let ivars = self.ivars();
         register_images(&scene.images);
         let old = ivars.scene.replace(scene.clone());
@@ -270,10 +301,14 @@ impl SceneView {
         let mut fading_out = Vec::new();
 
         for node in diff.added.iter().filter(|n| n.scroll.is_none()) {
-            let view = NodeView::new(mtm, &node.key.0, place(node));
-            view.set_cmds(&node.cmds);
+            let mut start = place(node);
+            if animate {
+                start.y -= motion::APPEAR_SLIDE;
+            }
+            let view = NodeView::new(mtm, &node.key.0, start);
+            view.set_cmds(&node.cmds, false);
             view.set_fields(&node.fields);
-            view.set_spinner(node.spinner);
+            view.set_spinner(node.spinner, spin);
             view.set_tips(&node.tips);
             if animate {
                 view.setAlphaValue(0.0);
@@ -286,6 +321,8 @@ impl SceneView {
         }
         for key in &diff.removed {
             if let Some(view) = nodes.remove(*key) {
+                view.set_spin(false);
+                view.clear_pulses();
                 fading_out.push(view);
             }
         }
@@ -295,10 +332,10 @@ impl SceneView {
                 continue;
             };
             if update.cmds_changed {
-                view.set_cmds(&update.node.cmds);
+                view.set_cmds(&update.node.cmds, animate);
             }
             view.set_fields(&update.node.fields);
-            view.set_spinner(update.node.spinner);
+            view.set_spinner(update.node.spinner, spin);
             view.set_tips(&update.node.tips);
             if update.frame_changed {
                 moved.push((view.clone(), place(update.node)));
@@ -331,46 +368,75 @@ impl SceneView {
         let appear: Vec<_> = diff
             .added
             .iter()
-            .filter_map(|n| nodes.get(&n.key).cloned())
+            .filter_map(|n| nodes.get(&n.key).map(|v| (v.clone(), place(n))))
             .collect();
-        let changes = {
-            let (moved, appear, fading_out) = (moved.clone(), appear.clone(), fading_out.clone());
+        // A size change is the open/close spring; a pure move is a card sliding to its new place.
+        let (resized, slid): (Vec<_>, Vec<_>) = moved
+            .into_iter()
+            .partition(|(view, frame)| view.frame().size != ns_rect(*frame).size);
+        let remove = {
+            let fading_out = fading_out.clone();
             move || {
-                for (view, frame) in &moved {
-                    if animate {
-                        view.animator().setFrame(ns_rect(*frame));
-                    } else {
-                        view.setFrame(ns_rect(*frame));
-                    }
-                }
-                for view in &appear {
-                    if animate {
-                        view.animator().setAlphaValue(1.0);
-                    }
-                }
-                for view in &fading_out {
-                    if animate {
-                        view.animator().setAlphaValue(0.0);
-                    }
-                }
-            }
-        };
-        if animate && !(moved.is_empty() && appear.is_empty() && fading_out.is_empty()) {
-            let group = RcBlock::new(move |ctx: NonNull<NSAnimationContext>| {
-                // SAFETY: AppKit passes a live context for the length of the call.
-                unsafe { ctx.as_ref() }.setDuration(ANIMATION_SECONDS);
-                changes();
-            });
-            let done = RcBlock::new(move || {
                 for view in &fading_out {
                     view.removeFromSuperview();
                 }
-            });
-            NSAnimationContext::runAnimationGroup_completionHandler(&group, Some(&done));
+            }
+        };
+        if !animate {
+            for (view, frame) in resized.iter().chain(&slid) {
+                view.setFrame(ns_rect(*frame));
+            }
+            remove();
         } else {
-            changes();
-            for view in &fading_out {
-                view.removeFromSuperview();
+            if !resized.is_empty() {
+                motion::group(
+                    motion::OPEN_SECS,
+                    true,
+                    move || {
+                        for (view, frame) in &resized {
+                            view.animator().setFrame(ns_rect(*frame));
+                        }
+                    },
+                    || {},
+                );
+            }
+            if !slid.is_empty() {
+                motion::group(
+                    motion::MOVE_SECS,
+                    false,
+                    move || {
+                        for (view, frame) in &slid {
+                            view.animator().setFrame(ns_rect(*frame));
+                        }
+                    },
+                    || {},
+                );
+            }
+            if !appear.is_empty() {
+                motion::group(
+                    motion::FADE_SECS,
+                    false,
+                    move || {
+                        for (view, frame) in &appear {
+                            view.animator().setAlphaValue(1.0);
+                            view.animator().setFrame(ns_rect(*frame));
+                        }
+                    },
+                    || {},
+                );
+            }
+            if !fading_out.is_empty() {
+                let gone = Rc::new(remove);
+                motion::group(
+                    motion::FADE_SECS,
+                    false,
+                    move || {
+                        for view in &fading_out {
+                            view.animator().setAlphaValue(0.0);
+                        }
+                    },
+                    move || gone(),
+                );
             }
         }
         if !(diff.added.is_empty() && diff.removed.is_empty() && diff.updated.is_empty())
