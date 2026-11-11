@@ -254,6 +254,7 @@ ab_verdict() {
 ab_main() {
     local round app first
     AB_ROWS=()
+    AB_UNSETTLED=0
     for round in $(seq 1 "$AB_ROUNDS"); do
         if [ $((round % 2)) -eq 1 ]; then first=swift; else first=rust; fi
         for app in "$first" "$([ "$first" = swift ] && echo rust || echo swift)"; do
@@ -261,6 +262,13 @@ ab_main() {
             if [ "$app" = swift ]; then BIN=$SWIFT_BIN; else BIN=$RUST_BIN; fi
             RESULTS=(); FAILED=0
             start_and_settle
+            if [ "$FAILED" -ne 0 ]; then
+                # An unsettled or dead app must not feed the medians: fail the verdict and skip this round's numbers.
+                AB_UNSETTLED=1
+                printf '%s\n' "${RESULTS[@]}"
+                stop_app
+                continue
+            fi
             measure_phase idle "$CPU_IDLE_MAX" wakeups
             AB_ROWS+=("$round $app idle $RAW_FP $RAW_GROWTH $RAW_CPU $RAW_WAKE")
             if [ "$GATE" -eq 0 ]; then
@@ -276,7 +284,7 @@ ab_main() {
         done
     done
     local phases="idle"; [ "$GATE" -eq 0 ] && phases="idle load"
-    local ab_failed=0 phase metric col mode swift_m rust_m verdict
+    local ab_failed=$AB_UNSETTLED phase metric col mode swift_m rust_m verdict
     echo
     printf '%-26s | %14s | %14s | %-18s | %s\n' metric "swift (median)" "rust (median)" rule result
     for phase in $phases; do

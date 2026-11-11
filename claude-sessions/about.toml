@@ -1,3 +1,4 @@
+# Keep this licence list identical to deny.toml: cargo-deny gates the build, cargo-about writes the notice.
 accepted = [
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",

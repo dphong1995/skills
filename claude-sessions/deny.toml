@@ -1,3 +1,4 @@
+# Keep this licence list identical to about.toml: cargo-deny gates the build, cargo-about writes the notice.
 [graph]
 targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
 

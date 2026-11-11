@@ -1,13 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-fn sh(cmd: &mut Command) -> Result<(), String> {
-    let status = cmd.status().map_err(|e| format!("{cmd:?}: {e}"))?;
-    status
-        .success()
-        .then_some(())
-        .ok_or_else(|| format!("{cmd:?} failed"))
-}
+use crate::dist::sh;
 
 /// Builds the release binary and wraps it into `target/bundle/ClaudeSessions.app` for the host target, ad-hoc signed.
 pub fn run_bundle(root: &Path) -> Result<PathBuf, String> {
@@ -35,9 +29,7 @@ pub fn run_bundle(root: &Path) -> Result<PathBuf, String> {
 }
 
 pub fn run() -> Result<(), String> {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .ok_or("no workspace root")?;
+    let root = crate::dist::root()?;
     let app = run_bundle(root)?;
     println!("{}", app.display());
     Ok(())

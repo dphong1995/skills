@@ -72,6 +72,35 @@ fn valid_version(v: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '+'))
 }
 
+/// Numeric `CFBundleVersion` (macOS accepts only dot-separated integers): `X.Y.Z` plus a build number.
+/// `X.Y.Z-rc.N` -> `X.Y.Z.N`, a plain `X.Y.Z` -> `X.Y.Z.1000` (so it sorts after its release candidates),
+/// any other suffix (dry runs) -> `X.Y.Z.0`. The full string stays in `CFBundleShortVersionString`.
+fn bundle_version(v: &str) -> String {
+    let (base, suffix) = match v.find(['-', '+']) {
+        Some(i) => (&v[..i], Some(&v[i..])),
+        None => (v, None),
+    };
+    let build = match suffix {
+        None => 1000,
+        Some(s) => s
+            .strip_prefix("-rc.")
+            .and_then(|n| n.parse::<u32>().ok())
+            .filter(|n| *n < 1000)
+            .unwrap_or(0),
+    };
+    let base: Vec<&str> = base.split('.').collect();
+    let base = if base
+        .iter()
+        .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
+        && base.len() == 3
+    {
+        base.join(".")
+    } else {
+        "0.0.0".to_string()
+    };
+    format!("{base}.{build}")
+}
+
 pub fn run(args: &[String]) -> Result<(), String> {
     let version = match args {
         [flag, v] if flag == "--version" && valid_version(v) => v.as_str(),
@@ -105,9 +134,12 @@ pub fn run(args: &[String]) -> Result<(), String> {
         &plist,
     )
     .map_err(|e| e.to_string())?;
-    for key in ["CFBundleShortVersionString", "CFBundleVersion"] {
+    for (key, value) in [
+        ("CFBundleShortVersionString", version.to_string()),
+        ("CFBundleVersion", bundle_version(version)),
+    ] {
         sh(Command::new("plutil")
-            .args(["-replace", key, "-string", version])
+            .args(["-replace", key, "-string", &value])
             .arg(&plist))?;
     }
 
@@ -124,4 +156,17 @@ pub fn run(args: &[String]) -> Result<(), String> {
     build_dmg(root)?;
     println!("{}", dist.join("ClaudeSessions.dmg").display());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bundle_version;
+
+    #[test]
+    fn bundle_version_is_numeric() {
+        assert_eq!(bundle_version("2.0.0-rc.1"), "2.0.0.1");
+        assert_eq!(bundle_version("2.0.0"), "2.0.0.1000");
+        assert_eq!(bundle_version("0.0.0-dryrun"), "0.0.0.0");
+        assert_eq!(bundle_version("2.1+meta"), "0.0.0.0");
+    }
 }

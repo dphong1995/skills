@@ -20,6 +20,8 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: never
+  CARGO_DENY_VERSION: "0.20.2"
+  CARGO_ABOUT_VERSION: "0.9.3"
 
 jobs:
   build:
@@ -57,14 +59,14 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             claude-sessions/target
-          key: widget-${{ runner.os }}-${{ hashFiles('claude-sessions/Cargo.lock', 'claude-sessions/rust-toolchain.toml') }}
-          restore-keys: widget-${{ runner.os }}-
+          key: widget-${{ runner.os }}-deny${{ env.CARGO_DENY_VERSION }}-about${{ env.CARGO_ABOUT_VERSION }}-${{ hashFiles('claude-sessions/Cargo.lock', 'claude-sessions/rust-toolchain.toml') }}
+          restore-keys: widget-${{ runner.os }}-deny${{ env.CARGO_DENY_VERSION }}-about${{ env.CARGO_ABOUT_VERSION }}-
 
       - name: Install cargo-deny and cargo-about
         run: |
           tools="$HOME/.cache/cargo-tools"
-          [ -x "$tools/bin/cargo-deny" ] || cargo install --locked --root "$tools" cargo-deny
-          [ -x "$tools/bin/cargo-about" ] || cargo install --locked --root "$tools" cargo-about --features cli
+          [ -x "$tools/bin/cargo-deny" ] || cargo install --locked --root "$tools" cargo-deny --version "$CARGO_DENY_VERSION"
+          [ -x "$tools/bin/cargo-about" ] || cargo install --locked --root "$tools" cargo-about --version "$CARGO_ABOUT_VERSION" --features cli
           echo "$tools/bin" >> "$GITHUB_PATH"
 
       - name: Licences, sources, advisories
@@ -124,8 +126,14 @@ jobs:
 
       - name: Unpack target/dist
         run: |
+          # The artifact comes from a job that ran third-party code: accept nothing but dist/.
+          tar="$RUNNER_TEMP/artifact/dist.tar"
+          if tar -tf "$tar" | grep -v -E '^dist(/|$)' | grep -q . || tar -tf "$tar" | grep -q -E '(^|/)\.\.(/|$)'; then
+            echo "dist.tar holds entries outside dist/" >&2
+            exit 1
+          fi
           mkdir -p target
-          tar -C target -xf "$RUNNER_TEMP/artifact/dist.tar"
+          tar -C target -xf "$tar" dist
 
       - name: Toolchain from rust-toolchain.toml
         run: rustup toolchain install
@@ -154,12 +162,17 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
           security list-keychains -d user -s "$keychain" login.keychain-db
           security default-keychain -s "$keychain"
-          identity="$(security find-identity -v -p codesigning "$keychain" | sed -n 's/.*"\(.*\)"/\1/p' | head -n 1)"
-          if [ -z "$identity" ]; then echo "No codesigning identity in the certificate" >&2; exit 1; fi
-          xcrun notarytool store-credentials claude-sessions \
-            --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" \
-            --keychain "$keychain" >/dev/null
-          cargo run --locked -p xtask --no-default-features -- resign --identity "$identity"
+          identity="$(security find-identity -v -p codesigning "$keychain" | grep '"Developer ID Application' | sed -n 's/.*"\(.*\)"/\1/p' | head -n 1)"
+          if [ -z "$identity" ]; then echo "No Developer ID Application identity in the certificate" >&2; exit 1; fi
+          notarize=""
+          if [ -n "$APPLE_ID" ]; then
+            xcrun notarytool store-credentials claude-sessions \
+              --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_PASSWORD" \
+              --keychain "$keychain" >/dev/null
+            notarize="--notarize"
+          fi
+          # xtask builds outside the unpacked artifact, so nothing in it can shadow the binary run with the secrets.
+          CARGO_TARGET_DIR="$RUNNER_TEMP/xtask-target" cargo run --locked -p xtask --no-default-features -- resign --identity "$identity" $notarize
 
       - name: Delete the temporary keychain
         if: always()

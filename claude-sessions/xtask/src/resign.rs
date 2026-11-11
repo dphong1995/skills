@@ -5,9 +5,12 @@ use crate::dist::{build_dmg, dist_dir, entitlements, root, sh, write_sha256};
 const PROFILE: &str = "claude-sessions";
 
 pub fn run(args: &[String]) -> Result<(), String> {
-    let identity = match args {
-        [flag, name] if flag == "--identity" && !name.is_empty() => name.as_str(),
-        _ => return Err("usage: cargo xtask resign --identity <name>".into()),
+    let (identity, notarize) = match args {
+        [flag, name] if flag == "--identity" && !name.is_empty() => (name.as_str(), false),
+        [flag, name, n] if flag == "--identity" && !name.is_empty() && n == "--notarize" => {
+            (name.as_str(), true)
+        }
+        _ => return Err("usage: cargo xtask resign --identity <name> [--notarize]".into()),
     };
     let root = root()?;
     let dist = dist_dir(root);
@@ -34,14 +37,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
     build_dmg(root)?;
     let dmg = dist.join("ClaudeSessions.dmg");
 
-    let has_profile = Command::new("xcrun")
-        .args(["notarytool", "history", "--keychain-profile", PROFILE])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false);
-    if has_profile {
+    if notarize {
         println!("resign: Developer ID branch (signed with a hardened runtime, notarizing)");
         sh(Command::new("xcrun")
             .args([
@@ -55,7 +51,7 @@ pub fn run(args: &[String]) -> Result<(), String> {
         sh(Command::new("xcrun").args(["stapler", "staple"]).arg(&dmg))?;
         write_sha256(&dist)?;
     } else {
-        println!("resign: signed only, no notarytool profile `{PROFILE}`: not notarized");
+        println!("resign: signed only (no --notarize): not notarized");
     }
     Ok(())
 }

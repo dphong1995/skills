@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -14,7 +14,8 @@ const ITEMS = ['skills', 'subagent', 'vietnamese', 'compact', 'org-skills', 'cmu
 function run(args, { home } = {}) {
   home ??= mkdtempSync(join(tmpdir(), 'skills-install-'));
   const r = spawnSync('bash', [join(root, 'install.sh'), ...args], {
-    env: { ...process.env, CLAUDE_HOME: home, SKILLS_INSTALL_DRY_EXTERNAL: '1' },
+    // A lock that does not exist keeps a committed release.lock from reaching the real widget install.
+    env: { ...process.env, CLAUDE_HOME: home, SKILLS_INSTALL_DRY_EXTERNAL: '1', SKILLS_WIDGET_LOCK: join(home, 'no-such.lock'), SKILLS_WIDGET_DMG: '' },
     stdio: ['ignore', 'pipe', 'pipe'],
     encoding: 'utf8',
   });
@@ -200,13 +201,14 @@ function widgetEnv(dmgs) {
   };
   stub('curl', 'out=""; while [ $# -gt 0 ]; do if [ "$1" = "-o" ]; then out="$2"; fi; shift; done\n[ -z "$TEST_CURL_FAIL" ] || exit 22\ncp "$TEST_DMG" "$out"');
   stub('open', 'exit 0');
-  stub('osascript', 'exit 0');
-  stub('pgrep', 'exit 1');
+  // The widget counts as running while <dir>/running exists; quitting it (osascript) removes the file.
+  stub('osascript', `rm -f "${dir}/running"`);
+  stub('pgrep', `[ -e "${dir}/running" ]`);
   stub('pkill', 'exit 0');
   assert.ok(!existsSync(join(bin, 'swift')) && !existsSync(join(bin, 'cargo')));
   const home = join(dir, 'home');
   mkdirSync(join(home, 'Applications'), { recursive: true });
-  return { dir, bin, home, claude: join(dir, 'claude'), calls: () => (existsSync(join(dir, 'calls.log')) ? readFileSync(join(dir, 'calls.log'), 'utf8') : '') };
+  return { dir, bin, home, stub, claude: join(dir, 'claude'), calls: () => (existsSync(join(dir, 'calls.log')) ? readFileSync(join(dir, 'calls.log'), 'utf8') : '') };
 }
 
 function runWidget(env, { sha, tag = 'widget-v2.0.0-rc.1', dmg, curlFail = false, local = false, extra = {} }) {
@@ -274,6 +276,61 @@ mac('widget: same version installed does nothing', () => {
   assert.match(r.out, /widget already 2\.0\.0-rc\.1/);
   assert.ok(existsSync(join(installedApp(env), 'OLD')));
   assert.ok(!/^(open|osascript|pkill) /m.test(env.calls()));
+});
+
+mac('widget: lock version already installed skips the download', () => {
+  const env = widgetEnv();
+  const good = makeDmg(env.dir, 'good');
+  markExisting(env, '2.0.0-rc.1');
+  const r = runWidget(env, { sha: good.sha, dmg: good.dmg });
+  assert.equal(r.code, 0, r.out);
+  assert.ok(!/^(curl|hdiutil) /m.test(env.calls()));
+  assert.match(r.out, /already installed/);
+});
+
+mac('widget: dry run with a lock present does no download, quit or copy', () => {
+  const env = widgetEnv();
+  const good = makeDmg(env.dir, 'good');
+  markExisting(env);
+  writeFileSync(join(env.dir, 'running'), '');
+  const r = runWidget(env, { sha: good.sha, dmg: good.dmg, extra: { SKILLS_INSTALL_DRY_EXTERNAL: '1' } });
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /would install pinned widget-v2\.0\.0-rc\.1/);
+  assert.equal(env.calls(), '');
+  assert.ok(existsSync(join(env.dir, 'running')));
+  assert.ok(existsSync(join(installedApp(env), 'OLD')));
+});
+
+mac('widget: a running old app is quit, then the new one is opened', () => {
+  const env = widgetEnv();
+  const good = makeDmg(env.dir, 'good');
+  markExisting(env);
+  writeFileSync(join(env.dir, 'running'), '');
+  const r = runWidget(env, { sha: good.sha, dmg: good.dmg });
+  assert.equal(r.code, 0, r.out);
+  const calls = env.calls().split('\n');
+  const quit = calls.findIndex((l) => l.startsWith('osascript '));
+  const open = calls.findIndex((l) => l.startsWith('open '));
+  assert.ok(quit >= 0 && open > quit, env.calls());
+  assert.ok(!existsSync(join(installedApp(env), 'OLD')));
+  assert.ok(existsSync(join(installedApp(env), 'Contents/MacOS/ClaudeSessions')));
+});
+
+mac('widget: a failed swap restores the old app and reopens it', () => {
+  const env = widgetEnv();
+  const good = makeDmg(env.dir, 'good');
+  markExisting(env);
+  writeFileSync(join(env.dir, 'running'), '');
+  rmSync(join(env.bin, 'mv'));
+  env.stub('mv', 'case "$1" in *.ClaudeSessions.app.new) exit 1 ;; esac\nexec /bin/mv "$@"');
+  const r = runWidget(env, { sha: good.sha, dmg: good.dmg });
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /Skipped:\n\s+widget: cannot move the new app into place/);
+  assert.ok(existsSync(join(installedApp(env), 'OLD')));
+  assert.ok(!existsSync(join(env.home, 'Applications/.ClaudeSessions.app.old')));
+  const calls = env.calls().split('\n');
+  assert.ok(calls.findIndex((l) => l.startsWith('open ')) > calls.findIndex((l) => l.startsWith('osascript ')));
+  assert.equal(calls.filter((l) => l.startsWith('open ')).length, 1);
 });
 
 mac('widget: SKILLS_WIDGET_DMG skips download and checksum', () => {
