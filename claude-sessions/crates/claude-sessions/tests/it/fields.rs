@@ -190,17 +190,70 @@ fn cancel_ends_only_the_field_that_is_open() {
 
 #[test]
 fn cancel_in_other_field_closes_that_field_only() {
+    let answer = |id: &str| Editing {
+        id: id.into(),
+        kind: EditKind::Answer,
+        tool_id: None,
+    };
     let mut panel = PanelState::default();
+    panel.other_key = Some("s1#0".into());
+    panel.editing = Some(answer("s1"));
+    assert!(!fields::cancel("other-s2#0", &mut panel));
+    assert!(panel.other_key.is_some() && panel.editing.is_some());
+    assert!(fields::cancel("other-s1#0", &mut panel));
+    assert!(panel.other_key.is_none());
+    assert!(panel.editing.is_none(), "Esc ends the answer editing");
+    assert!(!fields::cancel("bogus", &mut panel));
+
     panel.other_key = Some("s1#0".into());
     panel.editing = Some(Editing {
         id: "s1".into(),
         kind: EditKind::Reply,
         tool_id: None,
     });
-    assert!(!fields::cancel("other-s1#1", &mut panel));
-    assert!(panel.other_key.is_some());
     assert!(fields::cancel("other-s1#0", &mut panel));
-    assert!(panel.other_key.is_none());
     assert!(panel.editing.is_some(), "an unrelated editor is untouched");
-    assert!(!fields::cancel("bogus", &mut panel));
+}
+
+#[test]
+fn opening_the_other_field_starts_answer_editing_and_keeps_keys_for_the_field() {
+    use claude_sessions::hits::PanelChange;
+    use claude_sessions_core::keyboard::{KeyCommand, KeyEvent, Mods, key_code};
+    let snap = snapshot(vec![question("s1")]);
+    let mut panel = PanelState::default();
+    panel.keyboard = true;
+    PanelChange::OpenOther {
+        session: "s1".into(),
+        question: 0,
+    }
+    .apply(&mut panel, &snap, SystemTime::UNIX_EPOCH);
+    assert_eq!(panel.other_key.as_deref(), Some("s1#0"));
+    assert_eq!(
+        panel.editing,
+        Some(Editing {
+            id: "s1".into(),
+            kind: EditKind::Answer,
+            tool_id: None
+        })
+    );
+    assert!(panel.wants_key());
+    for (code, chars) in [
+        (key_code::ESCAPE, ""),
+        (key_code::RETURN, ""),
+        (0, "1"),
+        (0, "r"),
+    ] {
+        let event = KeyEvent {
+            key_code: code,
+            chars: chars.into(),
+            mods: Mods::default(),
+        };
+        assert_eq!(
+            KeyCommand::resolve(&event, &snap, &panel),
+            KeyCommand::Pass,
+            "{chars:?} {code}"
+        );
+    }
+    assert!(fields::cancel("other-s1#0", &mut panel));
+    assert!(panel.editing.is_none() && panel.keyboard);
 }

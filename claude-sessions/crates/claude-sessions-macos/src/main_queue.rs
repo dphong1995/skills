@@ -38,8 +38,9 @@ pub fn wake_main(f: fn()) {
     dispatch2::DispatchQueue::main().exec_async(f);
 }
 
-/// Runs `work` once on the main thread after `seconds`, in every run-loop mode (menus and modal panels included).
-/// Main thread only, like `async_main`.
+/// Runs `work` once on the main thread after `seconds`, through the main dispatch queue. A nested run loop (a menu or a
+/// modal session) entered from inside a main-queue block does not drain that queue, so `work` waits until the outermost
+/// block returns; use a timer on the nested mode for work that must run inside one. Main thread only, like `async_main`.
 pub fn after(seconds: f64, work: impl FnOnce() + 'static) {
     let on_main = MainThreadMarker::new().is_some();
     debug_assert!(on_main, "after called off the main thread");

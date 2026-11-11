@@ -100,11 +100,14 @@ pub fn cancel(key: &str, panel: &mut PanelState) -> bool {
     let (id, kind) = match field {
         Field::Reply(id) => (id, EditKind::Reply),
         Field::Deny(id) => (id, EditKind::Deny),
-        Field::Other(..) => {
-            return panel
-                .other_key
-                .take_if(|k| k == key.strip_prefix("other-").unwrap_or(""))
+        Field::Other(id, i) => {
+            let other = format!("{id}#{i}");
+            let closed = panel.other_key.take_if(|k| *k == other).is_some();
+            let ended = panel
+                .editing
+                .take_if(|e| e.id == id && e.kind == EditKind::Answer)
                 .is_some();
+            return closed || ended;
         }
     };
     panel

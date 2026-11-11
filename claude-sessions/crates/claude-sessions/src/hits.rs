@@ -257,9 +257,12 @@ impl PanelChange {
                 session,
                 question: i,
             } => {
-                let key = format!("{session}#{i}");
-                panel.other_key = Some(key.clone());
-                panel.want_other = Some(key);
+                panel.other_key = Some(format!("{session}#{i}"));
+                panel.editing = Some(Editing {
+                    id: session.clone(),
+                    kind: EditKind::Answer,
+                    tool_id: None,
+                });
             }
         }
     }

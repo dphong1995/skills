@@ -725,6 +725,11 @@ fn the_other_field_opens_under_its_question() {
     let snap = snapshot(vec![two_questions()]);
     let mut panel = open();
     panel.other_key = Some("ask#1".into());
+    panel.editing = Some(Editing {
+        id: "ask".into(),
+        kind: EditKind::Answer,
+        tool_id: None,
+    });
     let (built, l) = only_card(&snap, &panel);
     let node = card(&built.scene, "ask");
     assert_eq!(node.fields.len(), 1);

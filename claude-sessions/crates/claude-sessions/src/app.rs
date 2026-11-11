@@ -554,13 +554,10 @@ fn handle_event(weak: &WeakState, key: &str, event: UiEvent) {
             let (weak, key) = (weak.clone(), key.to_string());
             main_queue::async_main(move || {
                 let ended = with_state(&weak, |s| {
+                    let (snap, now) = (s.snapshot(), s.now());
                     let host = s.panels.iter_mut().find(|p| p.key == key)?;
-                    fields::cancel(&field, &mut host.state).then(|| {
-                        let (snap, now) = (s.snapshot(), s.now());
-                        if let Some(host) = s.panels.iter_mut().find(|p| p.key == key) {
-                            host.render(&snap, &s.store.drafts, now, "cancel");
-                        }
-                    })
+                    fields::cancel(&field, &mut host.state)
+                        .then(|| host.render(&snap, &s.store.drafts, now, "cancel"))
                 })
                 .flatten();
                 if ended.is_some() {

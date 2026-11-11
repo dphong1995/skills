@@ -96,8 +96,16 @@ pub fn question_state(s: &Session, q: &FeedQuestion) -> BlockState {
     })
 }
 
-/// The question of `s` whose `Khác…` field is open, from the panel's `other_key` (`"<session id>#<index>"`).
+/// The question of `s` whose `Khác…` field is open: the panel's `other_key` (`"<session id>#<index>"`) while `editing` is
+/// the `Answer` of `s`.
 pub fn other_open(s: &Session, panel: &PanelState) -> Option<usize> {
+    let answering = panel
+        .editing
+        .as_ref()
+        .is_some_and(|e| e.id == s.id && e.kind == EditKind::Answer);
+    if !answering {
+        return None;
+    }
     panel
         .other_key
         .as_deref()

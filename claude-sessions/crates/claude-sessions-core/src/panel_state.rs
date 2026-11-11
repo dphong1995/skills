@@ -53,9 +53,8 @@ pub struct PanelState {
     /// Request id -> the options picked per question index, and the `Khác…` text per question index.
     pub answers: HashMap<String, Vec<Vec<String>>>,
     pub others: HashMap<String, HashMap<usize, String>>,
-    /// The `Khác…` field to focus once it appears, as `"<session id>#<question index>"`.
-    pub want_other: Option<String>,
-    /// The `Khác…` field that was opened, same key form: only that question shows its field.
+    /// The `Khác…` field that was opened, as `"<session id>#<question index>"`: only that question shows its field, and only
+    /// while `editing` is that session's `Answer`.
     pub other_key: Option<String>,
     /// Opened or switched to by the hotkey: the panel is key and the arrow keys move `selected`.
     pub keyboard: bool,

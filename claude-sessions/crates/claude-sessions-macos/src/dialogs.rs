@@ -51,21 +51,18 @@ fn text_field(mtm: MainThreadMarker, frame: NSRect, placeholder: &str) -> Retain
 }
 
 /// Runs `alert` modally the way Swift does: forced activation (`NSApp.activate(ignoringOtherApps: true)`) so the alert is
-/// key, and a window level above the panel's `NSStatusWindowLevel` so the panel cannot cover it. The level is set before
-/// `runModal` and again from inside the modal session, because AppKit may reset it when the session starts.
-pub(crate) fn run_alert(mtm: MainThreadMarker, alert: &NSAlert) -> isize {
+/// key, and a window level above the panel's `NSStatusWindowLevel` so the panel cannot cover it. Set before `runModal`;
+/// `runModal` keeps it (measured: level 26 inside the session, 0 when it is not set).
+fn run_alert(mtm: MainThreadMarker, alert: &NSAlert) -> isize {
     // `activateIgnoringOtherApps:` is deprecated since macOS 14 but is what Swift calls and still forces activation.
     #[allow(deprecated)]
     NSApplication::sharedApplication(mtm).activateIgnoringOtherApps(true);
-    run_alert_above_panel(mtm, alert)
+    run_alert_above_panel(alert)
 }
 
 /// The level handling of `run_alert` without the activation (the test hook must not steal focus).
-pub(crate) fn run_alert_above_panel(_mtm: MainThreadMarker, alert: &NSAlert) -> isize {
-    let window = alert.window();
-    window.setLevel(NSStatusWindowLevel + 1);
-    let in_session = window.clone();
-    crate::main_queue::async_main(move || in_session.setLevel(NSStatusWindowLevel + 1));
+pub(crate) fn run_alert_above_panel(alert: &NSAlert) -> isize {
+    alert.window().setLevel(NSStatusWindowLevel + 1);
     alert.runModal()
 }
 

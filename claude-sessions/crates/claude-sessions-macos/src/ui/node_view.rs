@@ -82,10 +82,11 @@ define_class!(
             _text_view: &NSTextView,
             command: Sel,
         ) -> Bool {
-            let key = self.ivars().key.clone();
             if command == sel!(insertNewline:) {
+                let key = self.ivars().key.clone();
                 (self.ivars().sink)(UiEvent::FieldSubmit { key });
             } else if command == sel!(cancelOperation:) {
+                let key = self.ivars().key.clone();
                 (self.ivars().sink)(UiEvent::FieldCancel { key });
             } else {
                 return Bool::NO;

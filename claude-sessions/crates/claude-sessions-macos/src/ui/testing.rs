@@ -64,42 +64,66 @@ pub fn animate_first_node_frame(
     true
 }
 
-/// The native text field with `Field.key` `key`, wherever it sits in `view`.
-pub fn field(
-    view: &SceneView,
-    key: &str,
-) -> Option<objc2::rc::Retained<objc2_app_kit::NSTextField>> {
-    view.subviews()
-        .iter()
-        .filter_map(|v| v.downcast::<NodeView>().ok())
-        .find_map(|n| n.field(key))
-}
-
-/// Test hook: runs a bare, invisible alert (alpha 0, mouse-transparent, offscreen, no app activation) through the
-/// dialogs' `run_alert_above_panel` and returns its window level and alpha read inside the modal session, which a
-/// main-queue block then aborts (no click needed).
-pub fn alert_level_during_modal() -> Option<(isize, f64)> {
+/// Test hook: runs a bare, invisible alert (alpha 0, mouse-transparent, offscreen, no app activation) the way the real
+/// dialogs run theirs, from inside a main-queue block, through `dialogs::run_alert_above_panel`. A timer serviced by the
+/// modal run loop (a main-queue block would not run inside a modal entered from a main-queue block) reads the window
+/// level and alpha inside the session and aborts it. A watchdog thread ends the process if the session never ends.
+/// Not part of the app's API.
+#[doc(hidden)]
+pub fn alert_level_during_modal() -> Result<(isize, f64), String> {
     use std::cell::Cell;
     use std::rc::Rc;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::time::Duration;
 
-    use objc2_app_kit::{NSAlert, NSApplication};
-    use objc2_foundation::{MainThreadMarker, NSString};
+    use block2::RcBlock;
+    use objc2_app_kit::{NSAlert, NSApplication, NSModalPanelRunLoopMode};
+    use objc2_foundation::{
+        MainThreadMarker, NSDate, NSDefaultRunLoopMode, NSRunLoop, NSString, NSTimer,
+    };
 
-    let mtm = MainThreadMarker::new()?;
-    let alert = NSAlert::new(mtm);
-    alert.setMessageText(&NSString::from_str("test"));
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let finished = Arc::new(AtomicBool::new(false));
+    let guard = finished.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(10));
+        if !guard.load(Ordering::SeqCst) {
+            eprintln!("alert_level_during_modal: the modal session never ended (watchdog)");
+            std::process::exit(1);
+        }
+    });
     let level = Rc::new(Cell::new(None));
-    let (seen, window) = (level.clone(), alert.window());
-    window.setAlphaValue(0.0);
-    window.setIgnoresMouseEvents(true);
-    window.setFrameOrigin(objc2_foundation::NSPoint::new(-30000.0, -30000.0));
-    // Queued after `run_alert`'s own in-session block, so it reads the level that block left.
+    let ended = Rc::new(Cell::new(false));
+    let (seen, over) = (level.clone(), ended.clone());
     crate::main_queue::async_main(move || {
-        crate::main_queue::async_main(move || {
+        let alert = NSAlert::new(mtm);
+        alert.setMessageText(&NSString::from_str("test"));
+        let window = alert.window();
+        window.setAlphaValue(0.0);
+        window.setIgnoresMouseEvents(true);
+        window.setFrameOrigin(objc2_foundation::NSPoint::new(-30000.0, -30000.0));
+        let read = RcBlock::new(move |_: std::ptr::NonNull<NSTimer>| {
             seen.set(Some((window.level(), window.alphaValue())));
             NSApplication::sharedApplication(mtm).abortModal();
         });
+        // SAFETY: the block is copied by the timer and only runs on the main run loop.
+        let timer = unsafe { NSTimer::timerWithTimeInterval_repeats_block(0.1, false, &read) };
+        // SAFETY: a live timer and a run-loop mode constant, on the main thread.
+        unsafe {
+            NSRunLoop::currentRunLoop().addTimer_forMode(&timer, NSModalPanelRunLoopMode);
+        }
+        crate::dialogs::run_alert_above_panel(&alert);
+        over.set(true);
     });
-    crate::dialogs::run_alert_above_panel(mtm, &alert);
-    level.get()
+    while !ended.get() {
+        // SAFETY: a plain run-loop mode constant.
+        let mode = unsafe { NSDefaultRunLoopMode };
+        NSRunLoop::currentRunLoop()
+            .runMode_beforeDate(mode, &NSDate::dateWithTimeIntervalSinceNow(0.05));
+    }
+    finished.store(true, Ordering::SeqCst);
+    level
+        .get()
+        .ok_or_else(|| "the modal session ended without the level read".to_string())
 }

@@ -224,6 +224,15 @@ impl SceneView {
             .find_map(|n| n.first_field())
     }
 
+    /// The native text field with `Field.key` `key`, wherever it sits in the scene (scroll content included).
+    pub fn field(&self, key: &str) -> Option<Retained<NSTextField>> {
+        self.ivars()
+            .nodes
+            .borrow()
+            .values()
+            .find_map(|n| n.field(key))
+    }
+
     fn emit(&self, event: UiEvent) {
         let handler = self.ivars().handler.borrow().clone();
         if let Some(handler) = handler {
@@ -332,7 +341,8 @@ impl SceneView {
         };
         let mut nodes = ivars.nodes.borrow_mut();
         let mut fading_out = Vec::new();
-        // The last field this update created: it takes the cursor when the window is key.
+        // The last field this update created: it takes the cursor when the window is key. The winner across nodes follows
+        // iteration order (added nodes before updated ones).
         let mut created_field = None;
 
         for node in diff.added.iter().filter(|n| n.scroll.is_none()) {
@@ -533,7 +543,8 @@ impl SceneView {
             window.invalidateCursorRectsForView(self);
         }
         // Only a field created by this update, and only in a key window (otherwise the cursor would move unseen).
-        if let (Some(field), Some(window)) = (created_field, self.window())
+        if let Some(field) = created_field
+            && let Some(window) = self.window()
             && window.isKeyWindow()
         {
             window.makeFirstResponder(Some(&field));
