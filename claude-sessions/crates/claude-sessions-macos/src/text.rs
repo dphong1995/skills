@@ -1,16 +1,20 @@
 //! Text attributes shared by drawing and measuring, and the `TextMeasure` implementation.
 
 use claude_sessions_core::layout::TextMeasure;
-use claude_sessions_core::scene::{Align, FontSpec, Size, Weight};
+use claude_sessions_core::scene::{Align, FontSpec, Run, Size, Weight};
+use objc2::AnyThread;
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2_app_kit::{
-    NSColor, NSFont, NSFontAttributeName, NSFontWeight, NSFontWeightBold, NSFontWeightMedium,
-    NSFontWeightRegular, NSFontWeightSemibold, NSForegroundColorAttributeName, NSLineBreakMode,
-    NSMutableParagraphStyle, NSParagraphStyleAttributeName, NSStringDrawingOptions,
-    NSStringNSExtendedStringDrawing, NSTextAlignment,
+    NSColor, NSFont, NSFontAttributeName, NSFontDescriptorSymbolicTraits, NSFontWeight,
+    NSFontWeightBold, NSFontWeightMedium, NSFontWeightRegular, NSFontWeightSemibold,
+    NSForegroundColorAttributeName, NSLineBreakMode, NSMutableParagraphStyle,
+    NSParagraphStyleAttributeName, NSStringDrawingOptions, NSStringNSExtendedStringDrawing,
+    NSTextAlignment,
 };
-use objc2_foundation::{NSDictionary, NSRect, NSSize, NSString};
+use objc2_foundation::{
+    NSAttributedString, NSDictionary, NSMutableAttributedString, NSRect, NSSize, NSString,
+};
 
 pub(crate) type Attributes = Retained<NSDictionary<NSString, AnyObject>>;
 
@@ -47,7 +51,10 @@ pub(crate) fn attributes(
     align: Align,
     max_lines: u32,
 ) -> Attributes {
-    let font = ns_font(spec);
+    attributes_for(&ns_font(spec), color, align, max_lines)
+}
+
+fn attributes_for(font: &NSFont, color: [f64; 4], align: Align, max_lines: u32) -> Attributes {
     let color = NSColor::colorWithSRGBRed_green_blue_alpha(color[0], color[1], color[2], color[3]);
     let style = NSMutableParagraphStyle::new();
     style.setAlignment(match align {
@@ -68,9 +75,45 @@ pub(crate) fn attributes(
                 NSForegroundColorAttributeName,
                 NSParagraphStyleAttributeName,
             ],
-            &[&*font as &AnyObject, &*color, &*style],
+            &[font as &AnyObject, &*color, &*style],
         )
     }
+}
+
+/// The runs of a `Rich` command as one attributed string: each run takes the base `spec` with its own flags.
+pub(crate) fn rich_string(
+    runs: &[Run],
+    spec: &FontSpec,
+    color: [f64; 4],
+    align: Align,
+    max_lines: u32,
+) -> Retained<NSMutableAttributedString> {
+    let out = NSMutableAttributedString::new();
+    for run in runs {
+        let mut run_spec = *spec;
+        run_spec.mono |= run.mono;
+        if run.bold {
+            run_spec.weight = Weight::Bold;
+        }
+        let mut font = ns_font(&run_spec);
+        if run.italic {
+            let descriptor = font
+                .fontDescriptor()
+                .fontDescriptorWithSymbolicTraits(NSFontDescriptorSymbolicTraits::TraitItalic);
+            font = NSFont::fontWithDescriptor_size(&descriptor, run_spec.size).unwrap_or(font);
+        }
+        let attrs = attributes_for(&font, color, align, max_lines);
+        // SAFETY: the attributes hold AppKit's keys with values of their documented types.
+        let piece = unsafe {
+            NSAttributedString::initWithString_attributes(
+                NSAttributedString::alloc(),
+                &NSString::from_str(&run.text),
+                Some(&attrs),
+            )
+        };
+        out.appendAttributedString(&piece);
+    }
+    out
 }
 
 pub(crate) fn draw_options() -> NSStringDrawingOptions {

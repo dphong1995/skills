@@ -2,6 +2,7 @@
 
 use crate::code_rabbit::{self, Rabbit};
 use crate::pull_requests::PRStatus;
+use crate::scene::Run;
 use crate::store::{ItemTone, Session};
 use crate::time::secs_since;
 use std::time::SystemTime;
@@ -175,4 +176,113 @@ pub fn pr_line(pr: &PRStatus, now: SystemTime, stale: Option<SystemTime>) -> Str
         .map(|p| p.text)
         .collect::<Vec<_>>()
         .join(" · ")
+}
+
+/// Inline markdown of a reply as runs (Swift `markdown(_:)`): `**bold**`, `*italic*`, `` `code` `` and `[text](http://..)`, whose
+/// link is dropped and its text kept. Whitespace is preserved and an unclosed marker stays as typed. Adjacent runs with the same
+/// style are merged.
+pub fn markdown_runs(s: &str) -> Vec<Run> {
+    let chars: Vec<char> = s.chars().collect();
+    let mut out = Vec::new();
+    md_parse(&chars, Run::default(), &mut out);
+    let mut merged: Vec<Run> = Vec::new();
+    for r in out {
+        match merged.last_mut() {
+            Some(l) if (l.bold, l.italic, l.mono) == (r.bold, r.italic, r.mono) => {
+                l.text.push_str(&r.text)
+            }
+            _ => merged.push(r),
+        }
+    }
+    merged
+}
+
+fn md_find(chars: &[char], from: usize, pat: &[char]) -> Option<usize> {
+    (from..chars.len().saturating_sub(pat.len() - 1)).find(|&i| chars[i..].starts_with(pat))
+}
+
+/// The end of the emphasis opened at `start` with `pat`: the closing marker follows non-space text.
+fn md_close(chars: &[char], start: usize, pat: &[char]) -> Option<usize> {
+    let open = start + pat.len();
+    if chars.get(open).is_none_or(|c| c.is_whitespace()) {
+        return None;
+    }
+    let mut from = open + 1;
+    while let Some(i) = md_find(chars, from, pat) {
+        if !chars[i - 1].is_whitespace() {
+            return Some(i);
+        }
+        from = i + 1;
+    }
+    None
+}
+
+fn md_parse(chars: &[char], style: Run, out: &mut Vec<Run>) {
+    let mut plain = String::new();
+    let flush = |plain: &mut String, out: &mut Vec<Run>| {
+        if !plain.is_empty() {
+            out.push(Run {
+                text: std::mem::take(plain),
+                ..style.clone()
+            });
+        }
+    };
+    let mut i = 0;
+    while i < chars.len() {
+        let rest = &chars[i..];
+        let mut handled = None;
+        if chars[i] == '`' {
+            if let Some(end) = md_find(chars, i + 1, &['`']).filter(|&e| e > i + 1) {
+                flush(&mut plain, out);
+                out.push(Run {
+                    text: chars[i + 1..end].iter().collect(),
+                    mono: true,
+                    ..style.clone()
+                });
+                handled = Some(end + 1);
+            }
+        } else if rest.starts_with(&['*', '*']) {
+            if let Some(end) = md_close(chars, i, &['*', '*']) {
+                flush(&mut plain, out);
+                let inner = Run {
+                    bold: true,
+                    ..style.clone()
+                };
+                md_parse(&chars[i + 2..end], inner, out);
+                handled = Some(end + 2);
+            }
+        } else if chars[i] == '*' {
+            if let Some(end) = md_close(chars, i, &['*']) {
+                flush(&mut plain, out);
+                let inner = Run {
+                    italic: true,
+                    ..style.clone()
+                };
+                md_parse(&chars[i + 1..end], inner, out);
+                handled = Some(end + 1);
+            }
+        } else if chars[i] == '['
+            && let Some(mid) = md_find(chars, i + 1, &[']', '('])
+        {
+            let url_start = mid + 2;
+            if let Some(end) = md_find(chars, url_start, &[')']) {
+                let url: String = chars[url_start..end].iter().collect();
+                if (url.starts_with("http://") || url.starts_with("https://"))
+                    && !url.contains(char::is_whitespace)
+                {
+                    flush(&mut plain, out);
+                    md_parse(&chars[i + 1..mid], style.clone(), out);
+                    handled = Some(end + 1);
+                }
+            }
+        }
+        match handled {
+            Some(next) => i = next,
+            None => {
+                plain.push(chars[i]);
+                i += 1;
+            }
+        }
+    }
+    flush(&mut plain, out);
 }

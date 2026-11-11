@@ -97,6 +97,15 @@ pub struct FontSpec {
     pub mono: bool,
 }
 
+/// A stretch of `Rich` text; the flags change the base font, the colour stays the command's.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Run {
+    pub text: String,
+    pub bold: bool,
+    pub italic: bool,
+    pub mono: bool,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Align {
     Left,
@@ -116,6 +125,15 @@ pub enum DrawCmd {
     Text {
         rect: Rect,
         text: String,
+        font: FontSpec,
+        color: Color,
+        max_lines: u32,
+        align: Align,
+    },
+    /// `Text` made of runs that differ in weight, slant or monospacing (markdown); `font` is the base every run starts from.
+    Rich {
+        rect: Rect,
+        runs: Vec<Run>,
         font: FontSpec,
         color: Color,
         max_lines: u32,

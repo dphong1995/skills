@@ -220,3 +220,22 @@ fn layout_items_follow_the_sections_and_height_is_capped() {
     assert_eq!(ids.len(), 30);
     assert_eq!(ids[0], "s0");
 }
+
+#[test]
+fn a_failed_send_shows_the_short_fallback_note_so_the_panel_shrinks() {
+    // Re-homes the phase 5 `Layout.expanded(.., blocks:)` assertion of `failed_send_falls_back_to_the_fallback_note`.
+    let mut s = Session::new("a", "a", "/x", "waiting");
+    s.question = Some(feed_question("R1", SystemTime::now()));
+    s.question_live = true;
+    s.block = Some(BlockState::Form);
+    let form = expanded_size(&snapshot(vec![s.clone()]), &panel(), &FakeMeasure).h;
+    s.block = Some(BlockState::Fallback);
+    let fallback = expanded_size(&snapshot(vec![s.clone()]), &panel(), &FakeMeasure).h;
+    assert!(fallback < form);
+    s.block = Some(BlockState::Sent);
+    assert_eq!(
+        expanded_size(&snapshot(vec![s]), &panel(), &FakeMeasure).h,
+        fallback,
+        "sent and fallback are both one note line"
+    );
+}

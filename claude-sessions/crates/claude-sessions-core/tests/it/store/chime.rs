@@ -67,7 +67,7 @@ fn shell_status_shows_waiting_on_background_command() {
     assert_eq!(s.shown_status(), "idle");
     assert!(s.can_ask_claude());
     assert!(s.is_finished());
-    // Deferred to phase 6: `Theme.Symbols.status(s) == "hourglass"` (view-layer symbol table).
+    // The status symbol is asserted in the app crate: `views::a_shell_waiting_on_a_background_command_shows_the_hourglass`.
 }
 
 #[test]
@@ -129,7 +129,8 @@ fn bg_opacity_default() {
     let dir = make_temp_dir();
     let store = make_store(dir.path());
     assert_eq!(store.bg_opacity, 0.25);
-    // Deferred to phase 6: `Layout.bgOpacities == [0, 0.25, 0.5, 0.75, 0.92]` (view-layer constant).
+    // The choices `[0, 0.25, 0.5, 0.75, 0.92]` have no equivalent yet: the redesign's panel fill is a theme token and the
+    // opacity menu belongs to the context menu, which the views do not build.
 }
 
 // ---- Unseen marks ----

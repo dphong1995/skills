@@ -100,3 +100,17 @@ fn agent_count_merges_foreground_and_background() {
     s.agents = vec!["x".into(), "y".into(), "z".into()];
     assert_eq!(agent_count(&s), 3);
 }
+
+#[test]
+fn markdown_runs_keep_unclosed_markers_and_nest_styles() {
+    use claude_sessions_core::text::markdown_runs;
+    let flat = |s: &str| -> String { markdown_runs(s).iter().map(|r| r.text.as_str()).collect() };
+    assert_eq!(flat("2 * 3 * 4 and `` x"), "2 * 3 * 4 and `` x");
+    assert_eq!(flat("**open"), "**open");
+    let nested = markdown_runs("**a `b`** c");
+    assert_eq!(nested.len(), 3);
+    assert!(nested[0].bold && !nested[0].mono);
+    assert!(nested[1].bold && nested[1].mono);
+    assert!(!nested[2].bold);
+    assert_eq!(flat("  keeps   spaces  "), "  keeps   spaces  ");
+}

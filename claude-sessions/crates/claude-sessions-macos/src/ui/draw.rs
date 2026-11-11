@@ -3,8 +3,8 @@
 use claude_sessions_core::scene::{Appearance, Color, DrawCmd, Rect};
 use objc2::rc::Retained;
 use objc2_app_kit::{
-    NSBezierPath, NSColor, NSCompositingOperation, NSImage, NSImageSymbolConfiguration,
-    NSStringNSExtendedStringDrawing,
+    NSAttributedStringNSExtendedStringDrawing, NSBezierPath, NSColor, NSCompositingOperation,
+    NSImage, NSImageSymbolConfiguration, NSStringNSExtendedStringDrawing,
 };
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 
@@ -62,6 +62,19 @@ pub(crate) fn draw_cmds(cmds: &[DrawCmd], appearance: Appearance) {
                         None,
                     );
                 }
+            }
+            DrawCmd::Rich {
+                rect,
+                runs,
+                font,
+                color,
+                max_lines,
+                align,
+            } => {
+                let string =
+                    text::rich_string(runs, font, color.resolve(appearance), *align, *max_lines);
+                let area = text::text_rect(ns_rect(*rect), font, *max_lines);
+                string.drawWithRect_options_context(area, text::draw_options(), None);
             }
             DrawCmd::Symbol {
                 name,

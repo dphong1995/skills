@@ -277,7 +277,7 @@ fn failed_send_falls_back_and_is_kept_like_sent() {
     assert!(!store.sent.contains_key("a"));
     assert_eq!(store.failed.get("a").map(String::as_str), Some("R1"));
     assert_eq!(store.sessions[0].block, Some(BlockState::Fallback));
-    // Deferred to phase 6: `Layout.expanded(store.sessions, blocks:).height < Layout.expanded(store.sessions).height` (view-layer layout).
+    // The height assertion lives in `size_model::a_failed_send_shows_the_short_fallback_note_so_the_panel_shrinks`.
     store.refresh(SystemTime::now());
     assert_eq!(store.failed.get("a").map(String::as_str), Some("R1"));
     idle_now(dir.path(), "idle");

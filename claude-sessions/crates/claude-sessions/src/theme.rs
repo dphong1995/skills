@@ -36,6 +36,12 @@ pub const SECTION_FONT: FontSpec = font(10.5, Weight::Semibold);
 pub const TIME_FONT: FontSpec = font(11.5, Weight::Regular);
 pub const META_FONT: FontSpec = font(11.5, Weight::Regular);
 pub const BUTTON_FONT: FontSpec = font(12.0, Weight::Semibold);
+pub const CAPTION_FONT: FontSpec = font(10.5, Weight::Regular);
+pub const META_MONO_FONT: FontSpec = FontSpec {
+    size: 11.5,
+    weight: Weight::Regular,
+    mono: true,
+};
 pub const MONO_FONT: FontSpec = FontSpec {
     size: 12.0,
     weight: Weight::Regular,
@@ -88,5 +94,17 @@ pub fn status_symbol(s: &Session) -> &'static str {
     match s.shown_status() {
         "idle" => "checkmark.circle.fill",
         _ => "circle.dotted",
+    }
+}
+
+/// Colour of a link or Jira status tone.
+pub fn tone_token(tone: Option<claude_sessions_core::store::ItemTone>) -> ThemeColor {
+    use claude_sessions_core::store::ItemTone::*;
+    match tone {
+        None | Some(Todo) => ThemeColor::TextSecondary,
+        Some(Doing) | Some(Open) => ThemeColor::Blue,
+        Some(Done) => ThemeColor::Green,
+        Some(Merged) => ThemeColor::Purple,
+        Some(Closed) => ThemeColor::Red,
     }
 }

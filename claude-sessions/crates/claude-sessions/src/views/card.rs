@@ -121,9 +121,9 @@ pub fn node(ctx: &mut Ctx, s: &Session, y: f64, layout: &CardLayout) -> Node {
             Block::Question => question::draw(ctx, &mut c, s, block),
             Block::Reply => {
                 if let Some(reply) = s.last_reply.as_deref() {
-                    c.text(
+                    c.rich(
                         Rect::new(CARD_INSET, p.y + REPLY_GAP, TEXT_W, p.h - REPLY_GAP),
-                        reply,
+                        text::markdown_runs(reply),
                         theme::REPLY_FONT,
                         theme::tint(ThemeColor::Text, 0.85),
                         2,

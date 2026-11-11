@@ -5,14 +5,14 @@
 //! Hit order inside a node: the renderer takes the first hit whose rect contains the point, so a control's hit is added before
 //! the hit of the card body that contains it.
 
-pub mod approval; // 6b stub
+pub mod approval;
 pub mod card;
-pub mod chips; // 6b stub
-pub mod closed; // 6b stub
+pub mod chips;
+pub mod closed;
 pub mod header;
 pub mod pill;
-pub mod pr_row; // 6b stub
-pub mod question; // 6b stub
+pub mod pr_row;
+pub mod question;
 pub mod section;
 
 use crate::hits::{Target, Targets};
@@ -20,7 +20,7 @@ use crate::theme;
 use claude_sessions_core::layout::{self, Item, TextMeasure};
 use claude_sessions_core::panel_state::PanelState;
 use claude_sessions_core::scene::{
-    Align, Color, Cursor, DrawCmd, Field, FontSpec, Hit, Node, NodeKey, Rect, Scene, Size,
+    Align, Color, Cursor, DrawCmd, Field, FontSpec, Hit, Node, NodeKey, Rect, Run, Scene, Size,
     ThemeColor, Weight,
 };
 use claude_sessions_core::store::{SendState, Snapshot};
@@ -78,6 +78,83 @@ impl Canvas {
             max_lines,
             align,
         });
+    }
+
+    /// `text` as markdown runs.
+    pub fn rich(
+        &mut self,
+        rect: Rect,
+        runs: Vec<Run>,
+        font: FontSpec,
+        color: Color,
+        max_lines: u32,
+        align: Align,
+    ) {
+        self.cmds.push(DrawCmd::Rich {
+            rect,
+            runs,
+            font,
+            color,
+            max_lines,
+            align,
+        });
+    }
+
+    /// A one-line text vertically centred in `rect`.
+    pub fn label(&mut self, rect: Rect, text: &str, font: FontSpec, color: Color, align: Align) {
+        let h = 16.0;
+        self.text(
+            Rect::new(rect.x, rect.y + (rect.h - h) / 2.0, rect.w, h),
+            text,
+            font,
+            color,
+            1,
+            align,
+        );
+    }
+
+    /// A labelled button wearing its send state: sending (dimmed, spinner or none, no hit), sent (green), failed (red).
+    /// Returns whether it is clickable.
+    pub fn button(
+        &mut self,
+        rect: Rect,
+        label: &str,
+        fill: Color,
+        text: Color,
+        state: Option<SendState>,
+    ) -> bool {
+        let (label, fill, text) = match state {
+            None => (label, fill, text),
+            Some(SendState::Sending) => (
+                "Đang gửi…",
+                theme::tint(ThemeColor::Button, 0.5),
+                theme::tint(ThemeColor::Text, 0.5),
+            ),
+            Some(SendState::Sent) => (
+                "Đã gửi ✓",
+                theme::solid(ThemeColor::Green),
+                theme::solid(ThemeColor::OnAccent),
+            ),
+            Some(SendState::Failed) => (
+                "Lỗi — bấm thử lại",
+                theme::solid(ThemeColor::Red),
+                theme::solid(ThemeColor::White),
+            ),
+        };
+        self.rrect(rect, theme::BUTTON_RADIUS, Some(fill), None);
+        let mut face = rect;
+        if state == Some(SendState::Sending) && self.spinner.is_none() {
+            self.spinner = Some(Rect::new(
+                rect.x + 8.0,
+                rect.y + (rect.h - 12.0) / 2.0,
+                12.0,
+                12.0,
+            ));
+            face.x += 14.0;
+            face.w -= 14.0;
+        }
+        self.label(face, label, theme::BUTTON_FONT, text, Align::Center);
+        state != Some(SendState::Sending)
     }
 
     pub fn symbol(&mut self, name: &str, rect: Rect, color: Color, weight: Weight) {
@@ -159,6 +236,11 @@ impl Ctx<'_> {
             fields: canvas.fields,
             spinner: canvas.spinner,
         }
+    }
+
+    /// The width of a button labelled `label`: text and padding, at least wide enough for its send-state faces.
+    pub fn button_w(&self, label: &str) -> f64 {
+        (self.text_w(label, &theme::BUTTON_FONT) + 28.0).max(96.0)
     }
 
     /// The width `text` takes on one line.

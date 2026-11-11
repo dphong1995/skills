@@ -466,7 +466,7 @@ fn link_store(connected: bool) -> LinkRig {
         .insert("T6IR".into(), "talo6.atlassian.net".into());
     store.refresh(SystemTime::now());
     if connected {
-        // Deferred to phase 6: the icon images (`issue_icons` is private in Rust; no rule here reads them).
+        // The icons are drawn by the views (`views::ticket_chips_...`); the image itself waits for `DrawCmd::Image`.
         // Bitbucket is not faked here: swap the untracked PR links for one PR in each state.
         let pr = |id: i64, status: &str, tone: ItemTone| LinkItem {
             text: format!("PR #{id}"),
@@ -620,7 +620,7 @@ fn quota_pill_percent_85() {
     };
     assert_eq!(quota(85, 10).pill_percent(), Some(85));
     assert_eq!(quota(30, 10).pill_percent(), None);
-    // Deferred to phase 6: the collapsed width (`Layout.size`) grows by `quotaPillExtra` while the pill shows a percent.
+    // The collapsed width grows while the pill shows a percent: `size_model::collapsed_width_grows_with_the_quota_ring_and_per_group`.
 }
 
 #[test]
@@ -674,5 +674,5 @@ fn open_menus_cleared_on_collapse() {
     panel.hovering = false;
     panel.on_collapse();
     assert!(panel.open_menus.is_empty());
-    // Deferred to phase 6: the WidgetView re-layout that calls `on_collapse` when hovering ends.
+    // The re-layout after `on_collapse` is asserted in the app crate: `views::collapsing_drops_the_open_link_list`.
 }

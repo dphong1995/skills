@@ -81,6 +81,15 @@ pub fn question_state(s: &Session, q: &FeedQuestion) -> BlockState {
     })
 }
 
+/// The question of `s` whose `Khác…` field is open, from the panel's `other_key` (`"<session id>#<index>"`).
+pub fn other_open(s: &Session, panel: &PanelState) -> Option<usize> {
+    panel
+        .other_key
+        .as_deref()
+        .and_then(|k| k.strip_prefix(&format!("{}#", s.id)))
+        .and_then(|i| i.parse().ok())
+}
+
 /// The number of command lines the approval block shows (1 to `CMD_MAX_LINES`).
 pub fn command_lines(command: &str) -> usize {
     command.split('\n').count().clamp(1, CMD_MAX_LINES)
@@ -242,14 +251,9 @@ pub fn card_layout(
     place(Block::Head, head_height(title_h));
     let editing = panel.editing.as_ref().filter(|e| e.id == s.id);
     if let Some(q) = &s.question {
-        let other = panel
-            .other_key
-            .as_deref()
-            .and_then(|k| k.strip_prefix(&format!("{}#", s.id)))
-            .and_then(|i| i.parse().ok());
         place(
             Block::Question,
-            question_height(q, question_state(s, q), other),
+            question_height(q, question_state(s, q), other_open(s, panel)),
         );
     } else if let Some(p) = s.approvable().filter(|_| s.is_permission_prompt()) {
         let deny = editing.is_some_and(|e| e.kind == EditKind::Deny);
