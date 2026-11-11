@@ -161,3 +161,12 @@ fn answer_sends_no_keystrokes() {
     };
     assert!(keys_for(&a).is_empty());
 }
+
+#[test]
+fn jump_script_activates_and_focuses() {
+    let s = claude_sessions_core::cmux::jump_script("S");
+    assert_eq!(
+        s,
+        "tell application id \"com.cmuxterm.app\"\nactivate\nfocus (first terminal whose id is \"S\")\nend tell"
+    );
+}

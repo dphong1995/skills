@@ -28,6 +28,11 @@ pub fn async_main(work: impl FnOnce() + 'static) {
     dispatch2::DispatchQueue::main().exec_async(move || work.run());
 }
 
+/// Runs `f` on the main thread in a later turn; callable from any thread (a plain `fn` carries no state to share).
+pub fn wake_main(f: fn()) {
+    dispatch2::DispatchQueue::main().exec_async(f);
+}
+
 /// Runs `work` once on the main thread after `seconds`.
 pub fn after(seconds: f64, work: impl FnOnce() + 'static) {
     let work = std::cell::Cell::new(Some(work));

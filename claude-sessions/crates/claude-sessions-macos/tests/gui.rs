@@ -169,13 +169,87 @@ fn defaults_reads_swift_values(suite: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// `open_https` with a recording opener: nothing is ever opened for real.
+fn open_https_guards_the_scheme() -> Result<(), String> {
+    use claude_sessions_macos::workspace::open_https_with;
+    let opened = |input: &str| -> Result<bool, String> {
+        let Ok(url) = url::Url::parse(input) else {
+            return Ok(false);
+        };
+        let mut called = false;
+        let ok = open_https_with(&url, |_| {
+            called = true;
+            true
+        });
+        if ok != called {
+            return Err(format!("{input}: result {ok} but opener called {called}"));
+        }
+        Ok(called)
+    };
+    for bad in [
+        "file:///tmp/x",
+        "vscode://x",
+        "-x",
+        "http://example.com/",
+        "https://u:p@example.com/",
+    ] {
+        if opened(bad)? {
+            return Err(format!("{bad} reached the opener"));
+        }
+    }
+    if !opened("https://example.com")? {
+        return Err("https://example.com was refused".into());
+    }
+    Ok(())
+}
+
+fn chimes_use_the_swift_sounds() -> Result<(), String> {
+    use claude_sessions_core::pull_requests::Chime;
+    use claude_sessions_macos::sound::sound_name;
+    let got = (sound_name(Chime::Done), sound_name(Chime::NeedsYou));
+    (got == ("Glass", "Funk"))
+        .then_some(())
+        .ok_or(format!("{got:?}"))
+}
+
+/// The login item is never registered here; only its gate is checked.
+fn login_item_gate() -> Result<(), String> {
+    use claude_sessions_macos::login_item::allowed;
+    use std::path::Path;
+    let home = Path::new("/Users/u");
+    let ok = allowed(
+        false,
+        Path::new("/Users/u/Applications/ClaudeSessions.app"),
+        home,
+    ) && !allowed(
+        true,
+        Path::new("/Users/u/Applications/ClaudeSessions.app"),
+        home,
+    ) && !allowed(false, Path::new("/tmp/build/ClaudeSessions.app"), home)
+        && !allowed(false, Path::new("/Applications/ClaudeSessions.app"), home);
+    ok.then_some(()).ok_or("gate".into())
+}
+
+/// The CLI path is looked up by bundle id and never through `PATH`; absent when cmux is not installed.
+fn cmux_cli_comes_from_the_bundle() -> Result<(), String> {
+    match claude_sessions_macos::workspace::cmux_cli_path() {
+        Some(p) if !p.ends_with("Contents/Resources/bin/cmux") => Err(format!("{p:?}")),
+        _ => Ok(()),
+    }
+}
+
 fn main() {
     if std::env::var_os("CLAUDE_SESSIONS_GUI_TESTS").is_none() {
         println!("gui tests skipped (set CLAUDE_SESSIONS_GUI_TESTS=1)");
         return;
     }
+    // `CmuxJumpTests` has no case that executes AppleScript (all are pure and ported to the core `cmux` tests), so there
+    // is nothing to gate behind `CLAUDE_SESSIONS_CMUX_TESTS=1` ("needs cmux + Automation") here.
     let suite = format!("claude-sessions-test-{}", std::process::id());
-    let result = defaults_reads_swift_values(&suite);
+    let mut results = vec![(
+        "defaults_reads_swift_values",
+        defaults_reads_swift_values(&suite),
+    )];
     UserDefaultsStore::remove_suite(&suite);
     let _ = defaults(&["delete", &suite]);
     // The domain leaves an empty plist behind; it belongs to the throwaway suite only.
@@ -184,11 +258,27 @@ fn main() {
             std::path::Path::new(&home).join(format!("Library/Preferences/{suite}.plist")),
         );
     }
-    match result {
-        Ok(()) => println!("test defaults_reads_swift_values ... ok"),
-        Err(e) => {
-            println!("test defaults_reads_swift_values ... FAILED: {e}");
-            std::process::exit(1);
+    results.push((
+        "open_https_guards_the_scheme",
+        open_https_guards_the_scheme(),
+    ));
+    results.push(("chimes_use_the_swift_sounds", chimes_use_the_swift_sounds()));
+    results.push(("login_item_gate", login_item_gate()));
+    results.push((
+        "cmux_cli_comes_from_the_bundle",
+        cmux_cli_comes_from_the_bundle(),
+    ));
+    let mut failed = false;
+    for (name, result) in results {
+        match result {
+            Ok(()) => println!("test {name} ... ok"),
+            Err(e) => {
+                println!("test {name} ... FAILED: {e}");
+                failed = true;
+            }
         }
+    }
+    if failed {
+        std::process::exit(1);
     }
 }

@@ -22,6 +22,8 @@ objc2-core-graphics.workspace = true
 objc2-core-foundation.workspace = true
 block2.workspace = true
 dispatch2.workspace = true
+objc2-service-management.workspace = true
+url.workspace = true
 serde_json.workspace = true
 
 [lints]

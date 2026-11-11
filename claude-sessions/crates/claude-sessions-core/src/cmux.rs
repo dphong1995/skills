@@ -166,6 +166,14 @@ pub fn target(surface: &str) -> String {
     format!("(first terminal whose id is {})", quote(surface))
 }
 
+/// The AppleScript body of a jump: activates cmux and focuses the terminal.
+pub fn jump_script(surface: &str) -> String {
+    format!(
+        "tell application id \"{BUNDLE_ID}\"\nactivate\nfocus {}\nend tell",
+        target(surface)
+    )
+}
+
 /// The AppleScript body for one key. Pauses are handled by the sender, so they have no script.
 pub fn script(surface: &str, key: &Key) -> String {
     match key {

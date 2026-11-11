@@ -35,6 +35,8 @@ use claude_sessions_macos::mouse::{self, MouseMonitors};
 use claude_sessions_macos::ui::{UiEvent, WidgetPanelHandle};
 use claude_sessions_macos::{NotificationObserver, app as mac_app, screens};
 
+use crate::actions::{self, Completion, Poster};
+use crate::effects::RealRunner;
 use crate::hits::{Click, ClickEnv};
 use crate::hotkey::{Hotkeys, Which};
 use crate::panels::PanelHost;
@@ -75,6 +77,9 @@ pub struct AppState {
     saved: Settings,
     pr_prompt: String,
     credentials: Option<Receiver<Credentials>>,
+    /// Results of cmux lookups, AppleScript and socket calls; `poster` fills it and wakes the main queue.
+    completions: Receiver<Completion>,
+    poster: Poster,
 }
 
 /// `CLAUDE_SESSIONS_FRAME_LOG=1` also logs every scene rebuild (the renderer logs every node redraw).
@@ -273,22 +278,7 @@ impl AppState {
         let now = self.now();
         self.pick_up_credentials();
         if self.fixture.is_none() {
-            self.store.refresh(now);
-            let (transitions, pr_chime) = (self.store.transitions.clone(), self.store.pr_chime);
-            // The chime sound and the focused-pane check of the alert belong to phase 9.
-            self.store
-                .apply_alert(&transitions, pr_chime, &Default::default(), now);
-            let store = &self.store;
-            for host in &mut self.panels {
-                if host
-                    .state
-                    .editing
-                    .as_ref()
-                    .is_some_and(|e| !store.allows(e))
-                {
-                    host.state.editing = None;
-                }
-            }
+            self.refresh_and_chime(now);
             settings::persist(
                 &self.kv,
                 &mut self.saved,
@@ -556,36 +546,74 @@ fn on_click(weak: &WeakState, key: &str, id: HitId) {
 }
 
 impl AppState {
-    /// An action whose effect lives outside the store. phase 9: cmux jump, keystrokes, socket answers, links, resume and the
-    /// token dialog. Until then the send is marked failed and nothing is sent to any session.
+    /// Refreshes the store, plays the chime of a new transition (unless muted) and drops editors that lost their session.
+    fn refresh_and_chime(&mut self, now: SystemTime) {
+        self.store.refresh(now);
+        let (transitions, pr_chime) = (self.store.transitions.clone(), self.store.pr_chime);
+        // The focused-pane exclusion of the alert is not ported yet.
+        let chime = self
+            .store
+            .apply_alert(&transitions, pr_chime, &Default::default(), now);
+        actions::play_chime(
+            chime,
+            self.store.muted,
+            &mut RealRunner::new(self.poster.clone()),
+        );
+        let store = &self.store;
+        for host in &mut self.panels {
+            if host
+                .state
+                .editing
+                .as_ref()
+                .is_some_and(|e| !store.allows(e))
+            {
+                host.state.editing = None;
+            }
+        }
+    }
+
+    /// The effect of an action the store already claimed (its send button is `Sending`).
     fn run_action(&mut self, action: &Action) {
         let now = self.now();
-        eprintln!("action (phase 9, not run): {}", action_name(action));
-        if let Action::Jump(id) = action {
-            self.store.mark_seen(id);
-        }
-        if let Some(k) = action.send_key() {
-            self.store.finish_send(&k, false, now);
-        }
+        let mut runner = RealRunner::new(self.poster.clone());
+        let close = actions::run(action, &mut self.store, &mut runner, now);
+        self.close_editor(close);
         self.render("action");
+    }
+
+    /// A result that arrived from a worker or an AppleScript turn.
+    fn on_completion(&mut self, completion: Completion) {
+        let now = self.now();
+        // Validate against a fresh store right before the first keystroke, as Swift does.
+        if matches!(&completion, Completion::Surface(p, _) if p.key.is_some()) {
+            self.refresh_and_chime(now);
+        }
+        let mut runner = RealRunner::new(self.poster.clone());
+        actions::complete(completion, &mut self.store, &mut runner, now);
+        self.render("action");
+    }
+
+    fn close_editor(&mut self, session: Option<String>) {
+        let Some(id) = session else { return };
+        for host in &mut self.panels {
+            if host.state.editing.as_ref().is_some_and(|e| e.id == id) {
+                host.state.editing = None;
+            }
+        }
     }
 }
 
-/// The variant name only: actions can carry typed text.
-fn action_name(a: &Action) -> &'static str {
-    match a {
-        Action::Jump(_) => "Jump",
-        Action::Approve { .. } => "Approve",
-        Action::Deny { .. } => "Deny",
-        Action::OpenLink(..) => "OpenLink",
-        Action::AskClaude { .. } => "AskClaude",
-        Action::Reply { .. } => "Reply",
-        Action::Stop(_) => "Stop",
-        Action::Answer { .. } => "Answer",
-        Action::NudgeRabbit(..) => "NudgeRabbit",
-        Action::Resume(_) => "Resume",
-        Action::Connect(_) => "Connect",
-        Action::MarkSeen(_) => "MarkSeen",
+thread_local! {
+    static APP: RefCell<Option<WeakState>> = const { RefCell::new(None) };
+}
+
+/// Applies the completions that are waiting; runs on the main queue after a `Poster` call.
+fn drain_completions() {
+    let Some(weak) = APP.with(|a| a.borrow().clone()) else {
+        return;
+    };
+    while let Some(Some(completion)) = with_state(&weak, |s| s.completions.try_recv().ok()) {
+        with_state(&weak, |s| s.on_completion(completion));
     }
 }
 
@@ -803,6 +831,15 @@ fn start() -> Running {
         }
     }
     let hotkeys = Hotkeys::load(&kv);
+    if live {
+        claude_sessions_macos::login_item::ensure_registered();
+    }
+    let (tx, completions) = channel();
+    let poster: Poster = Arc::new(move |c| {
+        if tx.send(c).is_ok() {
+            main_queue::wake_main(drain_completions);
+        }
+    });
     let shared: Shared = Rc::new(RefCell::new(AppState {
         store,
         panels: Vec::new(),
@@ -813,8 +850,11 @@ fn start() -> Running {
         saved,
         credentials: live.then(read_credentials),
         kv,
+        completions,
+        poster,
     }));
     let weak = Rc::downgrade(&shared);
+    APP.with(|a| *a.borrow_mut() = Some(weak.clone()));
     {
         let state = shared.borrow();
         let screens = screens::keyed_screens().unwrap_or_default();
