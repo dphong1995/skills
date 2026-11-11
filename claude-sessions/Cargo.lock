@@ -66,6 +66,7 @@ version = "0.0.1"
 dependencies = [
  "claude-sessions-core",
  "claude-sessions-macos",
+ "serde_json",
  "tempfile",
  "url",
 ]
@@ -100,6 +101,7 @@ dependencies = [
  "objc2-core-graphics",
  "objc2-foundation",
  "objc2-quartz-core",
+ "serde_json",
 ]
 
 [[package]]

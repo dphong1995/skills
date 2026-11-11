@@ -3,7 +3,9 @@
 
 pub mod app;
 pub mod hits;
+pub mod keyboard_mode;
 pub mod panels;
+pub mod placement;
 pub mod rebuild;
 pub mod theme;
 pub mod views;

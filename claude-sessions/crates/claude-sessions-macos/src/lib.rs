@@ -4,6 +4,7 @@
 pub mod accessibility;
 pub mod alert;
 pub mod app;
+pub mod defaults;
 #[cfg(feature = "hid")]
 pub mod hid;
 pub mod hotkeys;
