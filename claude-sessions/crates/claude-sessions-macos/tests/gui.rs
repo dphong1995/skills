@@ -896,29 +896,19 @@ fn shadow_path_follows_frame_change() -> Result<(), String> {
     Ok(())
 }
 
-/// A frame change through `animate_frame` (set_scene only takes it with Reduce Motion off): the layer gets an explicit `shadowPath` animation from the old size to the new.
-fn shadow_path_animates_with_the_frame() -> Result<(), String> {
-    use claude_sessions_core::scene::Rect;
-    use claude_sessions_macos::ui::SceneView;
+/// `(width, height)` of a shadow path.
+type PathSize = (f64, f64);
+
+/// The `(from, to)` sizes of the layer's explicit `shadowPath` animation.
+fn shadow_animation_sizes(
+    layer: &objc2_quartz_core::CALayer,
+) -> Result<(PathSize, PathSize), String> {
     use objc2::rc::Retained;
     use objc2::runtime::AnyObject;
     use objc2_core_foundation::CFType;
     use objc2_core_graphics::CGPath;
-    use objc2_foundation::{MainThreadMarker, NSSize, ns_string};
+    use objc2_foundation::ns_string;
     use objc2_quartz_core::CABasicAnimation;
-    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
-    let view = SceneView::new(mtm, NSSize::new(200.0, 100.0));
-    view.set_scene(&one_node_scene(shadow_node(
-        Rect::new(10.0, 10.0, 100.0, 40.0),
-        true,
-    )));
-    if !claude_sessions_macos::ui::testing::animate_first_node_frame(
-        &view,
-        Rect::new(10.0, 10.0, 100.0, 70.0),
-    ) {
-        return Err("no node view".into());
-    }
-    let layer = node_layer(&view)?;
     // SAFETY: a plain getter on a layer owned here.
     let animation = unsafe { layer.animationForKey(ns_string!("shadowPath")) }
         .ok_or("no shadowPath animation")?;
@@ -935,27 +925,18 @@ fn shadow_path_animates_with_the_frame() -> Result<(), String> {
         let b = CGPath::bounding_box(Some(path));
         Ok((b.size.width, b.size.height))
     };
-    let (from, to) = (
+    Ok((
         size_of(animation.fromValue())?,
         size_of(animation.toValue())?,
-    );
-    if from != (100.0, 40.0) || to != (100.0, 70.0) {
-        return Err(format!("animation runs from {from:?} to {to:?}"));
-    }
-    let model = layer.shadowPath().ok_or("no shadowPath")?;
-    let b = CGPath::bounding_box(Some(&model));
-    if (b.size.width, b.size.height) != (100.0, 70.0) {
-        return Err(format!("model shadowPath bounds {b:?}"));
-    }
-    Ok(())
+    ))
 }
 
-/// A direct (non-animated) resize drops a `shadowPath` animation still heading for the old target.
-fn direct_resize_cancels_the_shadow_animation() -> Result<(), String> {
+/// A frame change through `animate_frame`: the layer gets an explicit `shadowPath` animation from the old size to the new.
+fn shadow_path_animates_with_the_frame() -> Result<(), String> {
     use claude_sessions_core::scene::Rect;
     use claude_sessions_macos::ui::SceneView;
     use objc2_core_graphics::CGPath;
-    use objc2_foundation::{MainThreadMarker, NSSize, ns_string};
+    use objc2_foundation::{MainThreadMarker, NSSize};
     let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
     let view = SceneView::new(mtm, NSSize::new(200.0, 100.0));
     view.set_scene(&one_node_scene(shadow_node(
@@ -969,17 +950,97 @@ fn direct_resize_cancels_the_shadow_animation() -> Result<(), String> {
         return Err("no node view".into());
     }
     let layer = node_layer(&view)?;
-    // SAFETY: a plain getter on a layer owned here.
-    if unsafe { layer.animationForKey(ns_string!("shadowPath")) }.is_none() {
-        return Err("no shadowPath animation to cancel".into());
+    let (from, to) = shadow_animation_sizes(&layer)?;
+    if from != (100.0, 40.0) || to != (100.0, 70.0) {
+        return Err(format!("animation runs from {from:?} to {to:?}"));
     }
+    let model = layer.shadowPath().ok_or("no shadowPath")?;
+    let b = CGPath::bounding_box(Some(&model));
+    if (b.size.width, b.size.height) != (100.0, 70.0) {
+        return Err(format!("model shadowPath bounds {b:?}"));
+    }
+    Ok(())
+}
+
+/// `set_scene` animates a resize: the layer gets a `shadowPath` animation from the old size to the new.
+fn set_scene_animates_a_resize() -> Result<(), String> {
+    use claude_sessions_core::scene::Rect;
+    use claude_sessions_macos::ui::SceneView;
+    use objc2_foundation::{MainThreadMarker, NSSize};
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(200.0, 100.0));
+    view.set_scene(&one_node_scene(shadow_node(
+        Rect::new(10.0, 10.0, 100.0, 40.0),
+        true,
+    )));
+    view.set_scene(&one_node_scene(shadow_node(
+        Rect::new(10.0, 10.0, 100.0, 70.0),
+        true,
+    )));
+    let layer = node_layer(&view)?;
+    let (from, to) = shadow_animation_sizes(&layer)?;
+    if from != (100.0, 40.0) || to != (100.0, 70.0) {
+        return Err(format!("animation runs from {from:?} to {to:?}"));
+    }
+    Ok(())
+}
+
+/// A node's spinner turns while the panel is live and stops when it is hidden.
+fn spinner_spins_on_a_live_panel() -> Result<(), String> {
+    use claude_sessions_core::scene::Rect;
+    use claude_sessions_macos::ui::SceneView;
+    use objc2_foundation::{MainThreadMarker, NSSize, ns_string};
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(200.0, 100.0));
+    let mut node = shadow_node(Rect::new(10.0, 10.0, 100.0, 40.0), false);
+    node.spinner = Some(Rect::new(4.0, 4.0, 16.0, 16.0));
+    view.set_scene(&one_node_scene(node));
+    let spinning = || -> Result<bool, String> {
+        let layer = node_layer(&view)?;
+        // SAFETY: plain getters on layers owned here.
+        unsafe {
+            let ring = layer
+                .sublayers()
+                .and_then(|l| l.iter().next())
+                .ok_or("no spinner layer")?;
+            Ok(ring.animationForKey(ns_string!("spin")).is_some())
+        }
+    };
+    view.set_motion_live(true);
+    if !spinning()? {
+        return Err("the spinner does not spin on a live panel".into());
+    }
+    view.set_motion_live(false);
+    if spinning()? {
+        return Err("the spinner still spins on a hidden panel".into());
+    }
+    Ok(())
+}
+
+/// A second resize during a running open animation leaves the `shadowPath` animation heading to the newest size.
+fn second_resize_retargets_the_shadow_animation() -> Result<(), String> {
+    use claude_sessions_core::scene::Rect;
+    use claude_sessions_macos::ui::SceneView;
+    use objc2_core_graphics::CGPath;
+    use objc2_foundation::{MainThreadMarker, NSSize};
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(200.0, 100.0));
+    view.set_scene(&one_node_scene(shadow_node(
+        Rect::new(10.0, 10.0, 100.0, 40.0),
+        true,
+    )));
+    view.set_scene(&one_node_scene(shadow_node(
+        Rect::new(10.0, 10.0, 100.0, 70.0),
+        true,
+    )));
+    let layer = node_layer(&view)?;
     view.set_scene(&one_node_scene(shadow_node(
         Rect::new(10.0, 10.0, 100.0, 90.0),
         true,
     )));
-    // SAFETY: a plain getter on a layer owned here.
-    if unsafe { layer.animationForKey(ns_string!("shadowPath")) }.is_some() {
-        return Err("the stale shadowPath animation is still running".into());
+    let (_, to) = shadow_animation_sizes(&layer)?;
+    if to != (100.0, 90.0) {
+        return Err(format!("the shadowPath animation heads to {to:?}"));
     }
     let model = layer.shadowPath().ok_or("no shadowPath")?;
     let b = CGPath::bounding_box(Some(&model));
@@ -1219,9 +1280,14 @@ fn main() {
         "shadow_path_animates_with_the_frame",
         shadow_path_animates_with_the_frame(),
     ));
+    results.push(("set_scene_animates_a_resize", set_scene_animates_a_resize()));
     results.push((
-        "direct_resize_cancels_the_shadow_animation",
-        direct_resize_cancels_the_shadow_animation(),
+        "spinner_spins_on_a_live_panel",
+        spinner_spins_on_a_live_panel(),
+    ));
+    results.push((
+        "second_resize_retargets_the_shadow_animation",
+        second_resize_retargets_the_shadow_animation(),
     ));
     results.push((
         "node_without_shadow_has_none",

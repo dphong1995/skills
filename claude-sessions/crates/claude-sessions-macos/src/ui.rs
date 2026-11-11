@@ -71,7 +71,6 @@ impl WidgetPanelHandle {
         let panel = panel::new_widget_panel(mtm, frame);
         let view = SceneView::new(mtm, frame.size);
         view.set_handler(on_event);
-        SceneView::observe_reduce_motion(&view);
         panel.setContentView(Some(&view));
         Some(Self { panel, view })
     }

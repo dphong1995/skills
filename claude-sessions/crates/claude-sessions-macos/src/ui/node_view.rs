@@ -220,13 +220,6 @@ impl NodeView {
         layer.setShadowPath(Some(&shadow_path(&shadow, size.width, size.height)));
     }
 
-    /// Drops an explicit `shadowPath` animation still heading for an old target (a direct resize must not show it).
-    pub(crate) fn cancel_shadow_animation(&self) {
-        if let Some(layer) = self.layer() {
-            layer.removeAnimationForKey(ns_string!("shadowPath"));
-        }
-    }
-
     /// Animates the frame (inside the caller's animation group) and the shadow path with it, so the shadow never lags.
     pub(crate) fn animate_frame(&self, frame: Rect) {
         // From what is on screen, so overlapping animations do not make the shadow jump.
@@ -424,7 +417,7 @@ impl NodeView {
     }
 
     /// A ring in `rect`; `None` removes it. With `spin` it rotates (in the render server), otherwise it stands still: the
-    /// caller passes `spin` only while the node is visible in an expanded panel and Reduce Motion is off.
+    /// caller passes `spin` only while the node is visible in an expanded panel.
     pub(crate) fn set_spinner(&self, rect: Option<Rect>, spin: bool) {
         let mut slot = self.ivars().spinner.borrow_mut();
         let Some(rect) = rect else {

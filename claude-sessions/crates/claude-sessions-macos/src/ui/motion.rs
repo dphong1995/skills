@@ -1,5 +1,5 @@
 //! The motion table (spec `Chuyển động`). Everything here runs in Core Animation, in the render server: nothing wakes the
-//! app per frame and there is no app-side timer. Reduce Motion turns all of it off; `render_png` never calls into this.
+//! app per frame and there is no app-side timer. `render_png` never calls into this.
 
 use std::ptr::NonNull;
 
@@ -7,8 +7,6 @@ use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2_app_kit::NSAnimationContext;
 use objc2_quartz_core::CAMediaTimingFunction;
-
-use crate::accessibility;
 
 /// Collapsed pill to card: the size change, a spring that does not overshoot.
 pub const OPEN_SECS: f64 = 0.35;
@@ -22,11 +20,6 @@ pub const APPEAR_SLIDE: f64 = 8.0;
 pub const COLOR_SECS: f64 = 0.2;
 /// The one-shot pulse of a new-message sparkle.
 pub const SPARKLE_SECS: f64 = 0.5;
-
-/// False while Reduce Motion is on.
-pub fn enabled() -> bool {
-    !accessibility::reduce_motion()
-}
 
 /// A critically damped spring as a timing curve: fast start, settles without overshoot.
 fn spring() -> Retained<CAMediaTimingFunction> {

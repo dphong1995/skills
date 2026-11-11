@@ -40,7 +40,6 @@ pub struct SceneIvars {
     drag: Cell<Option<Drag>>,
     /// The panel is on screen: only then may a spinner turn. Starts false until the panel is shown.
     live: Cell<bool>,
-    reduce_observer: RefCell<Option<crate::NotificationObserver>>,
     /// The scroll host of the scene's scroll node, while it has one.
     scroll: RefCell<Option<ScrollHost>>,
 }
@@ -160,7 +159,6 @@ impl SceneView {
             clamp: RefCell::new(None),
             drag: Cell::new(None),
             live: Cell::new(false),
-            reduce_observer: RefCell::new(None),
             scroll: RefCell::new(None),
         });
         let frame = NSRect::new(NSPoint::new(0.0, 0.0), size);
@@ -170,26 +168,15 @@ impl SceneView {
         this
     }
 
-    /// Re-applies the motion rules whenever the system's Reduce Motion setting changes.
-    pub fn observe_reduce_motion(this: &Retained<Self>) {
-        let weak = Weak::new(&**this);
-        let observer = crate::accessibility::observe_reduce_motion(move || {
-            if let Some(view) = weak.load() {
-                view.apply_motion();
-            }
-        });
-        *this.ivars().reduce_observer.borrow_mut() = Some(observer);
-    }
-
     /// The panel went on or off screen: a hidden panel keeps no looping animation (spinners stop, pulses are dropped).
     pub fn set_motion_live(&self, live: bool) {
         self.ivars().live.set(live);
         self.apply_motion();
     }
 
-    /// Spinners turn only while the panel is on screen and Reduce Motion is off; pulses go with either.
+    /// Spinners turn only while the panel is on screen; pulses go with them.
     fn apply_motion(&self) {
-        let spin = self.ivars().live.get() && motion::enabled();
+        let spin = self.ivars().live.get();
         for view in self.ivars().nodes.borrow().values() {
             view.set_spin(spin);
             if !spin {
@@ -307,8 +294,7 @@ impl SceneView {
     /// redraw that node alone, changed frames animate in Core Animation, new and removed nodes fade.
     pub fn set_scene(&self, scene: &Scene) {
         let mtm = self.mtm();
-        let animate = motion::enabled();
-        let spin = animate && self.ivars().live.get();
+        let spin = self.ivars().live.get();
         let ivars = self.ivars();
         register_images(&scene.images);
         let old = ivars.scene.replace(scene.clone());
@@ -347,17 +333,13 @@ impl SceneView {
 
         for node in diff.added.iter().filter(|n| n.scroll.is_none()) {
             let mut start = place(node);
-            if animate {
-                start.y -= motion::APPEAR_SLIDE;
-            }
+            start.y -= motion::APPEAR_SLIDE;
             let view = NodeView::new(mtm, &node.key.0, start);
             view.set_cmds(&node.cmds, false);
             created_field = view.set_fields(&node.fields, &sink).or(created_field);
             view.set_spinner(node.spinner, spin);
             view.set_tips(&node.tips);
-            if animate {
-                view.setAlphaValue(0.0);
-            }
+            view.setAlphaValue(0.0);
             match (&host, scrolled.contains(&node.key)) {
                 (Some(doc), true) => doc.addSubview(&view),
                 _ => self.addSubview(&view),
@@ -381,7 +363,7 @@ impl SceneView {
                 continue;
             };
             if update.cmds_changed {
-                view.set_cmds(&update.node.cmds, animate);
+                view.set_cmds(&update.node.cmds, true);
             }
             // Only what differs from the node's previous version is touched.
             let prev = before.get(&update.node.key);
@@ -479,63 +461,55 @@ impl SceneView {
                 }
             }
         };
-        if !animate {
-            for (view, frame) in resized.iter().chain(&slid) {
-                view.cancel_shadow_animation();
-                view.setFrame(ns_rect(*frame));
-            }
-            remove();
-        } else {
-            if !resized.is_empty() {
-                motion::group(
-                    motion::OPEN_SECS,
-                    true,
-                    move || {
-                        for (view, frame) in &resized {
-                            view.animate_frame(*frame);
-                        }
-                    },
-                    || {},
-                );
-            }
-            if !slid.is_empty() {
-                motion::group(
-                    motion::MOVE_SECS,
-                    false,
-                    move || {
-                        for (view, frame) in &slid {
-                            view.animator().setFrame(ns_rect(*frame));
-                        }
-                    },
-                    || {},
-                );
-            }
-            if !appear.is_empty() {
-                motion::group(
-                    motion::FADE_SECS,
-                    false,
-                    move || {
-                        for (view, frame) in &appear {
-                            view.animator().setAlphaValue(1.0);
-                            view.animator().setFrame(ns_rect(*frame));
-                        }
-                    },
-                    || {},
-                );
-            }
-            if !fading_out.is_empty() {
-                let gone = Rc::new(remove);
-                motion::group(
-                    motion::FADE_SECS,
-                    false,
-                    move || {
-                        for view in &fading_out {
-                            view.animator().setAlphaValue(0.0);
-                        }
-                    },
-                    move || gone(),
-                );
-            }
+        if !resized.is_empty() {
+            motion::group(
+                motion::OPEN_SECS,
+                true,
+                move || {
+                    for (view, frame) in &resized {
+                        view.animate_frame(*frame);
+                    }
+                },
+                || {},
+            );
+        }
+        if !slid.is_empty() {
+            motion::group(
+                motion::MOVE_SECS,
+                false,
+                move || {
+                    for (view, frame) in &slid {
+                        view.animator().setFrame(ns_rect(*frame));
+                    }
+                },
+                || {},
+            );
+        }
+        if !appear.is_empty() {
+            motion::group(
+                motion::FADE_SECS,
+                false,
+                move || {
+                    for (view, frame) in &appear {
+                        view.animator().setAlphaValue(1.0);
+                        view.animator().setFrame(ns_rect(*frame));
+                    }
+                },
+                || {},
+            );
+        }
+        if !fading_out.is_empty() {
+            let gone = Rc::new(remove);
+            motion::group(
+                motion::FADE_SECS,
+                false,
+                move || {
+                    for view in &fading_out {
+                        view.animator().setAlphaValue(0.0);
+                    }
+                },
+                move || gone(),
+            );
         }
         if !(diff.added.is_empty() && diff.removed.is_empty() && diff.updated.is_empty())
             && let Some(window) = self.window()

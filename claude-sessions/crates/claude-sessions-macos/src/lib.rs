@@ -1,7 +1,6 @@
 //! Every AppKit, CoreGraphics and Carbon call of the widget lives here: the only crate where `unsafe` is allowed.
 //! No safe function takes a raw pointer; AppKit objects are held as `Retained<T>`.
 
-pub mod accessibility;
 pub mod app;
 pub mod apple_script;
 pub mod defaults;

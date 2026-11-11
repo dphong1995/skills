@@ -43,7 +43,7 @@ pub fn click(view: &SceneView, at: Point, dragged: bool) -> bool {
 }
 
 /// Moves the first node view of `view` to `frame` through `NodeView::animate_frame` inside an animation group, the path a
-/// resize takes when motion is on (`set_scene` skips it under Reduce Motion). False when `view` has no node view.
+/// resize takes. False when `view` has no node view.
 pub fn animate_first_node_frame(
     view: &SceneView,
     frame: claude_sessions_core::scene::Rect,
