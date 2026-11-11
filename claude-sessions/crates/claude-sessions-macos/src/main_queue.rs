@@ -8,7 +8,7 @@ use block2::RcBlock;
 use dispatch2::DispatchTime;
 use objc2::rc::Retained;
 use objc2_core_foundation::{CFRunLoop, kCFRunLoopDefaultMode};
-use objc2_foundation::{MainThreadMarker, NSTimer};
+use objc2_foundation::{MainThreadMarker, NSRunLoop, NSRunLoopCommonModes, NSTimer};
 
 /// Moves a main-thread-only closure into the main dispatch queue.
 struct MainOnly<F>(F);
@@ -92,12 +92,14 @@ impl Drop for Ticker {
     }
 }
 
-/// Calls `tick` every `seconds` on the main thread; `None` off the main thread.
+/// Calls `tick` every `seconds` on the main thread, also while a modal dialog or a menu runs its own loop (the timer is
+/// in the common modes, not only the default one); `None` off the main thread.
 pub fn every(seconds: f64, tick: impl Fn() + 'static) -> Option<Ticker> {
     MainThreadMarker::new()?;
     let block = RcBlock::new(move |_: NonNull<NSTimer>| tick());
     // SAFETY: the block is copied by the timer and only runs on the main run loop.
-    let timer =
-        unsafe { NSTimer::scheduledTimerWithTimeInterval_repeats_block(seconds, true, &block) };
+    let timer = unsafe { NSTimer::timerWithTimeInterval_repeats_block(seconds, true, &block) };
+    // SAFETY: a live timer and a run-loop mode constant, on the main thread.
+    unsafe { NSRunLoop::currentRunLoop().addTimer_forMode(&timer, NSRunLoopCommonModes) };
     Some(Ticker { timer })
 }

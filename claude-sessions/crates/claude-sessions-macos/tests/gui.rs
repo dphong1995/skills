@@ -384,23 +384,38 @@ fn focus_tests_enabled() -> Result<(), String> {
     }
 }
 
-/// The alert window is above the panel level while its modal session runs (the test aborts the session itself). The
-/// alert is invisible (alpha 0, offscreen) and the app is not activated, but it is still a real modal session, so it is
-/// opt-in: set `CLAUDE_SESSIONS_FOCUS_TESTS=1` (besides `CLAUDE_SESSIONS_GUI_TESTS=1`) to run it, like every case that makes
-/// a window key.
+/// The alert window is above the panel while its modal session runs, by `NSWindow.level` and by the window server's layer
+/// and it is key (AppKit puts the alert back to the modal level 8 when it becomes key, which the first version of this
+/// test missed: it read `level()` 0.1 s into a session without activation and passed while the real alert sat under the
+/// panel). The test aborts
+/// the session itself. The alert is invisible (alpha 0, mouse-transparent) but the hook activates the app like the real dialogs do (AppKit
+/// re-levels the alert only once it is key), so the app is briefly frontmost. Esc and clicks are checked live. It is a real modal session, so it is opt-in: set `CLAUDE_SESSIONS_FOCUS_TESTS=1`
+/// (besides `CLAUDE_SESSIONS_GUI_TESTS=1`) to run it, like every case that makes a window key.
 fn alert_level_is_above_panel_while_modal() -> Result<(), String> {
     focus_tests_enabled()?;
-    let (level, alpha) = claude_sessions_macos::ui::testing::alert_level_during_modal()?;
-    if alpha != 0.0 {
-        return Err(format!("alert alpha {alpha} is not 0 inside the session"));
+    let seen = claude_sessions_macos::ui::testing::alert_level_during_modal()?;
+    if seen.alpha != 0.0 {
+        return Err(format!(
+            "alert alpha {} is not 0 inside the session",
+            seen.alpha
+        ));
     }
     let panel = objc2_app_kit::NSStatusWindowLevel;
-    if level > panel {
-        Ok(())
-    } else {
-        Err(format!(
-            "alert level {level} is not above the panel level {panel}"
-        ))
+    if seen.level <= panel {
+        return Err(format!(
+            "alert level {} is not above the panel level {panel}",
+            seen.level
+        ));
+    }
+    if !seen.key {
+        return Err("the alert is not the key window inside the session".into());
+    }
+    match seen.server_layer {
+        Some(layer) if layer > panel => Ok(()),
+        Some(layer) => Err(format!(
+            "the window server puts the alert at layer {layer}, not above the panel level {panel}"
+        )),
+        None => Err("the window server does not list the alert window".into()),
     }
 }
 
@@ -412,7 +427,7 @@ fn main_queue_runs_while_dialog_is_open() -> Result<(), String> {
     if claude_sessions_macos::ui::testing::main_queue_runs_during_modal()? {
         Ok(())
     } else {
-        Err("a main-queue block did not run while the modal session was open".into())
+        Err("a main-queue block or a `main_queue::every` tick did not run while the modal session was open".into())
     }
 }
 

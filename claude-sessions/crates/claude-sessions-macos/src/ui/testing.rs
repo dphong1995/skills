@@ -64,14 +64,48 @@ pub fn animate_first_node_frame(
     true
 }
 
-/// Test hook: runs a bare, invisible alert (alpha 0, mouse-transparent, offscreen, no app activation) the way the real
-/// dialogs run theirs, through `main_queue::run_loop_later` and `dialogs::run_alert_above_panel`. A timer serviced by the
-/// modal run loop reads the window
-/// level and alpha inside the session and aborts it. A watchdog thread ends the process if the session never ends.
-/// Not part of the app's API.
+/// The window server's layer of window `number` (`kCGWindowLayer` of `CGWindowListCopyWindowInfo`), which can differ
+/// from `NSWindow.level` when AppKit re-levels the window as it is shown (the real alert sat at 8 while `level()` said 26).
+fn server_layer(number: isize) -> Option<isize> {
+    use objc2::rc::Retained;
+    use objc2::runtime::AnyObject;
+    use objc2_core_graphics::{CGWindowListCopyWindowInfo, CGWindowListOption};
+    use objc2_foundation::{NSArray, NSDictionary, NSNumber, NSString};
+
+    let list = CGWindowListCopyWindowInfo(
+        CGWindowListOption::OptionIncludingWindow,
+        u32::try_from(number).ok()?,
+    )?;
+    // SAFETY: a CFArray of CFDictionary is toll-free bridged to NSArray of NSDictionary.
+    let list: &NSArray<NSDictionary<NSString, AnyObject>> =
+        unsafe { &*std::ptr::from_ref(&*list).cast() };
+    let info = list.firstObject()?;
+    let layer: Retained<AnyObject> = info.objectForKey(&NSString::from_str("kCGWindowLayer"))?;
+    // SAFETY: `kCGWindowLayer` is a CFNumber, toll-free bridged to NSNumber.
+    let layer: &NSNumber = unsafe { &*std::ptr::from_ref(&*layer).cast() };
+    Some(layer.as_isize())
+}
+
+/// What the alert looked like inside its modal session.
 #[doc(hidden)]
-pub fn alert_level_during_modal() -> Result<(isize, f64), String> {
+pub struct AlertInSession {
+    pub level: isize,
+    /// The window server's layer for the alert window.
+    pub server_layer: Option<isize>,
+    /// Whether the alert is the key window (the app was activated like the real dialogs do).
+    pub key: bool,
+    pub alpha: f64,
+}
+
+/// Test hook: runs a bare, invisible alert (alpha 0, mouse-transparent) the way the real dialogs run theirs, through
+/// `main_queue::run_loop_later` and `dialogs::run_alert`, so the app is activated (as an accessory app, like the widget)
+/// and the alert becomes key: AppKit re-levels the alert to 8 only then, so a run without activation cannot show the bug.
+/// A timer serviced by the modal run loop reads the window level, the window server's layer, key status and alpha inside
+/// the session after AppKit has shown the window (0.5 s), and aborts it; the activation policy is restored. A watchdog thread ends the process if the session never ends. Not part of the app's API.
+#[doc(hidden)]
+pub fn alert_level_during_modal() -> Result<AlertInSession, String> {
     use std::cell::Cell;
+    use std::cell::RefCell;
     use std::rc::Rc;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
@@ -84,6 +118,9 @@ pub fn alert_level_during_modal() -> Result<(isize, f64), String> {
     };
 
     let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let app = NSApplication::sharedApplication(mtm);
+    let policy = app.activationPolicy();
+    app.setActivationPolicy(objc2_app_kit::NSApplicationActivationPolicy::Accessory);
     let finished = Arc::new(AtomicBool::new(false));
     let guard = finished.clone();
     std::thread::spawn(move || {
@@ -93,27 +130,31 @@ pub fn alert_level_during_modal() -> Result<(isize, f64), String> {
             std::process::exit(1);
         }
     });
-    let level = Rc::new(Cell::new(None));
+    let seen = Rc::new(RefCell::new(None));
     let ended = Rc::new(Cell::new(false));
-    let (seen, over) = (level.clone(), ended.clone());
+    let (slot, over) = (seen.clone(), ended.clone());
     crate::main_queue::run_loop_later(move || {
         let alert = NSAlert::new(mtm);
         alert.setMessageText(&NSString::from_str("test"));
         let window = alert.window();
         window.setAlphaValue(0.0);
         window.setIgnoresMouseEvents(true);
-        window.setFrameOrigin(objc2_foundation::NSPoint::new(-30000.0, -30000.0));
         let read = RcBlock::new(move |_: std::ptr::NonNull<NSTimer>| {
-            seen.set(Some((window.level(), window.alphaValue())));
+            *slot.borrow_mut() = Some(AlertInSession {
+                level: window.level(),
+                server_layer: server_layer(window.windowNumber()),
+                key: window.isKeyWindow(),
+                alpha: window.alphaValue(),
+            });
             NSApplication::sharedApplication(mtm).abortModal();
         });
         // SAFETY: the block is copied by the timer and only runs on the main run loop.
-        let timer = unsafe { NSTimer::timerWithTimeInterval_repeats_block(0.1, false, &read) };
+        let timer = unsafe { NSTimer::timerWithTimeInterval_repeats_block(0.5, false, &read) };
         // SAFETY: a live timer and a run-loop mode constant, on the main thread.
         unsafe {
             NSRunLoop::currentRunLoop().addTimer_forMode(&timer, NSModalPanelRunLoopMode);
         }
-        crate::dialogs::run_alert_above_panel(&alert);
+        crate::dialogs::run_alert(mtm, &alert);
         over.set(true);
     });
     while !ended.get() {
@@ -123,14 +164,16 @@ pub fn alert_level_during_modal() -> Result<(isize, f64), String> {
             .runMode_beforeDate(mode, &NSDate::dateWithTimeIntervalSinceNow(0.05));
     }
     finished.store(true, Ordering::SeqCst);
-    level
-        .get()
+    app.setActivationPolicy(policy);
+    seen.borrow_mut()
+        .take()
         .ok_or_else(|| "the modal session ended without the level read".to_string())
 }
 
 /// Test hook: starts an invisible alert the way the app starts its dialogs (`main_queue::run_loop_later`), queues a
 /// `main_queue::async_main` block while the modal session runs, and reports whether that block ran before the session
-/// ended (a timer serviced by the modal run loop checks, then aborts it). A watchdog thread ends the process if the
+/// ended, and a `main_queue::every` ticker (the 1 s refresh) fired during it (a timer serviced by the modal run loop
+/// checks, then aborts it). A watchdog thread ends the process if the
 /// session never ends. Not part of the app's API.
 #[doc(hidden)]
 pub fn main_queue_runs_during_modal() -> Result<bool, String> {
@@ -159,6 +202,7 @@ pub fn main_queue_runs_during_modal() -> Result<bool, String> {
     let ran = Rc::new(Cell::new(false));
     let ended = Rc::new(Cell::new(false));
     let seen = Rc::new(Cell::new(false));
+    let ticked = Rc::new(Cell::new(false));
     let (flag, check, over) = (ran.clone(), seen.clone(), ended.clone());
     crate::main_queue::run_loop_later(move || {
         let alert = NSAlert::new(mtm);
@@ -168,8 +212,10 @@ pub fn main_queue_runs_during_modal() -> Result<bool, String> {
         window.setIgnoresMouseEvents(true);
         window.setFrameOrigin(objc2_foundation::NSPoint::new(-30000.0, -30000.0));
         crate::main_queue::async_main(move || flag.set(true));
+        let tick_flag = ticked.clone();
+        let _ticker = crate::main_queue::every(0.05, move || tick_flag.set(true));
         let read = RcBlock::new(move |_: std::ptr::NonNull<NSTimer>| {
-            check.set(ran.get());
+            check.set(ran.get() && ticked.get());
             NSApplication::sharedApplication(mtm).abortModal();
         });
         // SAFETY: the block is copied by the timer and only runs on the main run loop.

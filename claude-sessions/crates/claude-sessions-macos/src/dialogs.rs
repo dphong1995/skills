@@ -4,8 +4,9 @@
 
 use objc2::rc::Retained;
 use objc2_app_kit::{
-    NSAlert, NSAlertFirstButtonReturn, NSAlertThirdButtonReturn, NSApplication, NSBorderType,
-    NSScrollView, NSSecureTextField, NSStatusWindowLevel, NSTextField, NSTextView, NSView,
+    NSAlert, NSAlertFirstButtonReturn, NSAlertSecondButtonReturn, NSAlertThirdButtonReturn,
+    NSApplication, NSBorderType, NSScrollView, NSSecureTextField, NSStatusWindowLevel, NSTextField,
+    NSTextView, NSView,
 };
 use objc2_foundation::{MainThreadMarker, NSPoint, NSRect, NSSize, NSString};
 
@@ -51,19 +52,25 @@ fn text_field(mtm: MainThreadMarker, frame: NSRect, placeholder: &str) -> Retain
 }
 
 /// Runs `alert` modally the way Swift does: forced activation (`NSApp.activate(ignoringOtherApps: true)`) so the alert is
-/// key, and a window level above the panel's `NSStatusWindowLevel` so the panel cannot cover it. Set before `runModal`;
-/// `runModal` keeps it (measured: level 26 inside the session, 0 when it is not set).
-fn run_alert(mtm: MainThreadMarker, alert: &NSAlert) -> isize {
+/// key, and a window level above the panel's `NSStatusWindowLevel` so the panel cannot cover it. AppKit puts the alert
+/// back to the modal level (8) once it is key, so the level is also re-applied inside the session (`keep_above_panel`).
+pub(crate) fn run_alert(mtm: MainThreadMarker, alert: &NSAlert) -> isize {
     // `activateIgnoringOtherApps:` is deprecated since macOS 14 but is what Swift calls and still forces activation.
     #[allow(deprecated)]
     NSApplication::sharedApplication(mtm).activateIgnoringOtherApps(true);
     run_alert_above_panel(alert)
 }
 
-/// The level handling of `run_alert` without the activation (the test hook must not steal focus).
+/// The level and `Esc` handling of `run_alert` without the activation.
 pub(crate) fn run_alert_above_panel(alert: &NSAlert) -> isize {
     alert.window().setLevel(NSStatusWindowLevel + 1);
-    alert.runModal()
+    let keeper = keep_above_panel(alert);
+    let _escape = escape_closes(alert);
+    let response = alert.runModal();
+    if let Some(keeper) = keeper {
+        keeper.invalidate();
+    }
+    response
 }
 
 fn rect(x: f64, y: f64, w: f64, h: f64) -> NSRect {
@@ -148,4 +155,40 @@ pub fn ask_prompt(current: &str, info: &str) -> PromptAnswer {
     } else {
         PromptAnswer::Cancel
     }
+}
+
+/// AppKit puts the alert back to `NSModalPanelWindowLevel` (8) when `runModal` orders it on screen, below the panel's 25;
+/// the level set before `runModal` only holds for the first instants. A timer on the modal mode puts it back each time.
+fn keep_above_panel(alert: &NSAlert) -> Option<Retained<objc2_foundation::NSTimer>> {
+    use block2::RcBlock;
+    use objc2_app_kit::NSModalPanelRunLoopMode;
+    use objc2_foundation::{NSRunLoop, NSTimer};
+    MainThreadMarker::new()?;
+    let window = alert.window();
+    let block = RcBlock::new(move |_: std::ptr::NonNull<NSTimer>| {
+        if window.level() != NSStatusWindowLevel + 1 {
+            window.setLevel(NSStatusWindowLevel + 1);
+        }
+    });
+    // SAFETY: the block is copied by the timer and only runs on the main run loop.
+    let timer = unsafe { NSTimer::timerWithTimeInterval_repeats_block(0.02, true, &block) };
+    // SAFETY: a live timer and a run-loop mode constant, on the main thread.
+    unsafe { NSRunLoop::currentRunLoop().addTimer_forMode(&timer, NSModalPanelRunLoopMode) };
+    Some(timer)
+}
+
+/// `Esc` ends the session with the second button's code (`Huỷ`) while the alert is key. AppKit binds `Esc` only to a
+/// button titled "Cancel", and giving `Huỷ` that key equivalent makes AppKit move it to the end of the button column.
+fn escape_closes(alert: &NSAlert) -> Option<crate::keys::KeyMonitor> {
+    let mtm = MainThreadMarker::new()?;
+    let window = alert.window();
+    crate::keys::KeyMonitor::new(move |key| {
+        let plain = key.flags & 0xffff_0000 == 0;
+        if key.key_code == crate::keys::KEY_CODE_ESCAPE && plain && window.isKeyWindow() {
+            NSApplication::sharedApplication(mtm).stopModalWithCode(NSAlertSecondButtonReturn);
+            true
+        } else {
+            false
+        }
+    })
 }
