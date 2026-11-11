@@ -387,11 +387,12 @@ fn focus_tests_enabled() -> Result<(), String> {
 /// The alert window is above the panel while its modal session runs, by `NSWindow.level` and by the window server's
 /// layer, and it is key (AppKit puts the alert back to the modal level 8 when it becomes key, which the first version
 /// of this test missed: it read `level()` 0.1 s into a session without activation and passed while the real alert sat
-/// under the panel). The test aborts the session itself. The alert is invisible (alpha 0, mouse-transparent) and moved
-/// offscreen, but the hook activates the app like the real dialogs do (AppKit re-levels the alert only once it is key),
-/// so the app is briefly frontmost and focus goes back to the previous app afterwards. It is a real modal session, so
-/// it is opt-in: set `CLAUDE_SESSIONS_FOCUS_TESTS=1` (besides `CLAUDE_SESSIONS_GUI_TESTS=1`) to run it, like every
-/// case that makes a window key.
+/// under the panel). The test aborts the session itself. The alert is invisible (alpha 0, mouse-transparent) but not
+/// offscreen: AppKit centres it again when the session starts (read as origin (626, 579) inside the session, despite
+/// the hook's `setFrameOrigin`). The hook activates the app like the real dialogs do (AppKit re-levels the alert only
+/// once it is key), so the app is briefly frontmost and focus goes back to the previous app afterwards. It is a real
+/// modal session, so it is opt-in: set `CLAUDE_SESSIONS_FOCUS_TESTS=1` (besides `CLAUDE_SESSIONS_GUI_TESTS=1`) to run
+/// it, like every case that makes a window key.
 fn alert_level_is_above_panel_while_modal() -> Result<(), String> {
     focus_tests_enabled()?;
     let seen = claude_sessions_macos::ui::testing::alert_level_during_modal()?;

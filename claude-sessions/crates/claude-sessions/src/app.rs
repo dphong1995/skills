@@ -622,8 +622,9 @@ fn show_menu(
 }
 
 /// Holds the panels' hover while the context menu runs; closing it re-checks the pointer, so the card collapses then if it left.
+/// A refused borrow is retried on a later run-loop turn: a flag left set would keep every panel's hover open.
 fn set_menu_open(weak: &WeakState, open: bool) {
-    with_state(weak, |s| {
+    apply_or_defer(weak, move |s: &mut AppState| {
         for host in &mut s.panels {
             host.state.menu_open = open;
         }
@@ -631,6 +632,27 @@ fn set_menu_open(weak: &WeakState, open: bool) {
             s.track_mouse();
         }
     });
+}
+
+/// Runs `apply` on the state now, or on a later run-loop turn if the state is borrowed right now (until it is free).
+fn apply_or_defer<T: 'static>(weak: &Weak<RefCell<T>>, apply: impl Fn(&mut T) + Clone + 'static) {
+    if try_apply(weak, &apply) {
+        return;
+    }
+    let weak = weak.clone();
+    main_queue::run_loop_later(move || apply_or_defer(&weak, apply));
+}
+
+/// Applies `apply` unless the state is borrowed; false only when it was borrowed (a dropped state needs no retry).
+fn try_apply<T>(weak: &Weak<RefCell<T>>, apply: &impl Fn(&mut T)) -> bool {
+    let Some(shared) = weak.upgrade() else {
+        return true;
+    };
+    let Ok(mut state) = shared.try_borrow_mut() else {
+        return false;
+    };
+    apply(&mut state);
+    true
 }
 
 fn apply_command(weak: &WeakState, command: &Command) {
@@ -1271,18 +1293,23 @@ fn register_hotkeys(weak: &WeakState) {
     });
 }
 
-/// The hotkey callback: runs its action on a later main-queue turn. While a dialog is open it only beeps: the action
+/// Whether the context menu is tracking (any panel holds `menu_open`); a borrowed state counts as not open.
+fn menu_open(weak: &WeakState) -> bool {
+    with_state(weak, |s| s.panels.iter().any(|h| h.state.menu_open)).unwrap_or(false)
+}
+
+/// The hotkey callback: runs its action on a later main-queue turn. While a dialog or the context menu is open it only beeps: the action
 /// would take key from the dialog (`toggle_open`) or activate cmux under it (`jump_to_next_waiting`).
 fn hotkey_handler(weak: &WeakState, which: Which) -> impl Fn() + 'static {
     let weak = weak.clone();
     move || {
-        if mac_app::modal_open() {
+        if mac_app::modal_open() || menu_open(&weak) {
             return beep();
         }
         let weak = weak.clone();
         main_queue::async_main(move || {
             // A dialog may have opened since the hotkey fired.
-            if mac_app::modal_open() {
+            if mac_app::modal_open() || menu_open(&weak) {
                 return beep();
             }
             match which {
@@ -1397,4 +1424,28 @@ fn start() -> Running {
 pub fn run() {
     let _running = start();
     mac_app::run();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn try_apply_runs_when_free_and_refuses_when_borrowed() {
+        let shared = Rc::new(RefCell::new(0));
+        let weak = Rc::downgrade(&shared);
+        let add = |n: &mut i32| *n += 1;
+        let guard = shared.borrow_mut();
+        assert!(!try_apply(&weak, &add));
+        drop(guard);
+        assert_eq!(*shared.borrow(), 0);
+        assert!(try_apply(&weak, &add));
+        assert_eq!(*shared.borrow(), 1);
+    }
+
+    #[test]
+    fn try_apply_needs_no_retry_for_a_dropped_state() {
+        let weak = Rc::downgrade(&Rc::new(RefCell::new(0)));
+        assert!(try_apply(&weak, &|n: &mut i32| *n += 1));
+    }
 }

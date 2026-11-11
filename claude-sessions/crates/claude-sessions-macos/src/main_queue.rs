@@ -94,9 +94,9 @@ impl Drop for Ticker {
     }
 }
 
-/// Calls `tick` every `seconds` on the main thread: in the default mode and while a modal dialog runs its own loop
-/// (`NSModalPanelRunLoopMode`), but not while a menu tracks the mouse (`NSEventTrackingRunLoopMode`), as Swift's
-/// default-mode timer; `None` off the main thread.
+/// Calls `tick` every `seconds` on the main thread: in the default mode, and while a modal dialog runs its own loop
+/// (`NSModalPanelRunLoopMode`) on purpose, but not while a menu tracks the mouse (`NSEventTrackingRunLoopMode`); only
+/// the menu case matches Swift's default-mode timer. `None` off the main thread.
 pub fn every(seconds: f64, tick: impl Fn() + 'static) -> Option<Ticker> {
     MainThreadMarker::new()?;
     let block = RcBlock::new(move |_: NonNull<NSTimer>| tick());
