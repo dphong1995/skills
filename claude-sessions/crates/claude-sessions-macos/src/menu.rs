@@ -13,9 +13,12 @@ use objc2_foundation::{
 
 use crate::ui::SceneView;
 
-pub struct MenuItem<'a> {
-    pub title: &'a str,
-    pub id: isize,
+/// One line of a popup menu; `id` comes back through `on_pick`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Entry {
+    Item { title: String, id: isize },
+    Submenu { title: String, items: Vec<Entry> },
+    Separator,
 }
 
 struct TargetIvars {
@@ -79,11 +82,33 @@ pub fn install_main_menu() -> bool {
     true
 }
 
+fn fill(mtm: MainThreadMarker, menu: &NSMenu, entries: &[Entry], target: &MenuTarget) {
+    for entry in entries {
+        match entry {
+            Entry::Item { title, id } => {
+                let line = item(mtm, title, "", Some(sel!(pick:)));
+                // SAFETY: the target outlives the popup, which returns only after the action ran.
+                unsafe { line.setTarget(Some(target as &AnyObject)) };
+                line.setTag(*id);
+                menu.addItem(&line);
+            }
+            Entry::Submenu { title, items } => {
+                let line = item(mtm, title, "", None);
+                let sub = NSMenu::initWithTitle(mtm.alloc(), &NSString::from_str(title));
+                fill(mtm, &sub, items, target);
+                line.setSubmenu(Some(&sub));
+                menu.addItem(&line);
+            }
+            Entry::Separator => menu.addItem(&NSMenuItem::separatorItem(mtm)),
+        }
+    }
+}
+
 /// Pops up a menu at `at` (scene points) in `view` and calls `on_pick` with the chosen item's id. This spins a nested
 /// run loop: call it from a later main-queue turn with no state borrowed. False when nothing could be shown.
 pub fn popup(
     view: &SceneView,
-    items: &[MenuItem],
+    entries: &[Entry],
     at: Point,
     on_pick: impl Fn(isize) + 'static,
 ) -> bool {
@@ -96,13 +121,7 @@ pub fn popup(
     // SAFETY: NSObject's `init`.
     let target: Retained<MenuTarget> = unsafe { msg_send![super(target), init] };
     let menu = NSMenu::new(mtm);
-    for entry in items {
-        let entry_item = item(mtm, entry.title, "", Some(sel!(pick:)));
-        // SAFETY: the target outlives the popup, which returns only after the action ran.
-        unsafe { entry_item.setTarget(Some(&target as &AnyObject)) };
-        entry_item.setTag(entry.id);
-        menu.addItem(&entry_item);
-    }
+    fill(mtm, &menu, entries, &target);
     menu.popUpMenuPositioningItem_atLocation_inView(None, NSPoint::new(at.x, at.y), Some(view))
 }
 

@@ -5,7 +5,7 @@
 //! later main-queue turn with no borrow held.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
@@ -15,6 +15,7 @@ use std::time::{Instant, SystemTime};
 use claude_sessions_core::action::Action;
 use claude_sessions_core::bitbucket::BitbucketClient;
 use claude_sessions_core::closed_sessions::ClosedStore;
+use claude_sessions_core::cmux;
 use claude_sessions_core::credentials::{self, Service};
 use claude_sessions_core::feed::{FeedMonitor, UnixFeedTransport};
 use claude_sessions_core::hotkeys::advance;
@@ -24,32 +25,34 @@ use claude_sessions_core::keyboard::KeyOutcome;
 use claude_sessions_core::layout;
 use claude_sessions_core::panel_state::{HotkeyToggle, PanelState};
 use claude_sessions_core::pr_monitor::PRMonitor;
+use claude_sessions_core::pull_requests::DEFAULT_PROMPT;
 use claude_sessions_core::quota::QuotaReader;
 use claude_sessions_core::scene::HitId;
 use claude_sessions_core::store::{Effect, Paths, Snapshot, Store, StoreOptions};
 use claude_sessions_macos::defaults::{UserDefaultsStore, beep};
+use claude_sessions_macos::dialogs::{self, TokenAnswer};
 use claude_sessions_macos::keys::{self, KeyInfo, KeyMonitor};
 use claude_sessions_macos::main_queue::{self, Ticker};
-use claude_sessions_macos::menu::{self, MenuItem};
+use claude_sessions_macos::menu as mac_menu;
 use claude_sessions_macos::mouse::{self, MouseMonitors};
 use claude_sessions_macos::ui::{UiEvent, WidgetPanelHandle};
-use claude_sessions_macos::{NotificationObserver, app as mac_app, screens};
+use claude_sessions_macos::{NotificationObserver, app as mac_app, screens, workspace};
+use url::Url;
 
 use crate::actions::{self, Completion, Poster};
 use crate::effects::RealRunner;
 use crate::hits::{Click, ClickEnv};
 use crate::hotkey::{Hotkeys, Which};
+use crate::menu::{self, Command, Outcome};
 use crate::panels::PanelHost;
 use crate::settings::{self, Settings};
-use crate::{drag, keyboard_mode, placement};
+use crate::{connect, drag, focus, keyboard_mode, placement};
 
 type Shared = Rc<RefCell<AppState>>;
 type WeakState = Weak<RefCell<AppState>>;
 
 /// Ticks a panel may stay off the active Space before it is rebuilt (Swift `rebuildPanelsOffSpace`).
 const OFF_SPACE_TICKS: u32 = 3;
-
-const MENU_QUIT: isize = 1;
 
 /// A fixed snapshot shown instead of the store (`CLAUDE_SESSIONS_FIXTURE`, `fixtures` feature only).
 struct Fixture {
@@ -80,6 +83,14 @@ pub struct AppState {
     /// Results of cmux lookups, AppleScript and socket calls; `poster` fills it and wakes the main queue.
     completions: Receiver<Completion>,
     poster: Poster,
+    /// One connect dialog at a time (Swift `connecting`).
+    connecting: bool,
+    /// Sessions whose cmux surface lookup of the focus check is still running.
+    looking_up: HashSet<String>,
+    checking_focus: bool,
+    /// Bumped when the focus check is cancelled; a result of an older one is dropped.
+    focus_gen: u64,
+    ticks: u64,
 }
 
 /// `CLAUDE_SESSIONS_FRAME_LOG=1` also logs every scene rebuild (the renderer logs every node redraw).
@@ -279,6 +290,10 @@ impl AppState {
         self.pick_up_credentials();
         if self.fixture.is_none() {
             self.refresh_and_chime(now);
+            self.ticks += 1;
+            if self.ticks.is_multiple_of(2) {
+                self.check_focused_pane();
+            }
             settings::persist(
                 &self.kv,
                 &mut self.saved,
@@ -483,20 +498,170 @@ fn handle_event(weak: &WeakState, key: &str, event: UiEvent) {
             .flatten() else {
                 return;
             };
-            // phase 9 builds the real menu from the menu model; this one only quits.
-            main_queue::async_main(move || {
-                let items = [MenuItem {
-                    title: "Thoát",
-                    id: MENU_QUIT,
-                }];
-                menu::popup(&view, &items, at, |id| {
-                    if id == MENU_QUIT {
-                        mac_app::quit();
-                    }
-                });
-            });
+            let weak = weak.clone();
+            main_queue::async_main(move || show_menu(&weak, &view, at));
         }
     }
+}
+
+fn cmux_frontmost() -> bool {
+    workspace::frontmost_bundle_id().as_deref() == Some(cmux::BUNDLE_ID)
+}
+
+fn spawn_cmux(work: impl FnOnce() + Send + 'static) {
+    let spawned = std::thread::Builder::new()
+        .name("claude-sessions.cmux".into())
+        .spawn(work);
+    if let Err(e) = spawned {
+        eprintln!("cmux thread: {e}");
+    }
+}
+
+/// The cmux half of a focus or chime check; blocks, so worker threads only.
+fn query_cmux(
+    targets: &[(String, Option<i32>)],
+    known_surface: bool,
+) -> (Vec<focus::Located>, Option<String>) {
+    let cli = workspace::cmux_cli_path();
+    focus::gather(
+        targets,
+        known_surface,
+        |id| cli.as_deref().and_then(|c| cmux::surface(c, id)),
+        || cli.as_deref().and_then(cmux::focused_surface),
+    )
+}
+
+/// Pops up the right-click menu; a choice is applied on a later turn, so a dialog never opens inside the menu's run loop.
+fn show_menu(
+    weak: &WeakState,
+    view: &claude_sessions_macos::ui::SceneView,
+    at: claude_sessions_core::scene::Point,
+) {
+    let Some(built) = with_state(weak, |s| menu::build(&s.store, &s.hotkeys)) else {
+        return;
+    };
+    let commands = built.commands;
+    let weak = weak.clone();
+    mac_menu::popup(view, &built.entries, at, move |id| {
+        let Some(command) = usize::try_from(id)
+            .ok()
+            .and_then(|i| commands.get(i))
+            .cloned()
+        else {
+            return;
+        };
+        let weak = weak.clone();
+        main_queue::async_main(move || apply_command(&weak, &command));
+    });
+}
+
+fn apply_command(weak: &WeakState, command: &Command) {
+    let outcome = with_state(weak, |s| {
+        let pr_prompt = s.pr_prompt.clone();
+        let outcome = menu::choose(command, &mut s.store, &s.kv, &mut s.saved, &pr_prompt);
+        s.render("menu");
+        outcome
+    });
+    match outcome {
+        Some(Outcome::Hotkey(which, choice)) => {
+            with_state(weak, |s| {
+                s.hotkeys
+                    .set(&s.kv, which, choice, hotkey_handler(weak, which));
+                if s.hotkeys.failed.contains(which.name()) {
+                    eprintln!("hotkey {} is used by another app", which.name());
+                }
+            });
+        }
+        Some(Outcome::EditPrompt) => edit_prompt(weak),
+        Some(Outcome::Connect(service)) => apply_action(weak, &Action::Connect(service)),
+        Some(Outcome::Quit) => mac_app::quit(),
+        Some(Outcome::Done) | None => {}
+    }
+}
+
+/// The prompt dialog; the answer is saved with the other settings.
+fn edit_prompt(weak: &WeakState) {
+    let Some(current) = with_state(weak, |s| s.pr_prompt.clone()) else {
+        return;
+    };
+    let answer = dialogs::ask_prompt(&current, "{url} = link PR, {id} = số PR");
+    with_state(weak, |s| {
+        if let Some(value) = connect::prompt_value(&answer, DEFAULT_PROMPT) {
+            s.pr_prompt = value;
+            settings::persist(
+                &s.kv,
+                &mut s.saved,
+                settings::current(&s.store, s.pr_prompt.clone()),
+            );
+        }
+    });
+}
+
+/// Asks for the email and token on a later turn, then checks and stores them off the main thread (Swift `showDialog`).
+fn connect_dialog(
+    weak: &WeakState,
+    service: Service,
+    notice: Option<String>,
+    account: Option<String>,
+) {
+    let weak = weak.clone();
+    main_queue::async_main(move || {
+        let Some((host, saved_account, poster)) = with_state(&weak, |s| {
+            (
+                s.store.jira_host(),
+                s.store.accounts.get(&service).cloned(),
+                s.poster.clone(),
+            )
+        }) else {
+            return;
+        };
+        let account = account.or(saved_account).unwrap_or_default();
+        let title = format!("Kết nối {}", service.display_name());
+        let info = connect::info(service, host.as_deref());
+        match dialogs::ask_token(&title, &info, notice.as_deref(), &account) {
+            TokenAnswer::Cancel => {
+                with_state(&weak, |s| s.connecting = false);
+            }
+            TokenAnswer::OpenTokenPage { account } => {
+                if let Ok(url) = Url::parse(Service::TOKEN_PAGE) {
+                    workspace::open_https(&url);
+                }
+                connect_dialog(&weak, service, notice, Some(account));
+            }
+            TokenAnswer::Save { account, token } => match connect::precheck(&account, &token) {
+                Err(notice) => {
+                    connect_dialog(
+                        &weak,
+                        service,
+                        Some(notice),
+                        Some(account.trim().to_string()),
+                    );
+                }
+                Ok((account, token)) => {
+                    let spawned = std::thread::Builder::new()
+                        .name("claude-sessions.connect".into())
+                        .spawn(move || {
+                            let failure = connect::store_credentials(
+                                service,
+                                &account,
+                                &token,
+                                || connect::validate(service, &account, &token, host.as_deref()),
+                                credentials::write,
+                            );
+                            poster(Completion::Connected {
+                                service,
+                                account,
+                                failure,
+                            });
+                        });
+                    if let Err(e) = spawned {
+                        eprintln!("connect thread: {e}");
+                        with_state(&weak, |s| s.connecting = false);
+                    }
+                }
+            },
+        }
+    });
 }
 
 /// A click on a hit: an action goes through `Store::apply`, a panel change is applied here.
@@ -547,18 +712,15 @@ fn on_click(weak: &WeakState, key: &str, id: HitId) {
 
 impl AppState {
     /// Refreshes the store, plays the chime of a new transition (unless muted) and drops editors that lost their session.
+    /// While cmux is frontmost the sessions whose pane is focused are left out after an off-thread cmux check.
     fn refresh_and_chime(&mut self, now: SystemTime) {
         self.store.refresh(now);
         let (transitions, pr_chime) = (self.store.transitions.clone(), self.store.pr_chime);
-        // The focused-pane exclusion of the alert is not ported yet.
-        let chime = self
-            .store
-            .apply_alert(&transitions, pr_chime, &Default::default(), now);
-        actions::play_chime(
-            chime,
-            self.store.muted,
-            &mut RealRunner::new(self.poster.clone()),
-        );
+        if transitions.is_empty() || !cmux_frontmost() {
+            self.alert(&transitions, pr_chime, &HashSet::new(), now);
+        } else {
+            self.start_alert_check(transitions, pr_chime);
+        }
         let store = &self.store;
         for host in &mut self.panels {
             if host
@@ -568,6 +730,77 @@ impl AppState {
                 .is_some_and(|e| !store.allows(e))
             {
                 host.state.editing = None;
+            }
+        }
+    }
+
+    fn alert(
+        &mut self,
+        transitions: &HashMap<String, claude_sessions_core::pull_requests::Chime>,
+        pr_chime: Option<claude_sessions_core::pull_requests::Chime>,
+        silent: &HashSet<String>,
+        now: SystemTime,
+    ) {
+        let chime = self.store.apply_alert(transitions, pr_chime, silent, now);
+        actions::play_chime(
+            chime,
+            self.store.muted,
+            &mut RealRunner::new(self.poster.clone()),
+        );
+    }
+
+    /// Looks the transitions' surfaces up and asks cmux for the focused one, on a worker thread; `Completion::Alert` follows.
+    fn start_alert_check(
+        &mut self,
+        transitions: HashMap<String, claude_sessions_core::pull_requests::Chime>,
+        pr_chime: Option<claude_sessions_core::pull_requests::Chime>,
+    ) {
+        let targets: Vec<(String, Option<i32>)> = transitions
+            .keys()
+            .filter(|id| !self.store.surfaces.contains_key(*id))
+            .map(|id| (id.clone(), self.store.pid_of(id)))
+            .collect();
+        let known = transitions
+            .keys()
+            .any(|id| self.store.surfaces.contains_key(id));
+        let poster = self.poster.clone();
+        spawn_cmux(move || {
+            let (located, focused) = query_cmux(&targets, known);
+            poster(Completion::Alert {
+                transitions,
+                pr_chime,
+                located,
+                focused,
+            });
+        });
+    }
+
+    /// Every 2 s (Swift `checkFocusedPane`): clears the marks of the session whose pane cmux shows.
+    fn check_focused_pane(&mut self) {
+        match focus::plan(&self.store, cmux_frontmost(), &self.looking_up) {
+            focus::FocusPlan::Clear => {
+                self.focus_gen += 1;
+                self.store.note_focused(None);
+            }
+            focus::FocusPlan::Check {
+                lookups,
+                known_surface,
+            } => {
+                if self.checking_focus {
+                    return;
+                }
+                self.checking_focus = true;
+                self.looking_up
+                    .extend(lookups.iter().map(|(id, _)| id.clone()));
+                let (generation, poster) = (self.focus_gen, self.poster.clone());
+                spawn_cmux(move || {
+                    let (located, focused) = query_cmux(&lookups, known_surface);
+                    poster(Completion::Focus {
+                        generation,
+                        located,
+                        focused,
+                    });
+                });
             }
         }
     }
@@ -588,9 +821,71 @@ impl AppState {
         if matches!(&completion, Completion::Surface(p, _) if p.key.is_some()) {
             self.refresh_and_chime(now);
         }
-        let mut runner = RealRunner::new(self.poster.clone());
-        actions::complete(completion, &mut self.store, &mut runner, now);
+        match completion {
+            Completion::ConnectDialog(service) => return self.start_connect(service),
+            Completion::Connected {
+                service,
+                account,
+                failure,
+            } => return self.connected(service, account, failure),
+            Completion::Focus {
+                generation,
+                located,
+                focused,
+            } => {
+                for l in &located {
+                    self.looking_up.remove(&l.id);
+                }
+                self.checking_focus = false;
+                focus::apply_located(&mut self.store, &located);
+                if generation == self.focus_gen {
+                    self.store.note_focused(focused.as_deref());
+                }
+                return;
+            }
+            Completion::Alert {
+                transitions,
+                pr_chime,
+                located,
+                focused,
+            } => {
+                focus::apply_located(&mut self.store, &located);
+                let silent =
+                    focus::silent_ids(transitions.keys(), &self.store.surfaces, focused.as_deref());
+                self.alert(&transitions, pr_chime, &silent, now);
+                return;
+            }
+            other => {
+                let mut runner = RealRunner::new(self.poster.clone());
+                actions::complete(other, &mut self.store, &mut runner, now);
+            }
+        }
         self.render("action");
+    }
+
+    /// Opens the connect dialog on a later turn unless one is open.
+    fn start_connect(&mut self, service: Service) {
+        if self.connecting {
+            return beep();
+        }
+        self.connecting = true;
+        if let Some(weak) = APP.with(|a| a.borrow().clone()) {
+            connect_dialog(&weak, service, None, None);
+        }
+    }
+
+    /// The check and Keychain write finished: a failure re-opens the dialog, a success restarts the monitors.
+    fn connected(&mut self, service: Service, account: String, failure: Option<String>) {
+        if let Some(notice) = failure {
+            if let Some(weak) = APP.with(|a| a.borrow().clone()) {
+                connect_dialog(&weak, service, Some(notice), Some(account));
+            }
+            return;
+        }
+        self.connecting = false;
+        self.store.accounts.insert(service, account);
+        // Both monitors start again with what the Keychain holds now.
+        self.credentials = Some(read_credentials());
     }
 
     fn close_editor(&mut self, session: Option<String>) {
@@ -787,20 +1082,25 @@ fn jump_to_next_waiting(weak: &WeakState) {
 /// Registers both hotkeys with the saved choices.
 fn register_hotkeys(weak: &WeakState) {
     with_state(weak, |s| {
-        for (which, run) in [
-            (Which::Open, toggle_open as fn(&WeakState)),
-            (Which::Next, jump_to_next_waiting as fn(&WeakState)),
-        ] {
-            let weak = weak.clone();
-            s.hotkeys.register(which, move || {
-                let weak = weak.clone();
-                main_queue::async_main(move || run(&weak));
-            });
+        for which in [Which::Open, Which::Next] {
+            s.hotkeys.register(which, hotkey_handler(weak, which));
         }
         for name in &s.hotkeys.failed {
             eprintln!("hotkey {name} is used by another app");
         }
     });
+}
+
+/// The hotkey callback: runs its action on a later main-queue turn.
+fn hotkey_handler(weak: &WeakState, which: Which) -> impl Fn() + 'static {
+    let weak = weak.clone();
+    move || {
+        let weak = weak.clone();
+        main_queue::async_main(move || match which {
+            Which::Open => toggle_open(&weak),
+            Which::Next => jump_to_next_waiting(&weak),
+        });
+    }
 }
 
 struct Running {
@@ -814,7 +1114,7 @@ struct Running {
 
 fn start() -> Running {
     mac_app::set_accessory_policy();
-    menu::install_main_menu();
+    mac_menu::install_main_menu();
     let fixture = load_fixture();
     let root = std::env::var_os("CLAUDE_SESSIONS_ROOT").map(PathBuf::from);
     let live = fixture.is_none() && root.is_none();
@@ -852,6 +1152,11 @@ fn start() -> Running {
         kv,
         completions,
         poster,
+        connecting: false,
+        looking_up: HashSet::new(),
+        checking_focus: false,
+        focus_gen: 0,
+        ticks: 0,
     }));
     let weak = Rc::downgrade(&shared);
     APP.with(|a| *a.borrow_mut() = Some(weak.clone()));

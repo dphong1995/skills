@@ -1,9 +1,12 @@
 //! Scene tests of the views: no display, a fixed-width fake `TextMeasure`, temp dirs only.
 
 mod actions;
+mod connect;
 mod drag;
+mod focus;
 mod hotkey;
 mod key_map;
+mod menu;
 mod placement;
 mod rebuild;
 mod settings;

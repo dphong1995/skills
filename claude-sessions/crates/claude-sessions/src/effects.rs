@@ -94,9 +94,9 @@ impl EffectRunner for RealRunner {
         });
     }
 
-    fn connect(&mut self, _service: Service) {
-        // The token dialog arrives with phase 9b.
-        beep();
+    fn connect(&mut self, service: Service) {
+        // The app shows the dialog on a later main-queue turn, with no state borrowed.
+        (self.poster)(Completion::ConnectDialog(service));
     }
 }
 

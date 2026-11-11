@@ -2,10 +2,10 @@
 //! No safe function takes a raw pointer; AppKit objects are held as `Retained<T>`.
 
 pub mod accessibility;
-pub mod alert;
 pub mod app;
 pub mod apple_script;
 pub mod defaults;
+pub mod dialogs;
 #[cfg(feature = "hid")]
 pub mod hid;
 pub mod hotkeys;

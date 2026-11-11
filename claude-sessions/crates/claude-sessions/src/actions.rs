@@ -2,6 +2,7 @@
 //! through an `EffectRunner`. Effects that finish later (cmux lookups, AppleScript, sockets) post a `Completion` that
 //! `complete` applies on the main thread. Nothing here touches AppKit, so tests drive it with a recording runner.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::SystemTime;
 
@@ -13,6 +14,8 @@ use claude_sessions_core::panel_state::EditKind;
 use claude_sessions_core::pull_requests::Chime;
 use claude_sessions_core::store::{Effect, Store};
 use claude_sessions_macos::workspace;
+
+use crate::focus::Located;
 use url::Url;
 
 /// Hands a `Completion` back to the app from any thread.
@@ -40,6 +43,28 @@ pub enum Completion {
         ok: bool,
     },
     Nudged(SendKey, bool),
+    /// `Action::Connect` passed its checks: the app shows the token dialog on a later main-queue turn.
+    ConnectDialog(Service),
+    /// The token check and Keychain write of `connect` finished: `failure` is the notice to show, `None` when stored.
+    /// Never carries the token.
+    Connected {
+        service: Service,
+        account: String,
+        failure: Option<String>,
+    },
+    /// The 2 s focused-pane check finished (`generation` tells a stale one).
+    Focus {
+        generation: u64,
+        located: Vec<Located>,
+        focused: Option<String>,
+    },
+    /// The cmux check behind a chime finished: `transitions` and `pr_chime` are those of the refresh that started it.
+    Alert {
+        transitions: HashMap<String, Chime>,
+        pr_chime: Option<Chime>,
+        located: Vec<Located>,
+        focused: Option<String>,
+    },
 }
 
 /// The side effects of actions. Every method only starts work; results come back as `Completion`s through `poster`.
@@ -319,5 +344,10 @@ pub fn complete(c: Completion, store: &mut Store, runner: &mut dyn EffectRunner,
                 runner.beep();
             }
         }
+        // The app owns these: they need its dialogs and its cmux state.
+        Completion::ConnectDialog(_)
+        | Completion::Connected { .. }
+        | Completion::Focus { .. }
+        | Completion::Alert { .. } => {}
     }
 }
