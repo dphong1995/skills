@@ -1,15 +1,19 @@
 //! The collapsed pill: one node with the counts per group (new, `Cần bạn` badge, `Xong`, `Đang chạy`) and the quota ring from 80%.
 
 use super::{Canvas, Ctx};
+use crate::settings::BG_OPACITIES;
 use crate::theme;
 use claude_sessions_core::layout::{
     HEADER_HEIGHT, PILL_GAP, PILL_PAD, PILL_QUOTA_W, collapsed_width, pill_group_width, pill_groups,
 };
 use claude_sessions_core::quota::QuotaLevel;
-use claude_sessions_core::scene::{Align, Node, Point, Rect, ThemeColor, Weight};
+use claude_sessions_core::scene::{Align, Node, Point, Rect, Shadow, ThemeColor, Weight};
 use claude_sessions_core::store::Snapshot;
 
 pub const KEY: &str = "pill";
+
+/// The opacity at which the pill looks as designed (Swift `Layout.cardOpacity`): the last menu choice.
+const FULL_OPACITY: f64 = BG_OPACITIES[BG_OPACITIES.len() - 1];
 
 pub fn quota_token(percent: i64) -> ThemeColor {
     match QuotaLevel::level(percent) {
@@ -101,12 +105,13 @@ pub fn node(ctx: &mut Ctx) -> Node {
     let w = collapsed_width(snap);
     let cy = HEADER_HEIGHT / 2.0;
     let mut c = Canvas::default();
+    let o = snap.bg_opacity;
     // The thin light border sits inside the node: a stroke centred on the edge would be half clipped away.
     c.rrect(
         Rect::new(0.5, 0.5, w - 1.0, HEADER_HEIGHT - 1.0),
         (HEADER_HEIGHT - 1.0) / 2.0,
-        Some(theme::solid(ThemeColor::Panel)),
-        Some(theme::tint(ThemeColor::Text, 0.18)),
+        Some(theme::tint(ThemeColor::Panel, o)),
+        Some(theme::tint(ThemeColor::Text, 0.18 * o / FULL_OPACITY)),
     );
     if snap.sessions.is_empty() {
         c.rrect(
@@ -150,6 +155,13 @@ pub fn node(ctx: &mut Ctx) -> Node {
         );
     }
     let mut node = ctx.node(KEY, Rect::new(0.0, 0.0, w, HEADER_HEIGHT), c);
-    node.shadow = Some(theme::PILL_SHADOW);
+    // A zero-alpha shadow at o = 0 is kept: the node stays the same shape at every opacity.
+    node.shadow = Some(Shadow {
+        color: theme::tint(
+            theme::PILL_SHADOW.color.token,
+            theme::PILL_SHADOW.color.alpha * o / FULL_OPACITY,
+        ),
+        ..theme::PILL_SHADOW
+    });
     node
 }

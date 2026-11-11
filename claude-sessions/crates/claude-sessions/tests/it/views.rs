@@ -1460,9 +1460,51 @@ fn panel_node_has_shadow() {
 
 #[test]
 fn pill_node_has_shadow() {
-    let (snap, _) = mixed();
+    let (mut snap, _) = mixed();
+    snap.bg_opacity = *claude_sessions::settings::BG_OPACITIES.last().unwrap();
     let built = render(&snap, &PanelState::default());
     assert_eq!(built.scene.nodes[0].shadow, Some(theme::PILL_SHADOW));
+}
+
+#[test]
+fn pill_follows_background_opacity() {
+    let full = *claude_sessions::settings::BG_OPACITIES.last().unwrap();
+    let mut hit_rects = Vec::new();
+    for o in [0.0, 0.25, full] {
+        let (mut snap, _) = mixed();
+        snap.bg_opacity = o;
+        let built = render(&snap, &PanelState::default());
+        let node = &built.scene.nodes[0];
+        let Some(DrawCmd::RoundedRect { fill, stroke, .. }) = node.cmds.first() else {
+            panic!("the pill starts with its background");
+        };
+        let fill = fill.unwrap();
+        let stroke = stroke.unwrap();
+        assert_eq!(
+            (fill.token, stroke.token),
+            (ThemeColor::Panel, ThemeColor::Text)
+        );
+        assert!((fill.alpha - o).abs() < 1e-9, "fill {o}");
+        assert!((stroke.alpha - 0.18 * o / full).abs() < 1e-9, "stroke {o}");
+        let shadow = node.shadow.expect("the pill keeps its shadow");
+        assert!(
+            (shadow.color.alpha - 0.30 * o / full).abs() < 1e-9,
+            "shadow {o}"
+        );
+        hit_rects.push((node.frame, node.hits.clone()));
+    }
+    assert!(hit_rects.windows(2).all(|w| w[0] == w[1]));
+}
+
+#[test]
+fn background_opacity_change_rebuilds_the_collapsed_pill() {
+    let (mut snap, _) = mixed();
+    let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+    let mut gate = claude_sessions::rebuild::RebuildGate::default();
+    gate.built(&snap, &PanelState::default(), false, now);
+    assert!(!gate.needs_rebuild(&snap, false, now));
+    snap.bg_opacity = 0.0;
+    assert!(gate.needs_rebuild(&snap, false, now));
 }
 
 #[test]
