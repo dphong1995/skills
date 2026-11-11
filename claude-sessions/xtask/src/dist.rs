@@ -122,10 +122,15 @@ pub fn run(args: &[String]) -> Result<(), String> {
     std::fs::create_dir_all(&resources).map_err(|e| e.to_string())?;
 
     for target in TARGETS {
-        sh(Command::new("cargo")
+        let mut build = Command::new("cargo");
+        build
             .args(["build", "--release", "--locked", "-p", "claude-sessions"])
             .args(["--target", target])
-            .current_dir(root))?;
+            .current_dir(root);
+        if std::env::var_os("MACOSX_DEPLOYMENT_TARGET").is_none() {
+            build.env("MACOSX_DEPLOYMENT_TARGET", "14.0");
+        }
+        sh(&mut build)?;
     }
     let mut lipo = Command::new("lipo");
     lipo.arg("-create");
