@@ -970,6 +970,38 @@ fn a_link_status_without_a_title_is_drawn_uncut() {
     );
 }
 
+// A status too long for the row is cut to the room right of the ticket key, so its tag stays inside the row.
+#[test]
+fn a_link_status_too_long_for_the_row_stays_inside_it() {
+    let status = "x".repeat(120);
+    let mut s = tickets();
+    for section in &mut s.menu {
+        for item in &mut section.items {
+            item.title = None;
+            item.status = Some(status.clone());
+        }
+    }
+    let snap = snapshot(vec![s]);
+    let mut panel = open();
+    panel.open_menus.insert("done".into());
+    let built = render(&snap, &panel);
+    let node = card(&built.scene, "done");
+    let rect_of = |want: &str| {
+        node.cmds.iter().find_map(|c| match c {
+            DrawCmd::Text { rect, text, .. } if text == want => Some(*rect),
+            _ => None,
+        })
+    };
+    let tag = rect_of(&status).expect("the status is drawn");
+    let code = rect_of("ABC-12").expect("the key is drawn");
+    assert!(tag.x >= code.x + code.w, "{tag:?} starts right of {code:?}");
+    assert!(
+        tag.x + tag.w <= node.frame.w,
+        "{tag:?} ends inside the card of width {}",
+        node.frame.w
+    );
+}
+
 #[test]
 fn collapsing_drops_the_open_link_list() {
     // Re-homes the phase 5 `on_collapse` assertion: the view after the collapse has no list.
@@ -1998,6 +2030,56 @@ fn header_groups_quota_and_counts_on_the_right() {
         "{quota_max} < {} < {counts_min}",
         divider.x
     );
+}
+
+fn header_texts(built: &Built) -> Vec<String> {
+    let header = built
+        .scene
+        .nodes
+        .iter()
+        .find(|n| n.key.0 == "header")
+        .unwrap();
+    header
+        .cmds
+        .iter()
+        .filter_map(|c| match c {
+            DrawCmd::Text { text, .. } => Some(text.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+// These pin which part gives way at the 560 pt panel with FakeMeasure's 7 pt-per-char widths; a real font changes
+// the widths, not the order.
+#[test]
+fn a_forecast_outlives_the_weekly_quota_when_the_block_must_shrink() {
+    let texts = header_texts(&fixture_built("quota-3-high-forecast"));
+    assert!(
+        texts.iter().any(|t| t == "hết ~14:30"),
+        "the forecast stays: {texts:?}"
+    );
+    assert!(
+        !texts.iter().any(|t| t == "Tuần"),
+        "the weekly quota gives way first: {texts:?}"
+    );
+}
+
+#[test]
+fn the_reset_note_stays_when_the_quota_fits_without_counts() {
+    let mut snap = snapshot(vec![]);
+    snap.quota = Some(claude_sessions_core::quota::Quota {
+        five_hour: 40,
+        five_hour_reset: now(),
+        weekly: 20,
+        weekly_reset: now(),
+        forecast: None,
+    });
+    let texts = header_texts(&render(&snap, &open()));
+    assert!(
+        texts.iter().any(|t| t.starts_with("· reset")),
+        "the reset note fits and stays: {texts:?}"
+    );
+    assert!(texts.iter().any(|t| t == "Tuần"), "{texts:?}");
 }
 
 /// Every quota and count element of the header lies in its right half (the notch sits over the left half); the reset

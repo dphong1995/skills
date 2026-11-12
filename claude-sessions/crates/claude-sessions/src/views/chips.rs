@@ -198,11 +198,12 @@ pub fn draw_link_list(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
             );
             let status_w = item.status.as_deref().map_or(0.0, |t| {
                 let w = ctx.text_w(t, &theme::STATE_FONT) + 16.0;
-                // With a title, at most 40% of the row, so a long status never leaves the title only an ellipsis.
+                // With a title, at most 40% of the row, so a long status never leaves the title only an ellipsis;
+                // without one, the room right of the key.
                 if item.title.is_some() {
                     w.min(0.4 * row.w)
                 } else {
-                    w
+                    w.min(row.w - 24.0 - code_w - 6.0 - 4.0)
                 }
             });
             if let Some(title) = &item.title {

@@ -104,7 +104,7 @@ pub fn node(ctx: &mut Ctx, y: f64) -> Node {
     draw_groups(&mut c, snap, counts_x, cy);
     if let Some(q) = &snap.quota {
         // The block ends before the hairline that separates it from the counts; drop the reset note, then the weekly
-        // quota, until it fits in the right half of the header, left of that hairline.
+        // quota (with a forecast showing: the weekly quota, then the forecast), until it fits in the right half of the header, left of that hairline.
         let (right, line_x) = if counts_w > 0.0 {
             let line_x = counts_x - DIVIDER_MARGIN - 0.5;
             (line_x - DIVIDER_MARGIN, Some(line_x))
@@ -112,7 +112,12 @@ pub fn node(ctx: &mut Ctx, y: f64) -> Node {
             (CARD_W - PAD_RIGHT, None)
         };
         let width = |parts: Parts| draw_quota(ctx, &mut Canvas::default(), q, cy, 0.0, parts);
-        let parts = [(true, true), (false, true), (false, false)]
+        let order = if q.forecast.is_some() {
+            [(true, true), (true, false), (false, false)]
+        } else {
+            [(true, true), (false, true), (false, false)]
+        };
+        let parts = order
             .map(|(note, weekly)| Parts { note, weekly })
             .into_iter()
             .find(|p| width(*p) <= right - CARD_W / 2.0)

@@ -920,6 +920,65 @@ fn scrolled_node_keeps_its_place_and_hit_off_origin() -> Result<(), String> {
             view.hit_at(centre(10.0))
         ));
     }
+    // The reuse path: the same scroll node moved down and given a different content height keeps its host, is drawn
+    // at its new place, and answers hits there.
+    let mut moved = scene.clone();
+    for n in moved
+        .nodes
+        .iter_mut()
+        .filter(|n| n.key.0 == "scroll" || n.key.0 == "card")
+    {
+        n.frame.y += 20.0;
+        if let Some(size) = &mut n.scroll {
+            size.h = 300.0;
+        }
+    }
+    let moved_frame = moved.nodes.last().ok_or("no card")?.frame;
+    view.set_scene(&moved);
+    let host2: Retained<NSScrollView> = view
+        .subviews()
+        .iter()
+        .find_map(|v| v.downcast::<NSScrollView>().ok())
+        .ok_or("no scroll view after the move")?;
+    if host != host2 {
+        return Err("the scroll host was not reused".into());
+    }
+    let doc = host2.documentView().ok_or("no document view")?;
+    let card_view = doc.subviews().firstObject().ok_or("no scrolled view")?;
+    let seen = view.convertRect_fromView(card_view.frame(), Some(&doc));
+    let offset = view.scroll_offset();
+    if (seen.origin.x, seen.origin.y + offset) != (moved_frame.x, moved_frame.y) {
+        return Err(format!(
+            "moved node drawn at ({}, {}) with offset {offset}, scene says ({}, {})",
+            seen.origin.x, seen.origin.y, moved_frame.x, moved_frame.y
+        ));
+    }
+    if offset != 10.0 {
+        return Err(format!("offset after the move {offset}, was 10"));
+    }
+    let centre = |scrolled: f64| Point {
+        x: moved_frame.x + 10.0 + 25.0,
+        y: moved_frame.y + 5.0 + 10.0 - scrolled,
+    };
+    if view.hit_at(centre(10.0)) != Some(HitId(7)) {
+        return Err(format!(
+            "no hit after the move: {:?}",
+            view.hit_at(centre(10.0))
+        ));
+    }
+    host2.contentView().scrollToPoint(NSPoint::new(0.0, 15.0));
+    if view.scroll_offset() != 15.0 {
+        return Err(format!(
+            "scrolled offset after the move {}",
+            view.scroll_offset()
+        ));
+    }
+    if view.hit_at(centre(15.0)) != Some(HitId(7)) {
+        return Err(format!(
+            "no hit after scrolling the moved node: {:?}",
+            view.hit_at(centre(15.0))
+        ));
+    }
     Ok(())
 }
 

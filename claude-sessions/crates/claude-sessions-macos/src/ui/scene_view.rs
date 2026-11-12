@@ -360,6 +360,7 @@ impl SceneView {
     }
 
     /// The hit under `at` (SceneView coordinates): scrolled nodes answer at their scrolled position, inside the viewport.
+    /// Public for the gui tests.
     pub fn hit_at(&self, at: Point) -> Option<HitId> {
         let scene = self.ivars().scene.borrow();
         let scrolled_from = scene
