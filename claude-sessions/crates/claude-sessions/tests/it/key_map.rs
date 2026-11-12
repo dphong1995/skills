@@ -82,3 +82,19 @@ fn modifier_flags_map_to_command_control_option_only() {
     let noise = (1 << 16) | (1 << 17) | (1 << 23) | 0x108;
     assert_eq!(key_event(0, "a", noise), ev("a", 0, NONE));
 }
+
+#[test]
+fn modifier_masks_tell_command_alone_from_no_modifier() {
+    use claude_sessions::keyboard_mode::{FLAG_COMMAND, FLAG_CONTROL, FLAG_OPTION, FLAG_SHIFT};
+    use claude_sessions::keyboard_mode::{command_only, no_modifiers};
+    // Caps lock, fn and the device-dependent low bits do not count as modifiers.
+    let noise = (1 << 16) | (1 << 23) | 0x102;
+    assert!(command_only(FLAG_COMMAND | noise));
+    assert!(!command_only(FLAG_COMMAND | FLAG_SHIFT));
+    assert!(!command_only(FLAG_COMMAND | FLAG_OPTION));
+    assert!(!command_only(FLAG_COMMAND | FLAG_CONTROL));
+    assert!(!command_only(noise));
+    assert!(no_modifiers(noise));
+    assert!(!no_modifiers(FLAG_SHIFT));
+    assert!(!no_modifiers(FLAG_COMMAND));
+}

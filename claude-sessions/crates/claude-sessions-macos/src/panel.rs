@@ -55,6 +55,7 @@ pub struct PanelProps {
     pub hides_on_deactivate: bool,
     pub is_opaque: bool,
     pub ignores_cycle: bool,
+    pub autorecalculates_key_view_loop: bool,
 }
 
 /// A hidden-until-shown panel with the widget's properties; mouse events pass through until told otherwise.
@@ -92,6 +93,8 @@ pub fn new_widget_panel(mtm: MainThreadMarker, frame: NSRect) -> Retained<Widget
 pub fn new_key_panel(mtm: MainThreadMarker, frame: NSRect) -> Retained<WidgetPanel> {
     let panel = new_widget_panel(mtm, frame);
     panel.set_wants_key(true);
+    // Fields are added after the panel exists: Tab goes through them in the order they are laid out.
+    panel.setAutorecalculatesKeyViewLoop(true);
     panel.setIgnoresMouseEvents(false);
     panel.setLevel(NSStatusWindowLevel + 1);
     panel
@@ -106,6 +109,7 @@ pub fn props(panel: &WidgetPanel) -> PanelProps {
         can_become_key: panel.canBecomeKeyWindow(),
         hides_on_deactivate: panel.hidesOnDeactivate(),
         is_opaque: panel.isOpaque(),
+        autorecalculates_key_view_loop: panel.autorecalculatesKeyViewLoop(),
         ignores_cycle: panel
             .collectionBehavior()
             .contains(NSWindowCollectionBehavior::IgnoresCycle),

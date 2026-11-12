@@ -50,6 +50,11 @@ pub enum UiEvent {
     FieldCancel {
         key: String,
     },
+    /// The edit of the single-line or secure field with this `Field.key` ended (Return, Tab or a click elsewhere). A
+    /// multi-line field sends `FieldSubmit` for this.
+    FieldEnded {
+        key: String,
+    },
 }
 
 /// Field text can be a token, so `Debug` prints only its length.
@@ -79,6 +84,7 @@ impl std::fmt::Debug for UiEvent {
             ),
             Self::FieldSubmit { key } => f.debug_struct("FieldSubmit").field("key", key).finish(),
             Self::FieldCancel { key } => f.debug_struct("FieldCancel").field("key", key).finish(),
+            Self::FieldEnded { key } => f.debug_struct("FieldEnded").field("key", key).finish(),
         }
     }
 }
@@ -223,5 +229,11 @@ mod tests {
         );
         assert!(!shown.contains("s3cr3t"), "{shown}");
         assert!(shown.contains("12 chars"), "{shown}");
+    }
+
+    #[test]
+    fn field_ended_debug_names_only_the_key() {
+        let shown = format!("{:?}", UiEvent::FieldEnded { key: "k".into() });
+        assert_eq!(shown, "FieldEnded { key: \"k\" }");
     }
 }

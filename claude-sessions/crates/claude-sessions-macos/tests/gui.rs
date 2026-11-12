@@ -567,6 +567,151 @@ fn cancel_operation_emits_field_cancel() -> Result<(), String> {
     Ok(())
 }
 
+/// The events a `recording_window` view has sent.
+type Recorded = std::rc::Rc<std::cell::RefCell<Vec<claude_sessions_macos::ui::UiEvent>>>;
+
+/// A scene view with `scene` that records its events, inside a window that is never ordered in (no visible window, no
+/// activation, no key status), so a field can still be first responder.
+fn recording_window(
+    scene: &claude_sessions_core::scene::Scene,
+) -> Result<
+    (
+        objc2::rc::Retained<objc2_app_kit::NSWindow>,
+        objc2::rc::Retained<claude_sessions_macos::ui::SceneView>,
+        Recorded,
+    ),
+    String,
+> {
+    use objc2::rc::Retained;
+    use objc2_app_kit::{NSBackingStoreType, NSWindow, NSWindowStyleMask};
+    use objc2_foundation::{MainThreadMarker, NSPoint, NSRect, NSSize};
+
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = claude_sessions_macos::ui::SceneView::new(mtm, NSSize::new(200.0, 80.0));
+    let events: Recorded = Default::default();
+    let sink = events.clone();
+    view.set_handler(std::rc::Rc::new(move |e| sink.borrow_mut().push(e)));
+    // SAFETY: NSWindow's designated initialiser with valid arguments; the window is owned by `Retained`, never ordered in.
+    let window: Retained<NSWindow> = unsafe {
+        NSWindow::initWithContentRect_styleMask_backing_defer(
+            mtm.alloc(),
+            NSRect::new(NSPoint::new(-10000.0, -10000.0), NSSize::new(200.0, 80.0)),
+            NSWindowStyleMask::Borderless,
+            NSBackingStoreType::Buffered,
+            false,
+        )
+    };
+    // SAFETY: the window is owned by `Retained`; closing must not release it a second time.
+    unsafe { window.setReleasedWhenClosed(false) };
+    window.setAlphaValue(0.0);
+    window.setContentView(Some(&view));
+    view.set_scene(scene);
+    Ok((window, view, events))
+}
+
+/// Leaving a multi-line field (it stops being first responder) sends exactly one `FieldSubmit`.
+fn multiline_blur_emits_one_field_submit() -> Result<(), String> {
+    use claude_sessions_core::scene::FieldKind;
+    use claude_sessions_macos::ui::UiEvent;
+
+    let (window, view, events) = recording_window(&kind_scene(FieldKind::Multiline, "x", "a"))?;
+    let text = view.text_view("x").ok_or("no text view")?;
+    if !window.makeFirstResponder(Some(&text)) || !text.isEditable() {
+        return Err("the window refused the text view as first responder".into());
+    }
+    if !events.borrow().is_empty() {
+        return Err(format!("events before the blur: {:?}", events.borrow()));
+    }
+    window.makeFirstResponder(None);
+    let want = vec![UiEvent::FieldSubmit { key: "x".into() }];
+    let result = if *events.borrow() == want {
+        Ok(())
+    } else {
+        Err(format!("events after the blur: {:?}", events.borrow()))
+    };
+    window.setContentView(None);
+    result
+}
+
+/// Esc in a multi-line field (`cancelOperation:` through its delegate) is consumed and reported as `FieldCancel`.
+fn multiline_escape_emits_field_cancel() -> Result<(), String> {
+    use claude_sessions_core::scene::FieldKind;
+    use claude_sessions_macos::ui::UiEvent;
+    use objc2::sel;
+    use objc2_app_kit::NSTextViewDelegate;
+
+    let (window, view, events) = recording_window(&kind_scene(FieldKind::Multiline, "x", ""))?;
+    let text = view.text_view("x").ok_or("no text view")?;
+    let delegate = text.delegate().ok_or("no delegate")?;
+    // SAFETY: a plain delegate call with live objects.
+    let consumed = unsafe { delegate.textView_doCommandBySelector(&text, sel!(cancelOperation:)) };
+    window.setContentView(None);
+    if !consumed {
+        return Err("Esc in the multi-line field was not consumed".into());
+    }
+    let want = vec![UiEvent::FieldCancel { key: "x".into() }];
+    if *events.borrow() != want {
+        return Err(format!("events: {:?}", events.borrow()));
+    }
+    Ok(())
+}
+
+/// Leaving a single-line or secure field sends `FieldEnded`, once, with the field's key.
+fn line_field_blur_emits_field_ended() -> Result<(), String> {
+    use claude_sessions_core::scene::FieldKind;
+    use claude_sessions_macos::ui::UiEvent;
+
+    for kind in [FieldKind::Line, FieldKind::Secure] {
+        let (window, view, events) = recording_window(&kind_scene(kind, "k", ""))?;
+        let field = view.field("k").ok_or("no field")?;
+        if !window.makeFirstResponder(Some(&field)) || field.currentEditor().is_none() {
+            return Err(format!(
+                "{kind:?}: the field did not become first responder"
+            ));
+        }
+        window.makeFirstResponder(None);
+        let want = vec![UiEvent::FieldEnded { key: "k".into() }];
+        let got = events.borrow().clone();
+        window.setContentView(None);
+        if got != want {
+            return Err(format!("{kind:?}: events after the blur: {got:?}"));
+        }
+    }
+    Ok(())
+}
+
+/// A field that is being edited when its node leaves (a retired field) sends nothing while the edit ends: no submit for a
+/// multi-line field, no `FieldEnded` for a single-line one.
+fn retired_field_sends_nothing() -> Result<(), String> {
+    use claude_sessions_core::scene::{FieldKind, Scene};
+
+    for kind in [FieldKind::Multiline, FieldKind::Line, FieldKind::Secure] {
+        let (window, view, events) = recording_window(&kind_scene(kind, "k", ""))?;
+        let editing = match kind {
+            FieldKind::Multiline => {
+                let text = view.text_view("k").ok_or("no text view")?;
+                window.makeFirstResponder(Some(&text))
+            }
+            _ => {
+                let field = view.field("k").ok_or("no field")?;
+                window.makeFirstResponder(Some(&field))
+            }
+        };
+        if !editing {
+            return Err(format!(
+                "{kind:?}: the field did not become first responder"
+            ));
+        }
+        view.set_scene(&Scene::default());
+        let got = events.borrow().clone();
+        window.setContentView(None);
+        if !got.is_empty() {
+            return Err(format!("{kind:?}: a retired field sent {got:?}"));
+        }
+    }
+    Ok(())
+}
+
 /// A node removed by `set_scene` fades out for a moment: its field takes no input and emits nothing meanwhile.
 fn fading_node_field_is_disabled() -> Result<(), String> {
     use claude_sessions_macos::ui::{SceneView, UiEvent};
@@ -681,6 +826,8 @@ fn key_panel_props() -> Result<(), String> {
         Err("ignores mouse events".to_string())
     } else if panel.is_visible() {
         Err("visible".to_string())
+    } else if !props.autorecalculates_key_view_loop {
+        Err("Tab does not follow the fields: no key view loop recalculation".to_string())
     } else {
         Ok(())
     };
@@ -2294,6 +2441,19 @@ fn main() {
         "cancel_operation_emits_field_cancel",
         cancel_operation_emits_field_cancel(),
     ));
+    results.push((
+        "multiline_blur_emits_one_field_submit",
+        multiline_blur_emits_one_field_submit(),
+    ));
+    results.push((
+        "multiline_escape_emits_field_cancel",
+        multiline_escape_emits_field_cancel(),
+    ));
+    results.push((
+        "line_field_blur_emits_field_ended",
+        line_field_blur_emits_field_ended(),
+    ));
+    results.push(("retired_field_sends_nothing", retired_field_sends_nothing()));
     results.push(("key_panel_props", key_panel_props()));
     results.push((
         "secure_field_is_native_and_keeps_its_text",

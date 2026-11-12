@@ -150,6 +150,13 @@ define_class!(
             });
         }
 
+        /// Return, Tab or a click elsewhere ended the edit.
+        #[unsafe(method(controlTextDidEndEditing:))]
+        fn control_text_did_end_editing(&self, _note: &NSNotification) {
+            let key = self.ivars().key.clone();
+            (self.ivars().sink)(UiEvent::FieldEnded { key });
+        }
+
         #[unsafe(method(control:textView:doCommandBySelector:))]
         unsafe fn control_text_view_do_command_by_selector(
             &self,
@@ -677,7 +684,7 @@ impl NodeView {
 
     /// Adds, moves and removes the native text fields. The text is set only when the scene's text for a field changed and
     /// the field is not being edited, so what the user typed survives a scene that did not change it; `sink` gets the
-    /// field's `FieldChanged`, `FieldSubmit` and `FieldCancel` events. A `Secure` field never takes the scene's text: it is
+    /// field's `FieldChanged`, `FieldSubmit`, `FieldCancel` and `FieldEnded` events. A `Secure` field never takes the scene's text: it is
     /// emptied only by being replaced under a new key. Returns the last `Line` field this call created.
     pub(crate) fn set_fields(
         &self,
@@ -692,6 +699,8 @@ impl NodeView {
                 .iter()
                 .any(|f| f.key == slot.key && f.kind == slot.kind);
             if !keep {
+                // Ending an edit sends events; the field is leaving, so it sends none.
+                slot.clear_delegate();
                 slot.host().removeFromSuperview();
             }
             keep
@@ -834,11 +843,10 @@ impl NodeView {
     /// the edit; the window becomes first responder, as AppKit does when a first-responder view leaves the window.
     pub(crate) fn retire_fields(&self) {
         let fields = self.ivars().fields.borrow();
-        // A multi-line field submits when the edit ends: that is not an event of a node that is leaving.
+        // Ending an edit sends events (a multi-line field submits, a line field reports it ended): none of them is an
+        // event of a node that is leaving.
         for slot in fields.iter() {
-            if matches!(slot.control, Control::Multi { .. }) {
-                slot.clear_delegate();
-            }
+            slot.clear_delegate();
         }
         if let Some(window) = self.window()
             && fields.iter().any(|slot| slot.is_editing())
@@ -851,7 +859,6 @@ impl NodeView {
             } else if let Control::Multi { text, .. } = &slot.control {
                 text.setEditable(false);
             }
-            slot.clear_delegate();
         }
     }
 

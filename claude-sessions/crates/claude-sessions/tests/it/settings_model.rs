@@ -92,6 +92,220 @@ fn normalize_site_cases() {
 }
 
 #[test]
+fn normalize_site_keeps_only_the_host() {
+    assert_eq!(
+        normalize_site("https://cong-ty.atlassian.net/jira/your-work?x=1").as_deref(),
+        Some("cong-ty.atlassian.net")
+    );
+    assert_eq!(
+        normalize_site("Cong-Ty.Atlassian.net/browse/A-1").as_deref(),
+        Some("cong-ty.atlassian.net")
+    );
+    assert_eq!(
+        normalize_site("evil.com/.atlassian.net").as_deref(),
+        Some("evil.com")
+    );
+}
+
+#[test]
+fn check_accepts_a_pasted_url_with_a_path() {
+    let (_d, mut s, mut m) = setup();
+    apply(
+        &mut m,
+        &mut s,
+        SettingsAction::SiteChanged("https://cong-ty.atlassian.net/jira/your-work".into()),
+    );
+    let e = apply(&mut m, &mut s, SettingsAction::Check(Jira));
+    assert_eq!(
+        e,
+        vec![SettingsEffect::RunCheck {
+            service: Jira,
+            email: String::new(),
+            site: Some("cong-ty.atlassian.net".into())
+        }]
+    );
+}
+
+#[test]
+fn check_refuses_a_site_that_hides_another_host_behind_a_path() {
+    let (_d, mut s, mut m) = setup();
+    for typed in [
+        "evil.com/.atlassian.net",
+        "a.b.com#.atlassian.net",
+        "a b.atlassian.net",
+    ] {
+        apply(&mut m, &mut s, SettingsAction::SiteChanged(typed.into()));
+        let e = apply(&mut m, &mut s, SettingsAction::Check(Jira));
+        assert!(e.is_empty(), "{typed}");
+        assert_eq!(
+            m.jira.check,
+            CheckState::Failed("✗ Site phải có dạng <tên>.atlassian.net".into()),
+            "{typed}"
+        );
+    }
+}
+
+#[test]
+fn site_commit_saves_only_an_atlassian_site() {
+    let (_d, mut s, mut m) = setup();
+    apply(
+        &mut m,
+        &mut s,
+        SettingsAction::SiteChanged("evil.example.com".into()),
+    );
+    let e = apply(&mut m, &mut s, SettingsAction::SiteCommit);
+    assert!(e.is_empty());
+    assert_eq!(s.jira_site, None);
+    assert_eq!(m.site, "evil.example.com");
+    assert_eq!(
+        m.jira.check,
+        CheckState::Failed("✗ Site phải có dạng <tên>.atlassian.net".into())
+    );
+    apply(
+        &mut m,
+        &mut s,
+        SettingsAction::SiteChanged("evil.com/.atlassian.net".into()),
+    );
+    assert!(apply(&mut m, &mut s, SettingsAction::SiteCommit).is_empty());
+    assert_eq!(s.jira_site, None);
+}
+
+#[test]
+fn site_commit_keeps_a_running_check() {
+    let (_d, mut s, mut m) = setup();
+    learn(&mut s, "a.atlassian.net");
+    apply(&mut m, &mut s, SettingsAction::Check(Jira));
+    apply(
+        &mut m,
+        &mut s,
+        SettingsAction::SiteChanged("evil.com".into()),
+    );
+    apply(&mut m, &mut s, SettingsAction::SiteCommit);
+    assert_eq!(m.jira.check, CheckState::Checking);
+}
+
+#[test]
+fn leaving_the_site_field_after_return_writes_once() {
+    let (_d, mut s, mut m) = setup();
+    apply(
+        &mut m,
+        &mut s,
+        SettingsAction::SiteChanged("b.atlassian.net".into()),
+    );
+    let ret = submit_action(SITE_KEY).unwrap();
+    let blur = submit_action(SITE_KEY).unwrap();
+    assert_eq!(apply(&mut m, &mut s, ret), vec![SettingsEffect::Persist]);
+    assert!(apply(&mut m, &mut s, blur).is_empty());
+}
+
+#[test]
+fn close_commits_the_typed_site_and_prompt() {
+    let (_d, mut s, mut m) = setup();
+    apply(
+        &mut m,
+        &mut s,
+        SettingsAction::SiteChanged("b.atlassian.net".into()),
+    );
+    apply(&mut m, &mut s, SettingsAction::PromptChanged("mine".into()));
+    let e = apply(&mut m, &mut s, SettingsAction::Close);
+    assert_eq!(s.jira_site.as_deref(), Some("b.atlassian.net"));
+    assert_eq!(
+        e,
+        vec![
+            SettingsEffect::SetPrompt("mine".into()),
+            SettingsEffect::Persist,
+            SettingsEffect::CloseWindow
+        ]
+    );
+}
+
+#[test]
+fn close_without_editing_the_prompt_writes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut s = store(dir.path());
+    let mut m = SettingsModel::new(&s, "  stored with spaces \n", true);
+    let e = apply(&mut m, &mut s, SettingsAction::Close);
+    assert_eq!(e, vec![SettingsEffect::CloseWindow]);
+    // A real edit is still saved, once.
+    apply(&mut m, &mut s, SettingsAction::PromptChanged("mine".into()));
+    let e = apply(&mut m, &mut s, SettingsAction::PromptCommit);
+    assert_eq!(e, vec![SettingsEffect::SetPrompt("mine".into())]);
+    assert!(apply(&mut m, &mut s, SettingsAction::PromptCommit).is_empty());
+    let e = apply(&mut m, &mut s, SettingsAction::PromptReset);
+    assert_eq!(e, vec![SettingsEffect::SetPrompt(DEFAULT_PROMPT.into())]);
+}
+
+#[test]
+fn a_job_in_flight_before_the_window_opened_shows_and_blocks() {
+    let (_d, mut s, mut m) = setup();
+    m.resume(Bitbucket, Job::Save);
+    assert_eq!(m.bitbucket.check, CheckState::Saving);
+    apply(&mut m, &mut s, SettingsAction::TokenEdited(Bitbucket, true));
+    assert!(apply(&mut m, &mut s, SettingsAction::Save(Bitbucket)).is_empty());
+    assert!(apply(&mut m, &mut s, SettingsAction::Check(Bitbucket)).is_empty());
+    assert_eq!(m.bitbucket.check, CheckState::Saving);
+    m.resume(Bitbucket, Job::Check);
+    assert_eq!(m.bitbucket.check, CheckState::Checking);
+    m.done(Bitbucket, Job::Check, Ok("bb@x".into()));
+    assert!(matches!(m.bitbucket.check, CheckState::Ok(_)));
+}
+
+#[test]
+fn note_field_keeps_the_token_text_apart_from_the_model() {
+    let mut tokens = std::collections::HashMap::new();
+    let key = token_key(Jira, 0);
+    let a = note_field(&mut tokens, &key, "s3cr3t");
+    assert_eq!(a, Some(SettingsAction::TokenEdited(Jira, true)));
+    assert_eq!(tokens.get(&Jira).map(String::as_str), Some("s3cr3t"));
+    let a = note_field(&mut tokens, &key, "s3cr3t2");
+    assert_eq!(a, Some(SettingsAction::TokenEdited(Jira, true)));
+    assert_eq!(tokens.get(&Jira).map(String::as_str), Some("s3cr3t2"));
+    note_field(&mut tokens, &token_key(Bitbucket, 0), "other");
+    let a = note_field(&mut tokens, &key, "");
+    assert_eq!(a, Some(SettingsAction::TokenEdited(Jira, false)));
+    assert!(!tokens.contains_key(&Jira));
+    assert!(tokens.contains_key(&Bitbucket));
+}
+
+#[test]
+fn note_field_leaves_the_tokens_alone_for_other_fields() {
+    let mut tokens = std::collections::HashMap::new();
+    tokens.insert(Jira, "keep".to_string());
+    for (key, text) in [
+        (PROMPT_KEY.to_string(), "p"),
+        (SITE_KEY.to_string(), ""),
+        (email_key(Jira), "e"),
+        ("other".to_string(), "x"),
+    ] {
+        note_field(&mut tokens, &key, text);
+    }
+    assert_eq!(tokens.len(), 1);
+    assert_eq!(tokens.get(&Jira).map(String::as_str), Some("keep"));
+    assert_eq!(
+        note_field(&mut tokens, &email_key(Jira), "e"),
+        Some(SettingsAction::EmailChanged(Jira, "e".into()))
+    );
+    assert_eq!(note_field(&mut tokens, "other", "x"), None);
+}
+
+#[test]
+fn typing_actions_apply_without_effects() {
+    // The app applies these at once inside the field event and renders later; that is only safe while they ask for nothing.
+    let (_d, mut s, mut m) = setup();
+    for (key, text) in [
+        (PROMPT_KEY.to_string(), "p"),
+        (SITE_KEY.to_string(), "s"),
+        (email_key(Jira), "e"),
+        (token_key(Jira, 0), "t"),
+    ] {
+        let a = changed_action(&key, text).unwrap();
+        assert!(apply(&mut m, &mut s, a).is_empty(), "{key}");
+    }
+    assert_eq!(m.prompt, "p");
+    assert_eq!(m.site, "s");
+}
+
+#[test]
 fn site_commit_saves_the_typed_site() {
     let (_d, mut s, mut m) = setup();
     apply(
@@ -298,8 +512,7 @@ fn editing_a_field_clears_the_result() {
 #[test]
 fn status_line_shows_the_check_result_while_the_monitor_is_checking() {
     let (_d, mut s, mut m) = setup();
-    s.connections
-        .insert(Jira, ConnectionLine::Checking("a".into()));
+    s.set_connection(Jira, ConnectionLine::Checking("a".into()));
     assert_eq!(
         status_line(&m, &s, Jira),
         ("a (đang kiểm tra)".to_string(), ThemeColor::TextSecondary)
@@ -309,12 +522,12 @@ fn status_line_shows_the_check_result_while_the_monitor_is_checking() {
         status_line(&m, &s, Jira),
         ("✓ a@x".to_string(), ThemeColor::Green)
     );
-    s.connections.insert(Jira, ConnectionLine::Ok("a".into()));
+    s.set_connection(Jira, ConnectionLine::Ok("a".into()));
     assert_eq!(
         status_line(&m, &s, Jira),
         ("✓ a".to_string(), ThemeColor::Green)
     );
-    s.connections.insert(Jira, ConnectionLine::Rejected);
+    s.set_connection(Jira, ConnectionLine::Rejected);
     assert_eq!(
         status_line(&m, &s, Jira),
         ("✗ token bị từ chối (401)".to_string(), ThemeColor::Red)
@@ -395,7 +608,7 @@ fn external_key_changes_only_with_connections_accounts_or_failed_hotkeys() {
     let none = std::collections::BTreeSet::new();
     let base = external_key(&s, &none);
     assert_eq!(base, external_key(&s, &none));
-    s.connections.insert(Jira, ConnectionLine::Rejected);
+    s.set_connection(Jira, ConnectionLine::Rejected);
     let rejected = external_key(&s, &none);
     assert_ne!(base, rejected);
     s.accounts.insert(Jira, "j@x".into());

@@ -416,20 +416,20 @@ fn service(v: &SettingsView, s: Service) -> (Canvas, f64) {
     );
     y += ROW_H;
 
-    if shows_result {
-        let (text, color) = match &form.check {
-            CheckState::Checking | CheckState::Saving => {
-                let site = if jira {
-                    v.model.effective_site(v.store).unwrap_or_default()
-                } else {
-                    "api.bitbucket.org".to_string()
-                };
-                (format!("Đang gọi {site}…"), ThemeColor::TextSecondary)
-            }
-            CheckState::Ok(t) => (t.clone(), ThemeColor::Green),
-            CheckState::Failed(t) => (t.clone(), ThemeColor::Red),
-            CheckState::Idle => unreachable!("an idle form shows no result"),
-        };
+    let result = match &form.check {
+        CheckState::Checking | CheckState::Saving => {
+            let site = if jira {
+                v.model.effective_site(v.store).unwrap_or_default()
+            } else {
+                "api.bitbucket.org".to_string()
+            };
+            Some((format!("Đang gọi {site}…"), ThemeColor::TextSecondary))
+        }
+        CheckState::Ok(t) => Some((t.clone(), ThemeColor::Green)),
+        CheckState::Failed(t) => Some((t.clone(), ThemeColor::Red)),
+        CheckState::Idle => None,
+    };
+    if let Some((text, color)) = result {
         c.text(
             Rect::new(
                 INNER + LABEL_W,

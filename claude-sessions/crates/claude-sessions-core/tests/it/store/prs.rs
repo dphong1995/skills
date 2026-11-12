@@ -879,6 +879,10 @@ fn connection_texts() {
         bare.store.connection_text(Service::Bitbucket),
         "Bitbucket: ✗ chưa có token"
     );
+    assert_eq!(
+        bare.store.connection_status(Service::Bitbucket),
+        "✗ chưa có token"
+    );
 
     let api = fake(vec![plain_pr(7571)]);
     let (mut store, _d, _p) = pr_store(&api, pr_reply(&[7571]));

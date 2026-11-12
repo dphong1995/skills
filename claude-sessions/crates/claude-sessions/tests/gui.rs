@@ -374,10 +374,8 @@ fn settings_states() -> Result<(), String> {
         if accounts {
             s.accounts.insert(Jira, "ban@cong-ty.com".into());
             s.accounts.insert(Bitbucket, "ban@cong-ty.com".into());
-            s.connections
-                .insert(Jira, ConnectionLine::Ok("ban@cong-ty.com".into()));
-            s.connections
-                .insert(Bitbucket, ConnectionLine::Ok("ban@cong-ty.com".into()));
+            s.set_connection(Jira, ConnectionLine::Ok("ban@cong-ty.com".into()));
+            s.set_connection(Bitbucket, ConnectionLine::Ok("ban@cong-ty.com".into()));
         }
         s.bg_opacity = 0.92;
         s

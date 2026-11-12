@@ -2,12 +2,15 @@
 //! changes of the model and the store plus the effects the app runs. The token is never here: the model knows only whether the
 //! token field holds text, and the app adds the text to a check or save from the native field.
 
+use std::collections::HashMap;
+
 use crate::hotkey::Which;
 use claude_sessions_core::credentials::Service;
-use claude_sessions_core::jira;
 use claude_sessions_core::pull_requests::DEFAULT_PROMPT;
 use claude_sessions_core::scene::ThemeColor;
 use claude_sessions_core::store::{ConnectionLine, Store};
+use claude_sessions_core::url_guard::{self, TokenHost};
+use url::Url;
 
 pub const PROMPT_KEY: &str = "settings.prompt";
 pub const SITE_KEY: &str = "settings.site";
@@ -16,6 +19,7 @@ const EMAIL_PREFIX: &str = "settings.email.";
 const TOKEN_PREFIX: &str = "settings.token.";
 
 const NO_KEYCHAIN: &str = "✗ Bản chạy thử không dùng Keychain";
+const BAD_SITE: &str = "✗ Site phải có dạng <tên>.atlassian.net";
 
 fn slug(s: Service) -> &'static str {
     match s {
@@ -61,6 +65,23 @@ pub fn changed_action(key: &str, text: &str) -> Option<SettingsAction> {
     token_service(key).map(|s| SettingsAction::TokenEdited(s, !text.is_empty()))
 }
 
+/// Keeps the typed token text in `tokens` (removed when the field is empty) and returns what the change means; the text
+/// of any other field is not kept.
+pub fn note_field(
+    tokens: &mut HashMap<Service, String>,
+    key: &str,
+    text: &str,
+) -> Option<SettingsAction> {
+    if let Some(service) = token_service(key) {
+        if text.is_empty() {
+            tokens.remove(&service);
+        } else {
+            tokens.insert(service, text.to_string());
+        }
+    }
+    changed_action(key, text)
+}
+
 /// What leaving or submitting the field `key` means.
 pub fn submit_action(key: &str) -> Option<SettingsAction> {
     match key {
@@ -70,15 +91,27 @@ pub fn submit_action(key: &str) -> Option<SettingsAction> {
     }
 }
 
-/// The host of a typed site: trimmed, without a leading `https://` or `http://` and trailing `/`; `None` when empty.
+/// The host of a typed site, lower case: a pasted URL loses its scheme, path, query and port; `None` when empty. Text that
+/// does not parse is returned trimmed, so the host guard refuses it.
 pub fn normalize_site(text: &str) -> Option<String> {
     let t = text.trim();
-    let t = t
-        .strip_prefix("https://")
-        .or_else(|| t.strip_prefix("http://"))
-        .unwrap_or(t);
-    let t = t.trim_end_matches('/');
-    (!t.is_empty()).then(|| t.to_string())
+    if t.is_empty() {
+        return None;
+    }
+    let url = if t.contains("://") {
+        t.to_string()
+    } else {
+        format!("https://{t}")
+    };
+    let host = Url::parse(&url)
+        .ok()
+        .and_then(|u| u.host_str().map(str::to_string));
+    Some(host.unwrap_or_else(|| t.to_string()))
+}
+
+/// Whether a normalised site may receive the Jira token: the same guard the requests use.
+fn site_ok(site: &str) -> bool {
+    url_guard::token_url(site, "/", TokenHost::Jira).is_some()
 }
 
 /// The prompt to save for typed `text`: trimmed, the default when empty.
@@ -141,6 +174,8 @@ pub struct SettingsModel {
     /// False under a fixture or `CLAUDE_SESSIONS_ROOT`: the Keychain is not used.
     pub live: bool,
     pub prompt: String,
+    /// The prompt as loaded or last saved; a commit that does not change it writes nothing.
+    pub saved_prompt: String,
     pub site: String,
     pub jira: ServiceForm,
     pub bitbucket: ServiceForm,
@@ -152,6 +187,7 @@ impl SettingsModel {
         SettingsModel {
             live,
             prompt: pr_prompt.to_string(),
+            saved_prompt: pr_prompt.to_string(),
             site: store.jira_site.clone().unwrap_or_default(),
             jira: ServiceForm::new(email(Service::Jira)),
             bitbucket: ServiceForm::new(email(Service::Bitbucket)),
@@ -175,6 +211,14 @@ impl SettingsModel {
     /// The Jira site a check would call: the typed one, else the guess.
     pub fn effective_site(&self, store: &Store) -> Option<String> {
         normalize_site(&self.site).or_else(|| store.jira_guess())
+    }
+
+    /// A job of this service started before the window opened and is still running: show it and take no second one.
+    pub fn resume(&mut self, service: Service, job: Job) {
+        self.form_mut(service).check = match job {
+            Job::Check => CheckState::Checking,
+            Job::Save => CheckState::Saving,
+        };
     }
 
     /// Records the end of a check or save; `Ok` carries the account.
@@ -259,10 +303,15 @@ pub fn apply(
         }
         A::PromptCommit => {
             model.prompt = prompt_value(&model.prompt, DEFAULT_PROMPT);
+            if model.prompt == prompt_value(&model.saved_prompt, DEFAULT_PROMPT) {
+                return vec![];
+            }
+            model.saved_prompt = model.prompt.clone();
             vec![SettingsEffect::SetPrompt(model.prompt.clone())]
         }
         A::PromptReset => {
             model.prompt = DEFAULT_PROMPT.to_string();
+            model.saved_prompt = model.prompt.clone();
             vec![SettingsEffect::SetPrompt(DEFAULT_PROMPT.to_string())]
         }
         A::SiteChanged(t) => {
@@ -272,7 +321,12 @@ pub fn apply(
         }
         A::SiteCommit => {
             let site = normalize_site(&model.site);
-            if site == store.jira_site {
+            if site.as_deref().is_some_and(|s| !site_ok(s)) {
+                if !model.jira.busy() {
+                    model.jira.check = CheckState::Failed(BAD_SITE.to_string());
+                }
+                vec![]
+            } else if site == store.jira_site {
                 vec![]
             } else {
                 store.jira_site = site;
@@ -325,8 +379,8 @@ fn start(
         let Some(site) = model.effective_site(store) else {
             return refuse(model, "✗ Chưa có site Jira");
         };
-        if !jira::is_atlassian_host(&site) {
-            return refuse(model, "✗ Site phải có dạng <tên>.atlassian.net");
+        if !site_ok(&site) {
+            return refuse(model, BAD_SITE);
         }
         Some(site)
     } else {
@@ -358,24 +412,16 @@ fn start(
 /// The status text of a service's header and its colour: the monitor's line without `<name>: `, or the account this window
 /// just confirmed while the monitor is still checking.
 pub fn status_line(model: &SettingsModel, store: &Store, service: Service) -> (String, ThemeColor) {
-    let line = store
-        .connections
-        .get(&service)
-        .unwrap_or(&ConnectionLine::Missing);
+    let line = store.connection(service);
     if let (ConnectionLine::Checking(_), Some(account)) = (line, &model.form(service).verified) {
         return (format!("✓ {account}"), ThemeColor::Green);
     }
-    let text = store.connection_text(service);
-    let text = text
-        .strip_prefix(&format!("{}: ", service.display_name()))
-        .unwrap_or(&text)
-        .to_string();
     let color = match line {
         ConnectionLine::Ok(_) => ThemeColor::Green,
         ConnectionLine::Checking(_) => ThemeColor::TextSecondary,
         _ => ThemeColor::Red,
     };
-    (text, color)
+    (store.connection_status(service), color)
 }
 
 /// What the Settings window shows that the monitors, the app and the hotkey registration change on their own: the connection
@@ -386,7 +432,7 @@ pub fn external_key(store: &Store, failed: &std::collections::BTreeSet<&'static 
         key.push_str(&format!(
             "{:?}|{:?}|{:?};",
             s,
-            store.connections.get(&s),
+            store.connection(s),
             store.accounts.get(&s)
         ));
     }

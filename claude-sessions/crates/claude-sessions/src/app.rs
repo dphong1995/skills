@@ -47,8 +47,8 @@ use crate::menu::{self, Command};
 use crate::panels::PanelHost;
 use crate::settings::{self, Settings};
 use crate::settings_model::{
-    Job, SettingsAction, SettingsEffect, SettingsModel, apply, changed_action, email_key,
-    external_key, submit_action, token_service,
+    Job, SettingsAction, SettingsEffect, SettingsModel, apply, email_key, external_key, note_field,
+    submit_action,
 };
 use crate::views::settings::{SettingsView, WIDTH as SETTINGS_WIDTH};
 use crate::{connect, drag, fields, focus, keyboard_mode, placement};
@@ -109,6 +109,8 @@ pub struct AppState {
     poster: Poster,
     /// The Settings window while it is open.
     settings: Option<SettingsWindow>,
+    /// The services with a check or save running, which outlives the Settings window that started it.
+    jobs: HashMap<Service, Job>,
     /// Sessions whose cmux surface lookup of the focus check is still running.
     looking_up: HashSet<String>,
     checking_focus: bool,
@@ -574,6 +576,8 @@ fn handle_event(weak: &WeakState, key: &str, event: UiEvent) {
                 }
             });
         }
+        // Leaving a field changes nothing in the widget: only the Settings window saves on it.
+        UiEvent::FieldEnded { .. } => {}
         // Same turn rule as `FieldSubmit`. Keyboard mode stays; key status follows the key-sync rules.
         UiEvent::FieldCancel { key: field } => {
             let (weak, key) = (weak.clone(), key.to_string());
@@ -690,7 +694,13 @@ fn apply_command(weak: &WeakState, command: &Command, screen: Rect) {
     match command {
         Command::Settings => open_settings(weak, None, screen),
         Command::Hotkey(which, choice) => apply_hotkey(weak, *which, choice.clone()),
-        Command::Quit => mac_app::quit(),
+        Command::Quit => {
+            // What is typed in the open Settings window is saved first.
+            if with_state(weak, |s| s.settings.is_some()).unwrap_or(false) {
+                run_settings_action(weak, SettingsAction::Close);
+            }
+            mac_app::quit()
+        }
     }
 }
 
@@ -720,9 +730,13 @@ fn open_settings(weak: &WeakState, focus: Option<Service>, screen: Rect) {
             ) else {
                 return;
             };
+            let mut model = SettingsModel::new(&s.store, &s.pr_prompt, s.live);
+            for (service, job) in &s.jobs {
+                model.resume(*service, *job);
+            }
             s.settings = Some(SettingsWindow {
                 window,
-                model: SettingsModel::new(&s.store, &s.pr_prompt, s.live),
+                model,
                 targets: Targets::default(),
                 tokens: HashMap::new(),
                 _key_monitor: make_settings_key_monitor(weak),
@@ -752,8 +766,6 @@ fn open_settings(weak: &WeakState, focus: Option<Service>, screen: Rect) {
 /// The key monitor of the Settings window: Esc (when no field is being edited) and ⌘W close it. It acts only while the
 /// window is key; Esc in a field reaches the field, which sends `FieldCancel`.
 fn make_settings_key_monitor(weak: &WeakState) -> Option<KeyMonitor> {
-    const MODIFIERS: u64 = 0x1e_0000;
-    const COMMAND: u64 = 0x10_0000;
     let weak = weak.clone();
     KeyMonitor::new(move |info: &KeyInfo| {
         let close = with_state(&weak, |s| {
@@ -762,9 +774,9 @@ fn make_settings_key_monitor(weak: &WeakState) -> Option<KeyMonitor> {
                 return None;
             }
             let escape = info.key_code == keys::KEY_CODE_ESCAPE
-                && info.flags & MODIFIERS == 0
+                && keyboard_mode::no_modifiers(info.flags)
                 && !w.window.is_editing();
-            let close_key = info.chars == "w" && info.flags & MODIFIERS == COMMAND;
+            let close_key = info.chars == "w" && keyboard_mode::command_only(info.flags);
             Some(escape || close_key)
         })
         .flatten()
@@ -793,24 +805,24 @@ fn handle_settings_event(weak: &WeakState, event: UiEvent) {
             }
         }
         UiEvent::FieldChanged { key, text } => {
-            let action = with_state(weak, |s| {
+            // The text reaches the model at once, so any render that runs before the deferred one builds from what is on
+            // screen; these actions ask for no effect. Only the render waits.
+            let kept = with_state(weak, |s| {
                 let w = s.settings.as_mut()?;
-                if let Some(service) = token_service(&key) {
-                    if text.is_empty() {
-                        w.tokens.remove(&service);
-                    } else {
-                        w.tokens.insert(service, text.clone());
-                    }
-                }
-                changed_action(&key, &text)
+                let action = note_field(&mut w.tokens, &key, &text)?;
+                apply(&mut w.model, &mut s.store, action);
+                Some(())
             })
             .flatten();
-            if let Some(action) = action {
+            if kept.is_some() {
                 let weak = weak.clone();
-                main_queue::async_main(move || run_settings_action(&weak, action));
+                main_queue::async_main(move || {
+                    with_state(&weak, |s| s.render_settings());
+                });
             }
         }
-        UiEvent::FieldSubmit { key } => {
+        // Return or leaving a field saves what the field commits (Site, Prompt); saving the same value twice writes once.
+        UiEvent::FieldSubmit { key } | UiEvent::FieldEnded { key } => {
             if let Some(action) = submit_action(&key) {
                 let weak = weak.clone();
                 main_queue::async_main(move || run_settings_action(&weak, action));
@@ -951,6 +963,14 @@ fn settings_done(weak: &WeakState, service: Service, job: Job, result: Result<St
     });
 }
 
+/// Records that `service` has a job running (kept when the Settings window closes) and returns the poster for its result.
+fn job_poster(weak: &WeakState, service: Service, job: Job) -> Option<Poster> {
+    with_state(weak, |s| {
+        s.jobs.insert(service, job);
+        s.poster.clone()
+    })
+}
+
 fn spawn_connect(name: &str, work: impl FnOnce() + Send + 'static) -> bool {
     let spawned = std::thread::Builder::new().name(name.into()).spawn(work);
     if let Err(e) = &spawned {
@@ -965,7 +985,7 @@ fn run_check(weak: &WeakState, service: Service, email: &str, site: Option<Strin
         Ok(typed) => typed,
         Err(text) => return settings_done(weak, service, Job::Check, Err(text)),
     };
-    let Some(poster) = with_state(weak, |s| s.poster.clone()) else {
+    let Some(poster) = job_poster(weak, service, Job::Check) else {
         return;
     };
     let started = spawn_connect("claude-sessions.settings-check", move || {
@@ -979,6 +999,7 @@ fn run_check(weak: &WeakState, service: Service, email: &str, site: Option<Strin
         poster(Completion::Checked { service, result });
     });
     if !started {
+        with_state(weak, |s| s.jobs.remove(&service));
         settings_done(
             weak,
             service,
@@ -1002,7 +1023,7 @@ fn run_save(weak: &WeakState, service: Service, email: &str, site: Option<String
         }
         Err(text) => return settings_done(weak, service, Job::Save, Err(text)),
     };
-    let Some(poster) = with_state(weak, |s| s.poster.clone()) else {
+    let Some(poster) = job_poster(weak, service, Job::Save) else {
         return;
     };
     let started = spawn_connect("claude-sessions.connect", move || {
@@ -1020,6 +1041,7 @@ fn run_save(weak: &WeakState, service: Service, email: &str, site: Option<String
         });
     });
     if !started {
+        with_state(weak, |s| s.jobs.remove(&service));
         settings_done(
             weak,
             service,
@@ -1213,6 +1235,7 @@ impl AppState {
         match completion {
             Completion::ConnectDialog(service) => return self.start_connect(service),
             Completion::Checked { service, result } => {
+                self.jobs.remove(&service);
                 if let Some(w) = self.settings.as_mut() {
                     w.model.done(service, Job::Check, result);
                 }
@@ -1322,6 +1345,11 @@ impl AppState {
 
     /// The check and Keychain write finished: the Settings window shows the result, a success restarts the monitors.
     fn connected(&mut self, service: Service, account: String, failure: Option<String>) {
+        self.jobs.remove(&service);
+        if failure.is_some() && self.settings.is_none() {
+            // The window that started the save is gone: nothing else says it failed.
+            return beep();
+        }
         if let Some(w) = self.settings.as_mut() {
             let result = match &failure {
                 Some(text) => Err(text.clone()),
@@ -1442,7 +1470,7 @@ fn make_key_monitor(weak: &WeakState, key: &str) -> Option<KeyMonitor> {
                 return None;
             }
             // ⌘, opens the Settings window.
-            if info.chars == "," && info.flags & 0x1e_0000 == 0x10_0000 {
+            if info.chars == "," && keyboard_mode::command_only(info.flags) {
                 open_on = Some(host.screen);
                 return Some(KeyOutcome::Consumed(None));
             }
@@ -1692,6 +1720,7 @@ fn start() -> Running {
         completions,
         poster,
         settings: None,
+        jobs: HashMap::new(),
         looking_up: HashSet::new(),
         checking_focus: false,
         focus_gen: 0,

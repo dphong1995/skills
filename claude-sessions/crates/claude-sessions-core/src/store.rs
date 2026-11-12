@@ -196,7 +196,7 @@ pub struct Store {
     now: SystemTime,
     sends: HashMap<SendKey, (SendState, SystemTime)>,
     issue_icons: HashMap<url::Url, Vec<u8>>,
-    pub connections: HashMap<Service, ConnectionLine>,
+    connections: HashMap<Service, ConnectionLine>,
     last_focused: Option<String>,
     pids: HashMap<String, i32>,
     last_status: HashMap<String, String>,
@@ -530,17 +530,31 @@ impl Store {
         command_is_shown(&self.shown_commands, p)
     }
 
+    /// The monitor's line of one service.
+    pub fn connection(&self, s: Service) -> &ConnectionLine {
+        self.connections.get(&s).unwrap_or(&ConnectionLine::Missing)
+    }
+
+    /// Sets the monitor's line of one service; the refresh does this itself, so it is for tests.
+    pub fn set_connection(&mut self, s: Service, line: ConnectionLine) {
+        self.connections.insert(s, line);
+    }
+
+    /// What the connection of one service is, without the service's name.
+    pub fn connection_status(&self, s: Service) -> String {
+        match self.connection(s) {
+            ConnectionLine::Missing => "✗ chưa có token".to_string(),
+            ConnectionLine::Checking(a) => format!("{a} (đang kiểm tra)"),
+            ConnectionLine::Ok(a) => format!("✓ {a}"),
+            ConnectionLine::Rejected => "✗ token bị từ chối (401)".to_string(),
+            ConnectionLine::Unreachable => "✗ không kết nối được".to_string(),
+            ConnectionLine::NoSite => "✗ chưa biết site Jira".to_string(),
+        }
+    }
+
     /// The context-menu line of one service.
     pub fn connection_text(&self, s: Service) -> String {
-        let name = s.display_name();
-        match self.connections.get(&s).unwrap_or(&ConnectionLine::Missing) {
-            ConnectionLine::Missing => format!("{name}: ✗ chưa có token"),
-            ConnectionLine::Checking(a) => format!("{name}: {a} (đang kiểm tra)"),
-            ConnectionLine::Ok(a) => format!("{name}: ✓ {a}"),
-            ConnectionLine::Rejected => format!("{name}: ✗ token bị từ chối (401)"),
-            ConnectionLine::Unreachable => format!("{name}: ✗ không kết nối được"),
-            ConnectionLine::NoSite => format!("{name}: ✗ chưa biết site Jira"),
-        }
+        format!("{}: {}", s.display_name(), self.connection_status(s))
     }
 
     /// The Feed question the session `id` is asking, as of the last refresh.
