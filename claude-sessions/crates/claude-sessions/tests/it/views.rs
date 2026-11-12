@@ -3732,3 +3732,180 @@ fn canvas_field_is_a_line_field() {
         claude_sessions_core::scene::FieldKind::Line
     );
 }
+
+mod settings_view {
+    use crate::support::FakeMeasure;
+    use claude_sessions::hits::Target;
+    use claude_sessions::hotkey::Hotkeys;
+    use claude_sessions::settings_model::{CheckState, SettingsAction, SettingsModel, token_key};
+    use claude_sessions::views::Built;
+    use claude_sessions::views::settings::{SettingsView, WIDTH, build};
+    use claude_sessions_core::credentials::Service::{Bitbucket, Jira};
+    use claude_sessions_core::kv::MemoryStore;
+    use claude_sessions_core::pull_requests::DEFAULT_PROMPT;
+    use claude_sessions_core::scene::{DrawCmd, FieldKind};
+    use claude_sessions_core::store::{Paths, Store, StoreOptions};
+
+    fn store(dir: &std::path::Path) -> Store {
+        Store::new(
+            Paths {
+                sessions: dir.join("sessions"),
+                projects: dir.join("projects"),
+                tasks: dir.join("tasks"),
+            },
+            StoreOptions::default(),
+        )
+    }
+
+    fn built(store: &Store, model: &SettingsModel, max_h: f64) -> Built {
+        let hotkeys = Hotkeys::load(&MemoryStore::default());
+        build(&SettingsView {
+            model,
+            store,
+            hotkeys: &hotkeys,
+            measure: &FakeMeasure,
+            max_h,
+        })
+    }
+
+    /// The settings targets of every hit in the scene, in order.
+    fn actions(b: &Built) -> Vec<SettingsAction> {
+        b.scene
+            .nodes
+            .iter()
+            .flat_map(|n| n.hits.iter())
+            .filter_map(|h| match b.targets.get(h.id) {
+                Some(Target::Settings(a)) => Some(a.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn texts(b: &Built) -> Vec<String> {
+        b.scene
+            .nodes
+            .iter()
+            .flat_map(|n| n.cmds.iter())
+            .filter_map(|c| match c {
+                DrawCmd::Text { text, .. } => Some(text.clone()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn settings_scene_has_every_group_and_hit() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = store(dir.path());
+        let m = SettingsModel::new(&s, DEFAULT_PROMPT, true);
+        let b = built(&s, &m, 2000.0);
+        assert_eq!(b.scene.size.w, WIDTH);
+        let a = actions(&b);
+        let count = |f: fn(&SettingsAction) -> bool| a.iter().filter(|x| f(x)).count();
+        assert_eq!(count(|x| matches!(x, SettingsAction::Close)), 1);
+        assert_eq!(count(|x| matches!(x, SettingsAction::SetOpacity(_))), 5);
+        assert_eq!(count(|x| matches!(x, SettingsAction::ToggleMute)), 1);
+        assert_eq!(count(|x| matches!(x, SettingsAction::PickHotkey(_))), 2);
+        assert_eq!(count(|x| matches!(x, SettingsAction::PromptReset)), 1);
+        assert_eq!(count(|x| matches!(x, SettingsAction::OpenTokenPage)), 2);
+        assert_eq!(count(|x| matches!(x, SettingsAction::Check(_))), 2);
+        assert_eq!(count(|x| matches!(x, SettingsAction::Save(_))), 2);
+        let t = texts(&b);
+        for want in [
+            "Cài đặt",
+            "GIAO DIỆN",
+            "PHÍM TẮT",
+            "PROMPT NHỜ CLAUDE",
+            "KẾT NỐI",
+            "Jira",
+            "Bitbucket",
+            "Độ đậm nền",
+            "Mở widget",
+            "Nhảy tới session chờ",
+            "Email",
+            "Site",
+            "Token",
+            "Khôi phục mặc định",
+            "Tạo token…",
+            "Kiểm tra",
+            "Lưu",
+        ] {
+            assert!(t.iter().any(|x| x == want), "missing {want}");
+        }
+    }
+
+    #[test]
+    fn settings_fields_have_their_keys_and_kinds() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = store(dir.path());
+        s.jira_projects
+            .insert("A".into(), "guess.atlassian.net".into());
+        s.accounts.insert(Bitbucket, "bb@x".into());
+        let m = SettingsModel::new(&s, DEFAULT_PROMPT, true);
+        let b = built(&s, &m, 2000.0);
+        let fields: Vec<_> = b.scene.nodes.iter().flat_map(|n| n.fields.iter()).collect();
+        let by = |k: &str| fields.iter().find(|f| f.key == k).unwrap();
+        assert_eq!(by("settings.prompt").kind, FieldKind::Multiline);
+        assert_eq!(by("settings.prompt").text, DEFAULT_PROMPT);
+        assert_eq!(by("settings.site").placeholder, "guess.atlassian.net");
+        assert_eq!(by("settings.site").text, "");
+        assert_eq!(by("settings.email.bitbucket").text, "bb@x");
+        let jt = by(&token_key(Jira, 0));
+        let bt = by(&token_key(Bitbucket, 0));
+        assert_eq!((jt.kind, bt.kind), (FieldKind::Secure, FieldKind::Secure));
+        assert_eq!((jt.text.as_str(), bt.text.as_str()), ("", ""));
+        assert_eq!(jt.placeholder, "API token");
+        assert_eq!(bt.placeholder, "Đã lưu · để trống để giữ");
+        assert_eq!(fields.len(), 6);
+    }
+
+    #[test]
+    fn site_placeholder_without_a_guess_is_the_example() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = store(dir.path());
+        let m = SettingsModel::new(&s, DEFAULT_PROMPT, true);
+        let b = built(&s, &m, 2000.0);
+        let site = b
+            .scene
+            .nodes
+            .iter()
+            .flat_map(|n| n.fields.iter())
+            .find(|f| f.key == "settings.site")
+            .unwrap();
+        assert_eq!(site.placeholder, "ten-cong-ty.atlassian.net");
+    }
+
+    #[test]
+    fn a_busy_service_shows_in_flight_labels_without_hits() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = store(dir.path());
+        let mut m = SettingsModel::new(&s, DEFAULT_PROMPT, true);
+        m.bitbucket.check = CheckState::Checking;
+        m.jira.check = CheckState::Saving;
+        let b = built(&s, &m, 2000.0);
+        let a = actions(&b);
+        assert!(
+            !a.iter()
+                .any(|x| matches!(x, SettingsAction::Check(_) | SettingsAction::Save(_)))
+        );
+        let t = texts(&b);
+        assert!(t.iter().any(|x| x == "Đang kiểm tra…"));
+        assert!(t.iter().any(|x| x == "Đang lưu…"));
+        assert!(t.iter().any(|x| x == "Đang gọi api.bitbucket.org…"));
+        assert!(t.iter().any(|x| x.starts_with("Đang gọi ")));
+    }
+
+    #[test]
+    fn settings_height_is_capped_and_scrolls() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = store(dir.path());
+        let m = SettingsModel::new(&s, DEFAULT_PROMPT, true);
+        let b = built(&s, &m, 500.0);
+        assert_eq!(b.scene.size.h, 500.0);
+        let scroll = b.scene.nodes.iter().find_map(|n| n.scroll).unwrap();
+        assert!(scroll.h > 500.0);
+        let full = built(&s, &m, 5000.0);
+        assert!(full.scene.size.h < 5000.0);
+        assert!(full.scene.nodes.iter().all(|n| n.scroll.is_none()));
+    }
+}

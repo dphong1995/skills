@@ -14,6 +14,7 @@ pub mod pill;
 pub mod pr_row;
 pub mod question;
 pub mod section;
+pub mod settings;
 
 /// The node that scrolls the cards when the content is taller than the capped panel.
 pub const SCROLL_KEY: &str = "scroll";
@@ -484,6 +485,31 @@ impl Canvas {
     }
 }
 
+/// The node `key` of `frame` holding what `canvas` drew; its targets are registered in `targets`.
+pub fn node_of(key: &str, frame: Rect, canvas: Canvas, targets: &mut Targets) -> Node {
+    let hits = canvas
+        .hits
+        .into_iter()
+        .map(|(rect, target)| Hit {
+            rect,
+            id: targets.add(target),
+            cursor: Cursor::Pointer,
+        })
+        .collect();
+    Node {
+        key: NodeKey(key.to_string()),
+        frame,
+        cmds: canvas.cmds,
+        hits,
+        fields: canvas.fields,
+        spinner: canvas.spinner,
+        tips: canvas.tips,
+        scroll: None,
+        shadow: None,
+        material: None,
+    }
+}
+
 /// Registers hit targets while nodes are made.
 pub struct Ctx<'a> {
     pub view: &'a View<'a>,
@@ -492,27 +518,7 @@ pub struct Ctx<'a> {
 
 impl Ctx<'_> {
     pub fn node(&mut self, key: &str, frame: Rect, canvas: Canvas) -> Node {
-        let hits = canvas
-            .hits
-            .into_iter()
-            .map(|(rect, target)| Hit {
-                rect,
-                id: self.targets.add(target),
-                cursor: Cursor::Pointer,
-            })
-            .collect();
-        Node {
-            key: NodeKey(key.to_string()),
-            frame,
-            cmds: canvas.cmds,
-            hits,
-            fields: canvas.fields,
-            spinner: canvas.spinner,
-            tips: canvas.tips,
-            scroll: None,
-            shadow: None,
-            material: None,
-        }
+        node_of(key, frame, canvas, &mut self.targets)
     }
 
     /// The width of a button labelled `label`: text and padding, at least wide enough for its send-state faces.

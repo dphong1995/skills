@@ -180,6 +180,8 @@ pub struct Store {
     pub accounts: HashMap<Service, String>,
     /// Jira project prefix -> host, learned from `/browse/` and `selectedIssue=` links.
     pub jira_projects: HashMap<String, String>,
+    /// The Jira site the user typed in the Settings window; wins over the learned one.
+    pub jira_site: Option<String>,
     pub pr_last_success: Option<SystemTime>,
     pub empty_since: Option<SystemTime>,
     /// File reads done for the running-tool line, for tests.
@@ -194,7 +196,7 @@ pub struct Store {
     now: SystemTime,
     sends: HashMap<SendKey, (SendState, SystemTime)>,
     issue_icons: HashMap<url::Url, Vec<u8>>,
-    connections: HashMap<Service, ConnectionLine>,
+    pub connections: HashMap<Service, ConnectionLine>,
     last_focused: Option<String>,
     pids: HashMap<String, i32>,
     last_status: HashMap<String, String>,
@@ -270,6 +272,7 @@ impl Store {
             failed: HashMap::new(),
             accounts: HashMap::new(),
             jira_projects: HashMap::new(),
+            jira_site: None,
             pr_last_success: None,
             empty_since: options.start_hidden.then_some(UNIX_EPOCH),
             activity_reads: 0,
@@ -366,8 +369,13 @@ impl Store {
         ])
     }
 
-    /// The Jira site to check a token against: the first learned `*.atlassian.net` host.
+    /// The Jira site to check a token against: the typed one, else the guess.
     pub fn jira_host(&self) -> Option<String> {
+        self.jira_site.clone().or_else(|| self.jira_guess())
+    }
+
+    /// The first learned `*.atlassian.net` host.
+    pub fn jira_guess(&self) -> Option<String> {
         let mut hosts: Vec<&String> = self
             .jira_projects
             .values()

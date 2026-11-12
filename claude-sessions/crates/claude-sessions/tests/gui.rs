@@ -346,6 +346,111 @@ fn settings_controls() -> Result<(), String> {
     }
 }
 
+/// The Settings window in its states at full height, in `tests/snapshots/settings-<state>.png`.
+fn settings_states() -> Result<(), String> {
+    use claude_sessions::hotkey::Hotkeys;
+    use claude_sessions::settings_model::{CheckState, SettingsModel};
+    use claude_sessions::views::settings::{SettingsView, build as build_settings};
+    use claude_sessions_core::credentials::Service::{Bitbucket, Jira};
+    use claude_sessions_core::kv::MemoryStore;
+    use claude_sessions_core::pull_requests::DEFAULT_PROMPT;
+    use claude_sessions_core::store::{ConnectionLine, Paths, Store, StoreOptions};
+
+    let dir = tempfile::Builder::new()
+        .prefix("claude-sessions-settings-")
+        .tempdir()
+        .map_err(|e| e.to_string())?;
+    let make = |accounts: bool| {
+        let mut s = Store::new(
+            Paths {
+                sessions: dir.path().join("sessions"),
+                projects: dir.path().join("projects"),
+                tasks: dir.path().join("tasks"),
+            },
+            StoreOptions::default(),
+        );
+        s.jira_projects
+            .insert("T6IR".into(), "talo6.atlassian.net".into());
+        if accounts {
+            s.accounts.insert(Jira, "ban@cong-ty.com".into());
+            s.accounts.insert(Bitbucket, "ban@cong-ty.com".into());
+            s.connections
+                .insert(Jira, ConnectionLine::Ok("ban@cong-ty.com".into()));
+            s.connections
+                .insert(Bitbucket, ConnectionLine::Ok("ban@cong-ty.com".into()));
+        }
+        s.bg_opacity = 0.92;
+        s
+    };
+    type Tweak = fn(&mut SettingsModel, &mut Hotkeys);
+    let cases: [(&str, bool, Appearance, Tweak); 7] = [
+        ("settings-default", true, Appearance::Dark, |_, _| {}),
+        ("settings-checking", true, Appearance::Dark, |m, _| {
+            m.jira.check = CheckState::Checking;
+        }),
+        ("settings-check-ok", true, Appearance::Dark, |m, _| {
+            m.jira.check = CheckState::Ok("✓ Token dùng được · ban@cong-ty.com".into());
+        }),
+        ("settings-save-401", true, Appearance::Dark, |m, _| {
+            m.jira.check = CheckState::Failed("✗ Jira trả về 401: email hoặc token sai".into());
+        }),
+        (
+            "settings-hotkey-conflict",
+            true,
+            Appearance::Dark,
+            |_, h| {
+                h.failed.insert("open");
+            },
+        ),
+        ("settings-no-token", false, Appearance::Dark, |_, _| {}),
+        ("settings-light", true, Appearance::Light, |_, _| {}),
+    ];
+    let out = snapshots_out();
+    let refs = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots");
+    let update = std::env::var_os("UPDATE_SNAPSHOTS").is_some();
+    std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+    let mut failures = Vec::new();
+    for (name, accounts, appearance, tweak) in cases {
+        let store = make(accounts);
+        let mut model = SettingsModel::new(&store, DEFAULT_PROMPT, true);
+        let mut hotkeys = Hotkeys::load(&MemoryStore::default());
+        tweak(&mut model, &mut hotkeys);
+        let built = build_settings(&SettingsView {
+            model: &model,
+            store: &store,
+            hotkeys: &hotkeys,
+            measure: &CoreTextMeasure,
+            max_h: 2000.0,
+        });
+        let png = out.join(format!("{name}.png"));
+        render_png(&built.scene, SCALE, appearance, &png)?;
+        let reference = refs.join(format!("{name}.png"));
+        if update {
+            std::fs::copy(&png, &reference).map_err(|e| e.to_string())?;
+            continue;
+        }
+        if !reference.exists() {
+            failures.push(format!("{name}: no reference; run with UPDATE_SNAPSHOTS=1"));
+            continue;
+        }
+        let diff = compare_png(&png, &reference, CHANNEL_TOLERANCE)?;
+        let ratio = diff.differing as f64 / diff.total.max(1) as f64;
+        if diff.size_a != diff.size_b || ratio > MAX_DIFFERING {
+            failures.push(format!(
+                "{name}: {}/{} pixels differ; see {}",
+                diff.differing,
+                diff.total,
+                png.display()
+            ));
+        }
+    }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("\n  "))
+    }
+}
+
 type Case = fn() -> Result<(), String>;
 
 fn main() {
@@ -353,11 +458,12 @@ fn main() {
         println!("gui tests skipped (set CLAUDE_SESSIONS_GUI_TESTS=1)");
         return;
     }
-    let cases: [(&str, Case); 7] = [
+    let cases: [(&str, Case); 8] = [
         ("mixed_hover_renders_to_png", mixed_hover_renders_to_png),
         ("heights_meet_polish_targets", heights_meet_polish_targets),
         ("snapshots", snapshots),
         ("settings_controls", settings_controls),
+        ("settings_states", settings_states),
         (
             "edit_menu_handles_clipboard_shortcuts",
             edit_menu_handles_clipboard_shortcuts,

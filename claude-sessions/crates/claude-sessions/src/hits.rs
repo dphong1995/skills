@@ -2,6 +2,7 @@
 //! so an unchanged control keeps its id across rebuilds. `Target::click` resolves it against the current state into an `Action`
 //! for the store or a `PanelChange` for the panel.
 
+use crate::settings_model::SettingsAction;
 use claude_sessions_core::credentials::Service;
 use claude_sessions_core::panel_state::{EditKind, Editing, PanelState};
 use claude_sessions_core::pull_requests::{self, PRRef};
@@ -75,6 +76,8 @@ pub enum Target {
     ToggleClosed,
     /// Resume a closed session by id.
     Resume(String),
+    /// A control of the Settings window.
+    Settings(SettingsAction),
 }
 
 /// A change of the panel's own state.
@@ -226,6 +229,8 @@ impl Target {
                 Some(c) => Click::Action(Action::Resume(c.clone())),
                 None => Click::Stale,
             },
+            // The Settings window handles its own clicks.
+            Target::Settings(_) => Click::Stale,
         }
     }
 }

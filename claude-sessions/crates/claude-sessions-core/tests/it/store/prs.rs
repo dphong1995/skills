@@ -963,3 +963,16 @@ fn snapshot_ignores_a_fresh_pr_success() {
     assert!(store.snapshot().pr_stale);
     assert_eq!(store.snapshot().pr_stale_since, Some(at(61)));
 }
+
+#[test]
+fn jira_host_prefers_the_typed_site() {
+    let dir = make_temp_dir();
+    let mut store = make_store(dir.path());
+    store
+        .jira_projects
+        .insert("A".into(), "a.atlassian.net".into());
+    assert_eq!(store.jira_host().as_deref(), Some("a.atlassian.net"));
+    store.jira_site = Some("b.atlassian.net".into());
+    assert_eq!(store.jira_host().as_deref(), Some("b.atlassian.net"));
+    assert_eq!(store.jira_guess().as_deref(), Some("a.atlassian.net"));
+}

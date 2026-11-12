@@ -16,5 +16,6 @@ pub mod panels;
 pub mod placement;
 pub mod rebuild;
 pub mod settings;
+pub mod settings_model;
 pub mod theme;
 pub mod views;
