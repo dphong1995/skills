@@ -1,6 +1,6 @@
 //! The size model of the redesigned widget. Heights are decided here and nowhere else: the views place every node and block
-//! with these helpers and `ExpandedLayout`, they never add heights up themselves. Measurements come from the approved mockups
-//! (`plans/2026-11-11-claude-sessions-rust/mockups`): panel 760 pt wide, 10 pt padding, 4 pt between cards.
+//! with these helpers and `ExpandedLayout`, they never add heights up themselves. Measurements come from the glass prototype
+//! (`plans/2026-11-12-claude-sessions-glass-redesign`): panel 400 pt wide, 8 pt padding, rows that touch inside one section.
 //! Positions are in scene points (top-left origin), relative to the panel.
 
 use super::{
@@ -15,61 +15,74 @@ use crate::text;
 use crate::transcript::PendingState;
 
 pub const PANEL_PAD: f64 = 8.0;
-pub const CARD_GAP: f64 = 4.0;
+/// Rows of one section touch: the group they sit in is drawn row by row.
+pub const CARD_GAP: f64 = 0.0;
 pub const CARD_W: f64 = EXPANDED_WIDTH - 2.0 * PANEL_PAD;
-pub const CARD_PAD_Y: f64 = 9.0;
-/// The status icon sits in this inset; all card text starts after it.
-pub const CARD_INSET: f64 = 38.0;
+pub const CARD_PAD_Y: f64 = 10.0;
+/// The 20 pt status icon sits at x 10 and 10 pt before the text: all card text starts here.
+pub const CARD_INSET: f64 = 40.0;
 pub const CARD_PAD_RIGHT: f64 = 12.0;
-/// Time label, `Trả lời` / `Dừng` button.
+/// Time label and the `Trả lời` / `Dừng` button beside it.
 pub const RIGHT_COLUMN: f64 = 64.0;
 pub const TEXT_W: f64 = CARD_W - CARD_INSET - CARD_PAD_RIGHT;
 pub const SECTION_TITLE_H: f64 = 28.0;
+/// The title line; a title of two lines is taller.
+pub const TITLE_LINE_H: f64 = 20.0;
 pub const SUB_H: f64 = 15.0;
-/// One `Todo` / activity line including the 5 pt above it.
-pub const LINE_ROW_H: f64 = 20.0;
-pub const REPLY_GAP: f64 = 5.0;
-pub const CMD_MARGIN: f64 = 7.0;
-pub const CMD_PAD: f64 = 7.0;
-/// The line pitch of the 12 pt monospaced command text, so the box ends one `CMD_PAD` under its last line.
-pub const CMD_LINE_H: f64 = 15.0;
+/// One `Todo` / activity line including the 7 pt above it.
+pub const LINE_ROW_H: f64 = 22.0;
+/// Space between the folder line and the first block under it.
+pub const BODY_GAP: f64 = 9.0;
+pub const REPLY_GAP: f64 = BODY_GAP;
+pub const CMD_MARGIN: f64 = BODY_GAP;
+pub const CMD_PAD: f64 = 8.0;
+/// The line pitch of the 11.5 pt monospaced command text, so the box ends one `CMD_PAD` under its last line.
+pub const CMD_LINE_H: f64 = 14.0;
 /// Lines of a command the card shows before `Xem đủ` (Swift `lineLimit(4)`).
 pub const CMD_COLLAPSED_LINES: usize = 4;
 /// The command text sits 10 pt inside its box on both sides.
 pub const CMD_TEXT_W: f64 = TEXT_W - 20.0;
-pub const CMD_FONT: FontSpec = font(12.0, Weight::Regular, true);
+pub const CMD_FONT: FontSpec = font(11.5, Weight::Regular, true);
 pub const BUTTON_H: f64 = 24.0;
+/// Space between the parts of one block (command box and buttons, options and footer).
 pub const BLOCK_GAP: f64 = 8.0;
-pub const FIELD_H: f64 = 28.0;
-pub const QUESTION_PROMPT_H: f64 = 22.0;
+/// The round field of a reply, a denial reason or a typed answer.
+pub const FIELD_H: f64 = 30.0;
+/// The typed-answer field under its `Khác…` row, with a little air around it.
+pub const OTHER_FIELD_H: f64 = FIELD_H + 4.0;
+pub const QUESTION_PROMPT_H: f64 = 21.0;
 /// Space above every question after the first.
 pub const QUESTION_GAP: f64 = 6.0;
 /// Every option is one line: number, label and its description cut with `…`.
 pub const OPTION_ROW_H: f64 = 24.0;
-pub const OTHER_ROW_H: f64 = 26.0;
+pub const OTHER_ROW_H: f64 = 24.0;
 pub const NOTE_H: f64 = 24.0;
 /// The one-line approve/deny result that replaces the approval block.
 pub const SENT_LINE_H: f64 = 24.0;
-pub const PR_ROW_H: f64 = 35.0;
-pub const PR_ROW_CLOSED_H: f64 = 31.0;
-pub const CHIPS_H: f64 = 26.0;
+/// Space above a PR row, and the first tier (number, checks, comments, status) of it.
+pub const PR_GAP: f64 = 8.0;
+pub const PR_TIER_H: f64 = 18.0;
+/// An open PR row: the information tier, then the tier of the buttons and the CodeRabbit label.
+pub const PR_ROW_H: f64 = PR_GAP + PR_TIER_H + BLOCK_GAP + BUTTON_H;
+/// A merged or closed PR row has the information tier only.
+pub const PR_ROW_CLOSED_H: f64 = PR_GAP + PR_TIER_H;
+pub const CHIP_H: f64 = 20.0;
+pub const CHIPS_H: f64 = BLOCK_GAP + CHIP_H;
 pub const LINK_SECTION_H: f64 = 16.0;
 pub const LINK_ROW_H: f64 = 22.0;
-/// A card with a right-column button is at least this tall.
-pub const CARD_MIN_BUTTON_H: f64 = 54.0;
 /// The `Vừa đóng` disclosure row.
 pub const CLOSED_ROW_H: f64 = 30.0;
 pub const CLOSED_ITEM_H: f64 = 30.0;
 pub const EMPTY_H: f64 = 40.0;
 /// The key hint line at the bottom of the panel in keyboard mode.
 pub const KEY_HINT_H: f64 = 26.0;
-pub const SPARKLE_W: f64 = 18.0;
+pub const SPARKLE_W: f64 = 16.0;
 
 const fn font(size: f64, weight: Weight, mono: bool) -> FontSpec {
     FontSpec { size, weight, mono }
 }
 
-pub const TITLE_FONT: FontSpec = font(13.5, Weight::Semibold, false);
+pub const TITLE_FONT: FontSpec = font(13.0, Weight::Semibold, false);
 pub const STATE_FONT: FontSpec = font(11.0, Weight::Semibold, false);
 pub const SUB_FONT: FontSpec = font(11.5, Weight::Regular, false);
 pub const REPLY_FONT: FontSpec = font(12.5, Weight::Regular, false);
@@ -142,7 +155,7 @@ pub enum ApprovalLook {
 impl ApprovalLook {
     pub fn height(self, deny_editing: bool) -> f64 {
         match self {
-            ApprovalLook::Unclear => BLOCK_GAP + NOTE_H,
+            ApprovalLook::Unclear => BODY_GAP + NOTE_H,
             ApprovalLook::Command {
                 lines,
                 row: ApprovalRow::JumpTooLong,
@@ -185,8 +198,10 @@ pub fn approval_look(pending: &PendingState, snap: &Snapshot, m: &dyn TextMeasur
         prefix.as_str()
     };
     let h = m.measure(text, &CMD_FONT, CMD_TEXT_W, limit).h;
+    // The lines are counted in the pitch the measure gives one line of this font: the box then grows by `CMD_LINE_H` per line.
+    let pitch = m.measure("x", &CMD_FONT, CMD_TEXT_W, 1).h.max(1.0);
     ApprovalLook::Command {
-        lines: ((h / CMD_LINE_H).round() as usize).max(1),
+        lines: ((h / pitch).round() as usize).max(1),
         row,
     }
 }
@@ -199,7 +214,7 @@ pub fn section_title_height() -> f64 {
     SECTION_TITLE_H
 }
 
-/// The head of a card: title (at most 2 lines), then the folder line. `title_h` is the measured title height.
+/// The head of a card: title (at most 2 lines), then the folder line. `title_h` is the title height, one line at least.
 pub fn head_height(title_h: f64) -> f64 {
     CARD_PAD_Y + title_h + SUB_H
 }
@@ -225,7 +240,7 @@ pub fn approval_height(cmd_lines: usize, deny_editing: bool) -> f64 {
 /// `other_open`), then the `Gửi` row; `Sent` and `Fallback` are one note line.
 pub fn question_height(q: &FeedQuestion, state: BlockState, other_open: Option<usize>) -> f64 {
     if state != BlockState::Form {
-        return BLOCK_GAP + NOTE_H;
+        return BODY_GAP + NOTE_H;
     }
     let questions: f64 = q
         .questions
@@ -233,12 +248,16 @@ pub fn question_height(q: &FeedQuestion, state: BlockState, other_open: Option<u
         .enumerate()
         .map(|(i, item)| {
             let options = OPTION_ROW_H * item.options.len() as f64;
-            let other = if other_open == Some(i) { FIELD_H } else { 0.0 };
+            let other = if other_open == Some(i) {
+                OTHER_FIELD_H
+            } else {
+                0.0
+            };
             QUESTION_PROMPT_H + options + OTHER_ROW_H + other
         })
         .sum();
     let gaps = QUESTION_GAP * q.questions.len().saturating_sub(1) as f64;
-    BLOCK_GAP + questions + gaps + BLOCK_GAP + BUTTON_H
+    BODY_GAP + questions + gaps + BLOCK_GAP + BUTTON_H
 }
 
 /// The reply, at most 2 lines, with the gap above it.
@@ -310,9 +329,9 @@ pub struct Placed {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CardLayout {
     pub height: f64,
-    /// The measured title height, for the head block.
+    /// The title height (one line at least), for the head block.
     pub title_h: f64,
-    /// Where the title may wrap: the text column less the right column, the state text and the new-mark sparkle.
+    /// Where the title may wrap: the text column less the right column and the new-mark sparkle.
     pub title_w: f64,
     /// What `Block::Approval` shows, when the card has one.
     pub approval: Option<ApprovalLook>,
@@ -325,11 +344,6 @@ impl CardLayout {
     }
 }
 
-/// Whether the right column shows a button (`Trả lời…` on a finished session, `Dừng` on a busy one).
-pub fn has_quick_button(s: &Session) -> bool {
-    s.can_ask_claude() || s.shown_status() == "busy"
-}
-
 pub fn card_layout(
     s: &Session,
     snap: &Snapshot,
@@ -337,10 +351,11 @@ pub fn card_layout(
     m: &dyn TextMeasure,
 ) -> CardLayout {
     let new = snap.unseen.get(&s.id).is_some_and(|n| n.claude);
-    let state_w = m.measure(&state_label(s), &STATE_FONT, f64::MAX / 4.0, 1).w;
-    let state_gap = if state_w > 0.0 { state_w + 6.0 } else { 0.0 };
-    let title_w = TEXT_W - RIGHT_COLUMN - state_gap - if new { SPARKLE_W + 4.0 } else { 0.0 };
-    let title_h = m.measure(s.title(), &TITLE_FONT, title_w.max(40.0), 2).h;
+    let title_w = TEXT_W - RIGHT_COLUMN - if new { SPARKLE_W } else { 0.0 };
+    let title_h = m
+        .measure(s.title(), &TITLE_FONT, title_w.max(40.0), 2)
+        .h
+        .max(TITLE_LINE_H);
 
     let mut blocks = Vec::new();
     let mut approval = None;
@@ -403,12 +418,8 @@ pub fn card_layout(
     if editing.is_some_and(|e| e.kind == EditKind::Reply) {
         place(Block::Editor, editor_height());
     }
-    let mut height = y + CARD_PAD_Y;
-    if has_quick_button(s) {
-        height = height.max(CARD_MIN_BUTTON_H);
-    }
     CardLayout {
-        height,
+        height: y + CARD_PAD_Y,
         title_h,
         title_w,
         approval,
@@ -453,7 +464,7 @@ pub struct ExpandedLayout {
     pub items: Vec<Item>,
 }
 
-/// Every item of the expanded card with its position: header, per non-empty section its title and cards (4 pt after each card),
+/// Every item of the expanded card with its position: header, per non-empty section its title and cards (touching),
 /// the empty note when there is no session, the `Vừa đóng` row.
 pub fn expanded_layout(snap: &Snapshot, panel: &PanelState, m: &dyn TextMeasure) -> ExpandedLayout {
     let mut items = vec![Item::Header { y: PANEL_PAD }];

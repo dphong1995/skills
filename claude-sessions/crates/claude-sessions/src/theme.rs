@@ -14,11 +14,15 @@ pub const PANEL_RADIUS: f64 = 20.0;
 pub const PILL_RADIUS: f64 = PILL_HEIGHT / 2.0;
 /// The group a run of rows sits in.
 pub const GROUP_RADIUS: f64 = 13.0;
-pub const CARD_RADIUS: f64 = 12.0;
-pub const BUTTON_RADIUS: f64 = 7.0;
-pub const CMD_RADIUS: f64 = 8.0;
+/// The code block of an approval.
+pub const CMD_RADIUS: f64 = 9.0;
 pub const CHIP_RADIUS: f64 = 6.0;
-pub const ICON: f64 = 16.0;
+/// A status glyph: a filled circle of this size at x 10.
+pub const ICON: f64 = 20.0;
+/// The `Trả lời` / `Dừng` buttons that appear on a hovered row.
+pub const ROW_BUTTON: f64 = 20.0;
+/// The round send button inside a reply field.
+pub const SEND_BUTTON: f64 = 22.0;
 
 /// Soft shadows cast into the window's transparent margin (`layout::MARGIN`): radius + vertical offset must fit it.
 pub const PANEL_SHADOW: Shadow = Shadow {
@@ -65,35 +69,30 @@ pub const ROW_FONT: FontSpec = font(12.5, Weight::Medium);
 pub const HINT_FONT: FontSpec = font(11.0, Weight::Regular);
 pub const TIME_FONT: FontSpec = font(11.0, Weight::Regular);
 pub const META_FONT: FontSpec = font(11.5, Weight::Regular);
-pub const BUTTON_FONT: FontSpec = font(12.0, Weight::Semibold);
+/// The `#7583` of a PR row.
+pub const PR_FONT: FontSpec = font(11.5, Weight::Semibold);
+pub const BUTTON_FONT: FontSpec = font(12.0, Weight::Medium);
+/// The folder line, and the state word at its start.
+pub const SUB_EM_FONT: FontSpec = font(11.5, Weight::Medium);
+/// `Dừng?` on the armed stop button.
+pub const DANGER_FONT: FontSpec = font(11.0, Weight::Semibold);
+/// The shortcut letter inside a button.
+pub const KEY_FONT: FontSpec = font(10.0, Weight::Semibold);
 pub const CAPTION_FONT: FontSpec = font(10.5, Weight::Regular);
 pub const META_MONO_FONT: FontSpec = FontSpec {
     size: 11.5,
     weight: Weight::Regular,
     mono: true,
 };
-pub const MONO_FONT: FontSpec = FontSpec {
-    size: 12.0,
-    weight: Weight::Regular,
-    mono: true,
-};
 
-/// The row/card fill (`--card`).
-pub fn card_fill() -> Color {
-    tint(ThemeColor::Row, 0.92)
-}
-
-pub fn card_hover_fill() -> Color {
-    tint(ThemeColor::Text, 0.09)
-}
-
-/// Laid over the card fill of a card with a fresh Claude mark.
+/// Laid over the row of a session with a fresh Claude mark.
 pub fn card_fresh_fill() -> Color {
-    tint(ThemeColor::Yellow, 0.04)
+    tint(ThemeColor::Yellow, 0.05)
 }
 
+/// The ring of the keyboard-selected row.
 pub fn selection_ring() -> Color {
-    tint(ThemeColor::Text, 0.85)
+    tint(ThemeColor::Accent, 0.85)
 }
 
 /// Colour of a `color_status`: waiting red, done orange, running blue.
@@ -106,6 +105,9 @@ pub fn status_token(color_status: &str) -> ThemeColor {
 }
 
 pub fn status_color(s: &Session) -> Color {
+    if s.waits_in_background() {
+        return solid(ThemeColor::Indigo);
+    }
     solid(status_token(s.color_status()))
 }
 

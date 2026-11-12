@@ -139,7 +139,7 @@ fn mixed_hover_renders_to_png() -> Result<(), String> {
 
 /// Phase 2 height targets with the real `CoreTextMeasure`: the mixed hover panel and the two-question card.
 fn heights_meet_polish_targets() -> Result<(), String> {
-    // 340 at the 760 pt panel; the 400 pt glass panel wraps more until phase 4 re-lays the rows out.
+    // The grouped rows at 400 pt measure 358 pt: the next 10 pt up.
     const TARGET: f64 = 360.0;
     let (_, f) = STATES
         .iter()

@@ -60,6 +60,13 @@ pub struct Built {
     pub targets: Targets,
 }
 
+/// Where a row sits in its group: the rows of one section are one rounded group drawn row by row.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RowPos {
+    pub first: bool,
+    pub last: bool,
+}
+
 /// Draw commands, hits and fields of one node, relative to the node's top-left.
 #[derive(Default)]
 pub struct Canvas {
@@ -172,8 +179,26 @@ impl Canvas {
         self.text(rect, text, theme::META_FONT, theme::solid(color), 1, align);
     }
 
-    /// A labelled button wearing its send state: sending (dimmed, spinner or none, no hit), sent (green), failed (red).
-    /// Returns whether it is clickable.
+    /// `fill` over a whole row of `w` x `h`, in the shape of its place in the group: 13 pt corners on the outer edge of the
+    /// group only. A node clips to its frame, so a corner that has to stay square is pushed out of the frame.
+    pub fn row_shape(&mut self, w: f64, h: f64, pos: RowPos, fill: Color) {
+        let r = theme::GROUP_RADIUS;
+        let (y, height, radius) = match (pos.first, pos.last) {
+            (true, true) => (0.0, h, r),
+            (true, false) => (0.0, h + r, r),
+            (false, true) => (-r, h + r, r),
+            (false, false) => (0.0, h, 0.0),
+        };
+        self.rrect(Rect::new(0.0, y, w, height), radius, Some(fill), None);
+    }
+
+    /// A button capsule: filled, or bare while a send state shows.
+    fn capsule(&mut self, rect: Rect, fill: Option<Color>) {
+        self.rrect(rect, rect.h / 2.0, fill, None);
+    }
+
+    /// A labelled capsule button wearing its send state: sending (dimmed, spinner or none, no hit), sent (green text), failed
+    /// (red text), both without a fill. Returns whether it is clickable.
     pub fn button(
         &mut self,
         rect: Rect,
@@ -182,25 +207,31 @@ impl Canvas {
         text: Color,
         state: Option<SendState>,
     ) -> bool {
+        self.keyed_button(rect, label, fill, text, state, None)
+    }
+
+    /// `button` with its shortcut `key` drawn small and at half strength at the right end (while no send state replaces the
+    /// face).
+    pub fn keyed_button(
+        &mut self,
+        rect: Rect,
+        label: &str,
+        fill: Color,
+        text: Color,
+        state: Option<SendState>,
+        key: Option<&str>,
+    ) -> bool {
         let (label, fill, text) = match state {
-            None => (label, fill, text),
+            None => (label, Some(fill), text),
             Some(SendState::Sending) => (
                 "Đang gửi…",
-                theme::tint(ThemeColor::Button, 0.5),
+                Some(theme::tint(ThemeColor::Fill, 0.5)),
                 theme::tint(ThemeColor::Text, 0.5),
             ),
-            Some(SendState::Sent) => (
-                "Đã gửi ✓",
-                theme::solid(ThemeColor::Green),
-                theme::solid(ThemeColor::OnAccent),
-            ),
-            Some(SendState::Failed) => (
-                "Lỗi — bấm thử lại",
-                theme::solid(ThemeColor::Red),
-                theme::solid(ThemeColor::White),
-            ),
+            Some(SendState::Sent) => ("Đã gửi ✓", None, theme::solid(ThemeColor::Green)),
+            Some(SendState::Failed) => ("Lỗi — bấm thử lại", None, theme::solid(ThemeColor::Red)),
         };
-        self.rrect(rect, theme::BUTTON_RADIUS, Some(fill), None);
+        self.capsule(rect, fill);
         let mut face = rect;
         if state == Some(SendState::Sending) && self.spinner.is_none() {
             self.spinner = Some(Rect::new(
@@ -212,7 +243,20 @@ impl Canvas {
             face.x += 14.0;
             face.w -= 14.0;
         }
+        let key = key.filter(|_| state.is_none());
+        if key.is_some() {
+            face.w -= 16.0;
+        }
         self.label(face, label, theme::BUTTON_FONT, text, Align::Center);
+        if let Some(key) = key {
+            self.label(
+                Rect::new(rect.x + rect.w - 22.0, rect.y, 12.0, rect.h),
+                key,
+                theme::KEY_FONT,
+                theme::tint(text.token, 0.5),
+                Align::Center,
+            );
+        }
         state != Some(SendState::Sending)
     }
 
@@ -243,11 +287,12 @@ impl Canvas {
         symbol: &str,
         color: Color,
     ) -> bool {
+        let size = (rect.w * 0.6).round();
         let glyph = Rect::new(
-            rect.x + (rect.w - 14.0) / 2.0,
-            rect.y + (rect.h - 14.0) / 2.0,
-            14.0,
-            14.0,
+            rect.x + (rect.w - size) / 2.0,
+            rect.y + (rect.h - size) / 2.0,
+            size,
+            size,
         );
         match state {
             None => self.symbol(symbol, glyph, color, Weight::Medium),
@@ -272,6 +317,75 @@ impl Canvas {
             ),
         }
         state != Some(SendState::Sending)
+    }
+
+    /// A round field in `rect` (a `FIELD_H` capsule on `Fill`, ringed in `Accent` as it holds the focus while it is open) and
+    /// the native text field inside it, leaving room at the right for the round send button when `send` is set.
+    pub fn field(&mut self, key: String, rect: Rect, placeholder: &str, text: String, send: bool) {
+        self.rrect(
+            rect,
+            rect.h / 2.0,
+            Some(theme::solid(ThemeColor::Fill)),
+            None,
+        );
+        self.rrect(
+            Rect::new(rect.x + 0.5, rect.y + 0.5, rect.w - 1.0, rect.h - 1.0),
+            rect.h / 2.0 - 0.5,
+            None,
+            Some(theme::solid(ThemeColor::Accent)),
+        );
+        let right = if send {
+            theme::SEND_BUTTON + 12.0
+        } else {
+            12.0
+        };
+        self.fields.push(Field {
+            key,
+            rect: Rect::new(
+                rect.x + 12.0,
+                rect.y + 5.0,
+                rect.w - 12.0 - right,
+                rect.h - 10.0,
+            ),
+            text,
+            placeholder: placeholder.to_string(),
+        });
+    }
+
+    /// The round send button at the right end inside the field `capsule`; its frame is the same in every state, only the face
+    /// changes: the arrow, a spinner (or `ellipsis` when the node's spinner is taken), a green check, a red `!` whose tooltip
+    /// carries the error. Returns its rect when it takes a click (not while sending).
+    pub fn round_send(&mut self, capsule: Rect, state: Option<SendState>) -> Option<Rect> {
+        let d = theme::SEND_BUTTON;
+        let rect = Rect::new(
+            capsule.x + capsule.w - 4.0 - d,
+            capsule.y + (capsule.h - d) / 2.0,
+            d,
+            d,
+        );
+        let glyph = Rect::new(rect.x + 5.0, rect.y + 5.0, d - 10.0, d - 10.0);
+        let white = theme::solid(ThemeColor::White);
+        let (fill, face) = match state {
+            None => (ThemeColor::Accent, Some(("arrow.up", Weight::Bold))),
+            Some(SendState::Sending) => (ThemeColor::Fill, None),
+            Some(SendState::Sent) => (ThemeColor::Green, Some(("checkmark", Weight::Bold))),
+            Some(SendState::Failed) => (ThemeColor::Red, Some(("exclamationmark", Weight::Bold))),
+        };
+        self.rrect(rect, d / 2.0, Some(theme::solid(fill)), None);
+        match face {
+            Some((name, weight)) => self.symbol(name, glyph, white, weight),
+            None if self.spinner.is_none() => self.spinner = Some(glyph),
+            None => self.symbol(
+                "ellipsis",
+                glyph,
+                theme::solid(ThemeColor::TextSecondary),
+                Weight::Bold,
+            ),
+        }
+        if state == Some(SendState::Failed) {
+            self.tip(rect, "Lỗi — bấm thử lại");
+        }
+        (state != Some(SendState::Sending)).then_some(rect)
     }
 }
 
@@ -343,6 +457,24 @@ pub fn scene(view: &View) -> Scene {
     build(view).scene
 }
 
+/// Whether each session is the first and / or the last row of its section.
+fn row_positions(snap: &Snapshot) -> HashMap<String, RowPos> {
+    let mut out = HashMap::new();
+    for (_, ids) in snap.sections() {
+        let n = ids.len();
+        for (i, id) in ids.into_iter().enumerate() {
+            out.insert(
+                id,
+                RowPos {
+                    first: i == 0,
+                    last: i + 1 == n,
+                },
+            );
+        }
+    }
+    out
+}
+
 fn expanded(ctx: &mut Ctx) -> Scene {
     let view = ctx.view;
     let l = layout::expanded_layout(view.snap, view.panel, view.measure);
@@ -362,6 +494,7 @@ fn expanded(ctx: &mut Ctx) -> Scene {
         alpha: 1.0,
     });
     let mut nodes = vec![panel];
+    let positions = row_positions(view.snap);
     for item in &l.items {
         if let Item::Section { y, .. } | Item::Empty { y } = item
             && l.content_h > l.size.h
@@ -384,7 +517,8 @@ fn expanded(ctx: &mut Ctx) -> Scene {
             }
             Item::Card { id, y, layout } => {
                 if let Some(s) = view.snap.sessions.iter().find(|s| &s.id == id) {
-                    nodes.push(card::node(ctx, s, *y, layout));
+                    let pos = positions.get(id).copied().unwrap_or_default();
+                    nodes.push(card::node(ctx, s, *y, layout, pos));
                 }
             }
             Item::Empty { y } => nodes.push(section::empty_node(ctx, *y)),

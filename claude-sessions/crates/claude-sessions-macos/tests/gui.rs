@@ -265,6 +265,31 @@ fn field_scene(text: &str, label: &str) -> claude_sessions_core::scene::Scene {
     }
 }
 
+/// The views draw the field's capsule and ring themselves: the native field is borderless, with no background and no focus ring.
+fn fields_are_borderless() -> Result<(), String> {
+    use claude_sessions_macos::ui::SceneView;
+    use objc2_app_kit::NSFocusRingType;
+    use objc2_foundation::{MainThreadMarker, NSSize};
+
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(200.0, 60.0));
+    view.set_scene(&field_scene("", "Email"));
+    let field = view.first_field().ok_or("no field was created")?;
+    if field.isBezeled() {
+        return Err("the field is bezeled".into());
+    }
+    if field.isBordered() {
+        return Err("the field is bordered".into());
+    }
+    if field.drawsBackground() {
+        return Err("the field draws a background".into());
+    }
+    if field.focusRingType() != NSFocusRingType::None {
+        return Err("the field draws a focus ring".into());
+    }
+    Ok(())
+}
+
 /// Typed text reaches the app as events and survives scenes that did not change the field's text.
 fn field_text_flows_and_survives() -> Result<(), String> {
     use claude_sessions_macos::ui::{SceneView, UiEvent};
@@ -1828,6 +1853,7 @@ fn main() {
         "field_text_flows_and_survives",
         field_text_flows_and_survives(),
     ));
+    results.push(("fields_are_borderless", fields_are_borderless()));
     results.push((
         "alert_level_is_above_panel_while_modal",
         alert_level_is_above_panel_while_modal(),

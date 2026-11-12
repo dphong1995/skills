@@ -212,12 +212,16 @@ fn state_text_sits_beside_the_title_and_every_line_is_kept() {
 
 #[test]
 fn cards_jump_and_quick_buttons_come_first_in_hit_order() {
-    let (snap, panel) = mixed();
+    let (snap, mut panel) = mixed();
+    // The quick buttons are drawn only on the hovered row.
+    panel.hovered_row = Some("done".into());
     let built = render(&snap, &panel);
     assert_eq!(
         targets(&built, card(&built.scene, "done")),
         [Target::Reply("done".into()), Target::Jump("done".into())]
     );
+    panel.hovered_row = Some("run".into());
+    let built = render(&snap, &panel);
     assert_eq!(
         targets(&built, card(&built.scene, "run")),
         [Target::Stop("run".into()), Target::Jump("run".into())]
@@ -669,13 +673,13 @@ fn two_questions_have_one_option_hit_per_option() {
     assert!(!t.contains(&Target::Answer("ask".into())));
 }
 
-/// Option rows drawn as picked: blue-tinted fill with a blue border.
+/// Option rows drawn as picked: the radio is an `Accent` disc.
 fn picked_rows(node: &Node) -> usize {
     node.cmds
         .iter()
         .filter(|c| {
-            matches!(c, DrawCmd::RoundedRect { fill: Some(f), stroke: Some(s), .. }
-                if f.token == ThemeColor::Blue && s.token == ThemeColor::Blue)
+            matches!(c, DrawCmd::RoundedRect { rect, fill: Some(f), .. }
+                if f.token == ThemeColor::Accent && rect.w == 14.0)
         })
         .count()
 }
@@ -707,7 +711,11 @@ fn picking_marks_the_option_and_activates_send() {
     panel.pick(&q, 0, "Redis");
     let built = render(&snap, &panel);
     let node = card(&built.scene, "ask");
-    assert_eq!(picked_rows(node), 1, "the picked option is a blue row");
+    assert_eq!(
+        picked_rows(node),
+        1,
+        "the picked option has an Accent radio"
+    );
     assert!(targets(&built, node).contains(&Target::Answer("ask".into())));
     let sending = {
         let mut snap = snap.clone();
@@ -808,6 +816,7 @@ fn pr_rows_show_counts_the_rabbit_chip_and_their_buttons() {
         "#7567",
         "0/5",
         "23",
+        "cũ 7m",
         "Nhờ Claude",
         "Nhắc duyệt",
     ] {
@@ -1128,7 +1137,12 @@ fn every_block_takes_the_height_the_size_model_gives_it() {
         assert!(last.y + last.h <= l.height);
         // Nothing the blocks draw reaches past the card.
         assert!(
-            node.cmds.iter().all(|c| bottom(c) <= l.height + 0.001),
+            node.cmds.iter().all(|c| {
+                // The row shape of a group's first / last row is pushed past the frame on purpose (the node clips it).
+                let row_shape = matches!(c, DrawCmd::RoundedRect { rect, .. }
+                    if rect.x == 0.0 && rect.w == layout::CARD_W);
+                row_shape || bottom(c) <= l.height + 0.001
+            }),
             "{} draws past its card",
             s.id
         );
@@ -1229,7 +1243,9 @@ fn a_long_list_scrolls_under_the_header_with_the_content_height_of_all_cards() {
 fn tooltips_list_the_agents_and_describe_the_ticket_chips() {
     let mut run = busy("run");
     run.agents = vec!["explore src".into(), "review diff".into()];
-    let built = render(&snapshot(vec![run]), &open());
+    let mut panel = open();
+    panel.hovered_row = Some("run".into());
+    let built = render(&snapshot(vec![run]), &panel);
     let node = card(&built.scene, "run");
     let tip = node
         .tips
@@ -1353,10 +1369,10 @@ fn keyboard_mode_rings_the_selected_card_and_shows_the_key_hint() {
     let built = render(&snap, &panel);
     let ring = |id: &str| {
         card(&built.scene, id).cmds.iter().any(|c| {
-            matches!(c, DrawCmd::RoundedRect { stroke: Some(s), .. } if s.token == ThemeColor::Text)
+            matches!(c, DrawCmd::RoundedRect { stroke: Some(s), .. } if s.token == ThemeColor::Accent)
         })
     };
-    assert!(ring("ask"), "the selected card has the white border");
+    assert!(ring("ask"), "the selected card has the Accent border");
     assert!(!ring("done"));
     let hint = built
         .scene
@@ -1582,13 +1598,13 @@ fn question_rows_are_one_line() {
         .collect();
     let want: Vec<String> = (1..=rows.len()).map(|n| n.to_string()).collect();
     assert_eq!(numbers, want, "option numbers 1..n in order");
-    // A picked row is the only kind of option row with a fill that is as wide as the row; the others have none.
+    // Only a picked row has an `Accent` radio disc; no option row has a row-wide fill.
     let fills = |node: &Node| {
         node.cmds
             .iter()
             .filter(|c| {
                 matches!(c, DrawCmd::RoundedRect { rect, fill: Some(f), .. }
-                    if f.token == ThemeColor::Blue && rect.w == rows[0].w)
+                    if f.token == ThemeColor::Accent && rect.w == 14.0 && rect.h == 14.0)
             })
             .count()
     };
@@ -1601,7 +1617,7 @@ fn question_rows_are_one_line() {
         .iter()
         .filter(|c| {
             matches!(c, DrawCmd::RoundedRect { rect, fill: Some(f), .. }
-                if rect.w == rows[0].w && f.token != ThemeColor::Blue
+                if rect.w == rows[0].w && f.alpha > 0.0
                     && rows.iter().any(|r| r.y == rect.y))
         })
         .count();
@@ -1888,4 +1904,444 @@ fn header_has_quota_left_counts_right() {
     assert!(!counts.is_empty());
     let quota_end = x_of("Tuần").unwrap();
     assert!(counts.iter().all(|x| *x > quota_end), "{counts:?}");
+}
+
+// ---- phase 4: grouped rows, buttons and fields ----
+
+use claude_sessions_core::scene::{Color, Rect};
+
+/// The first rounded rect of a card with a `Group` fill: the row's background, as `(rect, radius)`.
+fn group_bg(node: &Node) -> (Rect, f64) {
+    node.cmds
+        .iter()
+        .find_map(|c| match c {
+            DrawCmd::RoundedRect {
+                rect,
+                radius,
+                fill: Some(f),
+                ..
+            } if f.token == ThemeColor::Group => Some((*rect, *radius)),
+            _ => None,
+        })
+        .expect("a row draws its Group background")
+}
+
+fn finished_rows(n: usize) -> Snapshot {
+    snapshot((0..n).map(|i| finished(&format!("r{i}"))).collect())
+}
+
+fn text_cmd<'a>(node: &'a Node, want: &str) -> Option<(&'a Rect, &'a Color)> {
+    node.cmds.iter().find_map(|c| match c {
+        DrawCmd::Text {
+            rect, text, color, ..
+        } if text == want => Some((rect, color)),
+        _ => None,
+    })
+}
+
+#[test]
+fn rows_in_a_section_touch() {
+    let (snap, panel) = mixed();
+    let scene = render(&snap, &panel).scene;
+    let mut checked = 0;
+    for (_, ids) in snap.sections() {
+        for pair in ids.windows(2) {
+            let (a, b) = (card(&scene, &pair[0]).frame, card(&scene, &pair[1]).frame);
+            assert_eq!(b.y, a.y + a.h, "{} touches {}", pair[1], pair[0]);
+            checked += 1;
+        }
+    }
+    assert_eq!(checked, 2, "two sections hold two rows");
+    assert_eq!(layout::CARD_GAP, 0.0);
+}
+
+#[test]
+fn group_corners_first_and_last() {
+    let scene = render(&finished_rows(3), &open()).scene;
+    let (first, mid, last) = (card(&scene, "r0"), card(&scene, "r1"), card(&scene, "r2"));
+    // Nodes clip to their frame: a 13 pt rounded rect pushed past the edge that stays square leaves only the other corners round.
+    let (r, radius) = group_bg(first);
+    assert_eq!((radius, r.y), (13.0, 0.0));
+    assert!(r.y + r.h > first.frame.h, "the bottom corners are clipped");
+    let (r, radius) = group_bg(last);
+    assert_eq!(radius, 13.0);
+    assert!(r.y < 0.0 && r.y + r.h == last.frame.h, "{r:?}");
+    let (r, radius) = group_bg(mid);
+    assert_eq!(radius, 0.0);
+    assert_eq!((r.y, r.h), (0.0, mid.frame.h));
+    let one = render(&finished_rows(1), &open()).scene;
+    let (r, radius) = group_bg(card(&one, "r0"));
+    assert_eq!(radius, 13.0);
+    assert_eq!((r.y, r.h), (0.0, card(&one, "r0").frame.h));
+}
+
+#[test]
+fn separator_inset_to_text_column() {
+    let scene = render(&finished_rows(3), &open()).scene;
+    let seps = |node: &Node| -> Vec<Rect> {
+        node.cmds
+            .iter()
+            .filter_map(|c| match c {
+                DrawCmd::RoundedRect {
+                    rect,
+                    fill: Some(f),
+                    ..
+                } if f.token == ThemeColor::Separator => Some(*rect),
+                _ => None,
+            })
+            .collect()
+    };
+    assert!(
+        seps(card(&scene, "r0")).is_empty(),
+        "the first row has none"
+    );
+    for id in ["r1", "r2"] {
+        let want = Rect::new(
+            layout::CARD_INSET,
+            0.0,
+            layout::CARD_W - layout::CARD_INSET,
+            0.5,
+        );
+        assert_eq!(seps(card(&scene, id)), [want], "{id}");
+    }
+    assert_eq!(layout::CARD_INSET, 40.0);
+}
+
+#[test]
+fn hovered_row_shows_actions() {
+    let (snap, mut panel) = mixed();
+    let quiet = render(&snap, &panel);
+    for id in ["done", "run"] {
+        let t = targets(&quiet, card(&quiet.scene, id));
+        assert_eq!(t, [Target::Jump(id.into())], "{id} has no button at rest");
+    }
+    assert!(!symbols(card(&quiet.scene, "done")).contains(&"arrowshape.turn.up.left"));
+    assert!(!symbols(card(&quiet.scene, "run")).contains(&"stop.fill"));
+    panel.hovered_row = Some("done".into());
+    let hover = render(&snap, &panel);
+    let done = card(&hover.scene, "done");
+    assert!(symbols(done).contains(&"arrowshape.turn.up.left"));
+    assert_eq!(
+        targets(&hover, done),
+        [Target::Reply("done".into()), Target::Jump("done".into())]
+    );
+    assert_eq!(
+        targets(&hover, card(&hover.scene, "run")),
+        [Target::Jump("run".into())],
+        "only the hovered row shows its button"
+    );
+    panel.hovered_row = Some("run".into());
+    let hover = render(&snap, &panel);
+    assert!(symbols(card(&hover.scene, "run")).contains(&"stop.fill"));
+    assert_eq!(
+        targets(&hover, card(&hover.scene, "run")),
+        [Target::Stop("run".into()), Target::Jump("run".into())]
+    );
+}
+
+#[test]
+fn keyboard_selected_row_shows_actions() {
+    let (snap, mut panel) = mixed();
+    panel.keyboard = true;
+    panel.selected = Some("run".into());
+    let built = render(&snap, &panel);
+    assert_eq!(
+        targets(&built, card(&built.scene, "run")),
+        [Target::Stop("run".into()), Target::Jump("run".into())]
+    );
+    assert_eq!(
+        targets(&built, card(&built.scene, "done")),
+        [Target::Jump("done".into())]
+    );
+    panel.selected = Some("done".into());
+    let built = render(&snap, &panel);
+    assert_eq!(
+        targets(&built, card(&built.scene, "done")),
+        [Target::Reply("done".into()), Target::Jump("done".into())]
+    );
+}
+
+#[test]
+fn stop_arms_to_red_capsule() {
+    let (snap, mut panel) = mixed();
+    let rest = render(&snap, &panel);
+    assert!(text_cmd(card(&rest.scene, "run"), "Dừng?").is_none());
+    panel.stop_armed.insert("run".into(), now());
+    let built = render(&snap, &panel);
+    let run = card(&built.scene, "run");
+    let (label, ink) = text_cmd(run, "Dừng?").expect("the armed button says Dừng?");
+    assert_eq!(ink.token, ThemeColor::White);
+    let capsule = run
+        .cmds
+        .iter()
+        .find_map(|c| match c {
+            DrawCmd::RoundedRect {
+                rect,
+                radius,
+                fill: Some(f),
+                ..
+            } if f.token == ThemeColor::Red => Some((*rect, *radius)),
+            _ => None,
+        })
+        .expect("a red capsule");
+    assert_eq!((capsule.0.h, capsule.1), (20.0, 10.0));
+    assert!(capsule.0.contains(claude_sessions_core::scene::Point::new(
+        label.x + 1.0,
+        label.y + 1.0
+    )));
+    // Armed, the click is the second step: the button is in the hits without any hover.
+    assert!(targets(&built, run).contains(&Target::Stop("run".into())));
+}
+
+#[test]
+fn allow_is_primary_accent() {
+    let snap = snapshot(vec![approval("appr")]);
+    let built = render(&snap, &open());
+    let node = card(&built.scene, "appr");
+    let approve = node
+        .hits
+        .iter()
+        .find(|h| matches!(built.targets.get(h.id), Some(Target::Approve { .. })))
+        .unwrap()
+        .rect;
+    assert_eq!(approve.h, layout::BUTTON_H);
+    let fill = node.cmds.iter().find_map(|c| match c {
+        DrawCmd::RoundedRect {
+            rect,
+            fill: Some(f),
+            ..
+        } if *rect == approve => Some(f.token),
+        _ => None,
+    });
+    assert_eq!(fill, Some(ThemeColor::Accent));
+    let (label, ink) = text_cmd(node, "Cho phép").unwrap();
+    assert_eq!(ink.token, ThemeColor::White);
+    assert!(approve.contains(claude_sessions_core::scene::Point::new(label.x, label.y)));
+    let (letter, faint) = text_cmd(node, "A").expect("the shortcut letter");
+    assert_eq!((faint.token, faint.alpha), (ThemeColor::White, 0.5));
+    assert!(approve.contains(claude_sessions_core::scene::Point::new(letter.x, letter.y)));
+    // The deny button is a plain `Fill` capsule to the left of it.
+    let deny = node
+        .hits
+        .iter()
+        .find(|h| matches!(built.targets.get(h.id), Some(Target::Deny { .. })))
+        .unwrap()
+        .rect;
+    assert!(deny.x + deny.w <= approve.x);
+    let dfill = node.cmds.iter().find_map(|c| match c {
+        DrawCmd::RoundedRect {
+            rect,
+            fill: Some(f),
+            ..
+        } if *rect == deny => Some(f.token),
+        _ => None,
+    });
+    assert_eq!(dfill, Some(ThemeColor::Fill));
+}
+
+#[test]
+fn round_send_faces_keep_frame() {
+    let mut panel = open();
+    panel.editing = Some(Editing {
+        id: "done".into(),
+        kind: EditKind::Reply,
+        tool_id: None,
+    });
+    let face = |state: Option<SendState>| {
+        let mut snap = snapshot(vec![finished("done")]);
+        if let Some(st) = state {
+            snap.sends
+                .insert(SendKey::new("done", SendKind::Reply), (st, now()));
+        }
+        let built = render(&snap, &panel);
+        let node = card(&built.scene, "done");
+        let round = node
+            .cmds
+            .iter()
+            .find_map(|c| match c {
+                DrawCmd::RoundedRect { rect, radius, .. } if rect.w == 22.0 && *radius == 11.0 => {
+                    Some(*rect)
+                }
+                _ => None,
+            })
+            .expect("the round send button");
+        let hit = node
+            .hits
+            .iter()
+            .find(|h| matches!(built.targets.get(h.id), Some(Target::ReplySend(_))))
+            .map(|h| h.rect);
+        let syms: Vec<String> = symbols(node).into_iter().map(str::to_string).collect();
+        let tip = node
+            .tips
+            .iter()
+            .find(|t| t.rect == round)
+            .map(|t| t.text.clone());
+        (round, hit, syms, node.spinner.is_some(), tip)
+    };
+    let (idle, hit, syms, spinner, _) = face(None);
+    assert_eq!(hit, Some(idle));
+    assert!(syms.iter().any(|s| s == "arrow.up") && !spinner);
+    let (sending, hit, _, spinner, _) = face(Some(SendState::Sending));
+    assert!(spinner, "sending shows the spinner");
+    assert_eq!(hit, None, "no second click while it is in flight");
+    let (sent, hit, syms, spinner, _) = face(Some(SendState::Sent));
+    assert!(syms.iter().any(|s| s == "checkmark") && !spinner);
+    assert_eq!(hit, Some(sent));
+    let (failed, hit, syms, _, tip) = face(Some(SendState::Failed));
+    assert!(syms.iter().any(|s| s == "exclamationmark"));
+    assert_eq!(hit, Some(failed));
+    assert!(
+        tip.is_some_and(|t| t.contains("Lỗi")),
+        "the tooltip carries the error"
+    );
+    assert_eq!(
+        (idle, sent, failed),
+        (sending, idle, idle),
+        "the frame never moves"
+    );
+}
+
+#[test]
+fn pr_row_two_tiers() {
+    let snap = snapshot(vec![pr_session()]);
+    let built = render(&snap, &open());
+    let node = card(&built.scene, "done");
+    let (num, _) = text_cmd(node, "#7571").expect("the PR number");
+    let ask = node
+        .hits
+        .iter()
+        .find(|h| {
+            matches!(built.targets.get(h.id), Some(Target::AskClaude { pr, .. }) if pr.id == 7571)
+        })
+        .unwrap()
+        .rect;
+    assert!(
+        ask.y >= num.y + num.h,
+        "the buttons sit below the info line: {ask:?} vs {num:?}"
+    );
+    assert_eq!(ask.h, layout::BUTTON_H);
+    let l = card_layout(&snap.sessions[0], &snap, &open(), &FakeMeasure);
+    assert_eq!(l.find(Block::Pr(0)).unwrap().h, layout::PR_ROW_H);
+    assert_eq!(l.find(Block::Pr(2)).unwrap().h, layout::PR_ROW_CLOSED_H);
+}
+
+#[test]
+fn chips_overflow_at_400() {
+    let built = fixture_built("23-ticket-row-overflow");
+    let node = built
+        .scene
+        .nodes
+        .iter()
+        .find(|n| {
+            n.hits
+                .iter()
+                .any(|h| matches!(built.targets.get(h.id), Some(Target::Menu(_))))
+        })
+        .expect("the card with the chips");
+    let more = texts(node)
+        .into_iter()
+        .find(|t| t.starts_with('+'))
+        .expect("a +M chip");
+    let shown = node
+        .cmds
+        .iter()
+        .filter(|c| {
+            matches!(c, DrawCmd::RoundedRect { rect, radius, fill: Some(f), .. }
+                if rect.h == layout::CHIP_H && *radius == 6.0 && f.token == ThemeColor::Fill)
+        })
+        .count();
+    assert!(shown >= 2, "chips on Fill, 20 tall, radius 6");
+    assert!(more[1..].parse::<usize>().unwrap() >= 1);
+    let edge = layout::CARD_W - layout::CARD_PAD_RIGHT;
+    for c in &node.cmds {
+        if let DrawCmd::RoundedRect {
+            rect,
+            fill: Some(f),
+            ..
+        } = c
+            && rect.h == layout::CHIP_H
+            && f.token == ThemeColor::Fill
+        {
+            assert!(rect.x >= layout::CARD_INSET);
+            assert!(
+                rect.x + rect.w <= edge + 0.01,
+                "{rect:?} past the text column"
+            );
+        }
+    }
+}
+
+#[test]
+fn question_option_row_24() {
+    let built = fixture_built("question-4-two-questions");
+    let node = built
+        .scene
+        .nodes
+        .iter()
+        .find(|n| {
+            n.hits
+                .iter()
+                .any(|h| matches!(built.targets.get(h.id), Some(Target::PickOption { .. })))
+        })
+        .unwrap();
+    let rows = option_hit_rects(&built, node);
+    assert!(rows.iter().all(|r| r.h == 24.0));
+    let (_, panel) = fixture_state("question-4-two-questions");
+    let picked: usize = panel.answers.values().flatten().map(Vec::len).sum();
+    for r in &rows {
+        let radio = node.cmds.iter().find_map(|c| match c {
+            DrawCmd::RoundedRect {
+                rect,
+                radius,
+                fill,
+                stroke,
+            } if rect.w == 14.0
+                && *radius == 7.0
+                && rect.y >= r.y
+                && rect.y + rect.h <= r.y + r.h =>
+            {
+                Some((fill.map(|f| f.token), stroke.is_some()))
+            }
+            _ => None,
+        });
+        assert!(radio.is_some(), "a 14 pt radio in {r:?}");
+    }
+    let on = node
+        .cmds
+        .iter()
+        .filter(|c| {
+            matches!(c, DrawCmd::RoundedRect { rect, radius, fill: Some(f), .. }
+                if rect.w == 14.0 && *radius == 7.0 && f.token == ThemeColor::Accent)
+        })
+        .count();
+    assert_eq!(on, picked, "a picked option has the Accent radio");
+}
+
+#[test]
+fn every_fixture_draws_the_height_the_size_model_predicts() {
+    let mut seen = 0;
+    for (name, _) in claude_sessions_core::fixtures::STATES {
+        let built = fixture_built(name);
+        if built.scene.nodes.iter().all(|n| n.key.0 != "panel") {
+            continue;
+        }
+        let (snap, panel) = fixture_state(name);
+        let l = expanded_layout(&snap, &panel, &FakeMeasure);
+        for item in &l.items {
+            if let layout::Item::Card { id, y, layout } = item {
+                let node = card(&built.scene, id);
+                assert_eq!(
+                    (node.frame.y, node.frame.h),
+                    (*y, layout.height),
+                    "{name} {id}"
+                );
+                assert!(
+                    node.cmds.iter().all(|c| bottom(c) <= layout.height + 14.0),
+                    "{name} {id} draws past its row"
+                );
+                seen += 1;
+            }
+        }
+    }
+    assert!(seen > 20, "{seen} cards checked");
 }

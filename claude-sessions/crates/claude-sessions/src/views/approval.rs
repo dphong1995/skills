@@ -1,4 +1,5 @@
-//! The approval block: the command box, `Cho phép` / `Từ chối…` and, while denying, the reason field with its `Gửi`. A long
+//! The approval block: the command box, `Từ chối…` and the primary `Cho phép` at the right and, while denying, the round reason
+//! field with its send button. A long
 //! command shows `Xem đủ` instead of the buttons, a too-long one and an unclear pending a line that jumps to cmux (the
 //! buttons only ever sit under a command shown whole). The look is the one `card_layout` computed; positions follow
 //! `ApprovalLook::height`. The buttons wear their send state (`Canvas::button`); once the approval is
@@ -8,11 +9,11 @@ use super::{Canvas, Ctx};
 use crate::hits::Target;
 use crate::theme;
 use claude_sessions_core::layout::{
-    ApprovalLook, ApprovalRow, BLOCK_GAP, BUTTON_H, CARD_INSET, CMD_LINE_H, CMD_MARGIN, CMD_PAD,
-    FIELD_H, NOTE_H, TEXT_W, command_box_height,
+    ApprovalLook, ApprovalRow, BLOCK_GAP, BODY_GAP, BUTTON_H, CARD_INSET, CMD_FONT, CMD_LINE_H,
+    CMD_MARGIN, CMD_PAD, FIELD_H, NOTE_H, TEXT_W, command_box_height,
 };
 use claude_sessions_core::panel_state::EditKind;
-use claude_sessions_core::scene::{Align, Field, Rect, ThemeColor};
+use claude_sessions_core::scene::{Align, Rect, ThemeColor};
 use claude_sessions_core::store::{SendKey, SendKind, Session};
 
 /// `block` is the rect the card layout placed for `Block::Approval`, relative to the card.
@@ -30,7 +31,7 @@ pub fn draw(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect, look: Optio
         if c.button(
             r,
             label,
-            theme::solid(ThemeColor::Button),
+            theme::solid(ThemeColor::Fill),
             theme::solid(ThemeColor::Text),
             state,
         ) {
@@ -40,7 +41,7 @@ pub fn draw(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect, look: Optio
     let (lines, row) = match look {
         None => return,
         Some(ApprovalLook::Unclear) => {
-            jump(ctx, c, block.y + BLOCK_GAP, "Cần duyệt trong cmux");
+            jump(ctx, c, block.y + BODY_GAP, "Cần duyệt trong cmux");
             return;
         }
         Some(ApprovalLook::Command { lines, row }) => (lines, row),
@@ -68,7 +69,7 @@ pub fn draw(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect, look: Optio
             CMD_LINE_H * lines as f64,
         ),
         &p.text,
-        theme::MONO_FONT,
+        CMD_FONT,
         theme::solid(ThemeColor::Text),
         lines as u32,
         Align::Left,
@@ -91,7 +92,7 @@ pub fn draw(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect, look: Optio
             c.button(
                 r,
                 "Xem đủ",
-                theme::solid(ThemeColor::Button),
+                theme::solid(ThemeColor::Fill),
                 theme::solid(ThemeColor::Text),
                 None,
             );
@@ -105,46 +106,39 @@ pub fn draw(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect, look: Optio
             return;
         }
     }
+    // Right-aligned: `Từ chối…` then the primary `Cho phép` at the end. Hits are added approve first.
     let approve_w = ctx.button_w("Cho phép") + 22.0;
-    let approve = Rect::new(CARD_INSET, row_y, approve_w, BUTTON_H);
-    let deny = Rect::new(
-        approve.x + approve.w + 8.0,
-        row_y,
-        ctx.button_w("Từ chối…") + 22.0,
-        BUTTON_H,
-    );
+    let approve = Rect::new(CARD_INSET + TEXT_W - approve_w, row_y, approve_w, BUTTON_H);
+    let deny_w = ctx.button_w("Từ chối…") + 22.0;
+    let deny = Rect::new(approve.x - 6.0 - deny_w, row_y, deny_w, BUTTON_H);
     let approve_state = send(SendKind::Approve);
     let deny_state = send(SendKind::Deny);
     let target = |t: fn(String, String) -> Target| t(s.id.clone(), p.tool_id.clone());
-    if c.button(
+    if c.keyed_button(
         approve,
         "Cho phép",
-        theme::solid(ThemeColor::Green),
-        theme::solid(ThemeColor::OnAccent),
+        theme::solid(ThemeColor::Accent),
+        theme::solid(ThemeColor::White),
         approve_state,
+        Some("A"),
     ) {
         c.hit(
             approve,
             target(|session, tool_id| Target::Approve { session, tool_id }),
         );
     }
-    if c.button(
+    if c.keyed_button(
         deny,
         "Từ chối…",
-        theme::solid(ThemeColor::Button),
+        theme::solid(ThemeColor::Fill),
         theme::solid(ThemeColor::Text),
         deny_state,
+        Some("D"),
     ) {
         c.hit(
             deny,
             target(|session, tool_id| Target::Deny { session, tool_id }),
         );
-    }
-    if approve_state.is_none() {
-        key_hint(c, approve, "A", ThemeColor::OnAccent);
-    }
-    if deny_state.is_none() {
-        key_hint(c, deny, "D", ThemeColor::TextFaint);
     }
 
     let denying = view
@@ -153,43 +147,19 @@ pub fn draw(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect, look: Optio
         .as_ref()
         .is_some_and(|e| e.id == s.id && e.kind == EditKind::Deny);
     if denying {
-        let y = row_y + BUTTON_H + BLOCK_GAP;
-        let send_btn = Rect::new(
-            CARD_INSET + TEXT_W - 64.0,
-            y + (FIELD_H - BUTTON_H) / 2.0,
-            64.0,
-            BUTTON_H,
+        let capsule = Rect::new(CARD_INSET, row_y + BUTTON_H + BLOCK_GAP, TEXT_W, FIELD_H);
+        c.field(
+            format!("deny-{}", s.id),
+            capsule,
+            "Lý do (để trống = chỉ từ chối)",
+            String::new(),
+            true,
         );
-        c.fields.push(Field {
-            key: format!("deny-{}", s.id),
-            rect: Rect::new(CARD_INSET, y, send_btn.x - CARD_INSET - 8.0, FIELD_H),
-            text: String::new(),
-            placeholder: "Lý do (để trống = chỉ từ chối)".into(),
-        });
-        if c.button(
-            send_btn,
-            "Gửi",
-            theme::solid(ThemeColor::Button),
-            theme::solid(ThemeColor::Text),
-            deny_state,
-        ) {
+        if let Some(btn) = c.round_send(capsule, deny_state) {
             c.hit(
-                send_btn,
+                btn,
                 target(|session, tool_id| Target::DenySend { session, tool_id }),
             );
         }
     }
-}
-
-/// The keyboard letter at the right end of a button, as in the mockup.
-fn key_hint(c: &mut Canvas, button: Rect, letter: &str, color: ThemeColor) {
-    let r = Rect::new(button.x + button.w - 24.0, button.y + 5.0, 14.0, 14.0);
-    c.rrect(r, 3.0, None, Some(theme::tint(color, 0.5)));
-    c.label(
-        r,
-        letter,
-        theme::font(9.0, claude_sessions_core::scene::Weight::Semibold),
-        theme::tint(color, 0.8),
-        Align::Center,
-    );
 }

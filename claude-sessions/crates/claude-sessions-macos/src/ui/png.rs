@@ -16,7 +16,7 @@ use objc2_core_graphics::{CGBitmapContextCreateImage, CGColorSpace, CGContext, k
 use objc2_foundation::{MainThreadMarker, NSData, NSDictionary, NSString};
 
 use super::draw::{draw_cmds, ns_color, ns_rect, register_images, shadow_path};
-use super::node_view::NodeView;
+use super::node_view::{NodeView, style_field};
 
 #[link(name = "CoreGraphics", kind = "framework")]
 unsafe extern "C" {
@@ -96,6 +96,7 @@ pub fn render_png(
             // The live field is an `NSTextField`: its own cell draws the text, or the placeholder when empty.
             let rect = ns_rect(field.rect);
             let view = NSTextField::initWithFrame(mtm.alloc(), rect);
+            style_field(&view);
             view.setStringValue(&NSString::from_str(&field.text));
             view.setPlaceholderString(Some(&NSString::from_str(&field.placeholder)));
             if let Some(cell) = view.cell() {

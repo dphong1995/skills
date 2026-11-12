@@ -11,9 +11,9 @@ use objc2::runtime::{AnyObject, Bool, ProtocolObject, Sel};
 use objc2::{DefinedClass, MainThreadOnly, define_class, msg_send, sel};
 use objc2_app_kit::{
     NSAnimatablePropertyContainer, NSAnimationContext, NSAppearanceCustomization, NSColor,
-    NSControl, NSControlTextEditingDelegate, NSEvent, NSTextField, NSTextFieldDelegate, NSTextView,
-    NSView, NSVisualEffectBlendingMode, NSVisualEffectMaterial, NSVisualEffectState,
-    NSVisualEffectView,
+    NSControl, NSControlTextEditingDelegate, NSEvent, NSFocusRingType, NSTextField,
+    NSTextFieldDelegate, NSTextView, NSView, NSVisualEffectBlendingMode, NSVisualEffectMaterial,
+    NSVisualEffectState, NSVisualEffectView,
 };
 use objc2_core_foundation::{CGPoint, CGRect, CGSize};
 use objc2_core_graphics::CGPath;
@@ -28,6 +28,15 @@ use objc2_quartz_core::{
 use super::draw::{draw_cmds, ns_color, ns_rect, shadow_path};
 use super::motion;
 use super::{EventHandler, UiEvent};
+
+/// The views draw a field's capsule and its ring: the native field only shows the text, with no bezel, border, background
+/// or focus ring of its own.
+pub(crate) fn style_field(view: &NSTextField) {
+    view.setBezeled(false);
+    view.setBordered(false);
+    view.setDrawsBackground(false);
+    view.setFocusRingType(NSFocusRingType::None);
+}
 
 pub(crate) struct NodeIvars {
     key: String,
@@ -124,7 +133,7 @@ define_class!(
 
     unsafe impl NSObjectProtocol for NodeView {}
 
-    impl NodeView {
+impl NodeView {
         #[unsafe(method(isFlipped))]
         fn is_flipped(&self) -> bool {
             true
@@ -400,6 +409,7 @@ impl NodeView {
                 Some(at) => at,
                 None => {
                     let view = NSTextField::initWithFrame(mtm.alloc(), ns_rect(field.rect));
+                    style_field(&view);
                     let delegate = FieldDelegate::new(mtm, &field.key, sink.clone());
                     // SAFETY: the delegate lives in the slot as long as the field does.
                     unsafe { view.setDelegate(Some(ProtocolObject::from_ref(&*delegate))) };

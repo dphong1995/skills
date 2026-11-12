@@ -165,7 +165,8 @@ fn question_card_grows_per_option_row() {
 fn two_line_title_is_taller_than_one_line() {
     let short = card_h(Session::new("a", "short", "/x", "waiting"));
     let long = card_h(Session::new("a", &"w".repeat(200), "/x", "waiting"));
-    assert_eq!(long - short, 16.0);
+    // One line is held at the 20 pt title line; two measured lines (16 pt each here) are taller than that.
+    assert_eq!(long - short, 2.0 * 16.0 - layout::TITLE_LINE_H);
 }
 
 #[test]
@@ -195,9 +196,20 @@ fn reply_open_menu_pr_lines_and_editor_add_height() {
 }
 
 #[test]
-fn quick_button_gives_the_card_a_minimum_height() {
-    assert!(card_h(idle("a")) >= layout::CARD_MIN_BUTTON_H);
-    assert!(card_h(approval("a", "ls")) > layout::CARD_MIN_BUTTON_H);
+fn a_row_is_at_least_the_glyph_with_its_padding_and_an_approval_is_taller() {
+    let idle_h = card_h(idle("a"));
+    assert!(idle_h >= layout::CARD_PAD_Y * 2.0 + 20.0);
+    assert!(card_h(approval("a", "ls")) > idle_h);
+}
+
+#[test]
+fn a_pr_row_is_two_tiers_and_a_merged_or_closed_one_is_a_single_line() {
+    assert_eq!(layout::pr_row_height(true), layout::PR_ROW_H);
+    assert_eq!(layout::pr_row_height(false), layout::PR_ROW_CLOSED_H);
+    assert_eq!(
+        layout::PR_ROW_H,
+        layout::PR_GAP + layout::PR_TIER_H + layout::BLOCK_GAP + layout::BUTTON_H
+    );
 }
 
 #[test]
@@ -276,8 +288,8 @@ fn the_command_box_ends_one_padding_under_its_last_line() {
         box_h,
         layout::CMD_PAD + layout::CMD_LINE_H + layout::CMD_PAD
     );
-    // 12 pt monospaced text is 15 pt per line.
-    assert_eq!(layout::CMD_LINE_H, 15.0);
+    // 11.5 pt monospaced text is 14 pt per line.
+    assert_eq!(layout::CMD_LINE_H, 14.0);
 }
 
 #[test]
@@ -293,7 +305,8 @@ fn a_generic_state_label_is_not_reserved_room_in_the_title() {
         ""
     );
     assert_eq!(layout::state_label(&bg), "chờ 2 agent nền");
-    assert!(w(idle) > w(bg));
+    // The state word is its own text in the subtitle now: it takes no room from the title either way.
+    assert_eq!(w(idle), w(bg));
 }
 
 #[test]
@@ -336,11 +349,11 @@ fn command_fit_thresholds() {
     assert_eq!(command_fit(&"e\u{301}".repeat(200)), CommandFit::Short);
 }
 
-/// The lines `chars` characters of one line take as `FakeMeasure` wraps them in the command box (7 pt per character, 16 pt per
-/// line) and the model counts them (`CMD_LINE_H` per line).
+/// The lines `chars` characters of one line take as `FakeMeasure` wraps them in the command box (7 pt per character); the
+/// model counts them in the pitch the measure gives one line (16 pt here) and the box grows `CMD_LINE_H` per line.
 fn command_lines(chars: usize) -> usize {
     let per_line = (layout::CMD_TEXT_W / 7.0).floor() as usize;
-    (chars.div_ceil(per_line) as f64 * 16.0 / layout::CMD_LINE_H).round() as usize
+    chars.div_ceil(per_line)
 }
 
 #[test]
@@ -421,7 +434,7 @@ fn an_unclear_pending_gets_the_jump_line() {
     let l = card_layout(&s, &snap, &panel(), &FakeMeasure);
     assert_eq!(
         l.find(Block::Approval).unwrap().h,
-        layout::BLOCK_GAP + layout::NOTE_H
+        layout::BODY_GAP + layout::NOTE_H
     );
     assert!(l.find(Block::Reply).is_none());
 }

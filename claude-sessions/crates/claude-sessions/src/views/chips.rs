@@ -5,11 +5,11 @@ use super::{Canvas, Ctx};
 use crate::hits::Target;
 use crate::theme;
 use claude_sessions_core::credentials::Service;
-use claude_sessions_core::layout::{CARD_INSET, LINK_ROW_H, LINK_SECTION_H, TEXT_W};
+use claude_sessions_core::layout::{
+    BLOCK_GAP, CARD_INSET, CHIP_H, LINK_ROW_H, LINK_SECTION_H, TEXT_W,
+};
 use claude_sessions_core::scene::{Align, Rect, ThemeColor, Weight};
 use claude_sessions_core::store::{ItemTone, LinkKind, Session, Snapshot};
-
-const CHIP_H: f64 = 22.0;
 
 /// The Jira icon of `url` when the snapshot holds its bytes, else a tinted square.
 fn icon_or_placeholder(
@@ -33,7 +33,7 @@ fn icon_or_placeholder(
 
 pub fn draw_chips(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
     let view = ctx.view;
-    let y = block.y + (block.h - CHIP_H) / 2.0;
+    let y = block.y + BLOCK_GAP;
     let mut x = CARD_INSET;
     let count = s.menu_count().to_string();
     let menu_w = ctx.text_w(&count, &theme::META_FONT) + 34.0;
@@ -65,14 +65,14 @@ pub fn draw_chips(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
         c.rrect(
             chip,
             theme::CHIP_RADIUS,
-            Some(theme::solid(ThemeColor::Button)),
+            Some(theme::solid(ThemeColor::Fill)),
             None,
         );
         if let Some(u) = &link.icon_url {
             icon_or_placeholder(
                 view.snap,
                 c,
-                Rect::new(x + 7.0, y + 5.0, 12.0, 12.0),
+                Rect::new(x + 7.0, y + 4.0, 12.0, 12.0),
                 u,
                 link.tone,
             );
@@ -101,7 +101,7 @@ pub fn draw_chips(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
         c.rrect(
             chip,
             theme::CHIP_RADIUS,
-            Some(theme::solid(ThemeColor::Button)),
+            Some(theme::solid(ThemeColor::Fill)),
             None,
         );
         c.label(
@@ -127,14 +127,14 @@ pub fn draw_chips(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
     let fill = if open {
         theme::tint(ThemeColor::Text, 0.22)
     } else if hidden_mark {
-        theme::tint(ThemeColor::Purple, 0.35)
+        theme::tint(ThemeColor::Indigo, 0.35)
     } else {
-        theme::solid(ThemeColor::Button)
+        theme::solid(ThemeColor::Fill)
     };
     c.rrect(chip, theme::CHIP_RADIUS, Some(fill), None);
     c.symbol(
         "list.bullet",
-        Rect::new(x + 8.0, y + 5.0, 12.0, 12.0),
+        Rect::new(x + 8.0, y + 4.0, 12.0, 12.0),
         theme::solid(ThemeColor::TextSecondary),
         Weight::Medium,
     );
@@ -218,7 +218,7 @@ pub fn draw_link_list(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
             if let Some(status) = &item.status {
                 let color = theme::tone_token(item.tone);
                 let tag = Rect::new(row.x + row.w - status_w - 4.0, y + 3.0, status_w, 16.0);
-                c.rrect(tag, 4.0, Some(theme::tint(color, 0.2)), None);
+                c.rrect(tag, 4.0, Some(theme::tint(color, 0.18)), None);
                 c.label(
                     tag,
                     status,
@@ -247,8 +247,8 @@ pub fn draw_link_list(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
                 ctx.button_w("Kết nối Jira…"),
                 LINK_ROW_H - 4.0,
             ),
-            theme::BUTTON_RADIUS,
-            Some(theme::solid(ThemeColor::Button)),
+            (LINK_ROW_H - 4.0) / 2.0,
+            Some(theme::solid(ThemeColor::Fill)),
             None,
         );
         c.label(
