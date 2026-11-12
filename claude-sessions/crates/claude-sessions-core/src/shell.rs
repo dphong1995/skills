@@ -5,10 +5,20 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+/// cmux caller-identity variables. A widget launched from a cmux terminal inherits them, and `cmux` would then treat
+/// every child as a caller inside that surface and target its workspace instead of the selected one.
+const CMUX_CALLER_ENV: [&str; 4] = [
+    "CMUX_WORKSPACE_ID",
+    "CMUX_SURFACE_ID",
+    "CMUX_TAB_ID",
+    "CMUX_PANEL_ID",
+];
+
 /// Runs `path` (an absolute path, never looked up in `PATH`) and returns its stdout, or `None` when it cannot start.
 /// A timeout gives `None` with `require_success`; without it the stdout read so far is returned (as Swift does).
 /// With `require_success` a non-zero exit status also gives `None`.
 /// `input`, when given, is written to the process's stdin, which is then closed. stderr goes to null.
+/// The child never sees the cmux caller-identity variables (`CMUX_CALLER_ENV`).
 pub fn run_process(
     path: &Path,
     args: &[&str],
@@ -18,6 +28,9 @@ pub fn run_process(
 ) -> Option<String> {
     let mut cmd = Command::new(path);
     cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::null());
+    for name in CMUX_CALLER_ENV {
+        cmd.env_remove(name);
+    }
     cmd.stdin(if input.is_some() {
         Stdio::piped()
     } else {

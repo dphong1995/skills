@@ -35,3 +35,22 @@ fn require_success_fails_on_nonzero() {
         Some("")
     );
 }
+
+#[test]
+fn run_process_drops_cmux_caller_env() {
+    // Only this test touches CMUX_WORKSPACE_ID; no other test reads it.
+    unsafe { std::env::set_var("CMUX_WORKSPACE_ID", "caller-workspace") };
+    let out = run_process(
+        Path::new("/bin/sh"),
+        &[
+            "-c",
+            r#"echo "${CMUX_WORKSPACE_ID-unset}|${CMUX_SURFACE_ID-unset}|${HOME-unset}""#,
+        ],
+        Duration::from_secs(5),
+        true,
+        None,
+    );
+    unsafe { std::env::remove_var("CMUX_WORKSPACE_ID") };
+    let home = std::env::var("HOME").unwrap();
+    assert_eq!(out, Some(format!("unset|unset|{home}\n")));
+}
