@@ -118,6 +118,39 @@ pub struct ClickEnv<'a> {
 }
 
 impl Target {
+    /// The session the control belongs to, when it has one.
+    pub fn session(&self) -> Option<&str> {
+        match self {
+            Target::Jump(s)
+            | Target::Reply(s)
+            | Target::ReplySend(s)
+            | Target::Stop(s)
+            | Target::Answer(s)
+            | Target::Menu(s) => Some(s),
+            Target::ShowCommand { session, .. }
+            | Target::Approve { session, .. }
+            | Target::Deny { session, .. }
+            | Target::DenySend { session, .. }
+            | Target::PickOption { session, .. }
+            | Target::OpenOther { session, .. }
+            | Target::Link { session, .. }
+            | Target::AskClaude { session, .. }
+            | Target::Nudge { session, .. } => Some(session),
+            Target::Resume(_) | Target::Connect(_) | Target::ToggleClosed | Target::Settings(_) => {
+                None
+            }
+        }
+    }
+
+    /// The PR the control stands for: a PR link's, or the one `Nhắc duyệt` / `Nhờ Claude` is about.
+    pub fn pr(&self) -> Option<PRRef> {
+        match self {
+            Target::Nudge { pr, .. } | Target::AskClaude { pr, .. } => Some(pr.clone()),
+            Target::Link { url, .. } => pull_requests::refs(url.as_str()).into_iter().next(),
+            _ => None,
+        }
+    }
+
     /// Stable across rebuilds: FNV-1a of the debug form.
     pub fn id(&self) -> HitId {
         let mut h: u32 = 0x811c_9dc5;

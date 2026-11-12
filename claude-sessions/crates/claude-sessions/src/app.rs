@@ -43,7 +43,7 @@ use crate::actions::{self, Completion, Poster};
 use crate::effects::RealRunner;
 use crate::hits::{Click, ClickEnv, Target, Targets};
 use crate::hotkey::{Hotkeys, Which};
-use crate::menu::{self, Command};
+use crate::menu::{self, Command, MenuContext};
 use crate::panels::PanelHost;
 use crate::settings::{self, Settings};
 use crate::settings_model::{
@@ -525,18 +525,29 @@ fn handle_event(weak: &WeakState, key: &str, event: UiEvent) {
                 s.track_mouse();
             });
         }
-        UiEvent::RightClick { at, .. } => {
-            let Some((view, screen)) = with_state(weak, |s| {
-                s.panels
-                    .iter()
-                    .find(|p| p.key == key)
-                    .map(|p| (p.window.view(), p.screen))
+        UiEvent::RightClick { at, hit } => {
+            let Some((view, screen, ctx)) = with_state(weak, |s| {
+                let host = s.panels.iter().find(|p| p.key == key)?;
+                let target = hit.and_then(|id| host.targets.get(id));
+                let session = target.and_then(Target::session);
+                let hide = target.zip(session).and_then(|(t, sid)| {
+                    let pr = t.pr().filter(|p| s.store.can_hide_pr(sid, p))?;
+                    Some((sid.to_string(), pr))
+                });
+                let show_hidden = session
+                    .map(|sid| (sid.to_string(), s.store.hidden_pr_count(sid)))
+                    .filter(|(_, n)| *n > 0);
+                Some((
+                    host.window.view(),
+                    host.screen,
+                    MenuContext { hide, show_hidden },
+                ))
             })
             .flatten() else {
                 return;
             };
             let weak = weak.clone();
-            main_queue::run_loop_later(move || show_menu(&weak, &view, at, screen));
+            main_queue::run_loop_later(move || show_menu(&weak, &view, at, screen, ctx));
         }
         // AppKit is inside the delegate method of the field: a render that freed the field (and its delegate) now would
         // free it while it runs. The draft is kept at once, so it always equals the text on screen when the render runs.
@@ -635,9 +646,10 @@ fn show_menu(
     view: &claude_sessions_macos::ui::SceneView,
     at: claude_sessions_core::scene::Point,
     screen: Rect,
+    ctx: MenuContext,
 ) {
     set_menu_open(weak, true);
-    popup_commands(view, menu::build(), at, weak, move |weak, command| {
+    popup_commands(view, menu::build(&ctx), at, weak, move |weak, command| {
         apply_command(weak, &command, screen)
     });
     set_menu_open(weak, false);
@@ -710,6 +722,22 @@ fn apply_command(weak: &WeakState, command: &Command, screen: Rect) {
     match command {
         Command::Settings => open_settings(weak, None, screen),
         Command::Hotkey(which, choice) => apply_hotkey(weak, *which, choice.clone()),
+        Command::HidePr { session, pr } => {
+            with_state(weak, |s| {
+                s.store.hide_pr(session, pr);
+                let now = s.now();
+                s.refresh_and_chime(now);
+                s.render("hide pr");
+            });
+        }
+        Command::ShowHiddenPrs(session) => {
+            with_state(weak, |s| {
+                s.store.show_hidden_prs(session);
+                let now = s.now();
+                s.refresh_and_chime(now);
+                s.render("show pr");
+            });
+        }
         Command::Quit => {
             // What is typed in the open Settings window is saved first.
             if with_state(weak, |s| s.settings.is_some()).unwrap_or(false) {

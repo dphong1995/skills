@@ -1,10 +1,13 @@
 //! The right-click menu model and what choosing a line does: no popup, no AppKit.
 
+use claude_sessions::hits::Target;
 use claude_sessions::hotkey::{Hotkeys, Which};
-use claude_sessions::menu::{self, Command};
+use claude_sessions::menu::{self, Command, MenuContext};
 use claude_sessions_core::hotkeys::HotKeyChoice;
 use claude_sessions_core::kv::MemoryStore;
+use claude_sessions_core::pull_requests::PRRef;
 use claude_sessions_macos::menu::Entry;
+use url::Url;
 
 fn titles(entries: &[Entry]) -> Vec<String> {
     entries
@@ -17,11 +20,101 @@ fn titles(entries: &[Entry]) -> Vec<String> {
         .collect()
 }
 
+fn pr(id: i64) -> PRRef {
+    PRRef {
+        workspace: "t6engineering".into(),
+        repo: "talo6-dct-backend".into(),
+        id,
+    }
+}
+
 #[test]
-fn menu_has_only_settings_and_quit() {
-    let m = menu::build();
+fn menu_without_context_is_unchanged() {
+    let m = menu::build(&MenuContext::default());
     assert_eq!(titles(&m.entries), ["Cài đặt…", "-", "Thoát"]);
     assert_eq!(m.commands, [Command::Settings, Command::Quit]);
+}
+
+#[test]
+fn menu_with_hide_and_show_hidden() {
+    let m = menu::build(&MenuContext {
+        hide: Some(("s".into(), pr(7571))),
+        show_hidden: Some(("s".into(), 2)),
+    });
+    assert_eq!(
+        titles(&m.entries),
+        [
+            "Ẩn PR #7571 ở session này",
+            "Hiện lại 2 PR đã ẩn",
+            "-",
+            "Cài đặt…",
+            "-",
+            "Thoát"
+        ]
+    );
+    assert_eq!(
+        m.commands,
+        [
+            Command::HidePr {
+                session: "s".into(),
+                pr: pr(7571)
+            },
+            Command::ShowHiddenPrs("s".into()),
+            Command::Settings,
+            Command::Quit
+        ]
+    );
+    let ids: Vec<isize> = m
+        .entries
+        .iter()
+        .filter_map(|e| match e {
+            Entry::Item { id, .. } => Some(*id),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(ids, [0, 1, 2, 3]);
+}
+
+#[test]
+fn menu_with_only_show_hidden() {
+    let m = menu::build(&MenuContext {
+        hide: None,
+        show_hidden: Some(("s".into(), 1)),
+    });
+    assert_eq!(
+        titles(&m.entries),
+        ["Hiện lại 1 PR đã ẩn", "-", "Cài đặt…", "-", "Thoát"]
+    );
+    let zero = menu::build(&MenuContext {
+        hide: None,
+        show_hidden: Some(("s".into(), 0)),
+    });
+    assert_eq!(titles(&zero.entries), ["Cài đặt…", "-", "Thoát"]);
+}
+
+#[test]
+fn target_pr_and_session() {
+    let link = |u: &str| Target::Link {
+        session: "s".into(),
+        url: Url::parse(u).unwrap(),
+    };
+    let t = link("https://bitbucket.org/t6engineering/talo6-dct-backend/pull-requests/7571");
+    assert_eq!(t.pr(), Some(pr(7571)));
+    assert_eq!(t.session(), Some("s"));
+    assert_eq!(link("https://example.com/x").pr(), None);
+    let nudge = Target::Nudge {
+        session: "s".into(),
+        pr: pr(3),
+    };
+    assert_eq!(nudge.pr(), Some(pr(3)));
+    let ask = Target::AskClaude {
+        session: "s".into(),
+        pr: pr(4),
+    };
+    assert_eq!(ask.pr(), Some(pr(4)));
+    let jump = Target::Jump("s".into());
+    assert_eq!(jump.pr(), None);
+    assert_eq!(jump.session(), Some("s"));
 }
 
 #[test]
