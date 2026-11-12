@@ -84,7 +84,7 @@ test('all', () => {
   const { code, stdout, home } = run(['--all']);
   assert.equal(code, 0);
   for (const n of ['cmux', 'hud']) assert.match(stdout, new RegExp(`would run: .*${n}`), n);
-  assert.match(stdout, /would install pinned widget-v|widget skipped: no release pinned/);
+  assert.match(stdout, /widget skipped: no release pinned/);
   assert.deepEqual(settings(home), legacy);
 });
 
@@ -279,6 +279,29 @@ mac('widget: same version installed does nothing', () => {
   assert.ok(!/^(open|osascript|pkill) /m.test(env.calls()));
 });
 
+mac('widget: local dmg of the installed version says the local dmg is installed', () => {
+  const env = widgetEnv();
+  const good = makeDmg(env.dir, 'good');
+  markExisting(env, '2.0.0-rc.1');
+  const r = runWidget(env, { sha: good.sha, dmg: good.dmg, local: true });
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /The widget in the local dmg is already installed/);
+  assert.ok(!/pinned widget release is already installed/.test(r.out), r.out);
+});
+
+mac('widget off macOS is skipped: needs macOS', () => {
+  const env = widgetEnv();
+  const good = makeDmg(env.dir, 'good');
+  rmSync(join(env.bin, 'uname'));
+  env.stub('uname', 'echo Linux');
+  const r = runWidget(env, { sha: good.sha, dmg: good.dmg });
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /widget skipped: needs macOS/);
+  assert.match(r.out, /Skipped:\n\s+widget: needs macOS/);
+  assert.ok(!/no release pinned/.test(r.out), r.out);
+  assert.ok(!existsSync(installedApp(env)));
+});
+
 mac('widget: lock version already installed skips the download', () => {
   const env = widgetEnv();
   const good = makeDmg(env.dir, 'good');
@@ -352,7 +375,7 @@ test('widget without a lock is skipped: no release pinned', () => {
   const home = mkdtempSync(join(tmpdir(), 'skills-install-'));
   for (const dry of [{}, { SKILLS_INSTALL_DRY_EXTERNAL: '1' }]) {
     const r = spawnSync('bash', [join(root, 'install.sh'), '--only', 'widget'], {
-      env: { ...process.env, CLAUDE_HOME: home, ...dry, SKILLS_WIDGET_LOCK: join(home, 'no-such.lock') },
+      env: { ...process.env, CLAUDE_HOME: home, HOME: home, ...dry, SKILLS_WIDGET_LOCK: join(home, 'no-such.lock'), SKILLS_WIDGET_DMG: '' },
       encoding: 'utf8',
     });
     assert.equal(r.status, 0, r.stderr);

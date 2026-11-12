@@ -10,7 +10,9 @@
 #   idle wakeups: not from Run 3 (its 0.60 max was a quiet run): the highest clean Rust round of the later runs
 #   (0.83 /s, plans/2026-11-11-claude-sessions-focus-dialog-fixes/reports/phase-03-recheck-perf.md) x 1.1 = 0.9.
 #   Same-machine A/B on 2026-11-12: Swift 0.53-0.72 /s, Rust 0.60-0.73 /s, so ~0.5-0.8 is the machine's floor.
-#   Footprint growth in a phase: 5 MB. No floors.
+#   Footprint growth in a phase: 5 MB, a fixed budget, not derived from Run 3 (Run 3 had 9.6 and 5.2 MB growth rounds);
+#   later clean runs show 0.0 MB (focus-dialog phase-03 recheck, phase-11 rerun). No floors.
+#   The cited reports are local plan reports (plans/ is gitignored).
 
 cd "$(dirname "$0")" || exit 1
 
@@ -167,7 +169,7 @@ measure_phase() {
 }
 
 # ---- run -----------------------------------------------------------------------------------------------------------
-# Starts $BIN on the fixture and waits until its CPU time stops rising; sets SETTLE_SECONDS, FAILs when it never calms down.
+# Starts $BIN on the fixture and waits until its CPU time stops rising; sets settle, FAILs when it never calms down.
 start_and_settle() {
     echo "== start app"
     CLAUDE_SESSIONS_ROOT="$ROOT" "$BIN" > /dev/null 2>&1 &
@@ -192,14 +194,6 @@ start_and_settle() {
         FAILED=1
         RESULTS+=("$(printf '%-34s | %10s | < %-8s | FAIL (not stable)' "settle (s)" "$settle" "$SETTLE_CAP")")
     fi
-}
-
-stop_app() {
-    kill "$APP_PID" 2>/dev/null
-    for _ in $(seq 30); do kill -0 "$APP_PID" 2>/dev/null || break; sleep 0.1; done
-    app_alive && kill -9 "$APP_PID" 2>/dev/null
-    wait "$APP_PID" 2>/dev/null
-    APP_PID=""
 }
 
 start_and_settle

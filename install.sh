@@ -341,7 +341,13 @@ widget_install_pinned() {  # $1 = lock file ("" when only SKILLS_WIDGET_DMG is s
 
 install_widget() {
   local lock="${SKILLS_WIDGET_LOCK:-$SRC/claude-sessions/release.lock}"
-  if [ "$(uname -s)" = "Darwin" ] && { [ -f "$lock" ] || [ -n "${SKILLS_WIDGET_DMG:-}" ]; }; then
+  if [ "$(uname -s)" != "Darwin" ]; then
+    echo "  widget skipped: needs macOS"
+    SUMMARY_SKIPPED="$SUMMARY_SKIPPED  widget: needs macOS"$'\n'
+    WIDGET_MODE=skipped
+    return 0
+  fi
+  if [ -f "$lock" ] || [ -n "${SKILLS_WIDGET_DMG:-}" ]; then
     [ -f "$lock" ] || lock=""
     if [ "${SKILLS_INSTALL_DRY_EXTERNAL:-}" = "1" ]; then
       if [ -n "$lock" ]; then
@@ -539,7 +545,13 @@ case "$SUMMARY_INSTALLED" in
     case "$WIDGET_MODE" in
       pinned) echo "The installer verified the pinned widget release, then quit the running widget and reopened the new one." ;;
       local) echo "The installer installed the widget from the local dmg (no checksum), then quit the running widget and reopened the new one." ;;
-      current) echo "The pinned widget release is already installed; the running widget was left alone." ;;
+      current)
+        if [ -n "${SKILLS_WIDGET_DMG:-}" ]; then
+          echo "The widget in the local dmg is already installed; the running widget was left alone."
+        else
+          echo "The pinned widget release is already installed; the running widget was left alone."
+        fi
+        ;;
       skipped) echo "The widget install was skipped; the installed widget (if any) is unchanged." ;;
       dry) echo "Dry run: nothing was downloaded, built, quit or reopened; the installed widget (if any) is unchanged." ;;
     esac
