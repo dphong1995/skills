@@ -47,8 +47,8 @@ use crate::menu::{self, Command};
 use crate::panels::PanelHost;
 use crate::settings::{self, Settings};
 use crate::settings_model::{
-    Job, SettingsAction, SettingsEffect, SettingsModel, apply, email_key, external_key, note_field,
-    submit_action,
+    ExternalKey, Job, NEED_TOKEN, SettingsAction, SettingsEffect, SettingsModel, apply, email_key,
+    external_key, note_field, submit_action,
 };
 use crate::views::settings::{SettingsView, WIDTH as SETTINGS_WIDTH};
 use crate::{connect, drag, fields, focus, keyboard_mode, placement};
@@ -85,7 +85,7 @@ struct SettingsWindow {
     /// The tallest the window may be (0.8 of its screen); taller content scrolls.
     max_h: f64,
     /// `settings_model::external_key` as of the last render; the tick re-renders only when it changes.
-    rendered_key: String,
+    rendered_key: ExternalKey,
 }
 
 pub struct AppState {
@@ -325,7 +325,7 @@ impl AppState {
             if self.ticks.is_multiple_of(2) {
                 self.check_focused_pane();
             }
-            settings::persist_store(&self.kv, &mut self.saved, &self.store, &self.pr_prompt);
+            self.persist_settings();
         }
         if self
             .settings
@@ -601,13 +601,17 @@ fn cmux_frontmost() -> bool {
     workspace::frontmost_bundle_id().as_deref() == Some(cmux::BUNDLE_ID)
 }
 
-fn spawn_cmux(work: impl FnOnce() + Send + 'static) {
-    let spawned = std::thread::Builder::new()
-        .name("claude-sessions.cmux".into())
-        .spawn(work);
-    if let Err(e) = spawned {
-        eprintln!("cmux thread: {e}");
+/// Runs `work` on a thread called `name`; false (after logging) when the thread could not start.
+fn spawn_named(name: &str, work: impl FnOnce() + Send + 'static) -> bool {
+    let spawned = std::thread::Builder::new().name(name.into()).spawn(work);
+    if let Err(e) = &spawned {
+        eprintln!("{name} thread: {e}");
     }
+    spawned.is_ok()
+}
+
+fn spawn_cmux(work: impl FnOnce() + Send + 'static) {
+    spawn_named("claude-sessions.cmux", work);
 }
 
 /// The cmux half of a focus or chime check; blocks, so worker threads only.
@@ -632,9 +636,22 @@ fn show_menu(
     at: claude_sessions_core::scene::Point,
     screen: Rect,
 ) {
-    let built = menu::build();
-    let commands = built.commands;
     set_menu_open(weak, true);
+    popup_commands(view, menu::build(), at, weak, move |weak, command| {
+        apply_command(weak, &command, screen)
+    });
+    set_menu_open(weak, false);
+}
+
+/// Pops up `built` at `at`; the picked command goes to `on_pick` on a later run-loop turn.
+fn popup_commands(
+    view: &claude_sessions_macos::ui::SceneView,
+    built: menu::Menu,
+    at: claude_sessions_core::scene::Point,
+    weak: &WeakState,
+    on_pick: impl Fn(&WeakState, Command) + Clone + 'static,
+) {
+    let commands = built.commands;
     let pick_weak = weak.clone();
     mac_menu::popup(view, &built.entries, at, move |id| {
         let Some(command) = usize::try_from(id)
@@ -644,10 +661,9 @@ fn show_menu(
         else {
             return;
         };
-        let weak = pick_weak.clone();
-        main_queue::run_loop_later(move || apply_command(&weak, &command, screen));
+        let (weak, on_pick) = (pick_weak.clone(), on_pick.clone());
+        main_queue::run_loop_later(move || on_pick(&weak, command));
     });
-    set_menu_open(weak, false);
 }
 
 /// Holds the panels' hover while the context menu runs; closing it re-checks the pointer, so the card collapses then if it left.
@@ -741,7 +757,7 @@ fn open_settings(weak: &WeakState, focus: Option<Service>, screen: Rect) {
                 tokens: HashMap::new(),
                 _key_monitor: make_settings_key_monitor(weak),
                 max_h: screen.h * 0.8,
-                rendered_key: String::new(),
+                rendered_key: ExternalKey::default(),
             });
             s.render_settings();
             if let Some(w) = &s.settings {
@@ -918,21 +934,10 @@ fn popup_hotkey_menu(weak: &WeakState, which: Which) {
         x: pointer.x - frame.x,
         y: frame.y + frame.h - pointer.y,
     };
-    let commands = built.commands;
-    let pick_weak = weak.clone();
-    mac_menu::popup(&view, &built.entries, at, move |id| {
-        let Some(command) = usize::try_from(id)
-            .ok()
-            .and_then(|i| commands.get(i))
-            .cloned()
-        else {
-            return;
-        };
-        let weak = pick_weak.clone();
-        main_queue::run_loop_later(move || match command {
-            Command::Hotkey(which, choice) => apply_hotkey(&weak, which, choice),
-            Command::Settings | Command::Quit => {}
-        });
+    popup_commands(&view, built, at, weak, |weak, command| {
+        if let Command::Hotkey(which, choice) = command {
+            apply_hotkey(weak, which, choice);
+        }
     });
 }
 
@@ -955,12 +960,7 @@ fn typed_pair(
 }
 
 fn settings_done(weak: &WeakState, service: Service, job: Job, result: Result<String, String>) {
-    with_state(weak, |s| {
-        if let Some(w) = s.settings.as_mut() {
-            w.model.done(service, job, result);
-        }
-        s.render_settings();
-    });
+    with_state(weak, |s| s.settings_done(service, job, result));
 }
 
 /// Records that `service` has a job running (kept when the Settings window closes) and returns the poster for its result.
@@ -969,14 +969,6 @@ fn job_poster(weak: &WeakState, service: Service, job: Job) -> Option<Poster> {
         s.jobs.insert(service, job);
         s.poster.clone()
     })
-}
-
-fn spawn_connect(name: &str, work: impl FnOnce() + Send + 'static) -> bool {
-    let spawned = std::thread::Builder::new().name(name.into()).spawn(work);
-    if let Err(e) = &spawned {
-        eprintln!("{name} thread: {e}");
-    }
-    spawned.is_ok()
 }
 
 /// `Kiểm tra`: the typed pair, else the saved one, is tried off the main thread; nothing is written.
@@ -988,7 +980,7 @@ fn run_check(weak: &WeakState, service: Service, email: &str, site: Option<Strin
     let Some(poster) = job_poster(weak, service, Job::Check) else {
         return;
     };
-    let started = spawn_connect("claude-sessions.settings-check", move || {
+    let started = spawn_named("claude-sessions.settings-check", move || {
         let result = connect::check(
             service,
             typed,
@@ -1014,19 +1006,14 @@ fn run_save(weak: &WeakState, service: Service, email: &str, site: Option<String
     let (account, token) = match typed_pair(weak, service, email) {
         Ok(Some(pair)) => pair,
         Ok(None) => {
-            return settings_done(
-                weak,
-                service,
-                Job::Save,
-                Err("✗ Nhập token mới để lưu".into()),
-            );
+            return settings_done(weak, service, Job::Save, Err(NEED_TOKEN.into()));
         }
         Err(text) => return settings_done(weak, service, Job::Save, Err(text)),
     };
     let Some(poster) = job_poster(weak, service, Job::Save) else {
         return;
     };
-    let started = spawn_connect("claude-sessions.connect", move || {
+    let started = spawn_named("claude-sessions.connect", move || {
         let failure = connect::store_credentials(
             service,
             &account,
@@ -1233,13 +1220,10 @@ impl AppState {
             self.refresh_and_chime(now);
         }
         match completion {
-            Completion::ConnectDialog(service) => return self.start_connect(service),
+            Completion::OpenSettings(service) => return self.start_connect(service),
             Completion::Checked { service, result } => {
                 self.jobs.remove(&service);
-                if let Some(w) = self.settings.as_mut() {
-                    w.model.done(service, Job::Check, result);
-                }
-                return self.render_settings();
+                return self.settings_done(service, Job::Check, result);
             }
             Completion::Connected {
                 service,
@@ -1338,6 +1322,14 @@ impl AppState {
         w.targets = built.targets;
     }
 
+    /// A check or save job of `service` ended: the model takes the result and the window shows it.
+    fn settings_done(&mut self, service: Service, job: Job, result: Result<String, String>) {
+        if let Some(w) = self.settings.as_mut() {
+            w.model.done(service, job, result);
+        }
+        self.render_settings();
+    }
+
     /// Saves the settings that changed.
     fn persist_settings(&mut self) {
         settings::persist_store(&self.kv, &mut self.saved, &self.store, &self.pr_prompt);
@@ -1350,18 +1342,16 @@ impl AppState {
             // The window that started the save is gone: nothing else says it failed.
             return beep();
         }
-        if let Some(w) = self.settings.as_mut() {
-            let result = match &failure {
-                Some(text) => Err(text.clone()),
-                None => Ok(account.clone()),
-            };
-            w.model.done(service, Job::Save, result);
-            if failure.is_none() {
-                w.tokens.remove(&service);
-            }
-        }
+        let result = match &failure {
+            Some(text) => Err(text.clone()),
+            None => Ok(account.clone()),
+        };
+        self.settings_done(service, Job::Save, result);
         if failure.is_some() {
-            return self.render_settings();
+            return;
+        }
+        if let Some(w) = self.settings.as_mut() {
+            w.tokens.remove(&service);
         }
         self.store.accounts.insert(service, account);
         // A service with a client re-reads the Keychain off the main thread; one without gets its monitor from the next read.
@@ -1377,12 +1367,7 @@ impl AppState {
         };
         match existing {
             Some(client) => {
-                let spawned = std::thread::Builder::new()
-                    .name("claude-sessions.reload".into())
-                    .spawn(move || client.reload());
-                if let Err(e) = spawned {
-                    eprintln!("reload thread: {e}");
-                }
+                spawn_named("claude-sessions.reload", move || client.reload());
             }
             None => self.credentials = Some(read_credentials()),
         }

@@ -2,7 +2,7 @@
 //! changes of the model and the store plus the effects the app runs. The token is never here: the model knows only whether the
 //! token field holds text, and the app adds the text to a check or save from the native field.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use crate::hotkey::Which;
 use claude_sessions_core::credentials::Service;
@@ -18,6 +18,14 @@ pub const SITE_KEY: &str = "settings.site";
 const EMAIL_PREFIX: &str = "settings.email.";
 const TOKEN_PREFIX: &str = "settings.token.";
 
+/// What the window shows that changes on its own: per service, its connection line and account, plus the failed hotkeys.
+pub type ExternalKey = (
+    Vec<(ConnectionLine, Option<String>)>,
+    BTreeSet<&'static str>,
+);
+
+/// The refusal of `Lưu` with no token typed.
+pub const NEED_TOKEN: &str = "✗ Nhập token mới để lưu";
 const NO_KEYCHAIN: &str = "✗ Bản chạy thử không dùng Keychain";
 const BAD_SITE: &str = "✗ Site phải có dạng <tên>.atlassian.net";
 
@@ -158,7 +166,7 @@ impl ServiceForm {
         }
     }
 
-    fn busy(&self) -> bool {
+    pub fn busy(&self) -> bool {
         matches!(self.check, CheckState::Checking | CheckState::Saving)
     }
 
@@ -373,7 +381,7 @@ fn start(
         return refuse(model, NO_KEYCHAIN);
     }
     if job == Job::Save && !model.form(service).token_typed {
-        return refuse(model, "✗ Nhập token mới để lưu");
+        return refuse(model, NEED_TOKEN);
     }
     let site = if service == Service::Jira {
         let Some(site) = model.effective_site(store) else {
@@ -426,16 +434,10 @@ pub fn status_line(model: &SettingsModel, store: &Store, service: Service) -> (S
 
 /// What the Settings window shows that the monitors, the app and the hotkey registration change on their own: the connection
 /// lines, the accounts and the failed hotkeys. The tick re-renders the window only when this differs from the last render's.
-pub fn external_key(store: &Store, failed: &std::collections::BTreeSet<&'static str>) -> String {
-    let mut key = String::new();
-    for s in Service::ALL {
-        key.push_str(&format!(
-            "{:?}|{:?}|{:?};",
-            s,
-            store.connection(s),
-            store.accounts.get(&s)
-        ));
-    }
-    key.push_str(&format!("{failed:?}"));
-    key
+pub fn external_key(store: &Store, failed: &BTreeSet<&'static str>) -> ExternalKey {
+    let lines = Service::ALL
+        .into_iter()
+        .map(|s| (store.connection(s).clone(), store.accounts.get(&s).cloned()))
+        .collect();
+    (lines, failed.clone())
 }

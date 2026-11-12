@@ -51,6 +51,45 @@ fn snapshots_out() -> PathBuf {
         .join("snapshots")
 }
 
+/// Renders `scene` to `out/<name>.png`, then rewrites the reference (`update`) or compares with `refs/<name>.png`. `Some`
+/// is the failure text.
+fn check_snapshot(
+    name: &str,
+    scene: &Scene,
+    appearance: Appearance,
+    out: &Path,
+    refs: &Path,
+    update: bool,
+) -> Result<Option<String>, String> {
+    let png = out.join(format!("{name}.png"));
+    render_png(scene, SCALE, appearance, &png)?;
+    let reference = refs.join(format!("{name}.png"));
+    if update {
+        std::fs::copy(&png, &reference).map_err(|e| e.to_string())?;
+        return Ok(None);
+    }
+    if !reference.exists() {
+        return Ok(Some(format!(
+            "{name}: no reference; run with UPDATE_SNAPSHOTS=1 to create {}",
+            reference.display()
+        )));
+    }
+    let diff = compare_png(&png, &reference, CHANNEL_TOLERANCE)?;
+    let ratio = diff.differing as f64 / diff.total.max(1) as f64;
+    if diff.size_a != diff.size_b || ratio > MAX_DIFFERING {
+        return Ok(Some(format!(
+            "{name}: {}/{} pixels differ ({:.2}%), sizes {:?} vs {:?}; see {}",
+            diff.differing,
+            diff.total,
+            ratio * 100.0,
+            diff.size_a,
+            diff.size_b,
+            png.display()
+        )));
+    }
+    Ok(None)
+}
+
 fn snapshots() -> Result<(), String> {
     let out = snapshots_out();
     let refs = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots");
@@ -65,33 +104,9 @@ fn snapshots() -> Result<(), String> {
         } else {
             Appearance::Dark
         };
-        let png = out.join(format!("{name}.png"));
-        render_png(&scene, SCALE, appearance, &png)?;
-        let reference = refs.join(format!("{name}.png"));
-        if update {
-            std::fs::copy(&png, &reference).map_err(|e| e.to_string())?;
-            continue;
-        }
-        if !reference.exists() {
-            failures.push(format!(
-                "{name}: no reference; run with UPDATE_SNAPSHOTS=1 to create {}",
-                reference.display()
-            ));
-            continue;
-        }
-        let diff = compare_png(&png, &reference, CHANNEL_TOLERANCE)?;
-        let ratio = diff.differing as f64 / diff.total.max(1) as f64;
-        if diff.size_a != diff.size_b || ratio > MAX_DIFFERING {
-            failures.push(format!(
-                "{name}: {}/{} pixels differ ({:.2}%), sizes {:?} vs {:?}; see {}",
-                diff.differing,
-                diff.total,
-                ratio * 100.0,
-                diff.size_a,
-                diff.size_b,
-                png.display()
-            ));
-        }
+        failures.extend(check_snapshot(
+            name, &scene, appearance, &out, &refs, update,
+        )?);
     }
     println!(
         "snapshots: {} states in {}{}",
@@ -317,27 +332,9 @@ fn settings_controls() -> Result<(), String> {
         ("settings-controls-light", Appearance::Light),
         ("settings-controls-dark", Appearance::Dark),
     ] {
-        let png = out.join(format!("{name}.png"));
-        render_png(&scene, SCALE, appearance, &png)?;
-        let reference = refs.join(format!("{name}.png"));
-        if update {
-            std::fs::copy(&png, &reference).map_err(|e| e.to_string())?;
-            continue;
-        }
-        if !reference.exists() {
-            failures.push(format!("{name}: no reference; run with UPDATE_SNAPSHOTS=1"));
-            continue;
-        }
-        let diff = compare_png(&png, &reference, CHANNEL_TOLERANCE)?;
-        let ratio = diff.differing as f64 / diff.total.max(1) as f64;
-        if diff.size_a != diff.size_b || ratio > MAX_DIFFERING {
-            failures.push(format!(
-                "{name}: {}/{} pixels differ; see {}",
-                diff.differing,
-                diff.total,
-                png.display()
-            ));
-        }
+        failures.extend(check_snapshot(
+            name, &scene, appearance, &out, &refs, update,
+        )?);
     }
     if failures.is_empty() {
         Ok(())
@@ -420,27 +417,14 @@ fn settings_states() -> Result<(), String> {
             measure: &CoreTextMeasure,
             max_h: 2000.0,
         });
-        let png = out.join(format!("{name}.png"));
-        render_png(&built.scene, SCALE, appearance, &png)?;
-        let reference = refs.join(format!("{name}.png"));
-        if update {
-            std::fs::copy(&png, &reference).map_err(|e| e.to_string())?;
-            continue;
-        }
-        if !reference.exists() {
-            failures.push(format!("{name}: no reference; run with UPDATE_SNAPSHOTS=1"));
-            continue;
-        }
-        let diff = compare_png(&png, &reference, CHANNEL_TOLERANCE)?;
-        let ratio = diff.differing as f64 / diff.total.max(1) as f64;
-        if diff.size_a != diff.size_b || ratio > MAX_DIFFERING {
-            failures.push(format!(
-                "{name}: {}/{} pixels differ; see {}",
-                diff.differing,
-                diff.total,
-                png.display()
-            ));
-        }
+        failures.extend(check_snapshot(
+            name,
+            &built.scene,
+            appearance,
+            &out,
+            &refs,
+            update,
+        )?);
     }
     if failures.is_empty() {
         Ok(())

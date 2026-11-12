@@ -1,7 +1,7 @@
 //! The Settings window as a scene: a glass panel with a fixed title bar and the groups below it (they scroll when the content
 //! is taller than `max_h`). Pure like the other views; the clicks are `Target::Settings` and the text fields are native.
 
-use super::{Built, Canvas, Targets, node_of};
+use super::{self as views, Built, Canvas, Targets, node_of};
 use crate::hits::Target;
 use crate::hotkey::{Hotkeys, Which};
 use crate::settings::BG_OPACITIES;
@@ -42,7 +42,7 @@ pub struct SettingsView<'a> {
 }
 
 fn text_w(v: &SettingsView, text: &str, font: &FontSpec) -> f64 {
-    v.measure.measure(text, font, f64::MAX / 4.0, 1).w
+    views::text_w(v.measure, text, font)
 }
 
 fn act(a: SettingsAction) -> Target {
@@ -142,14 +142,10 @@ fn appearance(v: &SettingsView) -> (Canvas, f64) {
     row_label(&mut c, y, "Độ đậm nền", ThemeColor::Text);
     let selected = BG_OPACITIES
         .iter()
-        .enumerate()
-        .min_by(|a, b| {
-            (a.1 - v.store.bg_opacity)
-                .abs()
-                .total_cmp(&(b.1 - v.store.bg_opacity).abs())
-        })
-        .map_or(0, |(i, _)| i);
-    let labels = ["0%", "25%", "50%", "75%", "92%"];
+        .position(|o| *o == v.store.bg_opacity)
+        .unwrap_or(0);
+    let labels = BG_OPACITIES.map(|o| format!("{}%", (o * 100.0).round()));
+    let labels: Vec<&str> = labels.iter().map(String::as_str).collect();
     let w = 216.0;
     c.segmented(
         Rect::new(GROUP_W - INNER - w, y + (ROW_H - BOX_H) / 2.0, w, BOX_H),
@@ -311,8 +307,7 @@ fn button(
     } else {
         (theme::tint(fill, 0.5), theme::tint(text, 0.5))
     };
-    c.capsule(rect, Some(fill));
-    c.label(rect, label, theme::BUTTON_FONT, text, Align::Center);
+    c.button(rect, label, fill, text, None);
     if live {
         c.hit(rect, target);
     }
@@ -322,7 +317,7 @@ fn service(v: &SettingsView, s: Service) -> (Canvas, f64) {
     let mut c = Canvas::default();
     let form = v.model.form(s);
     let jira = s == Service::Jira;
-    let busy = matches!(form.check, CheckState::Checking | CheckState::Saving);
+    let busy = form.busy();
     let shows_result = form.check != CheckState::Idle;
     let h =
         52.0 + ROW_H * if jira { 3.0 } else { 2.0 } + if shows_result { 24.0 } else { 0.0 } + 44.0;
@@ -460,8 +455,7 @@ fn service(v: &SettingsView, s: Service) -> (Canvas, f64) {
     );
     c.hit(link_rect, act(SettingsAction::OpenTokenPage));
     let width = |normal: &str, flight: &str| {
-        (text_w(v, normal, &theme::BUTTON_FONT).max(text_w(v, flight, &theme::BUTTON_FONT)) + 28.0)
-            .max(96.0)
+        views::button_w(v.measure, normal).max(views::button_w(v.measure, flight))
     };
     let save_w = width("Lưu", "Đang lưu…");
     let check_w = width("Kiểm tra", "Đang kiểm tra…");

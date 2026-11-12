@@ -44,7 +44,7 @@ pub enum Completion {
     },
     Nudged(SendKey, bool),
     /// `Action::Connect`: the app opens the Settings window on a later run-loop turn.
-    ConnectDialog(Service),
+    OpenSettings(Service),
     /// The token check and Keychain write of `connect` finished: `failure` is the notice to show, `None` when stored.
     /// Never carries the token.
     Connected {
@@ -384,7 +384,7 @@ pub fn complete(c: Completion, store: &mut Store, runner: &mut dyn EffectRunner,
             }
         }
         // The app owns these: they need its Settings window and its cmux state.
-        Completion::ConnectDialog(_)
+        Completion::OpenSettings(_)
         | Completion::Connected { .. }
         | Completion::Checked { .. }
         | Completion::Focus { .. }

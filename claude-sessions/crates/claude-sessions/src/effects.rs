@@ -100,7 +100,7 @@ impl EffectRunner for RealRunner {
 
     fn connect(&mut self, service: Service) {
         // The app shows the dialog on a later main-queue turn, with no state borrowed.
-        (self.poster)(Completion::ConnectDialog(service));
+        (self.poster)(Completion::OpenSettings(service));
     }
 }
 

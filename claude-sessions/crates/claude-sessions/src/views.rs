@@ -523,13 +523,23 @@ impl Ctx<'_> {
 
     /// The width of a button labelled `label`: text and padding, at least wide enough for its send-state faces.
     pub fn button_w(&self, label: &str) -> f64 {
-        (self.text_w(label, &theme::BUTTON_FONT) + 28.0).max(96.0)
+        button_w(self.view.measure, label)
     }
 
     /// The width `text` takes on one line.
     pub fn text_w(&self, text: &str, font: &FontSpec) -> f64 {
-        self.view.measure.measure(text, font, f64::MAX / 4.0, 1).w
+        text_w(self.view.measure, text, font)
     }
+}
+
+/// The width `text` takes on one line.
+pub fn text_w(measure: &dyn TextMeasure, text: &str, font: &FontSpec) -> f64 {
+    measure.measure(text, font, f64::MAX / 4.0, 1).w
+}
+
+/// The width of a button labelled `label`: text and padding, at least wide enough for its send-state faces.
+pub fn button_w(measure: &dyn TextMeasure, label: &str) -> f64 {
+    (text_w(measure, label, &theme::BUTTON_FONT) + 28.0).max(96.0)
 }
 
 /// The scene of the panel: the pill while collapsed, else the expanded card.

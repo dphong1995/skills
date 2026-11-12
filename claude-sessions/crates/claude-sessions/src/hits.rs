@@ -229,7 +229,8 @@ impl Target {
                 Some(c) => Click::Action(Action::Resume(c.clone())),
                 None => Click::Stale,
             },
-            // The Settings window handles its own clicks.
+            // The Settings window's `Targets` carry this variant so it can reuse the panel's hit ids and `node_of`, but its
+            // clicks are resolved by the app's own handler and never reach here: stale if one ever does.
             Target::Settings(_) => Click::Stale,
         }
     }
