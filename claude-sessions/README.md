@@ -26,7 +26,7 @@ Bấm phím tắt mở widget (`⌃⌥Space`) thì thẻ được chọn bằng 
 Phím không áp dụng cho thẻ đang chọn thì kêu beep; phím không gán thì đi tiếp tới app đang dùng. Chế độ bàn phím chỉ bật khi bấm phím tắt mở widget (bấm khi widget đang mở do rê chuột thì chuyển sang chế độ bàn phím thay vì đóng; thẻ đóng khi bấm lại phím tắt, bấm `Esc`, hoặc chuột rời khung nếu chuột đã vào nó, còn thẻ mở bằng phím tắt mà chuột chưa vào thì giữ mở đến khi bấm phím tắt; bấm sang app khác chỉ kết thúc chế độ bàn phím, bấm phím tắt lần nữa (ví dụ sau khi `↩` nhảy sang cmux) thì bật lại); chỉ rê chuột thì không bao giờ lấy phím, và rê chuột vào widget khi đang gõ ở terminal không cướp phím.
 
 ### Viên thu gọn
-Khi không rê chuột, widget chỉ là một viên kính cao 30 pt với số session theo nhóm (kính và nền của viên theo `Độ đậm nền` trong menu chuột phải; 0% thì chỉ còn các con số): số session chờ nằm trong huy hiệu đỏ đặc, các nhóm khác (cam xong, xanh đang chạy) là chấm màu với số mờ hơn; nhóm vàng có icon sparkle là session có tin mới. Viên không bao giờ hiện quota (chỉ header của danh sách có); độ rộng viên chỉ phụ thuộc số session.
+Khi không rê chuột, widget chỉ là một viên kính cao 30 pt với số session theo nhóm (kính và nền của viên theo `Độ đậm nền` trong `Cài đặt` (chuột phải → `Cài đặt…`); 0% thì chỉ còn các con số): số session chờ nằm trong huy hiệu đỏ đặc, các nhóm khác (cam xong, xanh đang chạy) là chấm màu với số mờ hơn; nhóm vàng có icon sparkle là session có tin mới. Viên không bao giờ hiện quota (chỉ header của danh sách có); độ rộng viên chỉ phụ thuộc số session.
 
 ![Viên thu gọn](docs/images/06-mixed-collapsed.png)
 
@@ -101,7 +101,7 @@ Dòng gập `Vừa đóng` cuối danh sách liệt kê các session vừa kết
 bash ~/.claude/skills-repo/install.sh --only widget
 ```
 
-Cần Command Line Tools (`xcode-select --install`). Dòng PR cần mục Keychain `bitbucket-api-token` (tuỳ chọn; không có thì widget chạy như cũ, không có PR).
+Cần Command Line Tools (`xcode-select --install`). Dòng PR cần mục Keychain `bitbucket-api-token` (tuỳ chọn; không có thì widget chạy như cũ, không có PR). Nhập và kiểm tra token Jira/Bitbucket, chọn độ đậm nền, âm báo, phím tắt và sửa prompt `Nhờ Claude` trong cửa sổ `Cài đặt` (chuột phải → `Cài đặt…`, hoặc ⌘,).
 
 ## Test
 
