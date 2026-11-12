@@ -1124,7 +1124,15 @@ fn shown_pr_is_back_on_the_first_refresh_with_a_threaded_monitor() {
     assert_eq!(pr_ids(&store, 0), vec![1]);
     store.hide_pr("a", &pr_ref(1));
     store.refresh(at(1));
-    std::thread::sleep(std::time::Duration::from_millis(300));
+    // A nudge runs on the worker after the update queued by the refresh above, so its callback
+    // means the snapshot taken while the PR was hidden is published.
+    let (tx, rx) = std::sync::mpsc::channel();
+    store
+        .pr_monitor
+        .as_ref()
+        .unwrap()
+        .nudge(&pr_ref(1), move |ok| tx.send(ok).unwrap());
+    rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
     let _block_the_worker = gated.gate.lock().unwrap();
     store.show_hidden_prs("a");
     store.refresh(at(2));

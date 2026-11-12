@@ -71,7 +71,9 @@ pub fn build(ctx: &MenuContext) -> Menu {
         };
         add(&mut menu, title, command);
     }
-    if let (Some(session), true) = (&ctx.session, ctx.hidden > 0) {
+    if ctx.hidden > 0
+        && let Some(session) = &ctx.session
+    {
         add(
             &mut menu,
             format!("Hiện lại {} PR đã ẩn", ctx.hidden),

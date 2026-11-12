@@ -28,7 +28,8 @@ pub struct PRTarget {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct PRSnapshot {
-    /// Shown PRs per session in display order: link refs by first appearance, then branch refs. Not capped.
+    /// Every PR per session in display order: link refs by first appearance, then branch refs. Not capped.
+    /// Includes the ones the user hid in that session (the store filters them).
     pub prs: HashMap<String, Vec<PRStatus>>,
     pub events: Vec<PREvent>,
     /// The PRs that produced `events` since the last `take_snapshot`.
@@ -433,7 +434,7 @@ impl Inner {
         self.publish(&t, events, event_refs, succeeded.then_some(now));
     }
 
-    fn shown_prs(t: &Ticker) -> HashMap<String, Vec<PRStatus>> {
+    fn session_prs(t: &Ticker) -> HashMap<String, Vec<PRStatus>> {
         let mut prs = HashMap::new();
         for (id, s) in &t.sessions {
             let list: Vec<PRStatus> = s
@@ -456,7 +457,7 @@ impl Inner {
         success: Option<SystemTime>,
     ) {
         let mut s = self.shared();
-        s.snapshot.prs = Self::shown_prs(t);
+        s.snapshot.prs = Self::session_prs(t);
         s.snapshot.connection = t.connection;
         s.snapshot.events.extend(events);
         s.snapshot.event_refs.extend(refs);

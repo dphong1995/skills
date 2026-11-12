@@ -1789,7 +1789,8 @@ fn hiding(link_refs: &[PRRef], hidden: &[PRRef]) -> Vec<PRTarget> {
 }
 
 #[test]
-fn hidden_ref_is_not_fetched_or_shown() {
+fn hidden_ref_is_not_fetched() {
+    // "Not shown" is covered by the store tests in `tests/it/store/prs.rs`.
     let api = fake(vec![pr(1), pr(2)]);
     let m = monitor(&api, None);
     m.update(&hiding(&[pr_ref(1), pr_ref(2)], &[pr_ref(2)]), t0());
@@ -1798,6 +1799,7 @@ fn hidden_ref_is_not_fetched_or_shown() {
 
 #[test]
 fn hidden_in_one_session_still_tracked_in_another() {
+    // "Not shown" is covered by the store tests in `tests/it/store/prs.rs`.
     let api = fake(vec![pr(1)]);
     let m = monitor(&api, None);
     let mut targets = hiding(&[pr_ref(1)], &[pr_ref(1)]);
