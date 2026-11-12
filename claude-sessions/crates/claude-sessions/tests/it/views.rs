@@ -290,6 +290,23 @@ fn collapsed_pill_is_one_node_sized_by_the_model() {
 }
 
 #[test]
+fn pill_draws_no_quota_ring() {
+    let (mut snap, _) = mixed();
+    snap.quota = Some(claude_sessions_core::quota::Quota {
+        five_hour: 97,
+        five_hour_reset: SystemTime::now(),
+        weekly: 10,
+        weekly_reset: SystemTime::now(),
+        forecast: None,
+    });
+    let built = render(&snap, &PanelState::default());
+    let node = &built.scene.nodes[0];
+    assert!(!node.cmds.iter().any(|c| matches!(c, DrawCmd::Arc { .. })));
+    assert!(texts(node).iter().all(|t| !t.ends_with('%')));
+    assert_eq!(built.scene.size.w, layout::collapsed_width(&snap));
+}
+
+#[test]
 fn hit_ids_are_stable_and_resolve_to_actions_and_panel_changes() {
     let (snap, panel) = mixed();
     let a = render(&snap, &panel);
@@ -1388,33 +1405,6 @@ fn the_pr_number_opens_its_pull_request() {
             }
         );
     }
-}
-
-#[test]
-fn the_quota_ring_is_an_arc_swept_by_the_percent() {
-    let mut snap = snapshot(vec![finished("done")]);
-    let mut q = claude_sessions_core::quota::Quota {
-        five_hour: 85,
-        five_hour_reset: now(),
-        weekly: 10,
-        weekly_reset: now(),
-        forecast: None,
-    };
-    snap.quota = Some(q.clone());
-    let arcs = |snap: &Snapshot| -> Vec<(f64, f64)> {
-        render(snap, &PanelState::default()).scene.nodes[0]
-            .cmds
-            .iter()
-            .filter_map(|c| match c {
-                DrawCmd::Arc { start, end, .. } => Some((*start, *end)),
-                _ => None,
-            })
-            .collect()
-    };
-    assert_eq!(arcs(&snap), [(0.0, 360.0), (0.0, 306.0)], "track and 85%");
-    q.five_hour = 100;
-    snap.quota = Some(q);
-    assert_eq!(arcs(&snap)[1], (0.0, 360.0));
 }
 
 #[test]

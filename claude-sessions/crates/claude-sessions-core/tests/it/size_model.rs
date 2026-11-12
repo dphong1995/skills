@@ -77,19 +77,26 @@ fn quota(percent: i64) -> Quota {
 }
 
 #[test]
-fn collapsed_width_grows_with_the_quota_ring_and_per_group() {
+fn collapsed_width_grows_per_group() {
     let one = collapsed_width(&snapshot(vec![idle("a")]));
     let two = collapsed_width(&snapshot(vec![
         idle("a"),
         Session::new("b", "b", "/x", "busy"),
     ]));
     assert!(two > one);
-    let mut snap = snapshot(vec![idle("a")]);
-    snap.quota = Some(quota(79));
-    assert_eq!(collapsed_width(&snap), one, "below 80% shows no ring");
-    snap.quota = Some(quota(86));
-    assert!(collapsed_width(&snap) > one);
     assert_eq!(collapsed_width(&snapshot(vec![])), layout::COLLAPSED.w);
+}
+
+#[test]
+fn the_quota_never_widens_the_pill() {
+    for sessions in [vec![idle("a")], vec![]] {
+        let mut snap = snapshot(sessions);
+        let plain = collapsed_width(&snap);
+        for percent in [85, 97] {
+            snap.quota = Some(quota(percent));
+            assert_eq!(collapsed_width(&snap), plain, "{percent}%");
+        }
+    }
 }
 
 #[test]

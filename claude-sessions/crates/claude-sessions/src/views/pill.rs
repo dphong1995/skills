@@ -1,10 +1,9 @@
-//! The collapsed pill: one node with the counts per group (new, `Cần bạn` badge, `Xong`, `Đang chạy`) and the quota ring from 80%.
+//! The collapsed pill: one node with the counts per group (new, `Cần bạn` badge, `Xong`, `Đang chạy`).
 
 use super::{Canvas, Ctx};
 use crate::theme;
 use claude_sessions_core::layout::{
-    PILL_GAP, PILL_HEIGHT, PILL_KEY, PILL_PAD, PILL_QUOTA_W, collapsed_width, pill_group_width,
-    pill_groups,
+    PILL_GAP, PILL_HEIGHT, PILL_KEY, PILL_PAD, collapsed_width, pill_group_width, pill_groups,
 };
 use claude_sessions_core::quota::QuotaLevel;
 use claude_sessions_core::scene::{Align, Material, Node, Point, Rect, Shadow, ThemeColor, Weight};
@@ -147,22 +146,7 @@ pub fn node(ctx: &mut Ctx) -> Node {
             Align::Left,
         );
     }
-    let mut x = draw_groups(&mut c, snap, PILL_PAD, cy);
-    if let Some(p) = snap.quota.as_ref().and_then(|q| q.pill_percent()) {
-        if x > PILL_PAD {
-            x += PILL_GAP;
-        }
-        let token = quota_token(p);
-        ring(&mut c, Point { x: x + 9.0, y: cy }, 7.0, p, token);
-        c.text(
-            Rect::new(x + 22.0, cy - 8.0, PILL_QUOTA_W - 22.0, 16.0),
-            &format!("{p}%"),
-            theme::COUNT_FONT,
-            theme::solid(token),
-            1,
-            Align::Left,
-        );
-    }
+    draw_groups(&mut c, snap, PILL_PAD, cy);
     let mut node = ctx.node(KEY, Rect::new(0.0, 0.0, w, PILL_HEIGHT), c);
     node.material = Some(Material::Glass {
         corner: theme::PILL_RADIUS,

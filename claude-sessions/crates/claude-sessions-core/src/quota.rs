@@ -16,14 +16,6 @@ pub struct Quota {
     pub forecast: Option<SystemTime>,
 }
 
-impl Quota {
-    /// The percent shown on the collapsed pill: the larger of the two, only from 80.
-    pub fn pill_percent(&self) -> Option<i64> {
-        let m = self.five_hour.max(self.weekly);
-        (m >= 80).then_some(m)
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QuotaLevel {
     Normal,

@@ -555,8 +555,6 @@ pub fn pill_groups(snap: &Snapshot) -> [usize; 4] {
 
 pub const PILL_PAD: f64 = 14.0;
 pub const PILL_GAP: f64 = 10.0;
-/// The quota ring plus `86%`.
-pub const PILL_QUOTA_W: f64 = 58.0;
 
 /// Width of one digit of a pill count.
 pub const PILL_DIGIT_W: f64 = 7.5;
@@ -587,16 +585,14 @@ pub fn groups_width(snap: &Snapshot) -> f64 {
     }
 }
 
-/// The collapsed pill: padding, one group per non-zero count, the quota ring from 80%. Without any session the pill keeps
-/// `COLLAPSED.w` for its idle text.
+/// The collapsed pill: padding and one group per non-zero count. Without any session the pill keeps `COLLAPSED.w` for its
+/// idle text.
 pub fn collapsed_width(snap: &Snapshot) -> f64 {
     let groups = groups_width(snap);
-    let quota = snap.quota.as_ref().and_then(|q| q.pill_percent()).is_some();
-    match (groups > 0.0, quota) {
-        (false, false) => COLLAPSED.w,
-        (true, false) => 2.0 * PILL_PAD + groups,
-        (false, true) => 2.0 * PILL_PAD + PILL_QUOTA_W,
-        (true, true) => 2.0 * PILL_PAD + groups + PILL_GAP + PILL_QUOTA_W,
+    if groups > 0.0 {
+        2.0 * PILL_PAD + groups
+    } else {
+        COLLAPSED.w
     }
 }
 

@@ -9,7 +9,6 @@ use claude_sessions_core::jira_monitor::JiraMonitor;
 use claude_sessions_core::panel_state::PanelState;
 use claude_sessions_core::pr_monitor::PRMonitor;
 use claude_sessions_core::pull_requests::{PRRef, RabbitThreads};
-use claude_sessions_core::quota::Quota;
 use claude_sessions_core::scene::{Appearance, ThemeColor};
 use claude_sessions_core::store::{
     ItemTone, LinkItem, LinkKind, LinkSection, SendKey, SendKind, SendState, Store,
@@ -586,21 +585,6 @@ fn closed_row_shows_opening() {
         store.send_state(&SendKey::new("y", SendKind::Resume)),
         Some(SendState::Failed)
     );
-}
-
-#[test]
-fn quota_pill_percent_85() {
-    let now = SystemTime::now();
-    let quota = |five, weekly| Quota {
-        five_hour: five,
-        five_hour_reset: secs(now, 2 * 3600),
-        weekly,
-        weekly_reset: secs(now, 5 * 86400),
-        forecast: None,
-    };
-    assert_eq!(quota(85, 10).pill_percent(), Some(85));
-    assert_eq!(quota(30, 10).pill_percent(), None);
-    // The collapsed width grows while the pill shows a percent: `size_model::collapsed_width_grows_with_the_quota_ring_and_per_group`.
 }
 
 #[test]
