@@ -6,11 +6,13 @@
 use super::{
     COLLAPSED, EXPANDED_WIDTH, HEADER_HEIGHT, MAX_EXPANDED_HEIGHT, PILL_HEIGHT, TextMeasure,
 };
+use crate::code_rabbit::{self, Rabbit};
 use crate::feed::{self, BlockState, FeedQuestion};
 use crate::geometry::Size;
 use crate::panel_state::{EditKind, PanelState};
+use crate::pull_requests::PRStatus;
 use crate::scene::{FontSpec, Weight};
-use crate::store::{CommandFit, Section, Session, Snapshot, command_fit};
+use crate::store::{CommandFit, Section, SendKind, Session, Snapshot, command_fit};
 use crate::text;
 use crate::transcript::PendingState;
 
@@ -280,8 +282,25 @@ pub fn sent_line_height() -> f64 {
     SENT_LINE_H
 }
 
-pub fn pr_row_height(open: bool) -> f64 {
-    if open { PR_ROW_H } else { PR_ROW_CLOSED_H }
+/// `buttons`: the row has its button tier (`pr_has_buttons`).
+pub fn pr_row_height(buttons: bool) -> f64 {
+    if buttons { PR_ROW_H } else { PR_ROW_CLOSED_H }
+}
+
+/// An open PR whose `Nhờ Claude` or `Nhắc duyệt` shows, or whose send result still does. Sends are pruned at refresh, so
+/// presence is enough and the height needs no clock (like `Snapshot::approval_send`).
+pub fn pr_has_buttons(s: &Session, pr: &PRStatus, snap: &Snapshot) -> bool {
+    pr.is_open()
+        && (!code_rabbit::hides_ask_claude(
+            pr.rabbit.as_ref(),
+            pr.rabbit_threads,
+            pr.rabbit_others_pending,
+        ) || pr.rabbit == Some(Rabbit::AwaitingApproval)
+            || snap.sends.keys().any(|k| {
+                k.session == s.id
+                    && k.pr.as_ref() == Some(&pr.ref_)
+                    && matches!(k.kind, SendKind::AskClaude | SendKind::Nudge)
+            }))
 }
 
 /// The inline ticket / PR list opened by the menu count.
@@ -428,7 +447,7 @@ fn card_layout_with(
         place(Block::Activity, LINE_ROW_H);
     }
     for (i, pr) in s.prs.iter().enumerate() {
-        place(Block::Pr(i), pr_row_height(pr.is_open()));
+        place(Block::Pr(i), pr_row_height(pr_has_buttons(s, pr, snap)));
     }
     if !s.menu.is_empty() {
         place(Block::Chips, CHIPS_H);

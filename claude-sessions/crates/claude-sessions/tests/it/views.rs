@@ -864,6 +864,114 @@ fn a_pr_button_in_flight_shows_it_and_has_no_hit() {
     )));
 }
 
+#[test]
+fn an_open_pr_without_buttons_keeps_one_tier_with_its_rabbit_label() {
+    use claude_sessions_core::pull_requests::RabbitThreads;
+    let mut s = finished("done");
+    let mut p = pr(7631, "OPEN");
+    p.rabbit = Some(Rabbit::Approved);
+    p.rabbit_threads = Some(RabbitThreads {
+        pending: 0,
+        total: 1,
+    });
+    s.prs = vec![p];
+    let snap = snapshot(vec![s]);
+    let row = card_layout(&snap.sessions[0], &snap, &open(), &FakeMeasure)
+        .find(Block::Pr(0))
+        .unwrap();
+    // Neither `Nhờ Claude` nor `Nhắc duyệt` shows, so no empty button tier is kept.
+    assert_eq!(row.h, layout::PR_ROW_CLOSED_H);
+    let built = render(&snap, &open());
+    let node = card(&built.scene, "done");
+    let label = node
+        .cmds
+        .iter()
+        .find_map(|c| match c {
+            DrawCmd::Text { rect, text, .. } if text == "đã duyệt" => Some(*rect),
+            _ => None,
+        })
+        .expect("the CodeRabbit label is drawn");
+    assert!(label.y >= row.y && label.y + label.h <= row.y + row.h + 0.001);
+    assert!(label.x + label.w > layout::CARD_INSET + layout::TEXT_W - 40.0);
+}
+
+#[test]
+fn a_pr_send_result_keeps_the_button_tier() {
+    use claude_sessions_core::pull_requests::RabbitThreads;
+    let mut s = finished("done");
+    let mut p = pr(7631, "OPEN");
+    p.rabbit = Some(Rabbit::Approved);
+    p.rabbit_threads = Some(RabbitThreads {
+        pending: 0,
+        total: 1,
+    });
+    let mut key = SendKey::new("done", SendKind::AskClaude);
+    key.pr = Some(p.ref_.clone());
+    s.prs = vec![p];
+    let mut snap = snapshot(vec![s]);
+    snap.sends.insert(key, (SendState::Sent, now()));
+    let row = card_layout(&snap.sessions[0], &snap, &open(), &FakeMeasure)
+        .find(Block::Pr(0))
+        .unwrap();
+    assert_eq!(row.h, layout::PR_ROW_H);
+    let built = render(&snap, &open());
+    let node = card(&built.scene, "done");
+    assert!(texts(node).contains(&"Đã gửi ✓"));
+    let rect_of = |want: &str| {
+        node.cmds
+            .iter()
+            .find_map(|c| match c {
+                DrawCmd::Text { rect, text, .. } if text == want => Some(*rect),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("{want} is drawn"))
+    };
+    let label = rect_of("đã duyệt");
+    let sent = rect_of("Đã gửi ✓");
+    assert!(
+        label.y > row.y + layout::PR_TIER_H - 0.001,
+        "label in tier 2"
+    );
+    assert!((label.y - sent.y).abs() < 6.0, "same tier as the sent line");
+}
+
+#[test]
+fn rabbit_label_and_reviewer_share_tier_one() {
+    use claude_sessions_core::pull_requests::{PRComment, RabbitThreads};
+    let mut s = finished("done");
+    let mut p = pr(7631, "OPEN");
+    p.rabbit = Some(Rabbit::Approved);
+    p.rabbit_threads = Some(RabbitThreads {
+        pending: 0,
+        total: 1,
+    });
+    p.last_other = Some(PRComment {
+        name: "Linh".into(),
+        at: now() - Duration::from_secs(120),
+    });
+    s.prs = vec![p, pr(7567, "MERGED")];
+    let snap = snapshot(vec![s]);
+    let row = card_layout(&snap.sessions[0], &snap, &open(), &FakeMeasure)
+        .find(Block::Pr(0))
+        .unwrap();
+    assert_eq!(row.h, layout::PR_ROW_CLOSED_H);
+    let built = render(&snap, &open());
+    let node = card(&built.scene, "done");
+    let rect_where = |f: &dyn Fn(&str) -> bool| {
+        node.cmds.iter().find_map(|c| match c {
+            DrawCmd::Text { rect, text, .. } if f(text) => Some(*rect),
+            _ => None,
+        })
+    };
+    let label = rect_where(&|t| t == "đã duyệt").expect("label drawn");
+    let who = rect_where(&|t| t.starts_with("Linh")).expect("reviewer drawn");
+    for r in [label, who] {
+        assert!(r.y >= row.y && r.y + r.h <= row.y + row.h + 0.001, "{r:?}");
+    }
+    assert!(who.x + who.w <= label.x + 0.001, "{who:?} vs {label:?}");
+    assert_eq!(symbols(node).iter().filter(|s| **s == "hare").count(), 1);
+}
+
 fn tickets() -> Session {
     let mut s = finished("done");
     let item = |code: &str, icon: bool| LinkItem {
@@ -1190,7 +1298,7 @@ fn every_block_takes_the_height_the_size_model_gives_it() {
                         )
                         .h,
                 ),
-                Block::Pr(i) => pr_row_height(s.prs[i].is_open()),
+                Block::Pr(i) => pr_row_height(layout::pr_has_buttons(s, &s.prs[i], &snap)),
                 Block::Chips => layout::CHIPS_H,
                 Block::LinkList => link_list_height(s),
                 Block::Editor => editor_height(),

@@ -1,12 +1,15 @@
 //! One PR row in two tiers. Tier 1: `⑂ #n`, the parts of `text::pr_parts` as icon + number, the status label and the last
 //! reviewer at the right end. Tier 2 (open PRs): the `Nhờ Claude` / `Nhắc duyệt` capsules and the CodeRabbit label at the right
-//! end. Positions follow `layout::pr_row_height`.
+//! end; with neither button (`layout::pr_has_buttons`) the row keeps tier 1 only and the label ends it. Positions follow
+//! `layout::pr_row_height`.
 
 use super::{Canvas, Ctx, send_label};
 use crate::hits::Target;
 use crate::theme;
 use claude_sessions_core::code_rabbit::{self, Rabbit};
-use claude_sessions_core::layout::{BLOCK_GAP, BUTTON_H, CARD_INSET, PR_GAP, PR_TIER_H, TEXT_W};
+use claude_sessions_core::layout::{
+    self, BLOCK_GAP, BUTTON_H, CARD_INSET, PR_GAP, PR_TIER_H, TEXT_W,
+};
 use claude_sessions_core::scene::{Align, FontSpec, Rect, ThemeColor, Weight};
 use claude_sessions_core::store::{SendKey, SendKind, SendState, Session};
 use claude_sessions_core::text::{self, PartKind, PartTint, PrPart};
@@ -93,7 +96,8 @@ pub fn draw(ctx: &mut Ctx, c: &mut Canvas, s: &Session, index: usize, block: Rec
         .map(|i| parts.remove(i));
 
     // Tier 2: the buttons from the left, the CodeRabbit label at the right end.
-    if pr.is_open() {
+    let tiered = layout::pr_has_buttons(s, pr, snap);
+    if tiered {
         let tier2 = Rect::new(CARD_INSET, tier1.y + tier1.h + BLOCK_GAP, TEXT_W, BUTTON_H);
         let mut left = tier2.x;
         let ask = pr_key(SendKind::AskClaude);
@@ -131,24 +135,8 @@ pub fn draw(ctx: &mut Ctx, c: &mut Canvas, s: &Session, index: usize, block: Rec
             left = state_line(ctx, c, state, left, tier2);
         }
         if let (Some(p), Some(r)) = (&rabbit, &pr.rabbit) {
-            let right = tier2.x + tier2.w;
-            let w = (ctx.text_w(&p.text, &theme::STATE_FONT) + 28.0).min(right - left);
-            let chip = Rect::new(right - w, tier2.y + (tier2.h - 20.0) / 2.0, w, 20.0);
-            let color = rabbit_color(r);
-            c.rrect(chip, theme::CHIP_RADIUS, Some(theme::tag_fill(color)), None);
-            c.symbol(
-                "hare",
-                Rect::new(chip.x + 6.0, chip.y + 4.0, 12.0, 12.0),
-                theme::solid(color),
-                Weight::Regular,
-            );
-            c.label(
-                Rect::new(chip.x + 20.0, chip.y, chip.w - 24.0, 20.0),
-                &p.text,
-                theme::STATE_FONT,
-                theme::solid(color),
-                Align::Left,
-            );
+            let y = tier2.y + (tier2.h - 20.0) / 2.0;
+            rabbit_chip(ctx, c, &p.text, r, left, tier2.x + tier2.w, y, 20.0);
         }
     }
 
@@ -170,7 +158,11 @@ pub fn draw(ctx: &mut Ctx, c: &mut Canvas, s: &Session, index: usize, block: Rec
         }
         _ => 0.0,
     };
-    let right = tier1.x + tier1.w;
+    let mut right = tier1.x + tier1.w;
+    // Without the button tier the CodeRabbit label takes the right end of tier 1; the reviewer moves left of it.
+    if let (false, Some(p), Some(r)) = (tiered, &rabbit, &pr.rabbit) {
+        right = rabbit_chip(ctx, c, &p.text, r, x, right, tier1.y, tier1.h) - PART_GAP;
+    }
     let total = |rank: u8| -> f64 {
         parts
             .iter()
@@ -238,6 +230,38 @@ pub fn draw(ctx: &mut Ctx, c: &mut Canvas, s: &Session, index: usize, block: Rec
             x += w + PART_GAP;
         }
     }
+}
+
+/// The CodeRabbit label ending at `right`, no wider than `right - left`, `h` high from `y`; returns its left edge.
+#[allow(clippy::too_many_arguments)]
+fn rabbit_chip(
+    ctx: &Ctx,
+    c: &mut Canvas,
+    text: &str,
+    r: &Rabbit,
+    left: f64,
+    right: f64,
+    y: f64,
+    h: f64,
+) -> f64 {
+    let w = (ctx.text_w(text, &theme::STATE_FONT) + 28.0).min(right - left);
+    let chip = Rect::new(right - w, y, w, h);
+    let color = rabbit_color(r);
+    c.rrect(chip, theme::CHIP_RADIUS, Some(theme::tag_fill(color)), None);
+    c.symbol(
+        "hare",
+        Rect::new(chip.x + 6.0, y + (h - 12.0) / 2.0, 12.0, 12.0),
+        theme::solid(color),
+        Weight::Regular,
+    );
+    c.label(
+        Rect::new(chip.x + 20.0, y, chip.w - 24.0, h),
+        text,
+        theme::STATE_FONT,
+        theme::solid(color),
+        Align::Left,
+    );
+    chip.x
 }
 
 /// The number is bold, the rest is the plain small text.
