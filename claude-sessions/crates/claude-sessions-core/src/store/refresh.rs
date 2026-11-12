@@ -259,6 +259,7 @@ impl Store {
                         .unwrap_or_default(),
                     cwd: s.cwd.clone(),
                     branch: s.branch.clone(),
+                    hidden_refs: HashSet::new(),
                 })
                 .collect();
             pm.update(&targets, now);

@@ -7,6 +7,7 @@ use claude_sessions_core::pull_requests::{PREvent, PRRef, RabbitThreads};
 use claude_sessions_core::shell::format_iso_date;
 use claude_sessions_core::time::add_secs;
 use serde_json::{Value, json};
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{channel, sync_channel};
 use std::sync::{Arc, Mutex};
@@ -54,6 +55,7 @@ fn target(link_refs: &[PRRef], branch: Option<&str>) -> Vec<PRTarget> {
         link_refs: link_refs.to_vec(),
         cwd: "/x".into(),
         branch: branch.map(String::from),
+        hidden_refs: HashSet::new(),
     }]
 }
 
@@ -1778,4 +1780,92 @@ fn panicking_job_does_not_stop_later_jobs() {
     // The worker survived: the next job runs and the same PR can be nudged again.
     assert!(nudge_result(&m, &pr_ref(7583)));
     assert_eq!(api.posts().len(), 1);
+}
+
+fn hiding(link_refs: &[PRRef], hidden: &[PRRef]) -> Vec<PRTarget> {
+    let mut t = target(link_refs, None);
+    t[0].hidden_refs = hidden.iter().cloned().collect();
+    t
+}
+
+#[test]
+fn hidden_ref_is_not_fetched_or_shown() {
+    let api = fake(vec![pr(1), pr(2)]);
+    let m = monitor(&api, None);
+    m.update(&hiding(&[pr_ref(1), pr_ref(2)], &[pr_ref(2)]), t0());
+    assert_eq!(ids_of(&m.take_snapshot()), [1]);
+    assert_eq!(n(&api, "/pullrequests/2"), 0);
+}
+
+#[test]
+fn hidden_in_one_session_still_tracked_in_another() {
+    let api = fake(vec![pr(1)]);
+    let m = monitor(&api, None);
+    let mut targets = hiding(&[pr_ref(1)], &[pr_ref(1)]);
+    targets.push(PRTarget {
+        session_id: "t".into(),
+        link_refs: vec![pr_ref(1)],
+        cwd: "/x".into(),
+        branch: None,
+        hidden_refs: HashSet::new(),
+    });
+    m.update(&targets, t0());
+    let snap = m.take_snapshot();
+    assert!(!snap.prs.contains_key("s"));
+    assert_eq!(snap.prs["t"].len(), 1);
+    assert!(n(&api, "/pullrequests/1") > 0);
+}
+
+#[test]
+fn hidden_ref_yields_no_events() {
+    let api = fake(vec![pr(1)]);
+    let m = monitor(&api, None);
+    m.update(&refs(&[pr_ref(1)]), t0());
+    m.take_snapshot();
+    let hidden = hiding(&[pr_ref(1)], &[pr_ref(1)]);
+    m.update(&hidden, at(1.0));
+    set_open(&api, vec![]);
+    api.set("/pullrequests/1?", pr_in(1, BE, "b", "MERGED"));
+    for i in 0..3 {
+        m.update(&hidden, at(50.0 * (i + 1) as f64));
+        let snap = m.take_snapshot();
+        assert!(snap.events.is_empty());
+        assert!(snap.event_refs.is_empty());
+    }
+}
+
+#[test]
+fn hidden_branch_pr_is_not_pushed_twice() {
+    let branch = "bugfix/T6IR-14745";
+    let api = fake(vec![pr_in(6874, FE, branch, "OPEN")]);
+    let m = monitor(
+        &api,
+        Some("git@bitbucket.org:t6engineering/talo6-dct-frontend.git"),
+    );
+    m.update(&target(&[], Some(branch)), t0());
+    let r = pr_ref_in(6874, FE);
+    let mut hidden = target(&[], Some(branch));
+    hidden[0].hidden_refs = [r].into();
+    for i in 0..3 {
+        m.update(&hidden, at(50.0 * (i + 1) as f64));
+    }
+    m.update(&target(&[], Some(branch)), at(200.0));
+    assert_eq!(ids_of(&m.take_snapshot()), [6874]);
+}
+
+#[test]
+fn reshown_merged_pr_returns_without_events() {
+    let api = fake(vec![pr(1)]);
+    let m = monitor(&api, None);
+    m.update(&refs(&[pr_ref(1)]), t0());
+    m.take_snapshot();
+    m.update(&hiding(&[pr_ref(1)], &[pr_ref(1)]), at(1.0));
+    set_open(&api, vec![]);
+    api.set("/pullrequests/1?", pr_in(1, BE, "b", "MERGED"));
+    m.update(&refs(&[pr_ref(1)]), at(2.0));
+    let snap = m.take_snapshot();
+    assert_eq!(ids_of(&snap), [1]);
+    assert_eq!(first_of(&snap).unwrap().state, "MERGED");
+    assert!(snap.events.is_empty());
+    assert!(snap.event_refs.is_empty());
 }

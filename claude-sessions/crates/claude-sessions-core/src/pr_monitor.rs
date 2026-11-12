@@ -22,6 +22,8 @@ pub struct PRTarget {
     pub link_refs: Vec<PRRef>,
     pub cwd: String,
     pub branch: Option<String>,
+    /// Refs the user hid for this session: not polled or shown for it, their state kept.
+    pub hidden_refs: HashSet<PRRef>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -65,11 +67,19 @@ struct SessionState {
     link_refs: Vec<PRRef>,
     branch_refs: Vec<PRRef>,
     branch: Option<String>,
+    hidden_refs: HashSet<PRRef>,
 }
 
 impl SessionState {
-    /// Link refs first, then branch refs, without duplicates.
+    /// Link refs first, then branch refs, without duplicates, minus the hidden ones.
     fn refs(&self) -> Vec<PRRef> {
+        let mut refs = self.all_refs();
+        refs.retain(|r| !self.hidden_refs.contains(r));
+        refs
+    }
+
+    /// Link refs first, then branch refs, without duplicates, hidden ones included.
+    fn all_refs(&self) -> Vec<PRRef> {
         let mut seen = HashSet::new();
         self.link_refs
             .iter()
@@ -115,6 +125,8 @@ struct Ticker {
     comments_owed: HashSet<PRRef>,
     head_seen: HashMap<PRRef, (Option<String>, SystemTime)>,
     hidden: HashSet<PRRef>,
+    /// Refs just shown again: their next fetch records the status without events.
+    reshown: HashSet<PRRef>,
     closed: HashSet<PRRef>,
     me: Option<String>,
     last_cycle: Option<SystemTime>,
@@ -191,6 +203,7 @@ impl PRMonitor {
                     comments_owed: HashSet::new(),
                     head_seen: HashMap::new(),
                     hidden: HashSet::new(),
+                    reshown: HashSet::new(),
                     closed: HashSet::new(),
                     me: None,
                     last_cycle: None,
@@ -336,6 +349,7 @@ impl Inner {
         let mut need_cycle = t
             .last_cycle
             .is_none_or(|l| secs_since(now, l) >= self.interval);
+        let mut reshown: Vec<PRRef> = Vec::new();
         for target in targets {
             let existing = t.sessions.contains_key(&target.session_id);
             let s = t.sessions.entry(target.session_id.clone()).or_default();
@@ -347,6 +361,11 @@ impl Inner {
                 need_cycle = true;
             }
             s.branch = target.branch.clone();
+            if s.hidden_refs != target.hidden_refs {
+                need_cycle = true;
+                reshown.extend(s.hidden_refs.difference(&target.hidden_refs).cloned());
+                s.hidden_refs = target.hidden_refs.clone();
+            }
             for r in &target.link_refs {
                 if !s.link_refs.contains(r) {
                     s.link_refs.push(r.clone());
@@ -363,7 +382,9 @@ impl Inner {
                 .map(|(workspace, name)| Repo { workspace, name });
             t.remotes.insert(target.cwd.clone(), (repo, now));
         }
-        let used: HashSet<PRRef> = t.sessions.values().flat_map(|s| s.refs()).collect();
+        let used: HashSet<PRRef> = t.sessions.values().flat_map(|s| s.all_refs()).collect();
+        t.reshown.extend(reshown);
+        t.reshown.retain(|k| used.contains(k));
         t.statuses.retain(|k, _| used.contains(k));
         t.rabbit_seen.retain(|k, _| used.contains(k));
         t.status_values.retain(|k, _| used.contains(k));
@@ -654,7 +675,7 @@ impl Inner {
             matching.sort_by_key(|pr| pr.ref_.id);
             for pr in matching {
                 if let Some(s) = t.sessions.get_mut(&target.session_id)
-                    && !s.refs().contains(&pr.ref_)
+                    && !s.all_refs().contains(&pr.ref_)
                 {
                     s.branch_refs.push(pr.ref_.clone());
                 }
@@ -677,6 +698,14 @@ impl Inner {
                 continue;
             }
             let found = self.cycle_pr(t, &ref_, open.get(&ref_).cloned(), now);
+            let found = if t.reshown.contains(&ref_) {
+                if found.is_some() {
+                    t.reshown.remove(&ref_);
+                }
+                None
+            } else {
+                found
+            };
             if let Some(found) = found
                 && !found.is_empty()
             {
