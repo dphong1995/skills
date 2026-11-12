@@ -552,6 +552,14 @@ fn display_status_sentence_cases_all_caps() {
 }
 
 #[test]
+fn display_status_handles_non_ascii_capitals() {
+    assert_eq!(display_status("ĐANG LÀM"), "Đang làm");
+    assert_eq!(display_status("Đang làm"), "Đang làm");
+    assert_eq!(display_status("ĐANG LÀM 2"), "Đang làm 2");
+    assert_eq!(display_status("IN-PROGRESS (QA)"), "In-progress (qa)");
+}
+
+#[test]
 fn ticket_item_status_is_sentence_cased_but_help_keeps_jira_text() {
     let r = menu_store(&[], Some(jira_with("Title", Some("IN PROGRESS"))), true);
     let item = &r.store.sessions[0].menu[0].items[0];

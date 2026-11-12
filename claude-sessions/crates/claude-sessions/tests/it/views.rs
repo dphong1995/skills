@@ -1209,6 +1209,79 @@ fn pr_item_dot_uses_the_badge_colour() {
 }
 
 #[test]
+fn link_item_draws_one_centred_line_with_the_link_badge() {
+    // An untracked PR link: no title, no status, so only the label, centred, beside a `link` badge.
+    let item = link_item("PR #12", LinkKind::Link, None, None);
+    let built = open_list(vec![section("PR", vec![item])]);
+    let node = card(&built.scene, "done");
+    let it = item_hits(&built, node)[0];
+    assert!((mid_y(text_rect(node, "PR #12")) - mid_y(it)).abs() < 0.5);
+    let badge = node
+        .cmds
+        .iter()
+        .find_map(|c| match c {
+            DrawCmd::RoundedRect {
+                rect,
+                radius,
+                fill: Some(f),
+                ..
+            } if rect.w == 20.0 && rect.h == 20.0 && *radius == 6.0 => Some((*rect, f.token)),
+            _ => None,
+        })
+        .expect("a 20 pt badge");
+    assert_eq!(badge.1, ThemeColor::Fill);
+    assert_eq!(badge.0.x, it.x + 10.0);
+    assert!((mid_y(badge.0) - mid_y(it)).abs() < 0.5);
+    let symbols: Vec<(&str, f64)> = node
+        .cmds
+        .iter()
+        .filter_map(|c| match c {
+            DrawCmd::Symbol { name, rect, .. } if name == "link" => Some((name.as_str(), rect.w)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(symbols, vec![("link", 12.0)]);
+    // No status dot on a one-line item.
+    assert!(
+        !node.cmds.iter().any(
+            |c| matches!(c, DrawCmd::RoundedRect { rect, .. } if rect.w == 6.0 && rect.h == 6.0)
+        )
+    );
+}
+
+#[test]
+fn pr_items_use_the_state_badge_symbols_of_the_pr_list() {
+    let pr = |id: &str, tone: ItemTone| {
+        let mut i = link_item(id, LinkKind::Pr, Some("T"), Some("x"));
+        i.tone = Some(tone);
+        i
+    };
+    let built = open_list(vec![section(
+        "PR",
+        vec![
+            pr("#1", ItemTone::Open),
+            pr("#2", ItemTone::Merged),
+            pr("#3", ItemTone::Closed),
+        ],
+    )]);
+    let node = card(&built.scene, "done");
+    let symbols: Vec<&str> = node
+        .cmds
+        .iter()
+        .filter_map(|c| match c {
+            DrawCmd::Symbol { name, rect, .. } if rect.w == 12.0 && name != "list.bullet" => {
+                Some(name.as_str())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        symbols,
+        vec!["arrow.triangle.branch", "arrow.triangle.merge", "xmark"]
+    );
+}
+
+#[test]
 fn untitled_ticket_shows_code_then_status() {
     let both = link_item("K-1", LinkKind::Ticket, None, Some("Confirming"));
     let bare = link_item("K-2", LinkKind::Ticket, None, None);
