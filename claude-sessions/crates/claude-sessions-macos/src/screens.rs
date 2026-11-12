@@ -5,9 +5,10 @@ use std::ptr::NonNull;
 use claude_sessions_core::scene::Rect;
 use objc2_app_kit::{NSApplicationDidChangeScreenParametersNotification, NSScreen};
 use objc2_core_foundation::{CFRetained, CFUUID};
-use objc2_foundation::{MainThreadMarker, NSNumber, NSRect, ns_string};
+use objc2_foundation::{MainThreadMarker, NSNumber, ns_string};
 
 use crate::observer::NotificationObserver;
+use crate::ui::draw::rect;
 
 #[link(name = "ApplicationServices", kind = "framework")]
 unsafe extern "C" {
@@ -20,10 +21,6 @@ pub struct KeyedScreen {
     pub key: String,
     pub frame: Rect,
     pub visible_frame: Rect,
-}
-
-fn rect(r: NSRect) -> Rect {
-    Rect::new(r.origin.x, r.origin.y, r.size.width, r.size.height)
 }
 
 fn display_uuid(screen: &NSScreen) -> Option<String> {

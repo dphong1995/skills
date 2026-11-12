@@ -108,35 +108,33 @@ fn zoom_transform(layer: &CALayer, fixed: CGPoint) -> CATransform3D {
 }
 
 /// Opening: `layer` grows from `POP_SCALE` to full size about `fixed` (scene coordinates). An explicit animation: the
-/// model value stays identity, so AppKit's own layer updates never fight it.
-pub fn zoom_in(layer: &CALayer, fixed: CGPoint) {
+/// model value stays identity, so AppKit's own layer updates never fight it. Not `opening`: `layer` shrinks to
+/// `POP_SCALE` and stays there (the caller removes the view when done).
+pub fn zoom(layer: &CALayer, fixed: CGPoint, opening: bool) {
     // SAFETY: a plain extern constant.
     let rest = unsafe { CATransform3DIdentity };
+    let small = zoom_transform(layer, fixed);
+    let (from, to) = if opening {
+        (small, rest)
+    } else {
+        (rest, small)
+    };
     let animation = CABasicAnimation::animationWithKeyPath(Some(ns_string!("transform")));
     // SAFETY: from/to are NSValues of CATransform3D, which the transform key path takes.
     unsafe {
-        animation.setFromValue(Some(&transform_value(zoom_transform(layer, fixed))));
-        animation.setToValue(Some(&transform_value(rest)));
+        animation.setFromValue(Some(&transform_value(from)));
+        animation.setToValue(Some(&transform_value(to)));
+        if !opening {
+            animation.setFillMode(kCAFillModeForwards);
+        }
     }
-    animation.setDuration(POP_OPEN_SECS);
-    animation.setTimingFunction(Some(&pop_curve(true)));
-    layer.addAnimation_forKey(&animation, Some(ns_string!("zoom")));
-}
-
-/// Closing: `layer` shrinks to `POP_SCALE` about `fixed` (scene coordinates) and stays there (the caller removes the view when done).
-pub fn zoom_out(layer: &CALayer, fixed: CGPoint) {
-    // SAFETY: a plain extern constant.
-    let rest = unsafe { CATransform3DIdentity };
-    let animation = CABasicAnimation::animationWithKeyPath(Some(ns_string!("transform")));
-    // SAFETY: from/to are NSValues of CATransform3D, which the transform key path takes.
-    unsafe {
-        animation.setFromValue(Some(&transform_value(rest)));
-        animation.setToValue(Some(&transform_value(zoom_transform(layer, fixed))));
-        animation.setFillMode(kCAFillModeForwards);
+    if opening {
+        animation.setDuration(POP_OPEN_SECS);
+    } else {
+        animation.setRemovedOnCompletion(false);
+        animation.setDuration(POP_CLOSE_SECS);
     }
-    animation.setRemovedOnCompletion(false);
-    animation.setDuration(POP_CLOSE_SECS);
-    animation.setTimingFunction(Some(&pop_curve(false)));
+    animation.setTimingFunction(Some(&pop_curve(opening)));
     layer.addAnimation_forKey(&animation, Some(ns_string!("zoom")));
 }
 

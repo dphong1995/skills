@@ -41,6 +41,8 @@ pub const EXPANDED_WIDTH: f64 = 480.0;
 pub const CANVAS: Size = Size::new(EXPANDED_WIDTH + MARGIN * 2.0, 640.0);
 /// The collapsed capsule.
 pub const PILL_HEIGHT: f64 = 30.0;
+/// The scene key of the pill node (the open/close detection of the renderer reads it too).
+pub const PILL_KEY: &str = "pill";
 /// The header row of the expanded panel.
 pub const HEADER_HEIGHT: f64 = 38.0;
 pub const COLLAPSED: Size = Size::new(126.0, PILL_HEIGHT);

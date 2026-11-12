@@ -1,6 +1,6 @@
 //! The AppKit renderer for a `Scene`: panel handle, scene view, events and the offscreen PNG.
 
-mod draw;
+pub(crate) mod draw;
 pub mod motion;
 mod node_view;
 mod png;

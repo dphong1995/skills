@@ -12,7 +12,7 @@ use objc2_app_kit::{
     NSImage, NSImageSymbolConfiguration, NSStringNSExtendedStringDrawing,
 };
 use objc2_core_foundation::{CFRetained, CGPoint, CGRect, CGSize};
-use objc2_core_graphics::CGPath;
+use objc2_core_graphics::{CGMutablePath, CGPath};
 use objc2_foundation::{NSData, NSPoint, NSRect, NSSize, NSString};
 
 use crate::text;
@@ -37,12 +37,44 @@ pub(crate) fn ns_rect(r: Rect) -> NSRect {
     NSRect::new(NSPoint::new(r.x, r.y), NSSize::new(r.w, r.h))
 }
 
+/// An AppKit rect as a scene rect.
+pub(crate) fn rect(r: NSRect) -> Rect {
+    Rect::new(r.origin.x, r.origin.y, r.size.width, r.size.height)
+}
+
 /// The rounded rect of a `w` x `h` node as the path its `shadow` is cast from.
 pub(crate) fn shadow_path(shadow: &Shadow, w: f64, h: f64) -> CFRetained<CGPath> {
     let corner = shadow.corner.min(w / 2.0).min(h / 2.0);
     let rect = CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(w, h));
     // SAFETY: a null transform means identity.
     unsafe { CGPath::with_rounded_rect(rect, corner, corner, std::ptr::null()) }
+}
+
+/// What may show of the shadow of a `w` x `h` node: a rect around the shadow's reach with the node's shape cut out (filled
+/// even-odd), so the shadow never darkens what is behind a translucent node.
+pub(crate) fn shadow_mask_path(shadow: &Shadow, w: f64, h: f64) -> CFRetained<CGPath> {
+    let reach = shadow.radius * 2.0 + shadow.offset.x.abs() + shadow.offset.y.abs() + 2.0;
+    let path = CGMutablePath::new();
+    // SAFETY: null transforms mean identity.
+    unsafe {
+        CGMutablePath::add_rect(
+            Some(&path),
+            std::ptr::null(),
+            CGRect::new(
+                CGPoint::new(-reach, -reach),
+                CGSize::new(w + 2.0 * reach, h + 2.0 * reach),
+            ),
+        );
+        let corner = shadow.corner.min(w / 2.0).min(h / 2.0);
+        CGMutablePath::add_rounded_rect(
+            Some(&path),
+            std::ptr::null(),
+            CGRect::new(CGPoint::new(0.0, 0.0), CGSize::new(w, h)),
+            corner,
+            corner,
+        );
+    }
+    CGPath::new_copy(Some(&path)).unwrap_or_else(|| shadow_path(shadow, w, h))
 }
 
 pub(crate) fn ns_color(color: Color, appearance: Appearance) -> Retained<NSColor> {

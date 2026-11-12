@@ -3,13 +3,14 @@
 use super::{Canvas, Ctx};
 use crate::theme;
 use claude_sessions_core::layout::{
-    PILL_GAP, PILL_HEIGHT, PILL_PAD, PILL_QUOTA_W, collapsed_width, pill_group_width, pill_groups,
+    PILL_GAP, PILL_HEIGHT, PILL_KEY, PILL_PAD, PILL_QUOTA_W, collapsed_width, pill_group_width,
+    pill_groups,
 };
 use claude_sessions_core::quota::QuotaLevel;
 use claude_sessions_core::scene::{Align, Material, Node, Point, Rect, Shadow, ThemeColor, Weight};
 use claude_sessions_core::store::Snapshot;
 
-pub const KEY: &str = "pill";
+pub const KEY: &str = PILL_KEY;
 
 pub fn quota_token(percent: i64) -> ThemeColor {
     match QuotaLevel::level(percent) {

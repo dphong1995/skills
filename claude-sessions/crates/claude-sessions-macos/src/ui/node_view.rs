@@ -13,7 +13,7 @@ use objc2_app_kit::{
     NSAnimatablePropertyContainer, NSAnimationContext, NSAppearanceCustomization, NSColor,
     NSControl, NSControlTextEditingDelegate, NSEvent, NSFocusRingType, NSTextField,
     NSTextFieldDelegate, NSTextView, NSView, NSVisualEffectBlendingMode, NSVisualEffectMaterial,
-    NSVisualEffectState, NSVisualEffectView,
+    NSVisualEffectState, NSVisualEffectView, NSWindowOrderingMode,
 };
 use objc2_core_foundation::{CGPoint, CGRect, CGSize};
 use objc2_core_graphics::CGPath;
@@ -23,9 +23,10 @@ use objc2_foundation::{
 };
 use objc2_quartz_core::{
     CABasicAnimation, CALayer, CAMediaTiming, CAShapeLayer, CATransaction, CATransition,
+    kCAFillRuleEvenOdd,
 };
 
-use super::draw::{draw_cmds, ns_color, ns_rect, shadow_path};
+use super::draw::{draw_cmds, ns_color, ns_rect, rect, shadow_mask_path, shadow_path};
 use super::motion;
 use super::{EventHandler, UiEvent};
 
@@ -47,8 +48,8 @@ pub(crate) struct NodeIvars {
     pulses: RefCell<Vec<Retained<CAShapeLayer>>>,
     /// AppKit does not retain a tooltip's owner, so the strings live here.
     tips: RefCell<Vec<Retained<NSString>>>,
-    /// The layer shadow the node casts, if any; `shadowPath` follows the view's size.
-    shadow: Cell<Option<Shadow>>,
+    /// The view that casts the node's shadow, if it has one: a sibling below the node (and its glass).
+    shadow: RefCell<Option<Retained<ShadowView>>>,
 }
 
 /// A native text field of the node and its delegate (AppKit keeps delegates unretained).
@@ -133,7 +134,7 @@ define_class!(
 
     unsafe impl NSObjectProtocol for NodeView {}
 
-impl NodeView {
+    impl NodeView {
         #[unsafe(method(isFlipped))]
         fn is_flipped(&self) -> bool {
             true
@@ -143,22 +144,6 @@ impl NodeView {
         #[unsafe(method(acceptsFirstMouse:))]
         fn accepts_first_mouse(&self, _event: Option<&NSEvent>) -> bool {
             true
-        }
-
-        // The shadow's path is the node's own rounded rect, so it must follow every size change.
-        #[unsafe(method(setFrameSize:))]
-        fn set_frame_size(&self, size: NSSize) {
-            // SAFETY: NSView's own setter, with the same argument.
-            let _: () = unsafe { msg_send![super(self), setFrameSize: size] };
-            self.sync_shadow_path();
-        }
-
-        // Moving into a window can swap the backing layer, which drops the shadow set on the old one.
-        #[unsafe(method(viewDidMoveToWindow))]
-        fn view_did_move_to_window(&self) {
-            // SAFETY: NSView's own notification, no arguments.
-            let _: () = unsafe { msg_send![super(self), viewDidMoveToWindow] };
-            self.set_shadow(self.ivars().shadow.get());
         }
 
         #[unsafe(method(drawRect:))]
@@ -173,11 +158,18 @@ impl NodeView {
     }
 );
 
+pub(crate) struct GlassIvars {
+    corner: Cell<f64>,
+    /// The alpha the glass shows at when its node is on screen.
+    alpha: Cell<f64>,
+}
+
 define_class!(
     /// The vibrancy behind a node with a `Material`: a sibling placed directly below the node view, so the node's drawn
     /// commands and subviews stay above it. It never takes a mouse event.
     #[unsafe(super = NSVisualEffectView)]
     #[thread_kind = MainThreadOnly]
+    #[ivars = GlassIvars]
     pub(crate) struct GlassView;
 
     unsafe impl NSObjectProtocol for GlassView {}
@@ -191,8 +183,16 @@ define_class!(
 );
 
 impl GlassView {
-    pub(crate) fn new(mtm: MainThreadMarker, frame: Rect) -> Retained<Self> {
-        let this = Self::alloc(mtm).set_ivars(());
+    pub(crate) fn new(
+        mtm: MainThreadMarker,
+        frame: Rect,
+        corner: f64,
+        alpha: f64,
+    ) -> Retained<Self> {
+        let this = Self::alloc(mtm).set_ivars(GlassIvars {
+            corner: Cell::new(corner),
+            alpha: Cell::new(alpha),
+        });
         // SAFETY: `initWithFrame:` is NSView's designated initialiser.
         let this: Retained<Self> = unsafe { msg_send![super(this), initWithFrame: ns_rect(frame)] };
         this.setMaterial(NSVisualEffectMaterial::Popover);
@@ -200,15 +200,171 @@ impl GlassView {
         // The app is never the active one; any other state falls back to a flat grey.
         this.setState(NSVisualEffectState::Active);
         this.setWantsLayer(true);
+        this.apply_look();
         this
     }
 
-    /// The rounded corner of the glass.
-    pub(crate) fn set_look(&self, corner: f64) {
+    /// Takes a new corner and alpha; the alpha shows at once.
+    pub(crate) fn retarget(&self, corner: f64, alpha: f64) {
+        self.ivars().corner.set(corner);
+        self.ivars().alpha.set(alpha);
+        self.apply_look();
+        self.setAlphaValue(alpha);
+    }
+
+    /// The alpha this glass fades to when its node appears.
+    pub(crate) fn target_alpha(&self) -> f64 {
+        self.ivars().alpha.get()
+    }
+
+    /// Rounds the glass to its corner. Run again after the view moves in the hierarchy: AppKit may swap the backing layer.
+    pub(crate) fn apply_look(&self) {
         if let Some(layer) = self.layer() {
-            layer.setCornerRadius(corner);
+            layer.setCornerRadius(self.ivars().corner.get());
             layer.setMasksToBounds(true);
         }
+    }
+}
+
+pub(crate) struct ShadowIvars {
+    shadow: Cell<Shadow>,
+    /// Lets the shadow show only outside the node's shape; its path follows the view's size like `shadowPath`.
+    mask: Retained<CAShapeLayer>,
+}
+
+define_class!(
+    /// The shadow of a node with a `Shadow`: a sibling placed below the node's glass, so the shadow never darkens what a
+    /// translucent node lets through. A `CALayer` shadow with an explicit path (the render server draws it, nothing is
+    /// redrawn per frame), masked so that it falls outside the node's shape only. It never takes a mouse event.
+    #[unsafe(super = NSView)]
+    #[thread_kind = MainThreadOnly]
+    #[ivars = ShadowIvars]
+    pub(crate) struct ShadowView;
+
+    unsafe impl NSObjectProtocol for ShadowView {}
+
+    impl ShadowView {
+        #[unsafe(method(hitTest:))]
+        fn hit_test(&self, _point: CGPoint) -> Option<&NSView> {
+            None
+        }
+
+        #[unsafe(method(isFlipped))]
+        fn is_flipped(&self) -> bool {
+            true
+        }
+
+        // The shadow's path is the node's own rounded rect, so it must follow every size change.
+        #[unsafe(method(setFrameSize:))]
+        fn set_frame_size(&self, size: NSSize) {
+            // SAFETY: NSView's own setter, with the same argument.
+            let _: () = unsafe { msg_send![super(self), setFrameSize: size] };
+            self.sync_paths();
+        }
+
+        // Moving into a window can swap the backing layer, which drops the shadow set on the old one.
+        #[unsafe(method(viewDidMoveToWindow))]
+        fn view_did_move_to_window(&self) {
+            // SAFETY: NSView's own notification, no arguments.
+            let _: () = unsafe { msg_send![super(self), viewDidMoveToWindow] };
+            self.reapply();
+        }
+    }
+);
+
+impl ShadowView {
+    pub(crate) fn new(mtm: MainThreadMarker, frame: Rect, shadow: Shadow) -> Retained<Self> {
+        let mask = CAShapeLayer::layer();
+        // SAFETY: a plain extern constant.
+        mask.setFillRule(unsafe { kCAFillRuleEvenOdd });
+        let this = Self::alloc(mtm).set_ivars(ShadowIvars {
+            shadow: Cell::new(shadow),
+            mask,
+        });
+        // SAFETY: `initWithFrame:` is NSView's designated initialiser.
+        let this: Retained<Self> = unsafe { msg_send![super(this), initWithFrame: ns_rect(frame)] };
+        this.setWantsLayer(true);
+        this.apply(shadow);
+        this
+    }
+
+    /// Sets the layer shadow and its mask again, after the view moved in the hierarchy (AppKit may swap the backing layer).
+    pub(crate) fn reapply(&self) {
+        self.apply(self.ivars().shadow.get());
+    }
+
+    /// Sets the layer shadow and its mask.
+    pub(crate) fn apply(&self, shadow: Shadow) {
+        self.ivars().shadow.set(shadow);
+        let Some(layer) = self.layer() else { return };
+        // The colour is opaque; the layer's opacity carries the alpha.
+        let opaque = Color {
+            alpha: 1.0,
+            ..shadow.color
+        };
+        layer.setShadowColor(Some(&ns_color(opaque, Appearance::Dark).CGColor()));
+        layer.setShadowOpacity(shadow.color.resolve(Appearance::Dark)[3] as f32);
+        layer.setShadowRadius(shadow.radius);
+        // A flipped view's backing layer has flipped geometry: there a positive offset already points down.
+        let y = if layer.isGeometryFlipped() {
+            shadow.offset.y
+        } else {
+            -shadow.offset.y
+        };
+        layer.setShadowOffset(CGSize::new(shadow.offset.x, y));
+        // SAFETY: the mask is a layer owned by this view and used as no other layer's mask.
+        unsafe { layer.setMask(Some(&self.ivars().mask)) };
+        self.sync_paths();
+    }
+
+    /// The rounded rect of the view's bounds as the layer's `shadowPath`, and the mask that cuts it out of the shadow.
+    fn sync_paths(&self) {
+        let Some(layer) = self.layer() else { return };
+        let shadow = self.ivars().shadow.get();
+        let size = self.bounds().size;
+        layer.setShadowPath(Some(&shadow_path(&shadow, size.width, size.height)));
+        self.ivars()
+            .mask
+            .setPath(Some(&shadow_mask_path(&shadow, size.width, size.height)));
+    }
+
+    /// Animates the frame (inside the caller's animation group) and the shadow path and mask with it, so the shadow never
+    /// lags.
+    pub(crate) fn animate_frame(&self, frame: Rect) {
+        // From what is on screen, so overlapping animations do not make the shadow jump.
+        let old = self.layer().and_then(|l| {
+            // SAFETY: a plain getter; the presentation layer is read on the main thread and not kept.
+            unsafe { l.presentationLayer() }
+                .and_then(|p| p.shadowPath())
+                .or_else(|| l.shadowPath())
+        });
+        self.animator().setFrame(ns_rect(frame));
+        let (Some(old), Some(layer)) = (old, self.layer()) else {
+            return;
+        };
+        let shadow = self.ivars().shadow.get();
+        // The target size, not the view's: the animated frame has not reached it yet.
+        let new = shadow_path(&shadow, frame.w, frame.h);
+        layer.setShadowPath(Some(&new));
+        let old_size = CGPath::bounding_box(Some(&old)).size;
+        let new_mask = shadow_mask_path(&shadow, frame.w, frame.h);
+        let mask = &self.ivars().mask;
+        mask.setPath(Some(&new_mask));
+        let old_mask = shadow_mask_path(&shadow, old_size.width, old_size.height);
+        let context = NSAnimationContext::currentContext();
+        let animate = |target: &CALayer, key: &NSString, from: &CGPath, to: &CGPath| {
+            let animation = CABasicAnimation::animationWithKeyPath(Some(key));
+            // SAFETY: a CGPath is the value type of both key paths; Core Animation takes it as an object.
+            unsafe {
+                animation.setFromValue(Some(&*(from as *const _ as *const AnyObject)));
+                animation.setToValue(Some(&*(to as *const _ as *const AnyObject)));
+            }
+            animation.setDuration(context.duration());
+            animation.setTimingFunction(context.timingFunction().as_deref());
+            target.addAnimation_forKey(&animation, Some(key));
+        };
+        animate(&layer, ns_string!("shadowPath"), &old, &new);
+        animate(mask, ns_string!("path"), &old_mask, &new_mask);
     }
 }
 
@@ -221,7 +377,7 @@ impl NodeView {
             spinner: RefCell::new(None),
             pulses: RefCell::new(Vec::new()),
             tips: RefCell::new(Vec::new()),
-            shadow: Cell::new(None),
+            shadow: RefCell::new(None),
         });
         // SAFETY: `initWithFrame:` is NSView's designated initialiser.
         let this: Retained<Self> = unsafe { msg_send![super(this), initWithFrame: ns_rect(frame)] };
@@ -229,73 +385,44 @@ impl NodeView {
         this
     }
 
-    /// Sets (or clears) the layer shadow. It is a `CALayer` shadow with an explicit path: the render server draws it and
-    /// nothing is redrawn per frame.
+    /// Sets (or clears) the shadow: its view is created below this one, in this view's superview, and removed again.
     pub(crate) fn set_shadow(&self, shadow: Option<Shadow>) {
-        self.ivars().shadow.set(shadow);
-        let Some(layer) = self.layer() else { return };
-        match shadow {
-            Some(shadow) => {
-                // The colour is opaque; the layer's opacity carries the alpha.
-                let opaque = Color {
-                    alpha: 1.0,
-                    ..shadow.color
-                };
-                layer.setShadowColor(Some(&ns_color(opaque, Appearance::Dark).CGColor()));
-                layer.setShadowOpacity(shadow.color.resolve(Appearance::Dark)[3] as f32);
-                layer.setShadowRadius(shadow.radius);
-                // A flipped view's backing layer has flipped geometry: there a positive offset already points down.
-                let y = if layer.isGeometryFlipped() {
-                    shadow.offset.y
-                } else {
-                    -shadow.offset.y
-                };
-                layer.setShadowOffset(CGSize::new(shadow.offset.x, y));
+        let mut slot = self.ivars().shadow.borrow_mut();
+        match (shadow, slot.as_ref()) {
+            (Some(shadow), Some(view)) => view.apply(shadow),
+            (Some(shadow), None) => {
+                let view = ShadowView::new(self.mtm(), rect(self.frame()), shadow);
+                view.setAlphaValue(self.alphaValue());
+                // SAFETY: a plain getter, called on the main thread.
+                if let Some(parent) = unsafe { self.superview() } {
+                    parent.addSubview_positioned_relativeTo(
+                        &view,
+                        NSWindowOrderingMode::Below,
+                        Some(self),
+                    );
+                    view.reapply();
+                }
+                *slot = Some(view);
             }
-            None => {
-                layer.setShadowOpacity(0.0);
-                layer.setShadowPath(None);
+            (None, _) => {
+                if let Some(view) = slot.take() {
+                    view.removeFromSuperview();
+                }
             }
         }
-        self.sync_shadow_path();
     }
 
-    /// The rounded rect of the view's bounds as the layer's `shadowPath`.
-    fn sync_shadow_path(&self) {
-        let (Some(shadow), Some(layer)) = (self.ivars().shadow.get(), self.layer()) else {
-            return;
-        };
-        let size = self.bounds().size;
-        layer.setShadowPath(Some(&shadow_path(&shadow, size.width, size.height)));
+    /// The view that casts this node's shadow, if it has one.
+    pub(crate) fn shadow_view(&self) -> Option<Retained<ShadowView>> {
+        self.ivars().shadow.borrow().clone()
     }
 
-    /// Animates the frame (inside the caller's animation group) and the shadow path with it, so the shadow never lags.
+    /// Animates the frame (inside the caller's animation group) and the shadow's with it.
     pub(crate) fn animate_frame(&self, frame: Rect) {
-        // From what is on screen, so overlapping animations do not make the shadow jump.
-        let old = self.layer().and_then(|l| {
-            // SAFETY: a plain getter; the presentation layer is read on the main thread and not kept.
-            unsafe { l.presentationLayer() }
-                .and_then(|p| p.shadowPath())
-                .or_else(|| l.shadowPath())
-        });
         self.animator().setFrame(ns_rect(frame));
-        let (Some(old), Some(shadow), Some(layer)) = (old, self.ivars().shadow.get(), self.layer())
-        else {
-            return;
-        };
-        // The target size, not the view's: the animated frame has not reached it yet.
-        let new = shadow_path(&shadow, frame.w, frame.h);
-        layer.setShadowPath(Some(&new));
-        let animation = CABasicAnimation::animationWithKeyPath(Some(ns_string!("shadowPath")));
-        // SAFETY: a CGPath is the value type of the `shadowPath` key path; Core Animation takes it as an object.
-        unsafe {
-            animation.setFromValue(Some(&*(&*old as *const _ as *const AnyObject)));
-            animation.setToValue(Some(&*(&*new as *const _ as *const AnyObject)));
+        if let Some(shadow) = self.shadow_view() {
+            shadow.animate_frame(frame);
         }
-        let context = NSAnimationContext::currentContext();
-        animation.setDuration(context.duration());
-        animation.setTimingFunction(context.timingFunction().as_deref());
-        layer.addAnimation_forKey(&animation, Some(ns_string!("shadowPath")));
     }
 
     /// With `animate`, a pure recolour cross-fades and a sparkle that was not there pulses once.

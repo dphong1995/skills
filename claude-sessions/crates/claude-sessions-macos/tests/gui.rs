@@ -1499,6 +1499,81 @@ fn glass_sits_below_node_content() -> Result<(), String> {
     Ok(())
 }
 
+/// The shadow falls outside the node's shape only: the layer that casts it is masked by an even-odd path with the rounded
+/// rect cut out, so a translucent node (the glass) is not darkened from below.
+fn shadow_leaves_the_shape_interior_clear() -> Result<(), String> {
+    use claude_sessions_core::scene::Rect;
+    use claude_sessions_macos::ui::SceneView;
+    use objc2_core_foundation::CGPoint;
+    use objc2_core_graphics::CGPath;
+    use objc2_foundation::{MainThreadMarker, NSSize};
+    use objc2_quartz_core::CAShapeLayer;
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(200.0, 100.0));
+    view.set_scene(&one_node_scene(shadow_node(
+        Rect::new(10.0, 10.0, 100.0, 40.0),
+        true,
+    )));
+    let layer = node_layer(&view)?;
+    let mask = layer.mask().ok_or("the shadow layer has no mask")?;
+    let mask: objc2::rc::Retained<CAShapeLayer> = mask
+        .downcast()
+        .map_err(|_| "the mask is not a CAShapeLayer".to_string())?;
+    let path = mask.path().ok_or("the mask has no path")?;
+    // SAFETY: a null transform means identity.
+    let inside = |x: f64, y: f64| unsafe {
+        CGPath::contains_point(Some(&path), std::ptr::null(), CGPoint::new(x, y), true)
+    };
+    if inside(50.0, 20.0) {
+        return Err("the mask lets the shadow through at the node centre".into());
+    }
+    if !inside(50.0, 44.0) {
+        return Err("the mask hides the shadow 4 pt below the node".into());
+    }
+    Ok(())
+}
+
+/// A restack that moves the glass leaves its rounded corner in place.
+fn glass_keeps_corner_after_restack() -> Result<(), String> {
+    use claude_sessions_core::scene::{Rect, Scene, Size};
+    use claude_sessions_macos::ui::SceneView;
+    use objc2_foundation::{MainThreadMarker, NSSize};
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(200.0, 100.0));
+    let a = glass_node("a", Rect::new(10.0, 10.0, 100.0, 40.0), glass(20.0, 1.0));
+    let b = glass_node("b", Rect::new(10.0, 60.0, 100.0, 30.0), None);
+    let scene = |nodes| Scene {
+        size: Size { w: 200.0, h: 100.0 },
+        nodes,
+        images: Default::default(),
+        grow_origin: Default::default(),
+    };
+    view.set_scene(&scene(vec![a.clone(), b.clone()]));
+    // `a` now stacks above `b`: its glass has to move with it.
+    view.set_scene(&scene(vec![b, a]));
+    let subs = view.subviews();
+    let at = subs
+        .iter()
+        .position(|v| {
+            v.downcast_ref::<objc2_app_kit::NSVisualEffectView>()
+                .is_some()
+        })
+        .ok_or("no glass")?;
+    if at != 1 {
+        return Err(format!("the glass sits at index {at}, not below its node"));
+    }
+    let g = glass_views(&view);
+    let layer = g[0].layer().ok_or("no glass layer")?;
+    if layer.cornerRadius() != 20.0 || !layer.masksToBounds() {
+        return Err(format!(
+            "corner {} masks {}",
+            layer.cornerRadius(),
+            layer.masksToBounds()
+        ));
+    }
+    Ok(())
+}
+
 fn glass_follows_frame_change() -> Result<(), String> {
     use claude_sessions_core::scene::Rect;
     use claude_sessions_macos::ui::SceneView;
@@ -1969,6 +2044,14 @@ fn main() {
         glass_sits_below_node_content(),
     ));
     results.push(("glass_follows_frame_change", glass_follows_frame_change()));
+    results.push((
+        "shadow_leaves_the_shape_interior_clear",
+        shadow_leaves_the_shape_interior_clear(),
+    ));
+    results.push((
+        "glass_keeps_corner_after_restack",
+        glass_keeps_corner_after_restack(),
+    ));
     results.push(("glass_removed_with_material", glass_removed_with_material()));
     results.push((
         "node_without_material_has_no_glass",

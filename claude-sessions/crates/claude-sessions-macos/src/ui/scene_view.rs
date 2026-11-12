@@ -4,6 +4,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 
+use claude_sessions_core::layout::PILL_KEY;
 use claude_sessions_core::scene::{
     Cursor, HitId, Material, NodeKey, Point, Rect, Scene, changed_nodes,
 };
@@ -16,7 +17,7 @@ use objc2_app_kit::{NSScrollView, NSScrollerStyle, NSWindowOrderingMode};
 use objc2_core_foundation::CGPoint;
 use objc2_foundation::{MainThreadMarker, NSObjectProtocol, NSPoint, NSRect, NSSize};
 
-use super::draw::{ns_rect, register_images};
+use super::draw::{ns_rect, rect, register_images};
 use super::motion;
 use super::node_view::{GlassView, NodeView};
 use super::{ClampHandler, EventHandler, UiEvent};
@@ -155,30 +156,124 @@ define_class!(
     }
 );
 
-/// Puts `glass` directly below `view` in `view`'s superview (a no-op when it already is).
-fn seat_glass(view: &NodeView, glass: &GlassView) {
+/// A node's view with the views that sit directly below it, glass first and then its shadow: they share its frame, alpha
+/// and zoom, and leave with it.
+#[derive(Clone)]
+struct Seat {
+    view: Retained<NodeView>,
+    glass: Option<Retained<GlassView>>,
+}
+
+/// The seat of the node `key`, if it has a view.
+fn seat_of(
+    nodes: &HashMap<NodeKey, Retained<NodeView>>,
+    glasses: &HashMap<NodeKey, Retained<GlassView>>,
+    key: &NodeKey,
+) -> Option<Seat> {
+    Some(Seat {
+        view: nodes.get(key)?.clone(),
+        glass: glasses.get(key).cloned(),
+    })
+}
+
+/// Puts `view` directly below `above` in `above`'s superview; false when it already is.
+fn seat_below(above: &NSView, view: &NSView) -> bool {
     // SAFETY: a plain getter, called on the main thread.
-    let Some(parent) = (unsafe { view.superview() }) else {
-        return;
+    let Some(parent) = (unsafe { above.superview() }) else {
+        return false;
     };
-    let me: &NSView = view;
-    let glass: &NSView = glass;
     let subs = parent.subviews();
     let seated = subs
         .iter()
-        .position(|v| &*v == me)
-        .is_some_and(|at| at > 0 && &*subs.objectAtIndex(at - 1) == glass);
+        .position(|v| &*v == above)
+        .is_some_and(|at| at > 0 && &*subs.objectAtIndex(at - 1) == view);
     if !seated {
-        glass.removeFromSuperview();
-        parent.addSubview_positioned_relativeTo(glass, NSWindowOrderingMode::Below, Some(me));
+        view.removeFromSuperview();
+        parent.addSubview_positioned_relativeTo(view, NSWindowOrderingMode::Below, Some(above));
     }
+    !seated
 }
 
-/// A material node's glass view at `frame`, hidden until `alpha` is set.
-fn new_glass(mtm: MainThreadMarker, frame: Rect, corner: f64) -> Retained<GlassView> {
-    let glass = GlassView::new(mtm, frame);
-    glass.set_look(corner);
-    glass
+impl Seat {
+    /// The views below the node, nearest first.
+    fn below(&self) -> Vec<Retained<NSView>> {
+        let glass = self
+            .glass
+            .clone()
+            .map(|g| Retained::into_super(Retained::into_super(g)));
+        let shadow = self.view.shadow_view().map(Retained::into_super);
+        glass.into_iter().chain(shadow).collect()
+    }
+
+    /// The node view and everything below it.
+    fn all(&self) -> Vec<Retained<NSView>> {
+        let mut all = vec![Retained::into_super(self.view.clone())];
+        all.extend(self.below());
+        all
+    }
+
+    /// Glass directly below the node, the shadow directly below the glass.
+    fn stack(&self) {
+        let mut above = Retained::into_super(self.view.clone());
+        if let Some(glass) = &self.glass {
+            let glass_view = Retained::into_super(Retained::into_super(glass.clone()));
+            // AppKit may swap the backing layer when a view moves in, so the look is applied again.
+            if seat_below(&above, &glass_view) {
+                glass.apply_look();
+            }
+            above = glass_view;
+        }
+        if let Some(shadow) = self.view.shadow_view()
+            && seat_below(&above, &shadow)
+        {
+            shadow.reapply();
+        }
+    }
+
+    /// Animates the frame inside the caller's animation group; the shadow's path and mask go with it.
+    fn animate_frame(&self, frame: Rect) {
+        self.view.animate_frame(frame);
+        if let Some(glass) = &self.glass {
+            glass.animator().setFrame(ns_rect(frame));
+        }
+    }
+
+    /// Animates a pure move inside the caller's animation group.
+    fn set_frame(&self, frame: Rect) {
+        for view in self.all() {
+            view.animator().setFrame(ns_rect(frame));
+        }
+    }
+
+    /// Fades in (the glass to its own alpha) or out, inside the caller's animation group.
+    fn animate_alpha(&self, shown: bool) {
+        self.view
+            .animator()
+            .setAlphaValue(if shown { 1.0 } else { 0.0 });
+        if let Some(shadow) = self.view.shadow_view() {
+            shadow
+                .animator()
+                .setAlphaValue(if shown { 1.0 } else { 0.0 });
+        }
+        if let Some(glass) = &self.glass {
+            glass
+                .animator()
+                .setAlphaValue(if shown { glass.target_alpha() } else { 0.0 });
+        }
+    }
+
+    /// The panel's zoom about `origin` on every layer of the seat.
+    fn zoom(&self, opening: bool, origin: CGPoint) {
+        for layer in self.all().iter().filter_map(|v| v.layer()) {
+            motion::zoom(&layer, origin, opening);
+        }
+    }
+
+    fn remove(&self) {
+        for view in self.all() {
+            view.removeFromSuperview();
+        }
+    }
 }
 
 impl SceneView {
@@ -332,7 +427,7 @@ impl SceneView {
         let old = ivars.scene.replace(scene.clone());
         let diff = changed_nodes(&old, scene);
         // The panel opens when the pill goes away and closes when it comes back (never from an empty scene).
-        let has_pill = |s: &Scene| s.nodes.iter().any(|n| n.key.0 == "pill");
+        let has_pill = |s: &Scene| s.nodes.iter().any(|n| n.key.0 == PILL_KEY);
         let opening = has_pill(&old) && !has_pill(scene);
         let closing = !old.nodes.is_empty() && !has_pill(&old) && has_pill(scene);
         let origin = scene.grow_origin;
@@ -375,6 +470,8 @@ impl SceneView {
         let mut nodes = ivars.nodes.borrow_mut();
         let mut glasses = ivars.glass.borrow_mut();
         let mut fading_out = Vec::new();
+        // Some view that sits below a node was created or the order changed: the stacking has to be checked.
+        let mut restack = false;
         // The last field this update created: it takes the cursor when the window is key. The winner across nodes follows
         // iteration order (added nodes before updated ones).
         let mut created_field = None;
@@ -396,12 +493,13 @@ impl SceneView {
             }
             // After the view has a superview: AppKit may swap the backing layer when it moves in.
             view.set_shadow(node.shadow);
-            if let Some(Material::Glass { corner, .. }) = node.material {
-                let glass = new_glass(mtm, start, corner);
+            if let Some(Material::Glass { corner, alpha }) = node.material {
+                let glass = GlassView::new(mtm, start, corner, alpha);
                 glass.setAlphaValue(0.0);
                 self.addSubview(&glass);
                 glasses.insert(node.key.clone(), glass);
             }
+            restack |= node.shadow.is_some() || node.material.is_some();
             nodes.insert(node.key.clone(), view);
         }
         for key in &diff.removed {
@@ -409,7 +507,8 @@ impl SceneView {
                 view.set_spin(false);
                 view.clear_pulses();
                 view.retire_fields();
-                fading_out.push((view, glasses.remove(*key)));
+                let glass = glasses.remove(*key);
+                fading_out.push(Seat { view, glass });
             }
         }
         let before: HashMap<&NodeKey, &claude_sessions_core::scene::Node> =
@@ -426,20 +525,18 @@ impl SceneView {
             let prev = before.get(&update.node.key);
             if prev.is_none_or(|p| p.shadow != update.node.shadow) {
                 view.set_shadow(update.node.shadow);
+                restack = true;
             }
             if prev.is_none_or(|p| p.material != update.node.material) {
                 match update.node.material {
                     Some(Material::Glass { corner, alpha }) => {
                         let glass = glasses.entry(update.node.key.clone()).or_insert_with(|| {
-                            let f = view.frame();
-                            let rect =
-                                Rect::new(f.origin.x, f.origin.y, f.size.width, f.size.height);
-                            let glass = new_glass(mtm, rect, corner);
+                            restack = true;
+                            let glass = GlassView::new(mtm, rect(view.frame()), corner, alpha);
                             self.addSubview(&glass);
                             glass
                         });
-                        glass.set_look(corner);
-                        glass.setAlphaValue(alpha);
+                        glass.retarget(corner, alpha);
                     }
                     None => {
                         if let Some(glass) = glasses.remove(&update.node.key) {
@@ -462,11 +559,10 @@ impl SceneView {
                 view.set_tips(&update.node.tips);
             }
             if update.frame_changed {
-                moved.push((
-                    view.clone(),
-                    glasses.get(&update.node.key).cloned(),
-                    place(update.node),
-                ));
+                moved.extend(
+                    seat_of(&nodes, &glasses, &update.node.key)
+                        .map(|seat| (seat, place(update.node))),
+                );
             }
         }
         // A node that entered or left the scrolled content (the scroll node appeared or went away) changes parent.
@@ -529,42 +625,37 @@ impl SceneView {
                     Some(&pair[0]),
                 );
             }
+            restack = true;
         }
 
-        for node in &scene.nodes {
-            if let (Some(view), Some(glass)) = (nodes.get(&node.key), glasses.get(&node.key)) {
-                seat_glass(view, glass);
+        if restack {
+            for node in scene
+                .nodes
+                .iter()
+                .filter(|n| n.material.is_some() || n.shadow.is_some())
+            {
+                if let Some(seat) = seat_of(&nodes, &glasses, &node.key) {
+                    seat.stack();
+                }
             }
         }
 
-        let appear: Vec<_> = diff
+        let appear: Vec<(Seat, Rect)> = diff
             .added
             .iter()
-            .filter_map(|n| {
-                let glass = glasses.get(&n.key).map(|g| {
-                    let alpha = match n.material {
-                        Some(Material::Glass { alpha, .. }) => alpha,
-                        None => 1.0,
-                    };
-                    (g.clone(), alpha)
-                });
-                nodes.get(&n.key).map(|v| (v.clone(), glass, place(n)))
-            })
+            .filter_map(|n| seat_of(&nodes, &glasses, &n.key).map(|seat| (seat, place(n))))
             .collect();
         // A size change is the open/close spring; a pure move is a card sliding to its new place.
         let (resized, slid): (Vec<_>, Vec<_>) = moved
             .into_iter()
-            .partition(|(view, _, frame)| view.frame().size != ns_rect(*frame).size);
+            .partition(|(seat, frame)| seat.view.frame().size != ns_rect(*frame).size);
         if !resized.is_empty() {
             motion::group(
                 motion::OPEN_SECS,
                 true,
                 move || {
-                    for (view, glass, frame) in &resized {
-                        view.animate_frame(*frame);
-                        if let Some(glass) = glass {
-                            glass.animator().setFrame(ns_rect(*frame));
-                        }
+                    for (seat, frame) in &resized {
+                        seat.animate_frame(*frame);
                     }
                 },
                 || {},
@@ -575,11 +666,8 @@ impl SceneView {
                 motion::MOVE_SECS,
                 false,
                 move || {
-                    for (view, glass, frame) in &slid {
-                        view.animator().setFrame(ns_rect(*frame));
-                        if let Some(glass) = glass {
-                            glass.animator().setFrame(ns_rect(*frame));
-                        }
+                    for (seat, frame) in &slid {
+                        seat.set_frame(*frame);
                     }
                 },
                 || {},
@@ -587,34 +675,22 @@ impl SceneView {
         }
         if opening {
             // Everything new grows out of the grow origin; the scrolled cards ride on their scroll view.
-            for (view, glass, _) in &appear {
+            for (seat, _) in &appear {
                 // SAFETY: a plain getter, called on the main thread.
-                if unsafe { view.superview() }.as_deref() != Some(self) {
-                    continue;
-                }
-                for layer in [view.layer(), glass.as_ref().and_then(|(g, _)| g.layer())]
-                    .into_iter()
-                    .flatten()
-                {
-                    motion::zoom_in(&layer, origin);
+                if unsafe { seat.view.superview() }.as_deref() == Some(self) {
+                    seat.zoom(true, origin);
                 }
             }
             if let Some(layer) = new_host.as_ref().and_then(|h| h.layer()) {
-                motion::zoom_in(&layer, origin);
+                motion::zoom(&layer, origin, true);
             }
         }
         if !appear.is_empty() || new_host.is_some() {
             let changes = move || {
-                for (view, glass, frame) in &appear {
-                    view.animator().setAlphaValue(1.0);
-                    if let Some((glass, alpha)) = glass {
-                        glass.animator().setAlphaValue(*alpha);
-                    }
+                for (seat, frame) in &appear {
+                    seat.animate_alpha(true);
                     if !(opening || closing) {
-                        view.animator().setFrame(ns_rect(*frame));
-                        if let Some((glass, _)) = glass {
-                            glass.animator().setFrame(ns_rect(*frame));
-                        }
+                        seat.set_frame(*frame);
                     }
                 }
                 if let Some(host) = &new_host {
@@ -627,47 +703,34 @@ impl SceneView {
                 motion::group(motion::FADE_SECS, false, changes, || {});
             }
         }
-        // The scroll host of a closing panel goes with it, not at once.
-        let closing_host = if closing { dropped_host } else { None };
-        if let Some(host) = &closing_host
+        // The scroll host of a closing panel goes with it, not at once (`dropped_host` is only set while closing).
+        if let Some(host) = &dropped_host
             && let Some(layer) = host.layer()
         {
-            motion::zoom_out(&layer, origin);
+            motion::zoom(&layer, origin, false);
         }
-        if !fading_out.is_empty() || closing_host.is_some() {
+        if !fading_out.is_empty() || dropped_host.is_some() {
             if closing {
-                for (view, glass) in &fading_out {
+                for seat in &fading_out {
                     // SAFETY: a plain getter, called on the main thread.
-                    if unsafe { view.superview() }.as_deref() != Some(self) {
-                        continue;
-                    }
-                    for layer in [view.layer(), glass.as_ref().and_then(|g| g.layer())]
-                        .into_iter()
-                        .flatten()
-                    {
-                        motion::zoom_out(&layer, origin);
+                    if unsafe { seat.view.superview() }.as_deref() == Some(self) {
+                        seat.zoom(false, origin);
                     }
                 }
             }
             let leaving = fading_out.clone();
-            let gone = closing_host.clone();
+            let gone = dropped_host.clone();
             let changes = move || {
-                for (view, glass) in &fading_out {
-                    view.animator().setAlphaValue(0.0);
-                    if let Some(glass) = glass {
-                        glass.animator().setAlphaValue(0.0);
-                    }
+                for seat in &fading_out {
+                    seat.animate_alpha(false);
                 }
-                if let Some(host) = &closing_host {
+                if let Some(host) = &dropped_host {
                     host.animator().setAlphaValue(0.0);
                 }
             };
             let done = move || {
-                for (view, glass) in &leaving {
-                    view.removeFromSuperview();
-                    if let Some(glass) = glass {
-                        glass.removeFromSuperview();
-                    }
+                for seat in &leaving {
+                    seat.remove();
                 }
                 if let Some(host) = &gone {
                     host.removeFromSuperview();
