@@ -135,7 +135,10 @@ fn meta_parts(pr: &PRStatus, parts: &[PrPart]) -> Vec<Meta> {
     // CodeRabbit sits after the comments and before the reviewer and the staleness, which always follow it in `parts`.
     if let Some(from) = rabbit_at {
         let rabbit = out.remove(from);
-        out.insert(tail_at.map_or(out.len(), |t| t - 1), rabbit);
+        out.insert(
+            tail_at.map_or(out.len(), |t| if from < t { t - 1 } else { t }),
+            rabbit,
+        );
     }
     out
 }
@@ -170,6 +173,7 @@ pub fn draw(ctx: &Ctx, c: &mut Canvas, s: &Session, block: Rect) {
 
 /// What one button slot of an item shows.
 struct Slot {
+    kind: SendKind,
     label: &'static str,
     primary: bool,
     target: Target,
@@ -264,7 +268,8 @@ fn face(kind: SendKind, session: &str, pr: &PRStatus) -> (&'static str, bool, Ta
     let (session, pr) = (session.to_string(), pr.ref_.clone());
     match kind {
         SendKind::Nudge => ("Nhắc duyệt", true, Target::Nudge { session, pr }),
-        _ => ("Nhờ Claude", false, Target::AskClaude { session, pr }),
+        SendKind::AskClaude => ("Nhờ Claude", false, Target::AskClaude { session, pr }),
+        _ => unreachable!("only Nudge and AskClaude are PR buttons"),
     }
 }
 
@@ -294,6 +299,7 @@ fn buttons(ctx: &Ctx, c: &mut Canvas, s: &Session, pr: &PRStatus, it: Rect) -> O
                 ) + 4.0
             };
             Some(Slot {
+                kind,
                 label,
                 primary,
                 target,
@@ -318,7 +324,7 @@ fn buttons(ctx: &Ctx, c: &mut Canvas, s: &Session, pr: &PRStatus, it: Rect) -> O
                 sl.state,
                 // Only while Claude can take a message; an earlier send keeps showing its result. A primary button ignores
                 // this: `Nhắc duyệt` is always usable.
-                sl.primary || s.can_ask_claude(),
+                sl.kind == SendKind::Nudge || s.can_ask_claude(),
                 sl.primary,
                 rect,
                 || sl.target,

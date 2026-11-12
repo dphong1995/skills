@@ -304,6 +304,46 @@ fn pill_draws_no_quota_ring() {
     assert!(!node.cmds.iter().any(|c| matches!(c, DrawCmd::Arc { .. })));
     assert!(texts(node).iter().all(|t| !t.ends_with('%')));
     assert_eq!(built.scene.size.w, layout::collapsed_width(&snap));
+    let mut empty = snapshot(vec![]);
+    empty.quota = snap.quota.clone();
+    let built = render(&empty, &PanelState::default());
+    let node = &built.scene.nodes[0];
+    assert!(!node.cmds.iter().any(|c| matches!(c, DrawCmd::Arc { .. })));
+    assert_eq!(texts(node), ["–"]);
+    assert_eq!(built.scene.size.w, layout::COLLAPSED.w);
+}
+
+#[test]
+fn the_quota_ring_is_an_arc_swept_by_the_percent() {
+    for (percent, sweep) in [(85, 306.0), (100, 360.0), (130, 360.0)] {
+        let built = fixture_built_with("quota-1-normal", |snap| {
+            snap.quota
+                .get_or_insert(claude_sessions_core::quota::Quota {
+                    five_hour: 0,
+                    five_hour_reset: now(),
+                    weekly: 40,
+                    weekly_reset: now(),
+                    forecast: None,
+                })
+                .five_hour = percent;
+        });
+        let header = built
+            .scene
+            .nodes
+            .iter()
+            .find(|n| n.key.0 == "header")
+            .unwrap();
+        let arcs: Vec<(f64, f64)> = header
+            .cmds
+            .iter()
+            .filter_map(|c| match c {
+                DrawCmd::Arc { start, end, .. } => Some((*start, *end)),
+                _ => None,
+            })
+            .collect();
+        assert!(arcs.contains(&(0.0, 360.0)), "{percent}: track in {arcs:?}");
+        assert!(arcs.contains(&(0.0, sweep)), "{percent}: sweep in {arcs:?}");
+    }
 }
 
 #[test]

@@ -44,8 +44,8 @@ pub fn ring(c: &mut Canvas, center: Point, radius: f64, percent: i64, token: The
     );
 }
 
-/// Draws the count groups left to right from `x`, centred on `cy`; returns where they end.
-pub fn draw_groups(c: &mut Canvas, snap: &Snapshot, x: f64, cy: f64) -> f64 {
+/// Draws the count groups left to right from `x`, centred on `cy`.
+pub fn draw_groups(c: &mut Canvas, snap: &Snapshot, x: f64, cy: f64) {
     let mut x = x;
     let tokens = [
         ThemeColor::Yellow,
@@ -113,7 +113,6 @@ pub fn draw_groups(c: &mut Canvas, snap: &Snapshot, x: f64, cy: f64) -> f64 {
         }
         x += w;
     }
-    x
 }
 
 pub fn node(ctx: &mut Ctx) -> Node {

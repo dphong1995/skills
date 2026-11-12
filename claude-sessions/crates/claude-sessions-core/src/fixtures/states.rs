@@ -1215,6 +1215,7 @@ pub fn state_quota_2_warn(dir: &Path, now: SystemTime) -> State {
 pub fn state_quota_3_high_forecast(dir: &Path, now: SystemTime) -> State {
     quota(dir, now, 97, 40, true, true)
 }
+/// Guards the collapsed pill showing no quota at 85%.
 pub fn state_quota_5_pill_85(dir: &Path, now: SystemTime) -> State {
     quota(dir, now, 85, 10, false, false)
 }
