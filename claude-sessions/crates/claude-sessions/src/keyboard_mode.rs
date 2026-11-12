@@ -22,6 +22,12 @@ pub fn no_modifiers(modifier_flags: u64) -> bool {
     modifier_flags & FLAG_MODIFIERS == 0
 }
 
+/// Whether closing the Settings window should re-activate the app that was in front before it: no widget panel wants the
+/// key (keyboard mode or an open field takes it back itself) and this app is still the active one.
+pub fn give_back_after_settings(any_panel_wants_key: bool, app_active: bool) -> bool {
+    !any_panel_wants_key && app_active
+}
+
 /// `keyCode`, `charactersIgnoringModifiers` (empty when absent) and `modifierFlags.rawValue` of a key-down event.
 pub fn key_event(key_code: u16, chars: &str, modifier_flags: u64) -> KeyEvent {
     KeyEvent {

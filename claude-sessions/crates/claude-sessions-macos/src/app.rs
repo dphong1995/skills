@@ -36,3 +36,8 @@ pub fn modal_open() -> bool {
             .is_some()
     })
 }
+
+/// Whether this app is the active (frontmost) application. False off the main thread.
+pub fn is_active() -> bool {
+    MainThreadMarker::new().is_some_and(|mtm| NSApplication::sharedApplication(mtm).isActive())
+}

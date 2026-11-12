@@ -98,3 +98,12 @@ fn modifier_masks_tell_command_alone_from_no_modifier() {
     assert!(!no_modifiers(FLAG_SHIFT));
     assert!(!no_modifiers(FLAG_COMMAND));
 }
+
+#[test]
+fn give_back_after_settings_cases() {
+    use claude_sessions::keyboard_mode::give_back_after_settings;
+    assert!(give_back_after_settings(false, true));
+    assert!(!give_back_after_settings(false, false));
+    assert!(!give_back_after_settings(true, true));
+    assert!(!give_back_after_settings(true, false));
+}

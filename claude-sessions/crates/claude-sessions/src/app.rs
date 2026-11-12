@@ -86,6 +86,8 @@ struct SettingsWindow {
     max_h: f64,
     /// `settings_model::external_key` as of the last render; the tick re-renders only when it changes.
     rendered_key: ExternalKey,
+    /// The app that was in front when the window opened; brought back when it closes.
+    previous_app: Option<workspace::FrontApp>,
 }
 
 pub struct AppState {
@@ -760,6 +762,7 @@ fn open_settings(weak: &WeakState, focus: Option<Service>, screen: Rect) {
                 let weak = weak.clone();
                 Rc::new(move |event| handle_settings_event(&weak, event))
             };
+            let previous_app = workspace::frontmost_other_app();
             let Some(window) = WidgetPanelHandle::new_key(
                 Rect::new(screen.x, screen.y, SETTINGS_WIDTH, 100.0),
                 on_event,
@@ -778,6 +781,7 @@ fn open_settings(weak: &WeakState, focus: Option<Service>, screen: Rect) {
                 _key_monitor: make_settings_key_monitor(weak),
                 max_h: screen.h * 0.8,
                 rendered_key: ExternalKey::default(),
+                previous_app,
             });
             s.render_settings();
             if let Some(w) = &s.settings {
@@ -930,6 +934,14 @@ fn run_settings_effect(weak: &WeakState, effect: SettingsEffect) {
             let closed = with_state(weak, |s| s.settings.take()).flatten();
             if let Some(w) = closed {
                 w.window.close();
+                let any_wants_key =
+                    with_state(weak, |s| s.panels.iter().any(|host| host.state.wants_key()))
+                        .unwrap_or(false);
+                if keyboard_mode::give_back_after_settings(any_wants_key, mac_app::is_active())
+                    && let Some(previous) = &w.previous_app
+                {
+                    previous.activate();
+                }
             }
             schedule_key_sync(weak);
         }

@@ -2,7 +2,11 @@
 
 use std::path::PathBuf;
 
-use objc2_app_kit::{NSPasteboard, NSPasteboardTypeString, NSWorkspace};
+use objc2::rc::Retained;
+use objc2_app_kit::{
+    NSApplicationActivationOptions, NSPasteboard, NSPasteboardTypeString, NSRunningApplication,
+    NSWorkspace,
+};
 use objc2_foundation::{NSString, NSURL};
 use url::Url;
 
@@ -65,4 +69,21 @@ pub fn copy_to_pasteboard(text: &str) {
     // SAFETY: `NSPasteboardTypeString` is a constant string of AppKit.
     let kind = unsafe { NSPasteboardTypeString };
     board.setString_forType(&NSString::from_str(text), kind);
+}
+
+/// An application that was in front, kept to bring it back later.
+pub struct FrontApp(Retained<NSRunningApplication>);
+
+impl FrontApp {
+    /// Brings the application to the front.
+    pub fn activate(&self) {
+        self.0
+            .activateWithOptions(NSApplicationActivationOptions::empty());
+    }
+}
+
+/// The frontmost application unless it is this process.
+pub fn frontmost_other_app() -> Option<FrontApp> {
+    let app = NSWorkspace::sharedWorkspace().frontmostApplication()?;
+    (app.processIdentifier() as u32 != std::process::id()).then_some(FrontApp(app))
 }
