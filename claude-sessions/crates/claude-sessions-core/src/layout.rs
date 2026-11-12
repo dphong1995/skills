@@ -37,7 +37,7 @@ impl Default for Anchor {
 }
 
 pub const MARGIN: f64 = 14.0;
-pub const EXPANDED_WIDTH: f64 = 480.0;
+pub const EXPANDED_WIDTH: f64 = 560.0;
 pub const CANVAS: Size = Size::new(EXPANDED_WIDTH + MARGIN * 2.0, 640.0);
 /// The collapsed capsule.
 pub const PILL_HEIGHT: f64 = 30.0;
