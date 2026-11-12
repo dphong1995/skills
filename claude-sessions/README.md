@@ -7,7 +7,7 @@ Widget macOS nổi luôn nằm trên cùng, hiện các session Claude Code đan
 ## Tính năng
 
 ### Danh sách mở rộng
-Rê chuột vào viên thì mở danh sách các session, mỗi thẻ có icon trạng thái, tiêu đề kèm tag trạng thái (`chờ duyệt`, `chờ trả lời`, `xong`, `đang chạy`, `chờ N agent nền`, `chờ agent nền`, `chờ lệnh nền`), thư mục, vạch màu ở mép trái và cột phải cố định gồm thời gian và nút icon nhanh. Header gom số session theo nhóm màu và hiện quota `5h` / `Tuần` dạng thanh ở bên phải, ngay trước số session (thanh `5h` kèm `reset HH:mm` hoặc dự báo `hết ~HH:mm` màu đỏ, rồi tới thanh `Tuần`); PR hiện thành các tag có icon. Câu hỏi của Claude hiện thành danh sách đánh số, mỗi đáp án có mô tả luôn hiện; `Cho phép` và `Gửi` màu xanh lá.
+Rê chuột vào viên thì mở danh sách các session, mỗi thẻ có icon trạng thái, tiêu đề kèm tag trạng thái (`chờ duyệt`, `chờ trả lời`, `xong`, `đang chạy`, `chờ N agent nền`, `chờ agent nền`, `chờ lệnh nền`), thư mục, vạch màu ở mép trái và cột phải cố định gồm thời gian và nút icon nhanh. Danh sách là một khung kính (vibrancy thật) rộng 560 pt, bo góc 20 pt, hiện ra bằng scale + mờ dần từ góc của viên (0.28 s, đóng 0.16 s). Header cao 38 pt gom quota `5h` / `Tuần` dạng vòng và số session theo nhóm màu, cả hai ở đầu phải để tai thỏ MacBook không che (vòng `5h` kèm `reset HH:mm` hoặc dự báo `hết ~HH:mm` màu đỏ, rồi tới vòng `Tuần`; hẹp thì ghi chú reset, rồi `Tuần` nhường chỗ). Session xếp trong các nhóm bo góc `Cần bạn`, `Xong`, `Đang chạy`; nút `Trả lời…` / `Dừng` chỉ hiện trên dòng đang rê chuột hoặc đang chọn bằng bàn phím; dòng đang chạy có thanh tiến độ mảnh kèm dòng task; bấm số PR để mở PR. PR hiện thành các tag có icon. Câu hỏi của Claude hiện thành danh sách đánh số với đáp án dạng radio, mỗi đáp án có mô tả luôn hiện; nút chính (`Cho phép`, `Gửi`) là viên thuốc màu xanh dương, ô trả lời bo tròn với nút gửi tròn xanh.
 
 ### Phím tắt bàn phím
 Bấm phím tắt mở widget (`⌃⌥Space`) thì thẻ được chọn bằng vòng viền trắng và điều khiển bằng bàn phím:
@@ -26,7 +26,7 @@ Bấm phím tắt mở widget (`⌃⌥Space`) thì thẻ được chọn bằng 
 Phím không áp dụng cho thẻ đang chọn thì kêu beep; phím không gán thì đi tiếp tới app đang dùng. Chế độ bàn phím chỉ bật khi bấm phím tắt mở widget (bấm khi widget đang mở do rê chuột thì chuyển sang chế độ bàn phím thay vì đóng; thẻ đóng khi bấm lại phím tắt, bấm `Esc`, hoặc chuột rời khung nếu chuột đã vào nó, còn thẻ mở bằng phím tắt mà chuột chưa vào thì giữ mở đến khi bấm phím tắt; bấm sang app khác chỉ kết thúc chế độ bàn phím, bấm phím tắt lần nữa (ví dụ sau khi `↩` nhảy sang cmux) thì bật lại); chỉ rê chuột thì không bao giờ lấy phím, và rê chuột vào widget khi đang gõ ở terminal không cướp phím.
 
 ### Viên thu gọn
-Khi không rê chuột, widget chỉ là một viên nhỏ với số session theo nhóm: số session chờ nằm trong huy hiệu đỏ đặc, các nhóm khác (cam xong, xanh đang chạy) là chấm màu với số mờ hơn; nhóm vàng có icon sparkle là session có tin mới. Khi quota 5h hoặc quota tuần (lấy số lớn hơn) từ 80% trở lên, viên rộng thêm để hiện `N%`.
+Khi không rê chuột, widget chỉ là một viên kính cao 30 pt với số session theo nhóm (kính và nền của viên theo `Độ đậm nền` trong menu chuột phải; 0% thì chỉ còn các con số): số session chờ nằm trong huy hiệu đỏ đặc, các nhóm khác (cam xong, xanh đang chạy) là chấm màu với số mờ hơn; nhóm vàng có icon sparkle là session có tin mới. Khi quota 5h hoặc quota tuần (lấy số lớn hơn) từ 80% trở lên, viên rộng thêm để hiện `N%`.
 
 ![Viên thu gọn](docs/images/06-mixed-collapsed.png)
 
@@ -46,7 +46,7 @@ Khi Claude hỏi (AskUserQuestion), thẻ hiện câu hỏi và các lựa chọ
 ![Trả lời câu hỏi](docs/images/question-4-two-questions.png)
 
 ### Nút `Dừng`
-Thẻ đang chạy có nút `Dừng`; bấm hai lần liên tiếp để gửi Esc vào pane của session.
+Thẻ đang chạy có nút `Dừng` (hiện khi rê chuột hoặc chọn dòng bằng bàn phím); bấm lần đầu thì nút thành viên thuốc đỏ `Dừng?` ở cột thời gian, bấm lần hai để gửi Esc vào pane của session.
 
 ![Nút Dừng](docs/images/stop-armed.png)
 
@@ -91,7 +91,7 @@ Header hiện mức dùng quota của cửa sổ 5 giờ và của tuần, đổ
 ![Quota](docs/images/quota-3-high-forecast.png)
 
 ### Vừa đóng
-Dòng `Vừa đóng` cuối danh sách liệt kê các session vừa kết thúc; bấm một dòng để mở lại bằng `claude --resume`.
+Dòng gập `Vừa đóng` cuối danh sách liệt kê các session vừa kết thúc; bấm một dòng để mở lại bằng `claude --resume`.
 
 ![Vừa đóng](docs/images/closed-2-open.png)
 
