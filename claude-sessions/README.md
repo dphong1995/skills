@@ -7,7 +7,7 @@ Widget macOS nổi luôn nằm trên cùng, hiện các session Claude Code đan
 ## Tính năng
 
 ### Danh sách mở rộng
-Rê chuột vào viên thì mở danh sách các session, mỗi thẻ có icon trạng thái, tiêu đề kèm tag trạng thái (`chờ duyệt`, `chờ trả lời`, `xong`, `đang chạy`, `chờ N agent nền`, `chờ agent nền`, `chờ lệnh nền`), thư mục, vạch màu ở mép trái và cột phải cố định gồm thời gian và nút icon nhanh. Danh sách là một khung kính (vibrancy thật) rộng 560 pt, bo góc 20 pt, hiện ra bằng scale + mờ dần từ góc của viên (0.28 s, đóng 0.16 s). Header cao 38 pt gom quota `5h` / `Tuần` dạng vòng và số session theo nhóm màu, cả hai ở đầu phải để tai thỏ MacBook không che (vòng `5h` kèm `reset HH:mm` hoặc dự báo `hết ~HH:mm` màu đỏ, rồi tới vòng `Tuần`; hẹp thì ghi chú reset, rồi `Tuần` nhường chỗ). Session xếp trong các nhóm bo góc `Cần bạn`, `Xong`, `Đang chạy`; nút `Trả lời…` / `Dừng` chỉ hiện trên dòng đang rê chuột hoặc đang chọn bằng bàn phím; dòng đang chạy có thanh tiến độ mảnh kèm dòng task; bấm số PR để mở PR. PR hiện thành các tag có icon. Câu hỏi của Claude hiện thành danh sách đánh số với đáp án dạng radio, mỗi đáp án có mô tả luôn hiện; nút chính (`Cho phép`, `Gửi`) là viên thuốc màu xanh dương, ô trả lời bo tròn với nút gửi tròn xanh.
+Rê chuột vào viên thì mở danh sách các session, mỗi thẻ có icon trạng thái, tiêu đề kèm tag trạng thái (`chờ duyệt`, `chờ trả lời`, `xong`, `đang chạy`, `chờ N agent nền`, `chờ agent nền`, `chờ lệnh nền`), thư mục, vạch màu ở mép trái và cột phải cố định gồm thời gian và nút icon nhanh. Danh sách là một khung kính (vibrancy thật) rộng 560 pt, bo góc 20 pt, hiện ra bằng scale + mờ dần từ góc của viên (0.28 s, đóng 0.16 s). Header cao 38 pt gom quota `5h` / `Tuần` dạng vòng và số session theo nhóm màu, cả hai ở đầu phải để tai thỏ MacBook không che (vòng `5h` kèm `reset HH:mm` hoặc dự báo `hết ~HH:mm` màu đỏ, rồi tới vòng `Tuần`; hẹp thì ghi chú reset, rồi `Tuần` nhường chỗ). Session xếp trong các nhóm bo góc `Cần bạn`, `Xong`, `Đang chạy`; nút `Trả lời…` / `Dừng` chỉ hiện trên dòng đang rê chuột hoặc đang chọn bằng bàn phím; dòng đang chạy có thanh tiến độ mảnh kèm dòng task; PR của session nằm trong một danh sách bo góc, mỗi PR một mục cao 42 pt; bấm vào mục để mở PR. Câu hỏi của Claude hiện thành danh sách đánh số với đáp án dạng radio, mỗi đáp án có mô tả luôn hiện; nút chính (`Cho phép`, `Gửi`) là viên thuốc màu xanh dương, ô trả lời bo tròn với nút gửi tròn xanh.
 
 ### Phím tắt bàn phím
 Bấm phím tắt mở widget (`⌃⌥Space`) thì thẻ được chọn bằng vòng viền trắng và điều khiển bằng bàn phím:
@@ -66,12 +66,12 @@ Khi lượt chính đã xong mà agent nền còn chạy, thẻ hiện `chờ N 
 ![Agent nền](docs/images/35-background-agents.png)
 
 ### Dòng PR Bitbucket
-Mỗi PR của session có một dòng với số yêu cầu sửa, số người duyệt, bình luận, và nút `Nhờ Claude` để bảo Claude xử lý bình luận. Các nút gửi hiện `Đang gửi…` rồi `Đã gửi ✓` hoặc `Lỗi — bấm thử lại` ngay trên nút trong 3 giây.
+Các PR của session nằm trong một danh sách bo góc, nền hơi tối, đường kẻ mảnh giữa các mục. Mỗi PR là một mục cao cố định 42 pt dù hiện nút nào: bên trái là ô vuông nhỏ có icon PR tô theo trạng thái (mở xanh lá, đã merge chàm, đã đóng đỏ); dòng 1 là `#n` và tiêu đề (cắt bằng `…`, PR đã merge/đóng thì tiêu đề mờ hơn); dòng 2 là số yêu cầu sửa, số người duyệt, bình luận, trạng thái CodeRabbit, người review cuối và `cũ <thời gian>`. PR đã merge/đóng chỉ có chữ `đã merge` / `đã đóng` ở dòng 2 và không có nút. Nút `Nhắc duyệt` (xanh dương) và `Nhờ Claude` (để bảo Claude xử lý bình luận) nằm bên phải mục, căn giữa theo chiều dọc. Bấm vào chỗ nào của mục (trừ nút) cũng mở PR; rê chuột thấy tiêu đề đầy đủ. Các nút gửi hiện `Đang gửi…` rồi `Đã gửi ✓` hoặc `Lỗi — bấm thử lại` ngay trên nút trong 3 giây.
 
 ![Dòng PR](docs/images/22-pr-lines.png)
 
 ### CodeRabbit
-PR hiện trạng thái review của CodeRabbit; khi còn thread góp ý chưa được trả lời, tag là `còn X/N` (ví dụ `còn 2/5`). Hết thread thì `chờ duyệt` kèm nút `Nhắc duyệt` (icon con thỏ) và nút `Nhờ Claude` ẩn. Thread mà CodeRabbit đã sửa gốc thành `✅ Addressed in commit …` tính là xong (bình luận được đọc lại tối đa 5 phút một lần khi còn thread chưa xong). Bình luận của người review (không phải tác giả PR, không phải bạn) mà bạn chưa trả lời giữ nút `Nhờ Claude`. `đang nhắc` hết khi CodeRabbit đăng bình luận mới, cập nhật status, hoặc sau 600 giây. Lệnh duyệt thất bại (`Approval skipped: <lý do>` hoặc bình luận `approval failed`) hiện tag đỏ `duyệt lỗi`, rê chuột thấy lý do, không có nút `Nhắc duyệt`.
+PR hiện trạng thái review của CodeRabbit; khi còn thread góp ý chưa được trả lời, nhãn là `còn X/N` (ví dụ `còn 2/5`). Hết thread thì `chờ duyệt` kèm nút `Nhắc duyệt` và nút `Nhờ Claude` ẩn. Thread mà CodeRabbit đã sửa gốc thành `✅ Addressed in commit …` tính là xong (bình luận được đọc lại tối đa 5 phút một lần khi còn thread chưa xong). Bình luận của người review (không phải tác giả PR, không phải bạn) mà bạn chưa trả lời giữ nút `Nhờ Claude`. `đang nhắc` hết khi CodeRabbit đăng bình luận mới, cập nhật status, hoặc sau 600 giây. Lệnh duyệt thất bại (`Approval skipped: <lý do>` hoặc bình luận `approval failed`) hiện nhãn đỏ `duyệt lỗi`, rê chuột thấy lý do, không có nút `Nhắc duyệt`.
 
 ![CodeRabbit](docs/images/31-pr-awaiting-approval.png)
 
@@ -81,7 +81,7 @@ Các ticket Jira và PR nhắc trong session thành chip bấm được (chip ti
 ![Ticket và link](docs/images/29-link-list-open.png)
 
 ### Dấu tin mới
-Session vừa chuyển từ đang chạy sang xong/chờ, hoặc PR có sự kiện, được đánh dấu bằng icon sparkle và nền ấm nhạt trên thẻ (hoặc tô tím ở dòng PR) cho đến khi bạn xem.
+Session vừa chuyển từ đang chạy sang xong/chờ, hoặc PR có sự kiện, được đánh dấu bằng icon sparkle và nền ấm nhạt trên thẻ (hoặc tô tím ở mục PR, kèm icon sparkle trước `#n`) cho đến khi bạn xem.
 
 ![Dấu tin mới](docs/images/34-mark-both.png)
 
