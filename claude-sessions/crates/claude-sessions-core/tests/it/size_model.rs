@@ -336,9 +336,17 @@ fn command_fit_thresholds() {
     assert_eq!(command_fit(&"e\u{301}".repeat(200)), CommandFit::Short);
 }
 
+/// The lines `chars` characters of one line take as `FakeMeasure` wraps them in the command box (7 pt per character, 16 pt per
+/// line) and the model counts them (`CMD_LINE_H` per line).
+fn command_lines(chars: usize) -> usize {
+    let per_line = (layout::CMD_TEXT_W / 7.0).floor() as usize;
+    (chars.div_ceil(per_line) as f64 * 16.0 / layout::CMD_LINE_H).round() as usize
+}
+
 #[test]
 fn a_long_one_line_command_is_cut_until_xem_du_and_then_grows() {
-    // 400 characters wrap to 5 lines at 95 per line.
+    // 400 characters wrap to several lines: more than the cut.
+    assert!(command_lines(400) > layout::CMD_COLLAPSED_LINES);
     let s = approval("a", &"x".repeat(400));
     let mut snap = snapshot(vec![s.clone()]);
     assert_eq!(
@@ -357,12 +365,15 @@ fn a_long_one_line_command_is_cut_until_xem_du_and_then_grows() {
     assert_eq!(
         look(&snap, &s),
         ApprovalLook::Command {
-            lines: 5,
+            lines: command_lines(400),
             row: ApprovalRow::Buttons
         }
     );
     let full = card_layout(&s, &snap, &panel(), &FakeMeasure);
-    assert_eq!(full.height - cut.height, layout::CMD_LINE_H);
+    assert_eq!(
+        full.height - cut.height,
+        layout::CMD_LINE_H * (command_lines(400) - layout::CMD_COLLAPSED_LINES) as f64
+    );
 }
 
 #[test]
@@ -372,7 +383,7 @@ fn a_short_command_shows_its_buttons_at_once_and_a_200_char_line_wraps() {
     assert_eq!(
         look(&snap, &s),
         ApprovalLook::Command {
-            lines: 3,
+            lines: command_lines(200),
             row: ApprovalRow::Buttons
         }
     );

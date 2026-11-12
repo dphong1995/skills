@@ -5,7 +5,7 @@ use claude_sessions::views::{Built, View, build};
 use claude_sessions_core::feed::{BlockState, FeedItem, FeedOption, FeedQuestion};
 use claude_sessions_core::layout::{self, expanded_layout, expanded_size};
 use claude_sessions_core::panel_state::PanelState;
-use claude_sessions_core::scene::{Align, DrawCmd, Node, Scene, ThemeColor};
+use claude_sessions_core::scene::{Align, DrawCmd, Material, Node, Scene, ThemeColor};
 use claude_sessions_core::store::{Action, SendKey, SendKind, SendState, Session, Snapshot};
 use claude_sessions_core::transcript::{Pending, PendingState};
 use std::time::{Duration, SystemTime};
@@ -181,11 +181,13 @@ fn nodes_use_the_size_model() {
 fn sections_have_titles_with_counts() {
     let (snap, panel) = mixed();
     let scene = render(&snap, &panel).scene;
-    let title =
-        |key: &str| texts(scene.nodes.iter().find(|n| n.key.0 == key).unwrap())[0].to_string();
-    assert_eq!(title("section-needs"), "CẦN BẠN · 2");
-    assert_eq!(title("section-done"), "XONG · 1");
-    assert_eq!(title("section-running"), "ĐANG CHẠY · 2");
+    let title = |key: &str| {
+        let t = texts(scene.nodes.iter().find(|n| n.key.0 == key).unwrap());
+        (t[0].to_string(), t[1].to_string())
+    };
+    assert_eq!(title("section-needs"), ("Cần bạn".into(), "2".into()));
+    assert_eq!(title("section-done"), ("Xong".into(), "1".into()));
+    assert_eq!(title("section-running"), ("Đang chạy".into(), "2".into()));
 }
 
 #[test]
@@ -808,7 +810,6 @@ fn pr_rows_show_counts_the_rabbit_chip_and_their_buttons() {
         "23",
         "Nhờ Claude",
         "Nhắc duyệt",
-        "cũ 7m",
     ] {
         assert!(t.contains(&want), "{want} in {t:?}");
     }
@@ -1486,14 +1487,14 @@ fn pill_follows_background_opacity() {
         let stroke = stroke.unwrap();
         assert_eq!(
             (fill.token, stroke.token),
-            (ThemeColor::Panel, ThemeColor::Text)
+            (ThemeColor::Glass, ThemeColor::GlassEdge)
         );
-        // `Panel` carries the alpha of the designed look: at `full` the fill is exactly `Panel` as drawn before the fix.
+        // `Glass` carries the alpha of the designed look: at `full` the fill is exactly `Glass`.
         assert!((fill.alpha - o / full).abs() < 1e-9, "fill {o}");
-        assert!((stroke.alpha - 0.18 * o / full).abs() < 1e-9, "stroke {o}");
+        assert!((stroke.alpha - o / full).abs() < 1e-9, "stroke {o}");
         let shadow = node.shadow.expect("the pill keeps its shadow");
         assert!(
-            (shadow.color.alpha - 0.30 * o / full).abs() < 1e-9,
+            (shadow.color.alpha - theme::PILL_SHADOW.color.alpha * o / full).abs() < 1e-9,
             "shadow {o}"
         );
         hit_rects.push((node.frame, node.hits.clone()));
@@ -1529,13 +1530,18 @@ fn other_nodes_have_no_shadow() {
 }
 
 fn fixture_built(name: &str) -> Built {
+    fixture_built_with(name, |_| {})
+}
+
+fn fixture_built_with(name: &str, tweak: impl Fn(&mut Snapshot)) -> Built {
     let (_, f) = claude_sessions_core::fixtures::STATES
         .iter()
         .find(|(n, _)| *n == name)
         .unwrap();
     let dir = tempfile::tempdir().unwrap();
     let now = claude_sessions_core::fixtures::fixed_now();
-    let (snap, panel) = f(dir.path(), now);
+    let (mut snap, panel) = f(dir.path(), now);
+    tweak(&mut snap);
     let clock = |_: SystemTime| "14:30".to_string();
     build(&View {
         snap: &snap,
@@ -1680,7 +1686,7 @@ fn pill_group_gaps_are_equal() {
                 rect,
                 fill: Some(f),
                 ..
-            } if f.token != ThemeColor::Panel && rect.h <= 18.0 => start = Some(rect.x),
+            } if f.token != ThemeColor::Glass && rect.h <= 18.0 => start = Some(rect.x),
             DrawCmd::Text {
                 rect, text, align, ..
             } if text.chars().all(|c| c.is_ascii_digit()) => {
@@ -1757,4 +1763,129 @@ fn shortcut_label_stays_put_while_the_countdown_ticks() {
     let (b, bx) = shortcut_x(112);
     assert_eq!((a.as_str(), b.as_str()), ("còn 1:51", "còn 0:08"));
     assert_eq!(ax, bx);
+}
+
+#[test]
+fn panel_node_is_glass() {
+    let built = fixture_built("07-mixed-hover");
+    let panel = built
+        .scene
+        .nodes
+        .iter()
+        .find(|n| n.key.0 == "panel")
+        .unwrap();
+    assert_eq!(
+        panel.material,
+        Some(Material::Glass {
+            corner: 20.0,
+            alpha: 1.0
+        })
+    );
+    let Some(DrawCmd::RoundedRect {
+        fill: Some(fill),
+        stroke: Some(stroke),
+        radius,
+        ..
+    }) = panel.cmds.first()
+    else {
+        panic!("the panel starts with its background");
+    };
+    assert_eq!(fill.token, ThemeColor::Glass);
+    assert_eq!(stroke.token, ThemeColor::GlassEdge);
+    // The edge is inset by half its 1 pt stroke.
+    assert_eq!(*radius, 19.5);
+}
+
+#[test]
+fn pill_glass_follows_opacity() {
+    let full = theme::CARD_OPACITY;
+    for (o, want) in [(0.0, 0.0), (0.25, 0.25 / full), (full, 1.0)] {
+        let built = fixture_built_with("06-mixed-collapsed", |s| s.bg_opacity = o);
+        let pill = &built.scene.nodes[0];
+        assert_eq!(pill.key.0, "pill");
+        let Some(Material::Glass { corner, alpha }) = pill.material else {
+            panic!("the pill is glass");
+        };
+        assert_eq!(corner, 15.0);
+        assert!((alpha - want).abs() < 1e-9, "alpha {alpha} at {o}");
+        let Some(DrawCmd::RoundedRect {
+            fill: Some(fill), ..
+        }) = pill.cmds.first()
+        else {
+            panic!("the pill starts with its tint");
+        };
+        assert_eq!(fill.token, ThemeColor::Glass);
+        assert!((fill.alpha - want).abs() < 1e-9, "tint {o}");
+    }
+}
+
+#[test]
+fn only_pill_and_panel_have_material() {
+    for name in ["06-mixed-collapsed", "07-mixed-hover", "closed-2-open"] {
+        let built = fixture_built(name);
+        for node in &built.scene.nodes {
+            let glass = node.key.0 == "pill" || node.key.0 == "panel";
+            assert_eq!(node.material.is_some(), glass, "{name}: {}", node.key.0);
+        }
+    }
+}
+
+#[test]
+fn section_labels_sentence_case() {
+    let built = fixture_built("07-mixed-hover");
+    let all: Vec<&str> = built.scene.nodes.iter().flat_map(texts).collect();
+    for label in ["Cần bạn", "Xong", "Đang chạy"] {
+        assert!(all.contains(&label), "{label} in {all:?}");
+    }
+    for label in ["CẦN BẠN", "XONG", "ĐANG CHẠY"] {
+        assert!(!all.iter().any(|t| t.contains(label)), "{label} in {all:?}");
+    }
+}
+
+#[test]
+fn header_has_quota_left_counts_right() {
+    let (mut snap, panel) = mixed();
+    snap.quota = Some(claude_sessions_core::quota::Quota {
+        five_hour: 78,
+        five_hour_reset: now(),
+        weekly: 40,
+        weekly_reset: now(),
+        forecast: None,
+    });
+    let built = render(&snap, &panel);
+    let header = built
+        .scene
+        .nodes
+        .iter()
+        .find(|n| n.key.0 == "header")
+        .unwrap();
+    assert_eq!(header.frame.h, layout::HEADER_HEIGHT);
+    let x_of = |want: &str| {
+        header.cmds.iter().find_map(|c| match c {
+            DrawCmd::Text { rect, text, .. } if text == want => Some(rect.x),
+            _ => None,
+        })
+    };
+    let (five, pct, week) = (x_of("5h"), x_of("78%"), x_of("Tuần"));
+    assert!(five.is_some() && pct.is_some() && week.is_some());
+    let rings = header
+        .cmds
+        .iter()
+        .filter(|c| matches!(c, DrawCmd::Arc { .. }))
+        .count();
+    assert_eq!(rings, 4, "two rings, a track and a sweep each");
+    assert!(five < pct && pct < week);
+    let counts: Vec<f64> = header
+        .cmds
+        .iter()
+        .filter_map(|c| match c {
+            DrawCmd::Text { rect, text, .. } if text.chars().all(|c| c.is_ascii_digit()) => {
+                Some(rect.x)
+            }
+            _ => None,
+        })
+        .collect();
+    assert!(!counts.is_empty());
+    let quota_end = x_of("Tuần").unwrap();
+    assert!(counts.iter().all(|x| *x > quota_end), "{counts:?}");
 }

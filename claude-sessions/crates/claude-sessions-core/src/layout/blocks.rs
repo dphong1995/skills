@@ -3,7 +3,9 @@
 //! (`plans/2026-11-11-claude-sessions-rust/mockups`): panel 760 pt wide, 10 pt padding, 4 pt between cards.
 //! Positions are in scene points (top-left origin), relative to the panel.
 
-use super::{COLLAPSED, EXPANDED_WIDTH, HEADER_HEIGHT, MAX_EXPANDED_HEIGHT, TextMeasure};
+use super::{
+    COLLAPSED, EXPANDED_WIDTH, HEADER_HEIGHT, MAX_EXPANDED_HEIGHT, PILL_HEIGHT, TextMeasure,
+};
 use crate::feed::{self, BlockState, FeedQuestion};
 use crate::geometry::Size;
 use crate::panel_state::{EditKind, PanelState};
@@ -12,7 +14,7 @@ use crate::store::{CommandFit, Section, Session, Snapshot, command_fit};
 use crate::text;
 use crate::transcript::PendingState;
 
-pub const PANEL_PAD: f64 = 10.0;
+pub const PANEL_PAD: f64 = 8.0;
 pub const CARD_GAP: f64 = 4.0;
 pub const CARD_W: f64 = EXPANDED_WIDTH - 2.0 * PANEL_PAD;
 pub const CARD_PAD_Y: f64 = 9.0;
@@ -22,7 +24,7 @@ pub const CARD_PAD_RIGHT: f64 = 12.0;
 /// Time label, `Trả lời` / `Dừng` button.
 pub const RIGHT_COLUMN: f64 = 64.0;
 pub const TEXT_W: f64 = CARD_W - CARD_INSET - CARD_PAD_RIGHT;
-pub const SECTION_TITLE_H: f64 = 20.0;
+pub const SECTION_TITLE_H: f64 = 28.0;
 pub const SUB_H: f64 = 15.0;
 /// One `Todo` / activity line including the 5 pt above it.
 pub const LINE_ROW_H: f64 = 20.0;
@@ -55,8 +57,9 @@ pub const LINK_SECTION_H: f64 = 16.0;
 pub const LINK_ROW_H: f64 = 22.0;
 /// A card with a right-column button is at least this tall.
 pub const CARD_MIN_BUTTON_H: f64 = 54.0;
-pub const CLOSED_ROW_H: f64 = 26.0;
-pub const CLOSED_ITEM_H: f64 = 24.0;
+/// The `Vừa đóng` disclosure row.
+pub const CLOSED_ROW_H: f64 = 30.0;
+pub const CLOSED_ITEM_H: f64 = 30.0;
 pub const EMPTY_H: f64 = 40.0;
 /// The key hint line at the bottom of the panel in keyboard mode.
 pub const KEY_HINT_H: f64 = 26.0;
@@ -568,6 +571,6 @@ pub fn panel_size(snap: &Snapshot, panel: &PanelState, m: &dyn TextMeasure) -> S
     if panel.expanded(snap.peeking) {
         expanded_size(snap, panel, m)
     } else {
-        Size::new(collapsed_width(snap), HEADER_HEIGHT)
+        Size::new(collapsed_width(snap), PILL_HEIGHT)
     }
 }

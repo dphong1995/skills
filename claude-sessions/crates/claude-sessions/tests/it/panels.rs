@@ -1,6 +1,7 @@
 //! The pointer tests of a scene: which row is under the mouse, and whether it is over the widget at all.
 
-use claude_sessions::panels::{inside_widget, row_at};
+use claude_sessions::panels::{inside_widget, place_scene, row_at};
+use claude_sessions_core::layout::{Anchor, HAnchor};
 use claude_sessions_core::scene::{Node, NodeKey, Point, Rect, Scene, Size};
 
 fn node(key: &str, frame: Rect, scroll: Option<Size>) -> Node {
@@ -99,4 +100,41 @@ fn inside_is_the_first_node_so_scrolled_frames_past_the_card_do_not_count() {
         "card-b's frame lies past the panel"
     );
     assert!(!inside_widget(&Scene::default(), Point::new(0.0, 0.0)));
+}
+
+#[test]
+fn place_scene_moves_grow_origin() {
+    for (key, size) in [
+        ("panel", Size::new(400.0, 200.0)),
+        ("pill", Size::new(126.0, 30.0)),
+    ] {
+        for h in [HAnchor::Leading, HAnchor::Center, HAnchor::Trailing] {
+            for up in [false, true] {
+                let scene = Scene {
+                    size,
+                    nodes: vec![node(key, Rect::new(0.0, 0.0, size.w, size.h), None)],
+                    ..Scene::default()
+                };
+                let placed = place_scene(scene, Anchor { h, up });
+                let f = placed.nodes[0].frame;
+                let want = Point::new(
+                    match h {
+                        HAnchor::Leading => f.x,
+                        HAnchor::Center => f.x + f.w / 2.0,
+                        HAnchor::Trailing => f.x + f.w,
+                    },
+                    if up { f.y + f.h } else { f.y },
+                );
+                assert_eq!(placed.grow_origin, want, "{key} {h:?} up={up}");
+            }
+        }
+    }
+    // One absolute case: a top-right panel in the 428 x 640 canvas grows from its top-right corner.
+    let scene = Scene {
+        size: Size::new(400.0, 200.0),
+        nodes: vec![node("panel", Rect::new(0.0, 0.0, 400.0, 200.0), None)],
+        ..Scene::default()
+    };
+    let placed = place_scene(scene, Anchor::default());
+    assert_eq!(placed.grow_origin, Point::new(414.0, 14.0));
 }

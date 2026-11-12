@@ -41,7 +41,7 @@ pub struct PanelHost {
     _resign: NotificationObserver,
 }
 
-/// `scene` moved to where `anchor` puts a pill or card of its size in the canvas, and sized to the canvas.
+/// `scene` moved to where `anchor` puts a pill or card of its size in the canvas, sized to the canvas, with its `grow_origin` set.
 pub fn place_scene(mut scene: Scene, anchor: layout::Anchor) -> Scene {
     let canvas = Rect::from_origin_size(Point::new(0.0, 0.0), CANVAS);
     let r = layout::pill(canvas, scene.size, anchor);
@@ -51,6 +51,15 @@ pub fn place_scene(mut scene: Scene, anchor: layout::Anchor) -> Scene {
         node.frame.x += dx;
         node.frame.y += dy;
     }
+    // The open and close zoom grows from the corner (or edge middle) of the pill the card is anchored to.
+    scene.grow_origin = Point::new(
+        match anchor.h {
+            layout::HAnchor::Leading => r.x,
+            layout::HAnchor::Center => r.mid_x(),
+            layout::HAnchor::Trailing => r.max_x(),
+        },
+        if anchor.up { canvas.max_y() - r.y } else { dy },
+    );
     scene.size = CANVAS;
     scene
 }

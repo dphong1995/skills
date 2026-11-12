@@ -83,9 +83,19 @@ fn migrate_no_op_when_width_unchanged() {
 }
 
 #[test]
+fn shell_constants_follow_the_glass_prototype() {
+    assert_eq!(COLLAPSED, sz(126.0, 30.0));
+    assert_eq!(layout::PILL_HEIGHT, 30.0);
+    assert_eq!(COLLAPSED.h, layout::PILL_HEIGHT);
+    assert_eq!(EXPANDED_WIDTH, 400.0);
+    assert_eq!(layout::HEADER_HEIGHT, 38.0);
+    assert_eq!(layout::PANEL_PAD, 8.0);
+}
+
+#[test]
 fn collapsed_size() {
-    assert_eq!(COLLAPSED, sz(126.0, 32.0));
-    assert_eq!(CANVAS, sz(788.0, 640.0));
+    assert_eq!(COLLAPSED, sz(126.0, 30.0));
+    assert_eq!(CANVAS, sz(428.0, 640.0));
     assert_eq!(MARGIN, 14.0);
     assert_eq!(layout::SEEN_DWELL_SECS, 1.0);
 }
@@ -152,8 +162,9 @@ fn drop_pill(o: Point, a: Anchor, dx: f64, dy: f64, height: f64) -> (Point, Poin
 fn dropped_far_from_the_pill_still_reaches_the_left_edge() {
     let o = p(1386.0, 950.0);
     let a = near(pill_centre(o), SCR);
-    // Grabbed 630 pt left of the pill, cursor stopped at x = 0.
-    let (settled, _) = drop_pill(o, a, -(o.x - 630.0), 0.0, 400.0);
+    // Grabbed far left of the pill: the pill ends 4 pt short of where the card still fits, so the card is pushed against the edge.
+    let fits = COLLAPSED.w - EXPANDED_WIDTH;
+    let (settled, _) = drop_pill(o, a, -(o.x + fits + 4.0), 0.0, 400.0);
     assert_eq!(settled.x, 0.0);
     assert_eq!(near(pill_centre(settled), SCR).h, HAnchor::Leading);
 }

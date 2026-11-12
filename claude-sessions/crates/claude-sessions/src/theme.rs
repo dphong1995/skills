@@ -1,7 +1,7 @@
 //! Design tokens of the redesign, from `plans/2026-11-11-claude-sessions-rust/mockups/src/base.css`: colours (resolved per
 //! appearance by `ThemeColor`), radii, spacing and font sizes. Dark and light share one layout.
 
-use claude_sessions_core::layout::HEADER_HEIGHT;
+use claude_sessions_core::layout::PILL_HEIGHT;
 use claude_sessions_core::scene::{Color, FontSpec, Point, Shadow, ThemeColor, Weight};
 use claude_sessions_core::store::Session;
 
@@ -10,7 +10,10 @@ pub use claude_sessions_core::layout::{REPLY_FONT, STATE_FONT, SUB_FONT, TITLE_F
 /// Swift's `Layout.cardOpacity`: the opaque end of the background opacity menu, at which the pill looks as designed.
 pub const CARD_OPACITY: f64 = 0.92;
 
-pub const PANEL_RADIUS: f64 = 18.0;
+pub const PANEL_RADIUS: f64 = 20.0;
+pub const PILL_RADIUS: f64 = PILL_HEIGHT / 2.0;
+/// The group a run of rows sits in.
+pub const GROUP_RADIUS: f64 = 13.0;
 pub const CARD_RADIUS: f64 = 12.0;
 pub const BUTTON_RADIUS: f64 = 7.0;
 pub const CMD_RADIUS: f64 = 8.0;
@@ -21,20 +24,20 @@ pub const ICON: f64 = 16.0;
 pub const PANEL_SHADOW: Shadow = Shadow {
     color: Color {
         token: ThemeColor::Black,
-        alpha: 0.40,
+        alpha: 0.30,
     },
-    radius: 10.0,
+    radius: 11.0,
     offset: Point { x: 0.0, y: 3.0 },
     corner: PANEL_RADIUS,
 };
 pub const PILL_SHADOW: Shadow = Shadow {
     color: Color {
         token: ThemeColor::Black,
-        alpha: 0.30,
+        alpha: 0.22,
     },
     radius: 6.0,
     offset: Point { x: 0.0, y: 2.0 },
-    corner: HEADER_HEIGHT / 2.0,
+    corner: PILL_RADIUS,
 };
 
 pub const fn solid(token: ThemeColor) -> Color {
@@ -55,8 +58,12 @@ pub const fn font(size: f64, weight: Weight) -> FontSpec {
 
 pub const COUNT_FONT: FontSpec = font(12.0, Weight::Semibold);
 pub const QUOTA_FONT: FontSpec = font(11.0, Weight::Regular);
-pub const SECTION_FONT: FontSpec = font(10.5, Weight::Semibold);
-pub const TIME_FONT: FontSpec = font(11.5, Weight::Regular);
+pub const QUOTA_BOLD_FONT: FontSpec = font(11.0, Weight::Semibold);
+pub const SECTION_FONT: FontSpec = font(11.0, Weight::Medium);
+/// The title of a `Vừa đóng` row.
+pub const ROW_FONT: FontSpec = font(12.5, Weight::Medium);
+pub const HINT_FONT: FontSpec = font(11.0, Weight::Regular);
+pub const TIME_FONT: FontSpec = font(11.0, Weight::Regular);
 pub const META_FONT: FontSpec = font(11.5, Weight::Regular);
 pub const BUTTON_FONT: FontSpec = font(12.0, Weight::Semibold);
 pub const CAPTION_FONT: FontSpec = font(10.5, Weight::Regular);

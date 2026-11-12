@@ -1,116 +1,116 @@
-//! The header of the expanded card: title, quota bars with the reset or forecast time, and the count groups.
+//! The header of the expanded card: the quota rings with the reset or forecast time on the left, the count groups on the right.
 
-use super::pill::{draw_groups, quota_token};
+use super::pill::{draw_groups, quota_token, ring_sweep};
 use super::{Canvas, Ctx};
 use crate::theme;
 use claude_sessions_core::layout::{CARD_W, HEADER_HEIGHT, PANEL_PAD, groups_width};
 use claude_sessions_core::quota::Quota;
-use claude_sessions_core::scene::{Align, Color, Node, Rect, ThemeColor, Weight};
+use claude_sessions_core::scene::{Align, Point, Rect, ThemeColor, Weight};
 
-const BAR_W: f64 = 54.0;
-const BAR_H: f64 = 5.0;
-const GAP: f64 = 6.0;
+const RING: f64 = 13.0;
+const GAP: f64 = 5.0;
+/// Space between the quota and the left edge of the node, and between the counts and its right edge.
+const PAD_LEFT: f64 = 8.0;
+const PAD_RIGHT: f64 = 4.0;
+/// Space either side of the divider between the two quotas.
+const DIVIDER_MARGIN: f64 = 5.0;
 
-enum Piece {
-    Label(String, Color),
-    Bar(i64),
-    Warn(String),
-}
-
-fn pieces(ctx: &Ctx, q: &Quota) -> Vec<(Piece, f64)> {
-    let clock = ctx.view.clock;
-    let faint = theme::solid(ThemeColor::TextFaint);
-    let label = |t: &str| {
-        (
-            Piece::Label(t.to_string(), faint),
-            ctx.text_w(t, &theme::QUOTA_FONT),
-        )
-    };
-    let pct = |p: i64| {
-        let t = format!("{p}%");
-        let w = ctx.text_w(&t, &theme::QUOTA_FONT);
-        (Piece::Label(t, theme::solid(quota_token(p))), w)
-    };
-    let mid = match q.forecast {
-        Some(f) => {
-            let t = format!("hết ~{}", clock(f));
-            let w = ctx.text_w(&t, &theme::QUOTA_FONT) + 16.0;
-            (Piece::Warn(t), w)
-        }
-        None => label(&format!("reset {}", clock(q.five_hour_reset))),
-    };
-    vec![
-        label("5h"),
-        (Piece::Bar(q.five_hour), BAR_W),
-        pct(q.five_hour),
-        mid,
-        label("Tuần"),
-        (Piece::Bar(q.weekly), BAR_W),
-        pct(q.weekly),
-    ]
-}
-
-pub fn node(ctx: &mut Ctx, y: f64) -> Node {
-    let snap = ctx.view.snap;
-    let cy = HEADER_HEIGHT / 2.0;
-    let mut c = Canvas::default();
-    let counts_w = groups_width(snap);
-    let counts_x = CARD_W - 8.0 - counts_w;
-    draw_groups(&mut c, snap, counts_x, cy);
-    if let Some(q) = &snap.quota {
-        let parts = pieces(ctx, q);
-        let total: f64 = parts.iter().map(|p| p.1).sum::<f64>() + GAP * (parts.len() - 1) as f64;
-        let mut x = counts_x - if counts_w > 0.0 { 14.0 } else { 0.0 } - total;
-        for (piece, w) in parts {
-            match piece {
-                Piece::Label(t, color) => c.text(
-                    Rect::new(x, cy - 8.0, w + 2.0, 16.0),
-                    &t,
-                    theme::QUOTA_FONT,
-                    color,
-                    1,
-                    Align::Left,
-                ),
-                Piece::Bar(p) => {
-                    let track = Rect::new(x, cy - BAR_H / 2.0, BAR_W, BAR_H);
-                    c.rrect(track, 2.5, Some(theme::tint(ThemeColor::Text, 0.10)), None);
-                    let fill = BAR_W * (p.clamp(0, 100) as f64) / 100.0;
-                    if fill > 0.0 {
-                        c.rrect(
-                            Rect::new(x, track.y, fill, BAR_H),
-                            2.5,
-                            Some(theme::solid(quota_token_bar(p))),
-                            None,
-                        );
-                    }
-                }
-                Piece::Warn(t) => {
-                    c.symbol(
-                        "exclamationmark.triangle.fill",
-                        Rect::new(x, cy - 7.0, 12.0, 14.0),
-                        theme::solid(ThemeColor::Red),
-                        Weight::Medium,
-                    );
-                    c.text(
-                        Rect::new(x + 16.0, cy - 8.0, w, 16.0),
-                        &t,
-                        theme::QUOTA_FONT,
-                        theme::solid(ThemeColor::Red),
-                        1,
-                        Align::Left,
-                    );
-                }
-            }
-            x += w + GAP;
-        }
-    }
-    ctx.node("header", Rect::new(PANEL_PAD, y, CARD_W, HEADER_HEIGHT), c)
-}
-
-/// Bars are green until the quota warns (mockup `.bar i`), then take the level colour.
-fn quota_token_bar(p: i64) -> ThemeColor {
+/// A ring is green until the quota warns, then takes the level colour.
+fn ring_token(p: i64) -> ThemeColor {
     match quota_token(p) {
         ThemeColor::Text => ThemeColor::Green,
         other => other,
     }
+}
+
+/// Draws one ring, then its label, percent and (for the five-hour quota) the reset or forecast; returns where it ends.
+fn quota_part(ctx: &Ctx, c: &mut Canvas, x: f64, cy: f64, label: &str, p: i64, note: Note) -> f64 {
+    let mut x = x;
+    let center = Point::new(x + RING / 2.0, cy);
+    c.arc(
+        center,
+        5.25,
+        2.0,
+        0.0,
+        360.0,
+        theme::tint(ThemeColor::Text, 0.15),
+    );
+    c.arc(
+        center,
+        5.25,
+        2.0,
+        0.0,
+        ring_sweep(p),
+        theme::solid(ring_token(p)),
+    );
+    x += RING + GAP;
+    let text = |c: &mut Canvas, x: f64, t: &str, font, color| {
+        let w = ctx.text_w(t, &font);
+        c.text(
+            Rect::new(x, cy - 8.0, w + 2.0, 16.0),
+            t,
+            font,
+            theme::solid(color),
+            1,
+            Align::Left,
+        );
+        x + w + GAP
+    };
+    x = text(c, x, label, theme::QUOTA_FONT, ThemeColor::TextSecondary);
+    x = text(
+        c,
+        x,
+        &format!("{p}%"),
+        theme::QUOTA_BOLD_FONT,
+        quota_token(p),
+    );
+    match note {
+        Note::None => {}
+        Note::Reset(t) => x = text(c, x, &t, theme::QUOTA_FONT, ThemeColor::TextFaint),
+        Note::Forecast(t) => {
+            c.symbol(
+                "exclamationmark.triangle.fill",
+                Rect::new(x, cy - 7.0, 12.0, 14.0),
+                theme::solid(ThemeColor::Red),
+                Weight::Medium,
+            );
+            x = text(c, x + 16.0, &t, theme::QUOTA_FONT, ThemeColor::Red);
+        }
+    }
+    x - GAP
+}
+
+enum Note {
+    None,
+    Reset(String),
+    Forecast(String),
+}
+
+fn draw_quota(ctx: &Ctx, c: &mut Canvas, q: &Quota, cy: f64) {
+    let clock = ctx.view.clock;
+    let note = match q.forecast {
+        Some(f) => Note::Forecast(format!("hết ~{}", clock(f))),
+        None => Note::Reset(format!("· reset {}", clock(q.five_hour_reset))),
+    };
+    let mut x = quota_part(ctx, c, PAD_LEFT, cy, "5h", q.five_hour, note);
+    x += GAP + DIVIDER_MARGIN;
+    c.rrect(
+        Rect::new(x, cy - 5.0, 1.0, 10.0),
+        0.5,
+        Some(theme::solid(ThemeColor::Separator)),
+        None,
+    );
+    x += 1.0 + DIVIDER_MARGIN + GAP;
+    quota_part(ctx, c, x, cy, "Tuần", q.weekly, Note::None);
+}
+
+pub fn node(ctx: &mut Ctx, y: f64) -> claude_sessions_core::scene::Node {
+    let snap = ctx.view.snap;
+    let cy = HEADER_HEIGHT / 2.0;
+    let mut c = Canvas::default();
+    draw_groups(&mut c, snap, CARD_W - PAD_RIGHT - groups_width(snap), cy);
+    if let Some(q) = &snap.quota {
+        draw_quota(ctx, &mut c, q, cy);
+    }
+    ctx.node("header", Rect::new(PANEL_PAD, y, CARD_W, HEADER_HEIGHT), c)
 }

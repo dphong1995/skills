@@ -3,10 +3,10 @@
 use super::{Canvas, Ctx};
 use crate::theme;
 use claude_sessions_core::layout::{
-    HEADER_HEIGHT, PILL_GAP, PILL_PAD, PILL_QUOTA_W, collapsed_width, pill_group_width, pill_groups,
+    PILL_GAP, PILL_HEIGHT, PILL_PAD, PILL_QUOTA_W, collapsed_width, pill_group_width, pill_groups,
 };
 use claude_sessions_core::quota::QuotaLevel;
-use claude_sessions_core::scene::{Align, Node, Point, Rect, Shadow, ThemeColor, Weight};
+use claude_sessions_core::scene::{Align, Material, Node, Point, Rect, Shadow, ThemeColor, Weight};
 use claude_sessions_core::store::Snapshot;
 
 pub const KEY: &str = "pill";
@@ -99,16 +99,16 @@ pub fn draw_groups(c: &mut Canvas, snap: &Snapshot, x: f64, cy: f64) -> f64 {
 pub fn node(ctx: &mut Ctx) -> Node {
     let snap = ctx.view.snap;
     let w = collapsed_width(snap);
-    let cy = HEADER_HEIGHT / 2.0;
+    let cy = PILL_HEIGHT / 2.0;
     let mut c = Canvas::default();
-    // 1.0 at the opacity the pill was designed for; `Panel` carries its own alpha, so it scales with the rest.
-    let k = snap.bg_opacity / theme::CARD_OPACITY;
+    // 1.0 at the opacity the pill was designed for; the tint, the edge and the blur behind all scale with it.
+    let k = (snap.bg_opacity / theme::CARD_OPACITY).clamp(0.0, 1.0);
     // The thin light border sits inside the node: a stroke centred on the edge would be half clipped away.
     c.rrect(
-        Rect::new(0.5, 0.5, w - 1.0, HEADER_HEIGHT - 1.0),
-        (HEADER_HEIGHT - 1.0) / 2.0,
-        Some(theme::tint(ThemeColor::Panel, k)),
-        Some(theme::tint(ThemeColor::Text, 0.18 * k)),
+        Rect::new(0.5, 0.5, w - 1.0, PILL_HEIGHT - 1.0),
+        (PILL_HEIGHT - 1.0) / 2.0,
+        Some(theme::tint(ThemeColor::Glass, k)),
+        Some(theme::tint(ThemeColor::GlassEdge, k)),
     );
     if snap.sessions.is_empty() {
         c.rrect(
@@ -151,7 +151,11 @@ pub fn node(ctx: &mut Ctx) -> Node {
             Align::Left,
         );
     }
-    let mut node = ctx.node(KEY, Rect::new(0.0, 0.0, w, HEADER_HEIGHT), c);
+    let mut node = ctx.node(KEY, Rect::new(0.0, 0.0, w, PILL_HEIGHT), c);
+    node.material = Some(Material::Glass {
+        corner: theme::PILL_RADIUS,
+        alpha: k,
+    });
     // The shadow is kept at zero alpha when the opacity is 0: that avoids clearing and setting the layer's shadow path again
     // when the opacity changes.
     node.shadow = Some(Shadow {

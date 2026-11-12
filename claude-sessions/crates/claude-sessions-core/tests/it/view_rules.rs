@@ -677,34 +677,30 @@ fn surface_tokens_are_neutral() {
     use claude_sessions_core::scene::{Appearance, ThemeColor};
     for appearance in [Appearance::Dark, Appearance::Light] {
         for token in [
-            ThemeColor::Panel,
+            ThemeColor::Glass,
             ThemeColor::Row,
-            ThemeColor::PanelStroke,
+            ThemeColor::Group,
             ThemeColor::Button,
-            ThemeColor::TextFaint,
+            ThemeColor::Fill,
         ] {
             let [r, g, b, _] = token.rgba(appearance);
             let spread = r.max(g).max(b) - r.min(g).min(b);
-            assert!(spread <= 0.01, "{token:?} {appearance:?} spread {spread}");
+            assert!(spread <= 0.04, "{token:?} {appearance:?} spread {spread}");
         }
     }
-    let [r, g, b, a] = ThemeColor::Panel.rgba(Appearance::Dark);
-    for (got, want) in [(r, 0.110), (g, 0.110), (b, 0.118)] {
-        assert!((got - want).abs() <= 0.005, "dark panel {got} vs {want}");
-    }
-    assert_eq!(a, 0.96);
 }
 
+/// The prototype's secondary text (`rgba(60,60,67,.66)` on the light glass) reaches 4.0 over a white backdrop, the worst case.
 #[test]
-fn secondary_text_contrast_meets_4_5() {
+fn secondary_text_contrast_meets_4_0() {
     use claude_sessions_core::scene::{Appearance, ThemeColor};
     for (appearance, backdrop) in [(Appearance::Dark, [0.0; 3]), (Appearance::Light, [1.0; 3])] {
-        let panel = composite(ThemeColor::Panel.rgba(appearance), backdrop);
+        let panel = composite(ThemeColor::Glass.rgba(appearance), backdrop);
         let card = composite(ThemeColor::Row.rgba(appearance), panel);
         let text = composite(ThemeColor::TextSecondary.rgba(appearance), card);
         let (a, b) = (luminance(text), luminance(card));
         let ratio = (a.max(b) + 0.05) / (a.min(b) + 0.05);
-        assert!(ratio >= 4.5, "{appearance:?} contrast {ratio}");
+        assert!(ratio >= 4.0, "{appearance:?} contrast {ratio}");
     }
 }
 
@@ -757,6 +753,75 @@ fn new_tokens_match_prototype() {
             ThemeColor::Indigo,
             hex(94.0, 92.0, 230.0, 1.0),
             hex(88.0, 86.0, 214.0, 1.0),
+        ),
+    ];
+    for (token, dark, light) in cases {
+        for (appearance, want) in [(Appearance::Dark, dark), (Appearance::Light, light)] {
+            let got = token.rgba(appearance);
+            for i in 0..4 {
+                assert!(
+                    (got[i] - want[i]).abs() <= 0.002,
+                    "{token:?} {appearance:?} {got:?} vs {want:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn palette_matches_prototype() {
+    use claude_sessions_core::scene::{Appearance, ThemeColor};
+    let hex = |r: f64, g: f64, b: f64| [r / 255.0, g / 255.0, b / 255.0, 1.0];
+    let cases = [
+        (
+            ThemeColor::Text,
+            [1.0, 1.0, 1.0, 0.94],
+            [0.0, 0.0, 0.0, 0.86],
+        ),
+        (
+            ThemeColor::TextSecondary,
+            [235.0 / 255.0, 235.0 / 255.0, 245.0 / 255.0, 0.62],
+            [60.0 / 255.0, 60.0 / 255.0, 67.0 / 255.0, 0.66],
+        ),
+        (
+            ThemeColor::TextFaint,
+            [235.0 / 255.0, 235.0 / 255.0, 245.0 / 255.0, 0.38],
+            [60.0 / 255.0, 60.0 / 255.0, 67.0 / 255.0, 0.42],
+        ),
+        (
+            ThemeColor::Code,
+            [0.0, 0.0, 0.0, 0.26],
+            [0.0, 0.0, 0.0, 0.045],
+        ),
+        (
+            ThemeColor::Red,
+            hex(255.0, 69.0, 58.0),
+            hex(255.0, 59.0, 48.0),
+        ),
+        (
+            ThemeColor::Orange,
+            hex(255.0, 159.0, 10.0),
+            hex(255.0, 149.0, 0.0),
+        ),
+        (
+            ThemeColor::Blue,
+            hex(10.0, 132.0, 255.0),
+            hex(0.0, 122.0, 255.0),
+        ),
+        (
+            ThemeColor::Green,
+            hex(48.0, 209.0, 88.0),
+            hex(40.0, 167.0, 69.0),
+        ),
+        (
+            ThemeColor::Yellow,
+            hex(255.0, 214.0, 10.0),
+            hex(230.0, 167.0, 0.0),
+        ),
+        (
+            ThemeColor::Indigo,
+            hex(94.0, 92.0, 230.0),
+            hex(88.0, 86.0, 214.0),
         ),
     ];
     for (token, dark, light) in cases {

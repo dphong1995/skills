@@ -37,10 +37,13 @@ impl Default for Anchor {
 }
 
 pub const MARGIN: f64 = 14.0;
-pub const EXPANDED_WIDTH: f64 = 760.0;
+pub const EXPANDED_WIDTH: f64 = 400.0;
 pub const CANVAS: Size = Size::new(EXPANDED_WIDTH + MARGIN * 2.0, 640.0);
-pub const HEADER_HEIGHT: f64 = 32.0;
-pub const COLLAPSED: Size = Size::new(126.0, HEADER_HEIGHT);
+/// The collapsed capsule.
+pub const PILL_HEIGHT: f64 = 30.0;
+/// The header row of the expanded panel.
+pub const HEADER_HEIGHT: f64 = 38.0;
+pub const COLLAPSED: Size = Size::new(126.0, PILL_HEIGHT);
 pub const MAX_EXPANDED_HEIGHT: f64 = CANVAS.h - 2.0 * MARGIN;
 /// How long the mouse must rest on a fresh row before its mark clears.
 pub const SEEN_DWELL_SECS: f64 = 1.0;

@@ -1,4 +1,4 @@
-//! Group titles (`CẦN BẠN · 2`) and the empty note.
+//! Group titles (`Cần bạn 2`, sentence case, the count in the faint colour) and the empty note.
 
 use super::{Canvas, Ctx};
 use crate::theme;
@@ -16,31 +16,33 @@ pub fn key(section: Section) -> &'static str {
 
 pub fn title(section: Section) -> &'static str {
     match section {
-        Section::NeedsYou => "CẦN BẠN",
-        Section::Done => "XONG",
-        Section::Running => "ĐANG CHẠY",
+        Section::NeedsYou => "Cần bạn",
+        Section::Done => "Xong",
+        Section::Running => "Đang chạy",
     }
 }
 
-fn token(section: Section) -> ThemeColor {
-    match section {
-        Section::NeedsYou => ThemeColor::Red,
-        Section::Done => ThemeColor::Orange,
-        Section::Running => ThemeColor::Blue,
-    }
-}
+/// Where the label of a group starts, and the space between it and its count.
+const LABEL_X: f64 = 8.0;
+const LABEL_GAP: f64 = 6.0;
 
 pub fn node(ctx: &mut Ctx, section: Section, count: usize, y: f64) -> Node {
     let mut c = Canvas::default();
-    c.rrect(
-        Rect::new(12.0, (SECTION_TITLE_H - 7.0) / 2.0, 7.0, 7.0),
-        3.5,
-        Some(theme::solid(token(section))),
-        None,
+    let label = title(section);
+    let w = ctx.text_w(label, &theme::SECTION_FONT);
+    // The label sits low in its row, 4 pt above the cards.
+    let top = SECTION_TITLE_H - 18.0;
+    c.text(
+        Rect::new(LABEL_X, top, w + 2.0, 14.0),
+        label,
+        theme::SECTION_FONT,
+        theme::solid(ThemeColor::TextSecondary),
+        1,
+        Align::Left,
     );
     c.text(
-        Rect::new(28.0, 0.0, CARD_W - 40.0, SECTION_TITLE_H),
-        &format!("{} · {count}", title(section)),
+        Rect::new(LABEL_X + w + LABEL_GAP, top, 40.0, 14.0),
+        &count.to_string(),
         theme::SECTION_FONT,
         theme::solid(ThemeColor::TextFaint),
         1,
@@ -56,12 +58,12 @@ pub fn node(ctx: &mut Ctx, section: Section, count: usize, y: f64) -> Node {
 pub fn empty_node(ctx: &mut Ctx, y: f64) -> Node {
     let mut c = Canvas::default();
     c.text(
-        Rect::new(12.0, 12.0, CARD_W - 24.0, 16.0),
+        Rect::new(LABEL_X, 12.0, CARD_W - 2.0 * LABEL_X, 16.0),
         "Không có session",
-        theme::META_FONT,
-        theme::solid(ThemeColor::TextFaint),
+        theme::SECTION_FONT,
+        theme::solid(ThemeColor::TextSecondary),
         1,
-        Align::Center,
+        Align::Left,
     );
     ctx.node("empty", Rect::new(PANEL_PAD, y, CARD_W, EMPTY_H), c)
 }

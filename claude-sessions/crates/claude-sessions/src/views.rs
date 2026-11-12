@@ -36,8 +36,8 @@ use crate::theme;
 use claude_sessions_core::layout::{self, Item, TextMeasure};
 use claude_sessions_core::panel_state::PanelState;
 use claude_sessions_core::scene::{
-    Align, Color, Cursor, DrawCmd, Field, FontSpec, Hit, Node, NodeKey, Point, Rect, Run, Scene,
-    Size, ThemeColor, Tip, Weight,
+    Align, Color, Cursor, DrawCmd, Field, FontSpec, Hit, Material, Node, NodeKey, Point, Rect, Run,
+    Scene, Size, ThemeColor, Tip, Weight,
 };
 use claude_sessions_core::store::{SendState, Snapshot};
 use std::collections::HashMap;
@@ -327,7 +327,7 @@ pub fn build(view: &View) -> Built {
         expanded(&mut ctx)
     } else {
         Scene {
-            size: Size::new(layout::collapsed_width(view.snap), layout::HEADER_HEIGHT),
+            size: Size::new(layout::collapsed_width(view.snap), layout::PILL_HEIGHT),
             nodes: vec![pill::node(&mut ctx)],
             images: HashMap::new(),
             grow_origin: Point::default(),
@@ -347,14 +347,20 @@ fn expanded(ctx: &mut Ctx) -> Scene {
     let view = ctx.view;
     let l = layout::expanded_layout(view.snap, view.panel, view.measure);
     let mut bg = Canvas::default();
+    // The `Glass` tint is part of the node so that PNGs show it; the blur behind comes from `material`. The edge sits inside the
+    // frame (strokes are 1 pt wide): one centred on the frame would be half clipped away.
     bg.rrect(
-        Rect::new(0.0, 0.0, l.size.w, l.size.h),
-        theme::PANEL_RADIUS,
-        Some(theme::solid(ThemeColor::Panel)),
-        Some(theme::solid(ThemeColor::PanelStroke)),
+        Rect::new(0.5, 0.5, l.size.w - 1.0, l.size.h - 1.0),
+        theme::PANEL_RADIUS - 0.5,
+        Some(theme::solid(ThemeColor::Glass)),
+        Some(theme::solid(ThemeColor::GlassEdge)),
     );
     let mut panel = ctx.node("panel", Rect::new(0.0, 0.0, l.size.w, l.size.h), bg);
     panel.shadow = Some(theme::PANEL_SHADOW);
+    panel.material = Some(Material::Glass {
+        corner: theme::PANEL_RADIUS,
+        alpha: 1.0,
+    });
     let mut nodes = vec![panel];
     for item in &l.items {
         if let Item::Section { y, .. } | Item::Empty { y } = item
