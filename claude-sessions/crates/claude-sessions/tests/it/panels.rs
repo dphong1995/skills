@@ -14,6 +14,7 @@ fn node(key: &str, frame: Rect, scroll: Option<Size>) -> Node {
         tips: vec![],
         scroll,
         shadow: None,
+        material: None,
     }
 }
 

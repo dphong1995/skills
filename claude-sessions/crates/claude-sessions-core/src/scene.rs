@@ -35,6 +35,19 @@ pub enum ThemeColor {
     Blue,
     Yellow,
     Purple,
+    /// Tint laid over the vibrancy behind a panel or pill.
+    Glass,
+    /// Inner edge of the glass.
+    GlassEdge,
+    /// Background of a group of rows.
+    Group,
+    Separator,
+    RowHover,
+    /// Resting fill of a small control.
+    Fill,
+    FillHover,
+    Accent,
+    Indigo,
 }
 
 impl ThemeColor {
@@ -60,6 +73,24 @@ impl ThemeColor {
             Self::Blue => pick([0.35, 0.65, 1.0, 1.0], [0.0, 0.4, 0.9, 1.0]),
             Self::Yellow => pick([1.0, 0.82, 0.1, 1.0], [0.8, 0.6, 0.0, 1.0]),
             Self::Purple => pick([0.75, 0.48, 1.0, 1.0], [0.55, 0.25, 0.85, 1.0]),
+            Self::Glass => pick(
+                [34.0 / 255.0, 34.0 / 255.0, 38.0 / 255.0, 0.60],
+                [250.0 / 255.0, 250.0 / 255.0, 252.0 / 255.0, 0.68],
+            ),
+            Self::GlassEdge => pick([1.0, 1.0, 1.0, 0.16], [1.0, 1.0, 1.0, 0.75]),
+            Self::Group => pick([1.0, 1.0, 1.0, 0.07], [1.0, 1.0, 1.0, 0.66]),
+            Self::Separator => pick([1.0, 1.0, 1.0, 0.08], [0.0, 0.0, 0.0, 0.08]),
+            Self::RowHover => pick([1.0, 1.0, 1.0, 0.04], [0.0, 0.0, 0.0, 0.025]),
+            Self::Fill => pick([1.0, 1.0, 1.0, 0.10], [0.0, 0.0, 0.0, 0.06]),
+            Self::FillHover => pick([1.0, 1.0, 1.0, 0.16], [0.0, 0.0, 0.0, 0.10]),
+            Self::Accent => pick(
+                [10.0 / 255.0, 132.0 / 255.0, 1.0, 1.0],
+                [0.0, 122.0 / 255.0, 1.0, 1.0],
+            ),
+            Self::Indigo => pick(
+                [94.0 / 255.0, 92.0 / 255.0, 230.0 / 255.0, 1.0],
+                [88.0 / 255.0, 86.0 / 255.0, 214.0 / 255.0, 1.0],
+            ),
         }
     }
 
@@ -69,6 +100,13 @@ impl ThemeColor {
             alpha: 1.0,
         }
     }
+}
+
+/// Vibrancy a node asks for behind its whole frame.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Material {
+    /// `corner` is the rounded-rect radius of the glass; `alpha` (0..=1) is how strongly it shows.
+    Glass { corner: f64, alpha: f64 },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -238,6 +276,8 @@ pub struct Node {
     pub scroll: Option<Size>,
     /// Cast by the node's whole frame (a rounded rect of radius `corner`), outside it.
     pub shadow: Option<Shadow>,
+    /// Vibrancy behind the node's whole frame, drawn by the macOS crate below the node's cmds, ignored by `render_png`.
+    pub material: Option<Material>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -246,6 +286,8 @@ pub struct Scene {
     pub nodes: Vec<Node>,
     /// Encoded picture bytes (PNG, JPEG...) by the keys of `DrawCmd::Image`.
     pub images: HashMap<String, Arc<Vec<u8>>>,
+    /// The point the panel zooms from on open and close.
+    pub grow_origin: Point,
 }
 
 #[derive(Debug, PartialEq)]
@@ -363,6 +405,7 @@ mod tests {
             tips: vec![],
             scroll: None,
             shadow: None,
+            material: None,
         }
     }
 
@@ -371,7 +414,33 @@ mod tests {
             size: Size { w: 100.0, h: 100.0 },
             nodes,
             images: HashMap::new(),
+            grow_origin: Point::default(),
         }
+    }
+
+    #[test]
+    fn material_change_counts_as_update() {
+        let plain = scene(vec![node("a", 0.0, "x")]);
+        let mut glass = plain.clone();
+        glass.nodes[0].material = Some(Material::Glass {
+            corner: 20.0,
+            alpha: 1.0,
+        });
+        let diff = changed_nodes(&plain, &glass);
+        assert_eq!(diff.updated.len(), 1);
+        assert!(!diff.updated[0].frame_changed);
+        let mut dim = glass.clone();
+        dim.nodes[0].material = Some(Material::Glass {
+            corner: 20.0,
+            alpha: 0.5,
+        });
+        assert_eq!(changed_nodes(&glass, &dim).updated.len(), 1);
+        assert_eq!(changed_nodes(&dim, &dim.clone()), SceneDiff::default());
+    }
+
+    #[test]
+    fn scene_default_grow_origin_is_zero() {
+        assert_eq!(Scene::default().grow_origin, Point::default());
     }
 
     #[test]

@@ -257,8 +257,10 @@ fn field_scene(text: &str, label: &str) -> claude_sessions_core::scene::Scene {
             tips: vec![],
             scroll: None,
             shadow: None,
+            material: None,
         }],
         images: Default::default(),
+        grow_origin: Default::default(),
     }
 }
 
@@ -643,6 +645,7 @@ fn scroll_host_is_removed() -> Result<(), String> {
             tips: vec![],
             scroll: Some(Size { w: 200.0, h: 400.0 }),
             shadow: None,
+            material: None,
         },
     );
     let base = view.subviews().len();
@@ -674,6 +677,7 @@ fn panel_scroll_scene(with_scroll: bool) -> claude_sessions_core::scene::Scene {
         tips: vec![],
         scroll,
         shadow: None,
+        material: None,
     };
     let mut nodes = vec![
         node("panel", Rect::new(0.0, 0.0, 200.0, 100.0), None),
@@ -691,6 +695,7 @@ fn panel_scroll_scene(with_scroll: bool) -> claude_sessions_core::scene::Scene {
         size: Size { w: 200.0, h: 100.0 },
         nodes,
         images: Default::default(),
+        grow_origin: Default::default(),
     }
 }
 
@@ -766,6 +771,7 @@ fn scroll_view_stays_above_a_node_added_later_before_it() -> Result<(), String> 
             tips: vec![],
             scroll: None,
             shadow: None,
+            material: None,
         },
     );
     view.set_scene(&scene);
@@ -804,6 +810,7 @@ fn scroll_offset_follows_the_clip_view() -> Result<(), String> {
             tips: vec![],
             scroll: Some(Size { w: 200.0, h: 400.0 }),
             shadow: None,
+            material: None,
         },
     );
     view.set_scene(&scene);
@@ -863,6 +870,7 @@ fn png_draws_fields_and_clips_scroll() -> Result<(), String> {
             tips: vec![],
             scroll,
             shadow: None,
+            material: None,
         }
     };
     scene.nodes.push(node(
@@ -907,6 +915,7 @@ fn shadow_node(
             offset: Point { x: 0.0, y: 3.0 },
             corner: 12.0,
         }),
+        material: None,
     }
 }
 
@@ -916,6 +925,7 @@ fn one_node_scene(node: claude_sessions_core::scene::Node) -> claude_sessions_co
         size: Size { w: 200.0, h: 100.0 },
         nodes: vec![node],
         images: Default::default(),
+        grow_origin: Default::default(),
     }
 }
 

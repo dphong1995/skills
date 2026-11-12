@@ -302,6 +302,7 @@ impl Ctx<'_> {
             tips: canvas.tips,
             scroll: None,
             shadow: None,
+            material: None,
         }
     }
 
@@ -329,6 +330,7 @@ pub fn build(view: &View) -> Built {
             size: Size::new(layout::collapsed_width(view.snap), layout::HEADER_HEIGHT),
             nodes: vec![pill::node(&mut ctx)],
             images: HashMap::new(),
+            grow_origin: Point::default(),
         }
     };
     Built {
@@ -388,5 +390,6 @@ fn expanded(ctx: &mut Ctx) -> Scene {
         size: l.size,
         nodes,
         images: icon_images(view.snap),
+        grow_origin: Point::default(),
     }
 }

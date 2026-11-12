@@ -707,3 +707,67 @@ fn secondary_text_contrast_meets_4_5() {
         assert!(ratio >= 4.5, "{appearance:?} contrast {ratio}");
     }
 }
+
+#[test]
+fn new_tokens_match_prototype() {
+    use claude_sessions_core::scene::{Appearance, ThemeColor};
+    let hex = |r: f64, g: f64, b: f64, a: f64| [r / 255.0, g / 255.0, b / 255.0, a];
+    let cases = [
+        (
+            ThemeColor::Glass,
+            hex(34.0, 34.0, 38.0, 0.60),
+            hex(250.0, 250.0, 252.0, 0.68),
+        ),
+        (
+            ThemeColor::GlassEdge,
+            [1.0, 1.0, 1.0, 0.16],
+            [1.0, 1.0, 1.0, 0.75],
+        ),
+        (
+            ThemeColor::Group,
+            [1.0, 1.0, 1.0, 0.07],
+            [1.0, 1.0, 1.0, 0.66],
+        ),
+        (
+            ThemeColor::Separator,
+            [1.0, 1.0, 1.0, 0.08],
+            [0.0, 0.0, 0.0, 0.08],
+        ),
+        (
+            ThemeColor::RowHover,
+            [1.0, 1.0, 1.0, 0.04],
+            [0.0, 0.0, 0.0, 0.025],
+        ),
+        (
+            ThemeColor::Fill,
+            [1.0, 1.0, 1.0, 0.10],
+            [0.0, 0.0, 0.0, 0.06],
+        ),
+        (
+            ThemeColor::FillHover,
+            [1.0, 1.0, 1.0, 0.16],
+            [0.0, 0.0, 0.0, 0.10],
+        ),
+        (
+            ThemeColor::Accent,
+            hex(10.0, 132.0, 255.0, 1.0),
+            hex(0.0, 122.0, 255.0, 1.0),
+        ),
+        (
+            ThemeColor::Indigo,
+            hex(94.0, 92.0, 230.0, 1.0),
+            hex(88.0, 86.0, 214.0, 1.0),
+        ),
+    ];
+    for (token, dark, light) in cases {
+        for (appearance, want) in [(Appearance::Dark, dark), (Appearance::Light, light)] {
+            let got = token.rgba(appearance);
+            for i in 0..4 {
+                assert!(
+                    (got[i] - want[i]).abs() <= 0.002,
+                    "{token:?} {appearance:?} {got:?} vs {want:?}"
+                );
+            }
+        }
+    }
+}
