@@ -231,6 +231,12 @@ impl Store {
             }
             jira_state = Some(snap.connection);
         }
+        // Entries of a PR the user hid in this session are gone from links and the menu.
+        for (id, list) in entries.iter_mut() {
+            if let Some(hidden) = self.hidden_prs.get(id) {
+                list.retain(|b| !b.refs.iter().any(|r| hidden.contains(r)));
+            }
+        }
         let mut pr_state: Option<ConnectionState> = None;
         let mut all_prs: HashMap<String, Vec<PRStatus>> = HashMap::new();
         for s in &mut list {
@@ -259,14 +265,17 @@ impl Store {
                         .unwrap_or_default(),
                     cwd: s.cwd.clone(),
                     branch: s.branch.clone(),
-                    hidden_refs: HashSet::new(),
+                    hidden_refs: self.hidden_prs.get(&s.id).cloned().unwrap_or_default(),
                 })
                 .collect();
             pm.update(&targets, now);
             let snap = pm.take_snapshot();
             pr_state = Some(snap.connection);
             for s in &mut list {
-                let all = snap.prs.get(&s.id).cloned().unwrap_or_default();
+                let mut all = snap.prs.get(&s.id).cloned().unwrap_or_default();
+                if let Some(hidden) = self.hidden_prs.get(&s.id) {
+                    all.retain(|p| !hidden.contains(&p.ref_));
+                }
                 let events: Vec<PRRef> = all
                     .iter()
                     .map(|p| p.ref_.clone())
@@ -408,6 +417,7 @@ impl Store {
             }
         }
         self.surface_misses.retain(|k| live.contains(k));
+        self.hidden_prs.retain(|k, _| live.contains(k));
         new_unseen.retain(|k, _| live.contains(k));
         if new_unseen != self.unseen {
             self.unseen = new_unseen;

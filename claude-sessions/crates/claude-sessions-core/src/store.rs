@@ -154,6 +154,8 @@ pub struct Store {
     pub unseen: HashMap<String, NewMark>,
     /// Session ids whose cmux surface lookup failed; dropped when the pid changes or the session dies.
     pub surface_misses: HashSet<String>,
+    /// Session id -> PRs the user hid in that session. In memory only.
+    hidden_prs: HashMap<String, HashSet<PRRef>>,
     /// Tool ids whose long command the user expanded with Xem đủ.
     pub shown_commands: HashSet<String>,
     /// Typed text per `draft_key`: a reply and a deny reason of one session are kept apart.
@@ -255,6 +257,7 @@ impl Store {
             surfaces: HashMap::new(),
             unseen: HashMap::new(),
             surface_misses: HashSet::new(),
+            hidden_prs: HashMap::new(),
             shown_commands: HashSet::new(),
             drafts: HashMap::new(),
             quota: None,
@@ -331,6 +334,37 @@ impl Store {
             .keys()
             .filter(|k| live.contains(k.as_str()))
             .count()
+    }
+
+    /// Hides `pr` in `session` until `show_hidden_prs`; the caller refreshes.
+    pub fn hide_pr(&mut self, session: &str, pr: &PRRef) {
+        self.hidden_prs
+            .entry(session.to_string())
+            .or_default()
+            .insert(pr.clone());
+    }
+
+    /// Brings back every PR hidden in `session`; the caller refreshes.
+    pub fn show_hidden_prs(&mut self, session: &str) {
+        self.hidden_prs.remove(session);
+    }
+
+    pub fn hidden_pr_count(&self, session: &str) -> usize {
+        self.hidden_prs.get(session).map_or(0, HashSet::len)
+    }
+
+    /// True when the monitor tracks `pr` for `session`: it is in the PR list or on a tracked line of the menu.
+    pub fn can_hide_pr(&self, session: &str, pr: &PRRef) -> bool {
+        let Some(s) = self.sessions.iter().find(|s| s.id == session) else {
+            return false;
+        };
+        let path = format!("/{}/{}/pull-requests/{}", pr.workspace, pr.repo, pr.id);
+        s.prs.iter().any(|p| &p.ref_ == pr)
+            || s.menu.iter().flat_map(|m| &m.items).any(|i| {
+                i.kind == LinkKind::Pr
+                    && i.status.is_some()
+                    && i.url.path().trim_end_matches('/') == path
+            })
     }
 
     /// `HEAD` file reads of the store's own branch reader; 0 when a custom reader was injected.

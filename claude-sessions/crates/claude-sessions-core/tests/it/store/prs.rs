@@ -980,3 +980,146 @@ fn jira_host_prefers_the_typed_site() {
     assert_eq!(store.jira_host().as_deref(), Some("b.atlassian.net"));
     assert_eq!(store.jira_guess().as_deref(), Some("a.atlassian.net"));
 }
+
+fn pr_ids(store: &Store, i: usize) -> Vec<i64> {
+    store.sessions[i].prs.iter().map(|p| p.ref_.id).collect()
+}
+
+#[test]
+fn hiding_a_pr_removes_it_from_rows_menu_and_marks() {
+    let ids = [1, 2, 3, 4];
+    let api = fake(ids.map(plain_pr).to_vec());
+    let (mut store, _d, _p) = pr_store(&api, pr_reply(&ids));
+    store.refresh(pr_t0());
+    store.unseen.insert(
+        "a".into(),
+        NewMark {
+            claude: false,
+            prs: [pr_ref(2)].into(),
+        },
+    );
+    store.hide_pr("a", &pr_ref(2));
+    store.refresh(at(1));
+    assert_eq!(pr_ids(&store, 0), vec![1, 3, 4]);
+    let s = &store.sessions[0];
+    assert!(s.menu.iter().flat_map(|m| &m.items).all(|i| i.code != "#2"));
+    assert!(
+        store
+            .unseen
+            .get("a")
+            .is_none_or(|m| !m.prs.contains(&pr_ref(2)))
+    );
+}
+
+#[test]
+fn hidden_pr_drops_its_link_chip_and_menu_line() {
+    let ids = [7571, 6874, 1, 2];
+    let api = fake(ids.map(plain_pr).to_vec());
+    let (mut store, _d, _p) = pr_store(&api, pr_reply(&ids));
+    store.refresh(pr_t0());
+    assert_eq!(store.sessions[0].links.len(), 1);
+    assert_eq!(store.sessions[0].menu_count(), 1);
+    store.hide_pr("a", &pr_ref(2));
+    store.refresh(at(1));
+    let s = &store.sessions[0];
+    let url = format!("https://bitbucket.org/{PR_REPO}/pull-requests/2");
+    assert!(s.links.iter().all(|l| l.url.as_str() != url));
+    assert!(
+        s.menu
+            .iter()
+            .flat_map(|m| &m.items)
+            .all(|i| i.url.as_str() != url)
+    );
+    assert_eq!(s.menu_count(), 0);
+}
+
+#[test]
+fn hiding_in_one_session_keeps_it_in_another() {
+    let api = fake(vec![plain_pr(1)]);
+    let (mut store, dir, projects) = pr_store(&api, pr_reply(&[1]));
+    write_transcript(
+        projects.path(),
+        BACKEND,
+        "b",
+        &[pr_reply(&[1]), String::new()],
+    );
+    write_session(dir.path(), "b", me(), "idle", 0.0, "b", BACKEND);
+    store.refresh(pr_t0());
+    store.hide_pr("a", &pr_ref(1));
+    store.refresh(at(1));
+    for s in &store.sessions {
+        let want = if s.id == "a" { vec![] } else { vec![1] };
+        let got: Vec<i64> = s.prs.iter().map(|p| p.ref_.id).collect();
+        assert_eq!(got, want, "session {}", s.id);
+    }
+}
+
+#[test]
+fn hidden_prs_are_passed_to_the_monitor() {
+    let api = fake(vec![plain_pr(1)]);
+    let (mut store, _d, _p) = pr_store(&api, pr_reply(&[1]));
+    store.refresh(pr_t0());
+    store.hide_pr("a", &pr_ref(1));
+    store.refresh(at(1));
+    let before = api.requests_containing("/pullrequests/1");
+    store.refresh(at(100));
+    store.refresh(at(200));
+    assert_eq!(api.requests_containing("/pullrequests/1"), before);
+    assert!(pr_ids(&store, 0).is_empty());
+}
+
+#[test]
+fn show_hidden_brings_back_a_merged_pr() {
+    let api = fake(vec![plain_pr(1)]);
+    let (mut store, _d, _p) = pr_store(&api, pr_reply(&[1]));
+    store.refresh(pr_t0());
+    store.hide_pr("a", &pr_ref(1));
+    store.refresh(at(1));
+    set_open(&api, vec![]);
+    api.set(
+        "/pullrequests/1?",
+        pr_json(PrSpec {
+            id: 1,
+            state: "MERGED",
+            ..Default::default()
+        }),
+    );
+    store.show_hidden_prs("a");
+    assert_eq!(store.hidden_pr_count("a"), 0);
+    store.refresh(at(2));
+    assert_eq!(pr_ids(&store, 0), vec![1]);
+    store.refresh(at(100));
+    assert_eq!(store.sessions[0].prs[0].state, "MERGED");
+    assert_eq!(store.pr_chime, None);
+}
+
+#[test]
+fn hidden_list_is_dropped_with_its_session() {
+    let api = fake(vec![plain_pr(1)]);
+    let (mut store, dir, _p) = pr_store(&api, pr_reply(&[1]));
+    store.refresh(pr_t0());
+    store.hide_pr("a", &pr_ref(1));
+    assert_eq!(store.hidden_pr_count("a"), 1);
+    std::fs::remove_file(dir.path().join("a.json")).unwrap();
+    store.refresh(at(1));
+    assert_eq!(store.hidden_pr_count("a"), 0);
+}
+
+#[test]
+fn can_hide_only_tracked_prs() {
+    let ids = [7571, 6874, 1, 2];
+    let api = fake(ids.map(plain_pr).to_vec());
+    let (mut store, _d, _p) = pr_store(&api, pr_reply(&ids));
+    store.refresh(pr_t0());
+    assert!(store.can_hide_pr("a", &pr_ref(7571)));
+    assert!(store.can_hide_pr("a", &pr_ref(2)));
+    assert!(!store.can_hide_pr("a", &pr_ref(99)));
+    assert!(!store.can_hide_pr("zzz", &pr_ref(7571)));
+
+    let failing = fake(vec![]);
+    *failing.fail_all.lock().unwrap() = Some(BitbucketError::Transport);
+    let (mut other, _d2, _p2) = pr_store(&failing, pr_reply(&[7571]));
+    other.refresh(pr_t0());
+    assert_eq!(other.sessions[0].links.len(), 1);
+    assert!(!other.can_hide_pr("a", &pr_ref(7571)));
+}
