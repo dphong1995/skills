@@ -855,6 +855,74 @@ fn scroll_offset_follows_the_clip_view() -> Result<(), String> {
     Ok(())
 }
 
+/// A scroll node that is not at the origin (the panel sits `MARGIN` in from the window edge, the header above the list): the
+/// scrolled node is drawn where the scene says, the offset is 0 at the top, and a click at the node's hit finds it.
+fn scrolled_node_keeps_its_place_and_hit_off_origin() -> Result<(), String> {
+    use claude_sessions_core::scene::{Cursor, Hit, HitId, Point, Rect};
+    use claude_sessions_macos::ui::SceneView;
+    use objc2::rc::Retained;
+    use objc2_app_kit::NSScrollView;
+    use objc2_foundation::{MainThreadMarker, NSPoint, NSSize};
+
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(228.0, 128.0));
+    let mut scene = panel_scroll_scene(true);
+    for n in &mut scene.nodes {
+        n.frame.x += 14.0;
+        n.frame.y += 14.0;
+    }
+    let card = scene.nodes.last_mut().ok_or("no card")?;
+    card.hits = vec![Hit {
+        rect: Rect::new(10.0, 5.0, 50.0, 20.0),
+        id: HitId(7),
+        cursor: Cursor::Pointer,
+    }];
+    let scene_frame = card.frame;
+    if scene
+        .nodes
+        .iter()
+        .any(|n| n.scroll.is_some_and(|_| n.frame.y < 30.0))
+    {
+        return Err("fixture: the scroll node must sit at y >= 30".into());
+    }
+    view.set_scene(&scene);
+    let host: Retained<NSScrollView> = view
+        .subviews()
+        .iter()
+        .find_map(|v| v.downcast::<NSScrollView>().ok())
+        .ok_or("no scroll view")?;
+    let doc = host.documentView().ok_or("no document view")?;
+    let card_view = doc.subviews().firstObject().ok_or("no scrolled view")?;
+    let seen = view.convertRect_fromView(card_view.frame(), Some(&doc));
+    if (seen.origin.x, seen.origin.y) != (scene_frame.x, scene_frame.y) {
+        return Err(format!(
+            "scrolled node drawn at ({}, {}), scene says ({}, {})",
+            seen.origin.x, seen.origin.y, scene_frame.x, scene_frame.y
+        ));
+    }
+    if view.scroll_offset() != 0.0 {
+        return Err(format!("offset at the top {}", view.scroll_offset()));
+    }
+    let centre = |scrolled: f64| Point {
+        x: scene_frame.x + 10.0 + 25.0,
+        y: scene_frame.y + 5.0 + 10.0 - scrolled,
+    };
+    if view.hit_at(centre(0.0)) != Some(HitId(7)) {
+        return Err(format!("no hit at the top: {:?}", view.hit_at(centre(0.0))));
+    }
+    host.contentView().scrollToPoint(NSPoint::new(0.0, 10.0));
+    if view.scroll_offset() != 10.0 {
+        return Err(format!("scrolled offset {}", view.scroll_offset()));
+    }
+    if view.hit_at(centre(10.0)) != Some(HitId(7)) {
+        return Err(format!(
+            "no hit after scrolling: {:?}",
+            view.hit_at(centre(10.0))
+        ));
+    }
+    Ok(())
+}
+
 /// Fields draw their text and nodes after the scroll node stay inside its viewport.
 fn png_draws_fields_and_clips_scroll() -> Result<(), String> {
     use claude_sessions_core::scene::{Appearance, Rect, Size};
@@ -1995,6 +2063,10 @@ fn main() {
     results.push((
         "scroll_offset_follows_the_clip_view",
         scroll_offset_follows_the_clip_view(),
+    ));
+    results.push((
+        "scrolled_node_keeps_its_place_and_hit_off_origin",
+        scrolled_node_keeps_its_place_and_hit_off_origin(),
     ));
     results.push((
         "scroll_view_stacks_above_panel_when_in_first_scene",

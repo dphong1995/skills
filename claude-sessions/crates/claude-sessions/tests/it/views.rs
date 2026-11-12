@@ -1329,6 +1329,36 @@ fn pr_tags_carry_their_help_and_the_disabled_ask_button_says_why() {
 }
 
 #[test]
+fn the_pr_number_opens_its_pull_request() {
+    let mut s = pr_session();
+    for (i, p) in s.prs.iter_mut().enumerate() {
+        p.title = Some(format!("Title {i}"));
+    }
+    let prs = s.prs.clone();
+    let built = render(&snapshot(vec![s]), &open());
+    let node = card(&built.scene, "done");
+    for (i, p) in prs.iter().enumerate() {
+        let tip = node
+            .tips
+            .iter()
+            .find(|t| t.text == format!("Title {i}"))
+            .expect("the PR number has its title tip");
+        let at = claude_sessions_core::scene::Point {
+            x: tip.rect.x + tip.rect.w / 2.0,
+            y: tip.rect.y + tip.rect.h / 2.0,
+        };
+        let hit = node.hits.iter().find(|h| h.rect.contains(at)).unwrap();
+        assert_eq!(
+            built.targets.get(hit.id).unwrap(),
+            &Target::Link {
+                session: "done".into(),
+                url: p.url.clone()
+            }
+        );
+    }
+}
+
+#[test]
 fn the_quota_ring_is_an_arc_swept_by_the_percent() {
     let mut snap = snapshot(vec![finished("done")]);
     let mut q = claude_sessions_core::quota::Quota {
@@ -2442,11 +2472,15 @@ fn chips_overflow_at_panel_width() {
         matches!(c, DrawCmd::RoundedRect { rect, radius, fill: Some(f), .. }
             if rect.h == layout::CHIP_H && *radius == 6.0 && f.token == ThemeColor::Fill)
     };
-    // The link chips are the chips with a link hit; the `+M` chip and the menu chip are the two Menu hits.
+    // The link chips are the chips with a link hit to one of the session's links (the PR numbers link to their PR too); the
+    // `+M` chip and the menu chip are the two Menu hits.
     let links = node
         .hits
         .iter()
-        .filter(|h| matches!(built.targets.get(h.id), Some(Target::Link { .. })))
+        .filter(|h| {
+            matches!(built.targets.get(h.id), Some(Target::Link { url, .. })
+                if session.links.iter().any(|l| &l.url == url))
+        })
         .count();
     let more = texts(node)
         .into_iter()

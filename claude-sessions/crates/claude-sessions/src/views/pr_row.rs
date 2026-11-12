@@ -195,6 +195,15 @@ pub fn draw(ctx: &mut Ctx, c: &mut Canvas, s: &Session, index: usize, block: Rec
             p.help.as_deref()
         };
         c.tip(Rect::new(at, tier1.y, w, tier1.h), help.unwrap_or_default());
+        if p.kind == PartKind::Pr {
+            c.hit(
+                Rect::new(at, tier1.y, w, tier1.h),
+                Target::Link {
+                    session: s.id.clone(),
+                    url: pr.url.clone(),
+                },
+            );
+        }
         if let PartKind::State(tone) = p.kind {
             let color = theme::tone_token(Some(tone));
             let chip = Rect::new(at, tier1.y, w, tier1.h);

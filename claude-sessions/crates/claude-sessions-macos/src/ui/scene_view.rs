@@ -359,7 +359,8 @@ impl SceneView {
         Point { x: p.x, y: p.y }
     }
 
-    fn hit_at(&self, at: Point) -> Option<HitId> {
+    /// The hit under `at` (SceneView coordinates): scrolled nodes answer at their scrolled position, inside the viewport.
+    pub fn hit_at(&self, at: Point) -> Option<HitId> {
         let scene = self.ivars().scene.borrow();
         let scrolled_from = scene
             .nodes
@@ -408,7 +409,11 @@ impl SceneView {
             view.setHasHorizontalScroller(false);
             view.setAutohidesScrollers(true);
             view.setScrollerStyle(NSScrollerStyle::Overlay);
-            let doc = NodeView::new(mtm, "scroll-document", node.frame);
+            let doc = NodeView::new(
+                mtm,
+                "scroll-document",
+                Rect::new(0.0, 0.0, content.w, content.h),
+            );
             view.setDocumentView(Some(&doc));
             self.addSubview(&view);
             ScrollHost { view, doc }
@@ -443,14 +448,18 @@ impl SceneView {
         if let Some(host) = &new_host {
             host.setAlphaValue(0.0);
         }
-        let top = scroll_at.map_or(0.0, |i| scene.nodes[i].frame.y);
+        let viewport = scroll_at.map_or(Point::default(), |i| {
+            let f = scene.nodes[i].frame;
+            Point { x: f.x, y: f.y }
+        });
         let scrolled: std::collections::HashSet<&NodeKey> = scroll_at
             .map(|i| scene.nodes[i + 1..].iter().map(|n| &n.key).collect())
             .unwrap_or_default();
         let place = |n: &claude_sessions_core::scene::Node| {
             let mut frame = n.frame;
             if scrolled.contains(&n.key) {
-                frame.y -= top;
+                frame.x -= viewport.x;
+                frame.y -= viewport.y;
             }
             frame
         };
