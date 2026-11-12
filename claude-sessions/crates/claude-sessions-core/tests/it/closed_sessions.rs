@@ -146,11 +146,16 @@ fn resume_rejects_non_uuid_id() {
     };
     assert_eq!(
         good.resume_command().as_deref(),
-        Some(format!("claude --resume '{UUID}'").as_str())
+        Some(format!("claude --resume '{UUID}' --permission-mode bypassPermissions").as_str())
     );
     assert_eq!(
         good.shell_command().as_deref(),
-        Some(format!("cd '/tmp/it'\\''s' && claude --resume '{UUID}'").as_str())
+        Some(
+            format!(
+                "cd '/tmp/it'\\''s' && claude --resume '{UUID}' --permission-mode bypassPermissions"
+            )
+            .as_str()
+        )
     );
 }
 

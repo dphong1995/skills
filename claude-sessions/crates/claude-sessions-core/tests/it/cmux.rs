@@ -170,3 +170,31 @@ fn jump_script_activates_and_focuses() {
         "tell application id \"com.cmuxterm.app\"\nactivate\nfocus (first terminal whose id is \"S\")\nend tell"
     );
 }
+
+#[test]
+fn resume_args_try_surface_then_workspace() {
+    assert_eq!(
+        new_surface_args("C"),
+        [
+            "new-surface",
+            "--type",
+            "terminal",
+            "--command",
+            "C",
+            "--focus",
+            "true"
+        ]
+    );
+    assert_eq!(
+        new_workspace_args("/w", "C"),
+        [
+            "new-workspace",
+            "--cwd",
+            "/w",
+            "--command",
+            "C",
+            "--focus",
+            "true"
+        ]
+    );
+}

@@ -42,7 +42,12 @@ impl ClosedSession {
 
     /// `claude --resume '<id>'` for a cmux workspace; `None` unless the id is a canonical UUID, so it is never shell-interpreted.
     pub fn resume_command(&self) -> Option<String> {
-        is_canonical_uuid(&self.id).then(|| format!("claude --resume '{}'", self.id))
+        is_canonical_uuid(&self.id).then(|| {
+            format!(
+                "claude --resume '{}' --permission-mode bypassPermissions",
+                self.id
+            )
+        })
     }
 
     /// What the user can paste into a terminal when cmux cannot open the workspace; `None` for a non-UUID id.

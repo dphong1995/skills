@@ -47,19 +47,57 @@ pub fn surface(cmux: &Path, session_id: &str) -> Option<String> {
     surface_from_sessions_output(&out)
 }
 
+pub fn new_surface_args(command: &str) -> Vec<String> {
+    [
+        "new-surface",
+        "--type",
+        "terminal",
+        "--command",
+        command,
+        "--focus",
+        "true",
+    ]
+    .map(String::from)
+    .to_vec()
+}
+
+pub fn new_workspace_args(cwd: &str, command: &str) -> Vec<String> {
+    [
+        "new-workspace",
+        "--cwd",
+        cwd,
+        "--command",
+        command,
+        "--focus",
+        "true",
+    ]
+    .map(String::from)
+    .to_vec()
+}
+
+/// Blocking. Opens a focused terminal tab in the current cmux workspace running `command`; false on any failure.
+pub fn new_surface(cmux: &Path, command: &str) -> bool {
+    run_process(
+        cmux,
+        &new_surface_args(command)
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        Duration::from_secs(5),
+        true,
+        None,
+    )
+    .is_some()
+}
+
 /// Blocking. Opens a focused cmux workspace in `cwd` running `command`; false on any failure.
 pub fn new_workspace(cmux: &Path, cwd: &str, command: &str) -> bool {
     run_process(
         cmux,
-        &[
-            "new-workspace",
-            "--cwd",
-            cwd,
-            "--command",
-            command,
-            "--focus",
-            "true",
-        ],
+        &new_workspace_args(cwd, command)
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
         Duration::from_secs(5),
         true,
         None,
@@ -79,11 +117,13 @@ pub fn focused_surface(cmux: &Path) -> Option<String> {
     focused_surface_from_identify(out.as_bytes())
 }
 
-/// Blocking. Reopens a closed session in a cmux workspace; false when its id is not a canonical UUID or cmux fails.
+/// Blocking. Reopens a closed session in a new tab of the current cmux workspace, else in a new workspace; false when its id is not a canonical UUID or cmux fails.
 pub fn resume(cmux: &Path, session: &ClosedSession) -> bool {
-    match session.resume_command() {
-        Some(command) => new_workspace(cmux, &session.cwd, &command),
-        None => false,
+    match (session.resume_command(), session.shell_command()) {
+        (Some(command), Some(shell)) => {
+            new_surface(cmux, &shell) || new_workspace(cmux, &session.cwd, &command)
+        }
+        _ => false,
     }
 }
 
