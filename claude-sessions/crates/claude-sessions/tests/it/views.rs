@@ -2801,22 +2801,6 @@ fn prs_block_height_is_fixed_per_pr() {
 }
 
 #[test]
-fn pr_buttons_follow_the_rabbit_state() {
-    use claude_sessions_core::code_rabbit::pr_buttons;
-    use claude_sessions_core::pull_requests::RabbitThreads;
-    let mut p = pr(1, "OPEN");
-    assert_eq!(pr_buttons(&p), (true, false));
-    p.rabbit = Some(Rabbit::AwaitingApproval);
-    assert_eq!(pr_buttons(&p), (true, true));
-    p.rabbit_threads = Some(RabbitThreads {
-        pending: 0,
-        total: 1,
-    });
-    assert_eq!(pr_buttons(&p), (false, true));
-    assert_eq!(pr_buttons(&pr(2, "MERGED")), (false, false));
-}
-
-#[test]
 fn pr_item_draws_title_and_meta_on_two_lines() {
     let mut p = bare_pr(7571, "OPEN", Some("Fix the parser"));
     p.reviewers = 5;
@@ -3084,6 +3068,67 @@ fn crowded_meta_line_drops_parts_before_the_buttons() {
 }
 
 #[test]
+fn stale_clock_comes_after_the_rabbit_without_a_reviewer() {
+    let mut p = awaiting();
+    p.reviewers = 0;
+    let mut snap = snapshot(vec![session_with(vec![p])]);
+    snap.pr_stale_since = Some(now() - Duration::from_secs(7 * 60));
+    let (list, built, _) = pr_list(&snap);
+    let node = card(&built.scene, "done");
+    let it = item_rect(list, 0);
+    let clock = text_in(node, "cũ 7m", it).expect("the clock");
+    let hare = node
+        .cmds
+        .iter()
+        .find_map(|c| match c {
+            DrawCmd::Symbol { name, rect, .. } if name == "hare" => Some(*rect),
+            _ => None,
+        })
+        .expect("the hare");
+    assert!(hare.x < clock.x, "{hare:?} {clock:?}");
+}
+
+#[test]
+fn a_crowded_meta_line_never_draws_past_the_buttons() {
+    let mut checked = 0;
+    for comments_digits in 1..=15u32 {
+        for changes_digits in 0..=15u32 {
+            for reviewers in [0, 5, 123456] {
+                let mut p = awaiting();
+                p.reviewers = reviewers;
+                p.comments = 10_i64.pow(comments_digits - 1);
+                p.changes_requested = if changes_digits == 0 {
+                    0
+                } else {
+                    10_i64.pow(changes_digits - 1)
+                };
+                let snap = snapshot(vec![session_with(vec![p])]);
+                let (list, built, _) = pr_list(&snap);
+                let node = card(&built.scene, "done");
+                let it = item_rect(list, 0);
+                let nudge = hit_rect(&built, node, |t| matches!(t, Target::Nudge { .. }));
+                let limit = nudge.x - 8.0;
+                for c in &node.cmds {
+                    if let DrawCmd::Text { rect, .. } | DrawCmd::Symbol { rect, .. } = c
+                        && rect.y >= it.y + 24.0
+                        && rect.y < it.y + it.h
+                        && rect.x < nudge.x
+                        && rect.x >= it.x
+                    {
+                        assert!(
+                            rect.x + rect.w <= limit + 0.001,
+                            "{rect:?} past {limit} ({comments_digits} {changes_digits} {reviewers})"
+                        );
+                    }
+                }
+                checked += 1;
+            }
+        }
+    }
+    assert!(checked > 0);
+}
+
+#[test]
 fn long_title_truncates_before_the_buttons() {
     let long = "x".repeat(100);
     let mut p = awaiting();
@@ -3175,7 +3220,7 @@ fn pr_send_result_without_button_stays_in_the_item() {
 }
 
 #[test]
-fn pr_list_uses_light_tokens() {
+fn pr_list_uses_appearance_tokens() {
     use claude_sessions_core::scene::Appearance;
     assert_eq!(
         ThemeColor::Inset.rgba(Appearance::Dark),
@@ -3211,10 +3256,15 @@ fn pr_list_uses_light_tokens() {
         matches!(
             c,
             DrawCmd::RoundedRect { stroke: Some(s), radius, .. }
-                if s.token == ThemeColor::InsetEdge && *radius == layout::PR_LIST_RADIUS - 0.5
+                if s.token == ThemeColor::InsetEdge
+                    && s.alpha == 0.5
+                    && *radius == layout::PR_LIST_RADIUS - 0.5
         )
     });
-    assert!(edge, "the inner edge is drawn with its token");
+    assert!(
+        edge,
+        "the 1 pt inner edge is drawn with its token at half alpha"
+    );
     // Text colours are tokens too, so they follow the appearance.
     let (_, c) = text_cmd(node, "Show thumbnails").unwrap();
     assert_eq!(c.token, ThemeColor::Text);

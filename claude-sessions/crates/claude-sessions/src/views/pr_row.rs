@@ -13,6 +13,7 @@ use claude_sessions_core::pull_requests::PRStatus;
 use claude_sessions_core::scene::{Align, Rect, ThemeColor, Weight};
 use claude_sessions_core::store::{SendKey, SendKind, SendState, Session};
 use claude_sessions_core::text::{self, PartKind, PartTint, PrPart};
+use std::borrow::Cow;
 
 /// Text starts here inside an item (after the 20 pt badge at x 10).
 const TEXT_X: f64 = 38.0;
@@ -31,6 +32,8 @@ const LINE_TWO_Y: f64 = 24.0;
 const LINE_TWO_H: f64 = 14.0;
 /// An icon of the meta line and the space after it.
 const ICON_W: f64 = 16.0;
+/// The least text drawn beside an icon.
+const MIN_TEXT_W: f64 = 8.0;
 const RABBIT_WORD: &str = "CodeRabbit ";
 
 fn rabbit_color(r: &Rabbit) -> ThemeColor {
@@ -54,26 +57,33 @@ struct Meta {
     rabbit: bool,
 }
 
-/// The icon and text of a part drawn on the meta line; `None` for the parts drawn elsewhere (the number, the CodeRabbit
-/// label and the state word).
-fn flow(p: &PrPart) -> Option<(Option<&'static str>, String, ThemeColor)> {
+/// The part as drawn on the meta line; `None` for the number, which the title line draws.
+fn flow(pr: &PRStatus, p: &PrPart) -> Option<Meta> {
     let tint = |t: Option<PartTint>, base| match t {
         Some(PartTint::Red) => ThemeColor::Red,
         Some(PartTint::Green) => ThemeColor::Green,
         None => base,
     };
+    let meta = |icon, text, color| Meta {
+        icon,
+        text,
+        color,
+        drop_rank: p.drop_rank,
+        help: p.help.clone(),
+        rabbit: false,
+    };
     match p.kind {
-        PartKind::ChangesRequested => Some((
+        PartKind::ChangesRequested => Some(meta(
             Some("xmark"),
             p.text.split(' ').next().unwrap_or("").to_string(),
             tint(p.tint, ThemeColor::Red),
         )),
-        PartKind::Approved => Some((
+        PartKind::Approved => Some(meta(
             Some("checkmark"),
             p.text.clone(),
             tint(p.tint, ThemeColor::TextSecondary),
         )),
-        PartKind::Comments => Some((
+        PartKind::Comments => Some(meta(
             Some("bubble.left.fill"),
             p.text.clone(),
             ThemeColor::TextSecondary,
@@ -84,59 +94,49 @@ fn flow(p: &PrPart) -> Option<(Option<&'static str>, String, ThemeColor)> {
                 Some((name, ago)) => format!("{name} · {ago}"),
                 None => p.text.clone(),
             };
-            Some((None, text, ThemeColor::TextFaint))
+            Some(meta(None, text, ThemeColor::TextFaint))
         }
-        PartKind::Clock => Some((None, p.text.clone(), ThemeColor::TextFaint)),
-        PartKind::Pr | PartKind::State(_) | PartKind::Rabbit => None,
+        PartKind::Clock => Some(meta(None, p.text.clone(), ThemeColor::TextFaint)),
+        PartKind::State(tone) => Some(Meta {
+            drop_rank: 0,
+            help: None,
+            ..meta(None, p.text.clone(), theme::tone_token(Some(tone)))
+        }),
+        PartKind::Rabbit => Some(Meta {
+            rabbit: true,
+            ..meta(
+                Some("hare"),
+                p.text.clone(),
+                pr.rabbit
+                    .as_ref()
+                    .map_or(ThemeColor::TextFaint, rabbit_color),
+            )
+        }),
+        PartKind::Pr => None,
     }
 }
 
 /// The meta line of `pr` in the order checks, comments, CodeRabbit, reviewer, staleness.
 fn meta_parts(pr: &PRStatus, parts: &[PrPart]) -> Vec<Meta> {
     let mut out: Vec<Meta> = Vec::new();
-    let mut rabbit = None;
+    let (mut rabbit_at, mut tail_at) = (None, None);
     for p in parts {
-        if let PartKind::State(tone) = p.kind {
-            out.push(Meta {
-                icon: None,
-                text: p.text.clone(),
-                color: theme::tone_token(Some(tone)),
-                drop_rank: 0,
-                help: None,
-                rabbit: false,
-            });
-        } else if p.kind == PartKind::Rabbit {
-            let color = pr
-                .rabbit
-                .as_ref()
-                .map_or(ThemeColor::TextFaint, rabbit_color);
-            rabbit = Some(Meta {
-                icon: Some("hare"),
-                text: p.text.clone(),
-                color,
-                drop_rank: p.drop_rank,
-                help: p.help.clone(),
-                rabbit: true,
-            });
-        } else if let Some((icon, text, color)) = flow(p) {
-            let m = Meta {
-                icon,
-                text,
-                color,
-                drop_rank: p.drop_rank,
-                help: p.help.clone(),
-                rabbit: false,
-            };
-            // CodeRabbit sits after the comments and before the reviewer.
-            if p.kind == PartKind::Person
-                && let Some(r) = rabbit.take()
-            {
-                out.push(r);
+        if let Some(m) = flow(pr, p) {
+            match p.kind {
+                PartKind::Rabbit => rabbit_at = Some(out.len()),
+                PartKind::Person | PartKind::Clock => {
+                    tail_at.get_or_insert(out.len());
+                }
+                _ => {}
             }
             out.push(m);
         }
     }
-    out.extend(rabbit);
+    // CodeRabbit sits after the comments and before the reviewer and the staleness, which always follow it in `parts`.
+    if let Some(from) = rabbit_at {
+        let rabbit = out.remove(from);
+        out.insert(tail_at.map_or(out.len(), |t| t - 1), rabbit);
+    }
     out
 }
 
@@ -159,23 +159,28 @@ pub fn draw(ctx: &Ctx, c: &mut Canvas, s: &Session, block: Rect) {
         let it = Rect::new(list.x, list.y + i as f64 * PR_ITEM_H, list.w, PR_ITEM_H);
         item(ctx, c, s, pr, it, (i == 0, i + 1 == n));
     }
-    // The inner edge: the scene strokes 1 pt, so it sits fully inside the list.
+    // The inner edge: the scene strokes 1 pt, so it sits fully inside the list; half the token's alpha reads as 0.5 pt.
     c.rrect(
         Rect::new(list.x + 0.5, list.y + 0.5, list.w - 1.0, list.h - 1.0),
         PR_LIST_RADIUS - 0.5,
         None,
-        Some(theme::solid(ThemeColor::InsetEdge)),
+        Some(theme::tint(ThemeColor::InsetEdge, 0.5)),
     );
 }
 
 /// What one button slot of an item shows.
 struct Slot {
-    kind: SendKind,
+    label: &'static str,
+    primary: bool,
+    target: Target,
     /// A button (else the result line of a send whose button is gone).
     button: bool,
     state: Option<SendState>,
+    /// The measured width.
+    w: f64,
 }
 
+/// `place` is (first, last) in the list.
 fn item(ctx: &Ctx, c: &mut Canvas, s: &Session, pr: &PRStatus, it: Rect, place: (bool, bool)) {
     let view = ctx.view;
     let snap = view.snap;
@@ -183,9 +188,9 @@ fn item(ctx: &Ctx, c: &mut Canvas, s: &Session, pr: &PRStatus, it: Rect, place: 
         .unseen
         .get(&s.id)
         .is_some_and(|m| m.prs.contains(&pr.ref_));
-    let open = pr.is_open();
     if fresh {
-        // Rounded like the list on its outer corners; the inner ones are covered by the neighbour's edge.
+        // The scene has no clip or per-corner radius: the first and last item round all four corners like the list, so the
+        // inner corners of those two items show a notch of the list's fill.
         let radius = if place.0 || place.1 {
             PR_LIST_RADIUS
         } else {
@@ -201,113 +206,12 @@ fn item(ctx: &Ctx, c: &mut Canvas, s: &Session, pr: &PRStatus, it: Rect, place: 
     if !place.0 {
         c.hairline(it.x + TEXT_X, it.y, it.w - TEXT_X);
     }
+    badge(c, pr, it);
+    let area_left = buttons(ctx, c, s, pr, it);
 
-    // Badge.
-    let (badge_color, badge_symbol) = if open {
-        (ThemeColor::Green, "arrow.triangle.branch")
-    } else if pr.state == "MERGED" {
-        (ThemeColor::Indigo, "arrow.triangle.merge")
-    } else {
-        (ThemeColor::Red, "xmark")
-    };
-    let badge = Rect::new(it.x + 10.0, it.y + (it.h - BADGE) / 2.0, BADGE, BADGE);
-    c.rrect(badge, 6.0, Some(theme::tint(badge_color, 0.16)), None);
-    c.symbol(
-        badge_symbol,
-        Rect::new(badge.x + 4.0, badge.y + 4.0, 12.0, 12.0),
-        theme::solid(badge_color),
-        Weight::Regular,
-    );
-
-    // Buttons, right to left from the edge; `Nhắc duyệt` is the left one.
-    let pr_key = |kind| {
-        let mut k = SendKey::new(&s.id, kind);
-        k.pr = Some(pr.ref_.clone());
-        snap.send_state(&k, view.now)
-    };
-    let (ask, nudge) = pr_buttons(pr);
-    let slots: Vec<Slot> = [(SendKind::Nudge, nudge), (SendKind::AskClaude, ask)]
-        .into_iter()
-        .filter_map(|(kind, button)| {
-            let state = pr_key(kind);
-            (open && (button || state.is_some())).then_some(Slot {
-                kind,
-                button,
-                state,
-            })
-        })
-        .collect();
-    let label = |k: SendKind| {
-        if k == SendKind::Nudge {
-            "Nhắc duyệt"
-        } else {
-            "Nhờ Claude"
-        }
-    };
-    let width = |sl: &Slot| {
-        if sl.button {
-            ctx.button_w(label(sl.kind))
-        } else {
-            ctx.text_w(
-                send_label(sl.state.unwrap_or(SendState::Sent)),
-                &theme::META_FONT,
-            ) + 4.0
-        }
-    };
-    let total: f64 =
-        slots.iter().map(width).sum::<f64>() + BTN_GAP * slots.len().saturating_sub(1) as f64;
-    let right = it.x + it.w - BTN_EDGE;
-    let area_left = right - total;
-    let mut x = area_left;
-    for sl in &slots {
-        let w = width(sl);
-        if sl.button {
-            let rect = Rect::new(x, it.y + (it.h - PR_BUTTON_H) / 2.0, w, PR_BUTTON_H);
-            let target = |pr: &PRStatus| {
-                if sl.kind == SendKind::Nudge {
-                    Target::Nudge {
-                        session: s.id.clone(),
-                        pr: pr.ref_.clone(),
-                    }
-                } else {
-                    Target::AskClaude {
-                        session: s.id.clone(),
-                        pr: pr.ref_.clone(),
-                    }
-                }
-            };
-            button(
-                c,
-                label(sl.kind),
-                sl.state,
-                // Only while Claude can take a message; an earlier send keeps showing its result.
-                sl.kind == SendKind::Nudge || s.can_ask_claude(),
-                sl.kind == SendKind::Nudge,
-                rect,
-                || target(pr),
-            );
-        } else if let Some(state) = sl.state {
-            c.sent_line(
-                Rect::new(x, it.y + (it.h - 16.0) / 2.0, w, 16.0),
-                state,
-                Align::Left,
-            );
-        }
-        x += w + BTN_GAP;
-    }
     // Text ends before the buttons; with none it keeps the same margin as the buttons would.
-    let limit = if slots.is_empty() {
-        right
-    } else {
-        area_left - TEXT_BTN_GAP
-    };
-    let link_w = if slots.is_empty() {
-        it.w
-    } else {
-        area_left - it.x
-    };
-
-    // Meta line.
+    let limit = area_left.map_or(it.x + it.w - BTN_EDGE, |l| l - TEXT_BTN_GAP);
+    let link_w = area_left.map_or(it.w, |l| l - it.x);
     let parts = text::pr_parts(pr, view.now, snap.pr_stale_since);
     let meta = meta_parts(pr, &parts);
     let text_x = it.x + TEXT_X;
@@ -316,98 +220,9 @@ fn item(ctx: &Ctx, c: &mut Canvas, s: &Session, pr: &PRStatus, it: Rect, place: 
     } else {
         it.y + LINE_ONE_Y
     };
-    let mut help_tip = false;
-    if !meta.is_empty() {
-        let shown = |m: &Meta, rank: u8| m.drop_rank == 0 || m.drop_rank > rank;
-        let part_w = |m: &Meta, word: bool| {
-            let text = rabbit_text(m, word);
-            ctx.text_w(&text, &theme::META_FONT) + if m.icon.is_some() { ICON_W } else { 0.0 }
-        };
-        let total = |rank: u8, word: bool| -> f64 {
-            let ws: Vec<f64> = meta
-                .iter()
-                .filter(|m| shown(m, rank))
-                .map(|m| part_w(m, word))
-                .collect();
-            ws.iter().sum::<f64>() + PART_GAP * ws.len().saturating_sub(1) as f64
-        };
-        // Drop by rank (clock, then person), then the word `CodeRabbit `.
-        let (rank, word) = [(0, true), (1, true), (2, true), (2, false)]
-            .into_iter()
-            .find(|(r, w)| total(*r, *w) <= limit - text_x)
-            .unwrap_or((2, false));
-        let mut px = text_x;
-        for m in meta.iter().filter(|m| shown(m, rank)) {
-            let room = limit - px;
-            if room <= 0.0 {
-                break;
-            }
-            let w = part_w(m, word).min(room);
-            let line = Rect::new(px, it.y + LINE_TWO_Y, w, LINE_TWO_H);
-            let mut tx = px;
-            if let Some(icon) = m.icon {
-                c.symbol(
-                    icon,
-                    Rect::new(px, line.y + (line.h - 12.0) / 2.0, 12.0, 12.0),
-                    theme::solid(m.color),
-                    Weight::Regular,
-                );
-                tx += ICON_W;
-            }
-            c.label(
-                Rect::new(tx, line.y, (px + w - tx).max(0.0), line.h),
-                &rabbit_text(m, word),
-                theme::META_FONT,
-                theme::solid(m.color),
-                Align::Left,
-            );
-            if let Some(help) = &m.help {
-                c.tip(line, help);
-                help_tip = true;
-            }
-            px += w + PART_GAP;
-        }
-    }
-
-    // Title line.
-    let mut lx = text_x;
-    if fresh {
-        c.symbol(
-            "sparkle",
-            Rect::new(lx, line_one_y + 2.0, 12.0, 12.0),
-            theme::solid(ThemeColor::Indigo),
-            Weight::Bold,
-        );
-        lx += 18.0;
-    }
-    let number = format!("#{}", pr.ref_.id);
-    let number_w = ctx.text_w(&number, &theme::PR_FONT);
-    c.text(
-        Rect::new(lx, line_one_y, number_w, LINE_ONE_H),
-        &number,
-        theme::PR_FONT,
-        theme::solid(ThemeColor::Text),
-        1,
-        Align::Left,
-    );
+    let help_tip = meta_line(ctx, c, it, &meta, limit);
     let title = pr.title.as_deref().filter(|t| !t.is_empty());
-    if let Some(title) = title {
-        let tx = lx + number_w + 6.0;
-        if limit - tx > 0.0 {
-            c.text(
-                Rect::new(tx, line_one_y, limit - tx, LINE_ONE_H),
-                title,
-                theme::PR_TITLE_FONT,
-                theme::solid(if open {
-                    ThemeColor::Text
-                } else {
-                    ThemeColor::TextSecondary
-                }),
-                1,
-                Align::Left,
-            );
-        }
-    }
+    title_line(ctx, c, pr, title, fresh, (text_x, line_one_y), limit);
 
     // Hover text and the link: the whole item except the button area. The reason of a failed approval keeps its own tip, so
     // the item's tip then leaves the meta line.
@@ -425,12 +240,228 @@ fn item(ctx: &Ctx, c: &mut Canvas, s: &Session, pr: &PRStatus, it: Rect, place: 
     );
 }
 
-/// The text of a meta part: the CodeRabbit label wears its name unless the line is too crowded for it.
-fn rabbit_text(m: &Meta, word: bool) -> String {
-    if m.rabbit && word {
-        format!("{RABBIT_WORD}{}", m.text)
+/// The state badge at the item's left.
+fn badge(c: &mut Canvas, pr: &PRStatus, it: Rect) {
+    let (color, symbol) = if pr.is_open() {
+        (ThemeColor::Green, "arrow.triangle.branch")
+    } else if pr.state == "MERGED" {
+        (ThemeColor::Indigo, "arrow.triangle.merge")
     } else {
-        m.text.clone()
+        (ThemeColor::Red, "xmark")
+    };
+    let badge = Rect::new(it.x + 10.0, it.y + (it.h - BADGE) / 2.0, BADGE, BADGE);
+    c.rrect(badge, 6.0, Some(theme::tint(color, 0.16)), None);
+    c.symbol(
+        symbol,
+        Rect::new(badge.x + 4.0, badge.y + 4.0, 12.0, 12.0),
+        theme::solid(color),
+        Weight::Regular,
+    );
+}
+
+/// The label, whether it is the primary button and the hit of a button kind.
+fn face(kind: SendKind, session: &str, pr: &PRStatus) -> (&'static str, bool, Target) {
+    let (session, pr) = (session.to_string(), pr.ref_.clone());
+    match kind {
+        SendKind::Nudge => ("Nhắc duyệt", true, Target::Nudge { session, pr }),
+        _ => ("Nhờ Claude", false, Target::AskClaude { session, pr }),
+    }
+}
+
+/// Draws the buttons (or the result of a send whose button is gone), right to left from the edge, `Nhắc duyệt` the left
+/// one; returns where the button area starts, `None` without any.
+fn buttons(ctx: &Ctx, c: &mut Canvas, s: &Session, pr: &PRStatus, it: Rect) -> Option<f64> {
+    if !pr.is_open() {
+        return None;
+    }
+    let (ask, nudge) = pr_buttons(pr);
+    let slots: Vec<Slot> = [(SendKind::Nudge, nudge), (SendKind::AskClaude, ask)]
+        .into_iter()
+        .filter_map(|(kind, button)| {
+            let mut key = SendKey::new(&s.id, kind);
+            key.pr = Some(pr.ref_.clone());
+            let state = ctx.view.snap.send_state(&key, ctx.view.now);
+            if !button && state.is_none() {
+                return None;
+            }
+            let (label, primary, target) = face(kind, &s.id, pr);
+            let w = if button {
+                ctx.button_w(label)
+            } else {
+                ctx.text_w(
+                    send_label(state.unwrap_or(SendState::Sent)),
+                    &theme::META_FONT,
+                ) + 4.0
+            };
+            Some(Slot {
+                label,
+                primary,
+                target,
+                button,
+                state,
+                w,
+            })
+        })
+        .collect();
+    if slots.is_empty() {
+        return None;
+    }
+    let total = slots.iter().map(|sl| sl.w).sum::<f64>() + BTN_GAP * (slots.len() - 1) as f64;
+    let area_left = it.x + it.w - BTN_EDGE - total;
+    let mut x = area_left;
+    for sl in slots {
+        if sl.button {
+            let rect = Rect::new(x, it.y + (it.h - PR_BUTTON_H) / 2.0, sl.w, PR_BUTTON_H);
+            button(
+                c,
+                sl.label,
+                sl.state,
+                // Only while Claude can take a message; an earlier send keeps showing its result. A primary button ignores
+                // this: `Nhắc duyệt` is always usable.
+                sl.primary || s.can_ask_claude(),
+                sl.primary,
+                rect,
+                || sl.target,
+            );
+        } else if let Some(state) = sl.state {
+            c.sent_line(
+                Rect::new(x, it.y + (it.h - 16.0) / 2.0, sl.w, 16.0),
+                state,
+                Align::Left,
+            );
+        }
+        x += sl.w + BTN_GAP;
+    }
+    Some(area_left)
+}
+
+/// The text of a meta part: the CodeRabbit label wears its name unless the line is too crowded for it.
+fn part_text(m: &Meta, word: bool) -> Cow<'_, str> {
+    if m.rabbit && word {
+        Cow::Owned(format!("{RABBIT_WORD}{}", m.text))
+    } else {
+        Cow::Borrowed(&m.text)
+    }
+}
+
+/// Draws the meta line of `it` up to `limit`; returns whether a part carries its own tip.
+fn meta_line(ctx: &Ctx, c: &mut Canvas, it: Rect, meta: &[Meta], limit: f64) -> bool {
+    let text_x = it.x + TEXT_X;
+    let icon_w = |m: &Meta| if m.icon.is_some() { ICON_W } else { 0.0 };
+    // Each part measured once with the word `CodeRabbit `, and the CodeRabbit part once without it.
+    let widths: Vec<f64> = meta
+        .iter()
+        .map(|m| ctx.text_w(&part_text(m, true), &theme::META_FONT) + icon_w(m))
+        .collect();
+    let bare: Vec<f64> = meta
+        .iter()
+        .zip(&widths)
+        .map(|(m, w)| {
+            if m.rabbit {
+                ctx.text_w(&m.text, &theme::META_FONT) + icon_w(m)
+            } else {
+                *w
+            }
+        })
+        .collect();
+    let shown = |m: &Meta, rank: u8| m.drop_rank == 0 || m.drop_rank > rank;
+    let total = |rank: u8, word: bool| -> f64 {
+        let ws: Vec<f64> = meta
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| shown(m, rank))
+            .map(|(i, _)| if word { widths[i] } else { bare[i] })
+            .collect();
+        ws.iter().sum::<f64>() + PART_GAP * ws.len().saturating_sub(1) as f64
+    };
+    // Drop by rank (clock, then person), then the word `CodeRabbit `.
+    let (rank, word) = [(0, true), (1, true), (2, true), (2, false)]
+        .into_iter()
+        .find(|(r, w)| total(*r, *w) <= limit - text_x)
+        .unwrap_or((2, false));
+    let mut help_tip = false;
+    let mut px = text_x;
+    for (i, m) in meta.iter().enumerate().filter(|(_, m)| shown(m, rank)) {
+        let room = limit - px;
+        // Nothing is drawn past the limit: an icon needs its own room and a little text beside it.
+        let need = m.icon.map_or(0.0, |_| ICON_W + MIN_TEXT_W);
+        if room <= 0.0 || room < need {
+            break;
+        }
+        let w = (if word { widths[i] } else { bare[i] }).min(room);
+        let line = Rect::new(px, it.y + LINE_TWO_Y, w, LINE_TWO_H);
+        let mut tx = px;
+        if let Some(icon) = m.icon {
+            c.symbol(
+                icon,
+                Rect::new(px, line.y + (line.h - 12.0) / 2.0, 12.0, 12.0),
+                theme::solid(m.color),
+                Weight::Regular,
+            );
+            tx += ICON_W;
+        }
+        c.label(
+            Rect::new(tx, line.y, (px + w - tx).max(0.0), line.h),
+            &part_text(m, word),
+            theme::META_FONT,
+            theme::solid(m.color),
+            Align::Left,
+        );
+        if let Some(help) = &m.help {
+            c.tip(line, help);
+            help_tip = true;
+        }
+        px += w + PART_GAP;
+    }
+    help_tip
+}
+
+/// Line one: [✦ when fresh] `#n` and the title, cut before `limit`. `at` is where the line starts.
+fn title_line(
+    ctx: &Ctx,
+    c: &mut Canvas,
+    pr: &PRStatus,
+    title: Option<&str>,
+    fresh: bool,
+    at: (f64, f64),
+    limit: f64,
+) {
+    let (mut lx, y) = at;
+    if fresh {
+        c.symbol(
+            "sparkle",
+            Rect::new(lx, y + 2.0, 12.0, 12.0),
+            theme::solid(ThemeColor::Indigo),
+            Weight::Bold,
+        );
+        lx += 18.0;
+    }
+    let number = format!("#{}", pr.ref_.id);
+    let number_w = ctx.text_w(&number, &theme::PR_FONT);
+    c.text(
+        Rect::new(lx, y, number_w, LINE_ONE_H),
+        &number,
+        theme::PR_FONT,
+        theme::solid(ThemeColor::Text),
+        1,
+        Align::Left,
+    );
+    if let Some(title) = title {
+        let tx = lx + number_w + 6.0;
+        if limit - tx > 0.0 {
+            c.text(
+                Rect::new(tx, y, limit - tx, LINE_ONE_H),
+                title,
+                theme::PR_TITLE_FONT,
+                theme::solid(if pr.is_open() {
+                    ThemeColor::Text
+                } else {
+                    ThemeColor::TextSecondary
+                }),
+                1,
+                Align::Left,
+            );
+        }
     }
 }
 

@@ -340,6 +340,57 @@ fn hides_ask_claude_table() {
 }
 
 #[test]
+fn pr_buttons_table() {
+    use claude_sessions_core::pull_requests::{PRRef, PRStatus};
+    let pr = |id: i64, state: &str| PRStatus {
+        ref_: PRRef {
+            workspace: "w".into(),
+            repo: "r".into(),
+            id,
+        },
+        url: format!("https://bitbucket.org/w/r/pull-requests/{id}")
+            .parse()
+            .unwrap(),
+        state: state.into(),
+        reviewers: 5,
+        approved: 0,
+        changes_requested: 1,
+        comments: 23,
+        commit: None,
+        source_repo: None,
+        branch: None,
+        title: None,
+        last_other: None,
+        approvers: Default::default(),
+        author: None,
+        rabbit: None,
+        rabbit_status: None,
+        rabbit_since: None,
+        rabbit_threads: None,
+        rabbit_others_pending: false,
+    };
+    let open = |r: Option<Rabbit>, t: Option<RabbitThreads>| {
+        let mut p = pr(1, "OPEN");
+        p.rabbit = r;
+        p.rabbit_threads = t;
+        p
+    };
+    let rows: Vec<(PRStatus, (bool, bool))> = vec![
+        (open(None, None), (true, false)),
+        (open(Some(Rabbit::AwaitingApproval), None), (true, true)),
+        (
+            open(Some(Rabbit::AwaitingApproval), Some(threads(0, 1))),
+            (false, true),
+        ),
+        (pr(2, "MERGED"), (false, false)),
+        (pr(3, "CLOSED"), (false, false)),
+    ];
+    for (p, want) in rows {
+        assert_eq!(cr::pr_buttons(&p), want, "{:?} {:?}", p.state, p.rabbit);
+    }
+}
+
+#[test]
 fn resolve_order() {
     let known = RabbitFacts {
         rabbit_user: Some("{tin}".into()),
