@@ -101,25 +101,24 @@ Dòng gập `Vừa đóng` cuối danh sách liệt kê các session vừa kết
 bash ~/.claude/skills-repo/install.sh --only widget
 ```
 
-Cần Command Line Tools (`xcode-select --install`). Dòng PR cần mục Keychain `bitbucket-api-token` (tuỳ chọn; không có thì widget chạy như cũ, không có PR). Nhập và kiểm tra token Jira/Bitbucket, chọn độ đậm nền, âm báo, phím tắt và sửa prompt `Nhờ Claude` trong cửa sổ `Cài đặt` (chuột phải → `Cài đặt…`, hoặc ⌘,).
+Widget là một cargo workspace Rust: `crates/claude-sessions-core` (logic thuần), `crates/claude-sessions-macos` (AppKit), `crates/claude-sessions` (binary), `xtask` (bundle, dist). `install.sh` cài bản release ghim trong `claude-sessions/release.lock` và kiểm SHA-256 của nó. Tải tay: lấy `.dmg` ở trang GitHub Releases (tag `widget-vX.Y.Z`), kéo `ClaudeSessions.app` vào `~/Applications`; app ký ad-hoc nên lần mở đầu vào System Settings → Privacy & Security → `Open Anyway`. Build từ nguồn: `bash claude-sessions/build.sh` (cần `rustup`; chạy `cargo xtask bundle`). Đóng gói release: `cargo xtask dist --version X.Y.Z`. Dòng PR cần mục Keychain `bitbucket-api-token` (tuỳ chọn; không có thì widget chạy như cũ, không có PR). Nhập và kiểm tra token Jira/Bitbucket, chọn độ đậm nền, âm báo, phím tắt và sửa prompt `Nhờ Claude` trong cửa sổ `Cài đặt` (chuột phải → `Cài đặt…`, hoặc ⌘,).
 
 ## Test
 
 ```bash
-swift test       # trong claude-sessions/
-bash perf.sh     # đo hiệu năng bản thật, cần tắt sandbox
+cargo test --workspace                           # trong claude-sessions/; test GUI tự bỏ qua
+CLAUDE_SESSIONS_GUI_TESTS=1 cargo test --workspace   # thêm test GUI offscreen (không mở cửa sổ)
+bash perf.sh                                     # đo hiệu năng bản thật với ngưỡng cố định, cần tắt sandbox
 ```
 
-Cờ `-plugin-path` khi chạy trong sandbox và test E2E: xem [README gốc](../README.md#widget-claude-sessions).
+Cờ môi trường khác (`CLAUDE_SESSIONS_FOCUS_TESTS`, `CLAUDE_SESSIONS_PERF_TESTS`): xem [README gốc](../README.md#widget-claude-sessions).
 
 ## Cập nhật ảnh
 
-Ảnh minh hoạ sinh từ snapshot test; chạy lại khi UI đổi:
+Ảnh minh hoạ sinh từ test snapshot GUI offscreen; chạy lại khi UI đổi:
 
 ```bash
-bash claude-sessions/screenshots.sh
-# trong Bash sandbox của Claude Code:
-bash claude-sessions/screenshots.sh -Xswiftc -plugin-path -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing
+bash claude-sessions/screenshots.sh   # render offscreen, không mở cửa sổ; cần ImageMagick (`magick`)
 ```
 
 `closed-2-open` và `quota-3-high-forecast` có giờ theo đồng hồ thật nên đổi mỗi lần chạy lại.

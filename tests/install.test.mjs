@@ -83,7 +83,8 @@ test('only org-skills', () => {
 test('all', () => {
   const { code, stdout, home } = run(['--all']);
   assert.equal(code, 0);
-  for (const n of ['cmux', 'hud', 'claude-sessions']) assert.match(stdout, new RegExp(`would run: .*${n}`), n);
+  for (const n of ['cmux', 'hud']) assert.match(stdout, new RegExp(`would run: .*${n}`), n);
+  assert.match(stdout, /would install pinned widget-v|widget skipped: no release pinned/);
   assert.deepEqual(settings(home), legacy);
 });
 
@@ -345,14 +346,16 @@ mac('widget: SKILLS_WIDGET_DMG skips download and checksum', () => {
   assert.ok(existsSync(join(installedApp(env), 'Contents/MacOS/ClaudeSessions')));
 });
 
-test('widget without a lock keeps the Swift path', () => {
+test('widget without a lock is skipped: no release pinned', () => {
   const home = mkdtempSync(join(tmpdir(), 'skills-install-'));
-  const r = spawnSync('bash', [join(root, 'install.sh'), '--only', 'widget'], {
-    env: { ...process.env, CLAUDE_HOME: home, SKILLS_INSTALL_DRY_EXTERNAL: '1', SKILLS_WIDGET_LOCK: join(home, 'no-such.lock') },
-    encoding: 'utf8',
-  });
-  assert.equal(r.status, 0);
-  assert.match(r.stdout, /would run: claude-sessions\/build\.sh/);
-  assert.match(r.stdout, /Dry run: nothing was downloaded, built, quit or reopened/);
-  assert.ok(!/built the widget from source/.test(r.stdout), r.stdout);
+  for (const dry of [{}, { SKILLS_INSTALL_DRY_EXTERNAL: '1' }]) {
+    const r = spawnSync('bash', [join(root, 'install.sh'), '--only', 'widget'], {
+      env: { ...process.env, CLAUDE_HOME: home, ...dry, SKILLS_WIDGET_LOCK: join(home, 'no-such.lock') },
+      encoding: 'utf8',
+    });
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /widget skipped: no release pinned/);
+    assert.match(r.stdout, /widget: no release pinned/);
+    assert.ok(!/swift|build\.sh/.test(r.stdout), r.stdout);
+  }
 });

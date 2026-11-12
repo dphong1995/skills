@@ -1,23 +1,15 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")"
+export PATH="$HOME/.cargo/bin:$PATH"
 APP="$HOME/Applications/ClaudeSessions.app"
-mkdir -p "$APP/Contents/MacOS"
-swift build -c release --product ClaudeSessions
-cp .build/release/ClaudeSessions "$APP/Contents/MacOS/ClaudeSessions"
-cat > "$APP/Contents/Info.plist" <<'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleIdentifier</key><string>local.claude-sessions</string>
-  <key>CFBundleName</key><string>ClaudeSessions</string>
-  <key>CFBundleExecutable</key><string>ClaudeSessions</string>
-  <key>CFBundlePackageType</key><string>APPL</string>
-  <key>LSUIElement</key><true/>
-  <key>NSAppleEventsUsageDescription</key><string>Để nhảy tới đúng tab cmux của session.</string>
-</dict>
-</plist>
-EOF
-codesign --force -s - "$APP" >/dev/null
+cargo xtask bundle >&2
+if pgrep -x ClaudeSessions >/dev/null 2>&1; then
+    osascript -e 'quit app id "local.claude-sessions"' >/dev/null 2>&1 || true
+    for _ in $(seq 50); do pgrep -x ClaudeSessions >/dev/null 2>&1 || break; sleep 0.1; done
+    pgrep -x ClaudeSessions >/dev/null 2>&1 && pkill -x ClaudeSessions || true
+fi
+mkdir -p "$HOME/Applications"
+rm -rf "$APP"
+ditto target/bundle/ClaudeSessions.app "$APP"
 echo "$APP"

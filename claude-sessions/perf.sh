@@ -4,46 +4,28 @@
 # Env: PERF_PHASE_SECONDS (default 60). The fixture lives in .build/perf-fixture (delete it to regenerate).
 # Never touches ~/.claude, the Keychain or the installed app: the binary gets CLAUDE_SESSIONS_ROOT.
 #
-# --ab [--gate]: A/B run of the Swift build against the Rust build (`cargo xtask bundle`) on the same fixture. Each metric is
-# the median of AB_ROUNDS (5) interleaved rounds (the first binary alternates per round); prints
-# `metric | swift (median) | rust (median) | rule | PASS/FAIL` plus every round's raw numbers, exits 1 on any FAIL and
-# refuses to run while another ClaudeSessions process runs. --gate uses .build/perf-fixture-gate (3 tiny sessions:
-# waiting, busy, idle) and runs settle + idle only. Rules: Rust footprint <= Swift; CPU <= Swift x 1.1 or within 0.1
-# percentage point; idle wakeups <= Swift x 1.1 or within 0.5/s; footprint growth in a phase < 5 MB.
+# Thresholds: max of the 5 Rust rounds of "Run 3" in plans/2026-11-11-claude-sessions-rust/reports/phase-10-ab.md, x 1.1.
+#   footprint end: 29.5 MB (idle round 4; load max 28.5) x 1.1 = 32.5
+#   CPU idle: 2.72 % (round 5) x 1.1 = 3.0;  CPU load: 3.45 % (round 4) x 1.1 = 3.8
+#   idle wakeups: 0.60 /s (round 4) x 1.1 = 0.7;  footprint growth in a phase: 5 MB. No floors.
 
 cd "$(dirname "$0")" || exit 1
 
-AB=0
-GATE=0
-for arg in "$@"; do
-    case "$arg" in
-        --ab) AB=1 ;;
-        --gate) GATE=1 ;;
-        *) echo "usage: perf.sh [--ab [--gate]]"; exit 2 ;;
-    esac
-done
-[ "$GATE" -eq 1 ] && [ "$AB" -eq 0 ] && { echo "--gate needs --ab"; exit 2; }
+[ $# -eq 0 ] || { echo "usage: perf.sh"; exit 2; }
 
 PHASE=${PERF_PHASE_SECONDS:-60}
-FOOTPRINT_MAX_MB=100
+FOOTPRINT_MAX_MB=32.5
 GROWTH_MAX_MB=5
-CPU_IDLE_MAX=1
-CPU_LOAD_MAX=2
-WAKEUPS_MAX=5
+CPU_IDLE_MAX=3.0
+CPU_LOAD_MAX=3.8
+WAKEUPS_MAX=0.7
 SETTLE_CAP=300
 SESSIONS=10
 SMALL_MB=50
 BIG_MB=230
 
 ROOT="$PWD/.build/perf-fixture"
-BIN="$PWD/.build/release/ClaudeSessions"
-SWIFT_BIN="$BIN"
-RUST_BIN="$PWD/target/bundle/ClaudeSessions.app/Contents/MacOS/ClaudeSessions"
-AB_ROUNDS=${AB_ROUNDS:-5}
-if [ "$GATE" -eq 1 ]; then
-    ROOT="$PWD/.build/perf-fixture-gate"
-    SESSIONS=3
-fi
+BIN="$PWD/target/bundle/ClaudeSessions.app/Contents/MacOS/ClaudeSessions"
 APP_PID=""
 WRITER_PID=""
 SLEEP_PIDS=()
@@ -69,19 +51,9 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT TERM
 
-if [ "$AB" -eq 1 ]; then
-    running=$(pgrep -x ClaudeSessions)
-    [ -n "$running" ] && { echo "another ClaudeSessions process is running (pid $running); quit it first"; exit 1; }
-fi
-
 echo "== build"
-swift build -c release --product ClaudeSessions 2>&1 | grep -v "ld: warning" | tail -2
-[ "${PIPESTATUS[0]}" -eq 0 ] && [ -x "$BIN" ] || { echo "build failed"; exit 1; }
-if [ "$AB" -eq 1 ]; then
-    echo "== build (rust)"
-    export PATH="$HOME/.cargo/bin:$PATH"
-    cargo xtask bundle > /dev/null && [ -x "$RUST_BIN" ] || { echo "rust build failed"; exit 1; }
-fi
+export PATH="$HOME/.cargo/bin:$PATH"
+cargo xtask bundle > /dev/null && [ -x "$BIN" ] || { echo "build failed"; exit 1; }
 
 load=$(sysctl -n vm.loadavg | awk '{print $2}')
 cores=$(sysctl -n hw.ncpu)
@@ -90,19 +62,19 @@ awk -v l="$load" -v c="$cores" 'BEGIN{exit !(l>c)}' && echo "WARNING: load avera
 # ---- fixture -------------------------------------------------------------------------------------------------------
 REAL='{"type":"user","message":{"content":"Please fix the failing test in the parser module. See https://acme.atlassian.net/browse/ABC-1 for the details."}}
 {"type":"assistant","isSidechain":false,"message":{"content":[{"type":"text","text":"I will look at the parser first and then run the tests. Reading the code. Reading the code. Reading the code."}]}}
-{"type":"assistant","isSidechain":false,"message":{"content":[{"type":"tool_use","id":"toolu_01","name":"Bash","input":{"command":"swift test --filter ParserTests"}}]}}
+{"type":"assistant","isSidechain":false,"message":{"content":[{"type":"tool_use","id":"toolu_01","name":"Bash","input":{"command":"cargo test parser"}}]}}
 {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_01"}]}}
 {"type":"user","message":{"content":"The PR is https://bitbucket.org/t6engineering/talo6-dct-backend/pull-requests/12 now."}}'
 TOOL_LINE='{"type":"assistant","isSidechain":false,"message":{"content":[{"type":"tool_use","id":"toolu_99","name":"Bash","input":{"command":"echo perf"}}]}}'
 
 mkdir -p "$ROOT/projects" "$ROOT/sessions" "$ROOT/tasks" "$ROOT/cwd"
 UNIT="$ROOT/unit.jsonl"
-if [ "$GATE" -eq 0 ] && [ ! -s "$UNIT" ]; then
+if [ ! -s "$UNIT" ]; then
     # 1 unit ~1 MB: 100 realistic turns, then lines the scanner skips without a JSON parse.
     FILLER='{"type":"progress","data":"'$(head -c 900 /dev/zero | tr '\0' 'x')'"}'
     { for _ in $(seq 100); do echo "$REAL"; done; for _ in $(seq 1000); do echo "$FILLER"; done; } > "$UNIT.tmp" && mv "$UNIT.tmp" "$UNIT"
 fi
-[ "$GATE" -eq 0 ] && UNIT_SIZE=$(stat -f %z "$UNIT")
+UNIT_SIZE=$(stat -f %z "$UNIT")
 
 name_of() { echo "perf-$1"; }
 transcript_of() { echo "$ROOT/projects/$(echo -n "$ROOT/cwd/$1" | sed 's/[^A-Za-z0-9]/-/g')/$(name_of "$1").jsonl"; }
@@ -116,9 +88,7 @@ for i in $(seq 0 $((SESSIONS - 1))); do
     for n in 1 2 3 4 5; do
         echo "{\"id\":\"$n\",\"subject\":\"Task $n\",\"status\":\"pending\",\"blocks\":[],\"blockedBy\":[]}" > "$ROOT/tasks/$(name_of "$i")/$n.json"
     done
-    if [ "$GATE" -eq 1 ]; then
-        echo "$REAL" > "$t"
-    elif [ "$(stat -f %z "$t" 2>/dev/null)" != $((units * UNIT_SIZE)) ]; then
+    if [ "$(stat -f %z "$t" 2>/dev/null)" != $((units * UNIT_SIZE)) ]; then
         echo "generating $(basename "$t") ($units MB)"
         for _ in $(seq "$units"); do cat "$UNIT"; done > "$t"
     fi
@@ -136,9 +106,7 @@ write_session() {
 }
 rm -f "$ROOT"/sessions/*.json
 for i in $(seq 0 $((SESSIONS - 1))); do
-    if [ "$GATE" -eq 1 ]; then
-        case "$i" in 0) write_session "$i" waiting ;; 1) write_session "$i" busy ;; *) write_session "$i" idle ;; esac
-    elif [ "$i" -ge 7 ]; then write_session "$i" waiting; else write_session "$i" idle; fi
+    if [ "$i" -ge 7 ]; then write_session "$i" waiting; else write_session "$i" idle; fi
 done
 
 # ---- readings ------------------------------------------------------------------------------------------------------
@@ -189,11 +157,6 @@ measure_phase() {
     wait $!
     cpu1=$(cpu_seconds); fp1=$(footprint_mb); w1=$(idle_wakeups)
     check_alive "$name end"
-    RAW_FP=$fp1
-    RAW_GROWTH=$(delta_of "$fp0" "$fp1" 1 %.1f)
-    RAW_CPU=$(delta_of "$cpu0" "$cpu1" "$(awk -v s="$PHASE" 'BEGIN{print 100 / s}')" %.2f)
-    RAW_WAKE=n/a
-    [ "$3" = wakeups ] && RAW_WAKE=$(delta_of "$w0" "$w1" "$(awk -v s="$PHASE" 'BEGIN{print 1 / s}')" %.2f)
     record "$name footprint end (MB)" "$fp1" "$FOOTPRINT_MAX_MB"
     record "$name footprint growth (MB)" "$(delta_of "$fp0" "$fp1" 1 %.1f)" "$GROWTH_MAX_MB"
     record "$name CPU (%)" "$(delta_of "$cpu0" "$cpu1" "$(awk -v s="$PHASE" 'BEGIN{print 100 / s}')" %.2f)" "$cpu_max"
@@ -235,100 +198,6 @@ stop_app() {
     wait "$APP_PID" 2>/dev/null
     APP_PID=""
 }
-
-# $1 = a list of numbers on separate lines; prints the median.
-median() { sort -n | awk '{ v[NR] = $1 } END { if (NR % 2) print v[(NR + 1) / 2]; else printf "%.2f", (v[NR / 2] + v[NR / 2 + 1]) / 2 }'; }
-
-# $1 swift median, $2 rust median, $3 mode (<= | x1.1+0.1 | x1.1+0.5 | lt5); prints PASS or FAIL.
-ab_verdict() {
-    is_num "$1" && is_num "$2" || { echo FAIL; return; }
-    awk -v s="$1" -v r="$2" -v m="$3" 'BEGIN {
-        if (m == "<=") ok = (r <= s)
-        else if (m == "x1.1+0.1") ok = (r <= s * 1.1 || r <= s + 0.1)
-        else if (m == "x1.1+0.5") ok = (r <= s * 1.1 || r <= s + 0.5)
-        else ok = (r < 5)
-        print ok ? "PASS" : "FAIL" }'
-}
-
-# A/B: AB_ROUNDS interleaved rounds, the first binary alternating; raw numbers go to AB_<app>_<metric> arrays.
-ab_main() {
-    local round app first
-    AB_ROWS=()
-    AB_SETTLE=()
-    AB_UNSETTLED=0
-    for round in $(seq 1 "$AB_ROUNDS"); do
-        if [ $((round % 2)) -eq 1 ]; then first=swift; else first=rust; fi
-        for app in "$first" "$([ "$first" = swift ] && echo rust || echo swift)"; do
-            echo "=== round $round: $app"
-            if [ "$app" = swift ]; then BIN=$SWIFT_BIN; else BIN=$RUST_BIN; fi
-            RESULTS=(); FAILED=0
-            start_and_settle
-            AB_SETTLE+=("$round $app ${settle}")
-            if [ "$FAILED" -ne 0 ]; then
-                # An unsettled or dead app must not feed the medians: fail the verdict and skip this round's numbers.
-                AB_UNSETTLED=1
-                printf '%s\n' "${RESULTS[@]}"
-                stop_app
-                continue
-            fi
-            RAW_FP=""; RAW_GROWTH=""; RAW_CPU=""; RAW_WAKE=""
-            measure_phase idle "$CPU_IDLE_MAX" wakeups
-            # An app that died mid-phase leaves no numbers: fail the verdict instead of shifting columns in the medians.
-            if ! app_alive || ! is_num "$RAW_FP" || ! is_num "$RAW_GROWTH" || ! is_num "$RAW_CPU" || ! is_num "$RAW_WAKE"; then
-                AB_UNSETTLED=1
-                printf '%s\n' "${RESULTS[@]}"
-                stop_app
-                continue
-            fi
-            AB_ROWS+=("$round $app idle $RAW_FP $RAW_GROWTH $RAW_CPU $RAW_WAKE")
-            if [ "$GATE" -eq 0 ]; then
-                for i in 0 1 2; do write_session "$i" busy; done
-                ( while true; do for i in 0 1 2; do echo "$TOOL_LINE" >> "$(transcript_of "$i")"; done; sleep 0.5; done ) 2>/dev/null &
-                WRITER_PID=$!
-                RAW_FP=""; RAW_GROWTH=""; RAW_CPU=""
-                measure_phase load "$CPU_LOAD_MAX"
-                if ! app_alive || ! is_num "$RAW_FP" || ! is_num "$RAW_GROWTH" || ! is_num "$RAW_CPU"; then
-                    AB_UNSETTLED=1
-                else
-                    AB_ROWS+=("$round $app load $RAW_FP $RAW_GROWTH $RAW_CPU n/a")
-                fi
-                kill "$WRITER_PID" 2>/dev/null; WRITER_PID=""
-                for i in 0 1 2; do write_session "$i" idle; done
-            fi
-            stop_app
-        done
-    done
-    local phases="idle"; [ "$GATE" -eq 0 ] && phases="idle load"
-    local ab_failed=$AB_UNSETTLED phase metric col mode swift_m rust_m verdict
-    echo
-    printf '%-26s | %14s | %14s | %-18s | %s\n' metric "swift (median)" "rust (median)" rule result
-    for phase in $phases; do
-        for metric in "footprint end (MB):4:<=:rust <= swift" "footprint growth (MB):5:lt5:rust < 5" "CPU (%):6:x1.1+0.1:rust <= x1.1 or +0.1" "idle wakeups (/s):7:x1.1+0.5:rust <= x1.1 or +0.5"; do
-            IFS=: read -r label col mode rule <<< "$metric"
-            [ "$col" = 7 ] && [ "$phase" = load ] && continue
-            swift_m=$(printf '%s\n' "${AB_ROWS[@]}" | awk -v p="$phase" -v c="$col" '$2 == "swift" && $3 == p { print $c }' | median)
-            rust_m=$(printf '%s\n' "${AB_ROWS[@]}" | awk -v p="$phase" -v c="$col" '$2 == "rust" && $3 == p { print $c }' | median)
-            verdict=$(ab_verdict "$swift_m" "$rust_m" "$mode")
-            [ "$verdict" = FAIL ] && ab_failed=1
-            printf '%-26s | %14s | %14s | %-18s | %s\n' "$phase $label" "$swift_m" "$rust_m" "$rule" "$verdict"
-        done
-    done
-    echo
-    echo "raw rounds: round app phase footprint_mb growth_mb cpu_pct wakeups_per_s"
-    printf '%s\n' "${AB_ROWS[@]}"
-    echo
-    echo "settle time (s, no rule): round app seconds"
-    printf '%s\n' "${AB_SETTLE[@]}"
-    for app in swift rust; do
-        echo "settle median $app: $(printf '%s\n' "${AB_SETTLE[@]}" | awk -v a="$app" '$2 == a { print $3 }' | median) s"
-    done
-    return "$ab_failed"
-}
-
-if [ "$AB" -eq 1 ]; then
-    ab_main
-    exit $?
-fi
 
 start_and_settle
 

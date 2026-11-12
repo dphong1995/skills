@@ -69,9 +69,11 @@ claude plugin validate ~/.claude/mods/main-context-compact
 claude plugin test ~/.claude/skills-repo/mods/main-context-compact
 
 # claude-sessions widget
-cd claude-sessions && swift test   # writes state PNGs to .build/snapshots/
-cd claude-sessions && CLAUDE_SESSIONS_E2E=1 swift test --filter FeedE2ETests   # manual: real `claude --model haiku` in throwaway cmux workspaces, spends a little quota
-bash claude-sessions/perf.sh        # real-app CPU/memory check, ~3 min, run after any widget change
+cd claude-sessions && cargo test --workspace   # Rust workspace (core, macos, app, xtask); GUI tests skip themselves
+cd claude-sessions && CLAUDE_SESSIONS_GUI_TESTS=1 cargo test --workspace   # adds the offscreen GUI/snapshot tests (no window; PNGs in target/snapshots/); CLAUDE_SESSIONS_FOCUS_TESTS=1 adds key-window/modal cases
+cd claude-sessions && cargo clippy --workspace --all-targets -- -D warnings && cargo fmt --check
+bash claude-sessions/perf.sh        # real-app CPU/memory check against fixed thresholds, ~3 min, run after any widget change
+cd claude-sessions && cargo xtask dist --version <v>   # builds target/dist/ClaudeSessions.dmg + .sha256 for a GitHub Release
 ```
 
 Pass test globs quoted; a bare directory argument fails on Node 24. Test output lands in `skills/*/tests/out/`

@@ -24,7 +24,7 @@ Lần `--update` đầu tiên sau khi nâng cấp từ bộ cài cũ chưa có f
 | `org-skills` | `skillOverrides` tắt các skill org không dùng cho code | `~/.claude/settings.json` | không |
 | `cmux` | settings của cmux (`cmux/install.sh`) | `~/.config/cmux/`, `~/Library/Application Support/com.cmuxterm.app/` | không |
 | `hud` | OMC HUD (`hud/install.sh`) | `~/.claude/hud/`, `~/.claude/settings.json` | không |
-| `widget` | widget ClaudeSessions: cài bản release ghim trong `claude-sessions/release.lock` sau khi kiểm (SHA-256, `codesign`, bundle id) rồi thay app đang chạy; chưa có `release.lock` thì build bằng `swift` như trước (cần macOS) | `~/Applications/ClaudeSessions.app` | không |
+| `widget` | widget ClaudeSessions: cài bản release ghim trong `claude-sessions/release.lock` sau khi kiểm (SHA-256, `codesign`, bundle id) rồi thay app đang chạy; chưa có `release.lock` thì bỏ qua widget, báo `widget: no release pinned` (cần macOS) | `~/Applications/ClaudeSessions.app` | không |
 
 Cờ dòng lệnh (lỗi cách dùng thoát với mã 2 và không cài gì):
 
@@ -287,7 +287,7 @@ git add hud && git commit -m "..." && git push
 
 ## Widget Claude sessions
 
-App macOS nhỏ (SwiftUI, Swift package), hiện các session Claude Code đang mở trên máy trong một
+App macOS nhỏ viết bằng Rust (cargo workspace `claude-sessions/`: `claude-sessions-core` logic thuần, `claude-sessions-macos` lớp AppKit, `claude-sessions` binary, `xtask` build/đóng gói), hiện các session Claude Code đang mở trên máy trong một
 widget nổi luôn nằm trên cùng, kể cả trên app toàn màn hình (YouTube fullscreen).
 
 ![Widget Claude sessions](claude-sessions/docs/images/07-mixed-hover.png)
@@ -367,31 +367,22 @@ Cài (cần Command Line Tools: `xcode-select --install`), build ra `~/Applicati
 bash ~/.claude/skills-repo/install.sh --only widget
 ```
 
-Installer build xong thì tắt app đang chạy và mở lại bản mới. `bash ~/.claude/skills-repo/claude-sessions/build.sh && open ~/Applications/ClaudeSessions.app` vẫn chạy riêng được (tắt app đang chạy trước khi `open`, nếu không bản cũ vẫn chạy).
+Installer tải bản release ghim trong `claude-sessions/release.lock` (tag `widget-vX.Y.Z` trên GitHub Releases, file `.dmg`), kiểm SHA-256 với giá trị trong lock, rồi tắt app đang chạy, thay bằng bản mới và mở lại. Tải tay từ trang GitHub Release cũng được: kéo `ClaudeSessions.app` vào `~/Applications`. App ký ad-hoc, chưa notarize, nên lần mở đầu macOS chặn: vào System Settings → Privacy & Security → `Open Anyway` (hoặc chuột phải app → Mở).
+
+Build từ nguồn (cần Rust toolchain, `rustup`): `bash ~/.claude/skills-repo/claude-sessions/build.sh` chạy `cargo xtask bundle`, tắt app đang chạy, thay `~/Applications/ClaudeSessions.app` bằng bản mới và in đường dẫn app; chạy `open ~/Applications/ClaudeSessions.app` để mở. Đóng gói bản phát hành: `cd claude-sessions && cargo xtask dist --version X.Y.Z` (ra `target/dist/ClaudeSessions.dmg` kèm `.sha256`).
 
 App tự đăng ký chạy khi đăng nhập. Nếu macOS đòi duyệt (app ký ad-hoc, có thể hỏi lại sau mỗi lần build) thì bật ở System Settings → General → Login Items.
 
-Test trạng thái (logic + ảnh PNG của từng trạng thái, không cần quyền Screen Recording):
+Test (logic + test GUI vẽ offscreen, không mở cửa sổ, không cần quyền Screen Recording):
 
 ```bash
-cd ~/.claude/skills-repo/claude-sessions && swift test   # ảnh PNG nằm trong .build/snapshots/
+cd ~/.claude/skills-repo/claude-sessions && cargo test --workspace                          # logic; test GUI tự bỏ qua
+cd ~/.claude/skills-repo/claude-sessions && CLAUDE_SESSIONS_GUI_TESTS=1 cargo test --workspace   # thêm test GUI offscreen, ảnh PNG nằm trong target/snapshots/
 ```
 
-Ảnh demo trong `claude-sessions/README.md` được tạo lại bằng `bash claude-sessions/screenshots.sh` (nền trong suốt qua biến `SNAPSHOT_TRANSPARENT`, cắt bằng ImageMagick).
+Cờ môi trường: `CLAUDE_SESSIONS_GUI_TESTS=1` bật test GUI offscreen; `CLAUDE_SESSIONS_FOCUS_TESTS=1` (kèm cờ trước) chạy thêm các ca cần key window hoặc modal thật; `CLAUDE_SESSIONS_PERF_TESTS=1 cargo test --release -p claude-sessions-core --test it performance:: -- --ignored` chạy test hiệu năng của core. Kiểm tra mã: `cargo clippy --workspace --all-targets -- -D warnings` và `cargo fmt --check`.
 
-Chạy `swift test` trong Bash sandbox của Claude Code có thể lỗi "plugin for module 'TestingMacros' not found"
-(sandbox chặn plugin macro của Swift); chạy ở terminal thường thì qua.
-Trong sandbox thì truyền đường dẫn plugin của Command Line Tools:
-
-```bash
-cd ~/.claude/skills-repo/claude-sessions && swift test -Xswiftc -plugin-path -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing
-```
-
-Test E2E của câu hỏi AskUserQuestion qua Feed chạy tay, mặc định bị bỏ qua: chạy `claude --model haiku` thật trong các workspace cmux tạm nên tốn một ít quota:
-
-```bash
-cd ~/.claude/skills-repo/claude-sessions && CLAUDE_SESSIONS_E2E=1 swift test --filter FeedE2ETests
-```
+Ảnh demo trong `claude-sessions/README.md` được tạo lại bằng `bash claude-sessions/screenshots.sh` (render offscreen nền trong suốt, cắt bằng ImageMagick `magick`).
 
 Đo hiệu năng của widget thật bằng `perf.sh` (cần tắt sandbox, mất khoảng 3 phút):
 
@@ -399,11 +390,11 @@ cd ~/.claude/skills-repo/claude-sessions && CLAUDE_SESSIONS_E2E=1 swift test --f
 bash ~/.claude/skills-repo/claude-sessions/perf.sh   # in bảng PASS/FAIL, thoát 1 nếu có dòng FAIL
 ```
 
-- `perf.sh` build bản release, tạo fixture 10 session (~680 MB transcript) trong `claude-sessions/.build/perf-fixture` (gitignored; xoá thư mục này để tạo lại), rồi chạy binary với `CLAUDE_SESSIONS_ROOT` trỏ vào fixture. Khi biến này được đặt, app không đọc Keychain và không gọi `SMAppService.mainApp.register()`; khi không đặt thì app chạy y như cũ. Trong lúc đo, một pill thứ hai hiện trên màn hình khoảng 2-3 phút. Script không đụng `~/.claude`, Keychain hay app đang cài.
-- Hai pha, mỗi pha 60 giây (đổi bằng `PERF_PHASE_SECONDS`): pha idle (không ghi gì) và pha load (ghi thêm vào transcript liên tục). Mỗi dòng của bảng là một chỉ số trong một pha: footprint cuối pha, mức tăng footprint trong pha, CPU trung bình, số wakeup mỗi giây (chỉ pha idle). Ngưỡng là các biến ở đầu `perf.sh` (`FOOTPRINT_MAX_MB`, `GROWTH_MAX_MB`, `CPU_IDLE_MAX`, `CPU_LOAD_MAX`, `WAKEUPS_MAX`); không sửa ngưỡng để cho qua, chạy lại khi máy rảnh. Trước mỗi pha, script đợi footprint ổn định (hai lần đọc lệch dưới 1 MB, tối đa 30 giây) rồi mới đo; app thoát giữa chừng hoặc một chỉ số không đọc được đều tính là FAIL.
-- Quy tắc: mọi thay đổi widget phải chạy `swift test` và `perf.sh` trước khi xong việc. Footprint còn ít dư địa (~96 MB so với ngưỡng 100 MB với fixture 10 session), nên thỉnh thoảng pha load có thể vọt lên và FAIL; chạy lại một lần khi máy rảnh trước khi kết luận.
+- `perf.sh` build bản bundle (`cargo xtask bundle`), tạo fixture 10 session (~680 MB transcript) trong `claude-sessions/.build/perf-fixture` (gitignored; xoá thư mục này để tạo lại), rồi chạy binary với `CLAUDE_SESSIONS_ROOT` trỏ vào fixture. Khi biến này được đặt, app không đọc Keychain và không đăng ký chạy khi đăng nhập; khi không đặt thì app chạy y như cũ. Trong lúc đo, một pill thứ hai hiện trên màn hình khoảng 2-3 phút. Script không đụng `~/.claude`, Keychain hay app đang cài.
+- Hai pha, mỗi pha 60 giây (đổi bằng `PERF_PHASE_SECONDS`): pha idle (không ghi gì) và pha load (ghi thêm vào transcript liên tục). Mỗi dòng của bảng là một chỉ số trong một pha: footprint cuối pha, mức tăng footprint trong pha, CPU trung bình, số wakeup mỗi giây (chỉ pha idle). Ngưỡng cố định (trần của 5 vòng đo Rust × 1.1, nguồn ghi ở đầu `perf.sh`) là các biến ở đầu `perf.sh` (`FOOTPRINT_MAX_MB`, `GROWTH_MAX_MB`, `CPU_IDLE_MAX`, `CPU_LOAD_MAX`, `WAKEUPS_MAX`); không sửa ngưỡng để cho qua, chạy lại khi máy rảnh. Trước mỗi pha, script đợi footprint ổn định (hai lần đọc lệch dưới 1 MB, tối đa 30 giây) rồi mới đo; app thoát giữa chừng hoặc một chỉ số không đọc được đều tính là FAIL.
+- Quy tắc: mọi thay đổi widget phải chạy `cargo test --workspace` và `perf.sh` trước khi xong việc. Pha load đôi khi vọt lên và FAIL khi máy bận; chạy lại một lần khi máy rảnh trước khi kết luận.
 
-Trước và sau khi tối ưu (cùng máy, `perf.sh` với pha 60 giây):
+Lịch sử bản Swift (đã gỡ), trước và sau khi tối ưu (cùng máy, `perf.sh` cũ với pha 60 giây, ngưỡng cũ):
 
 | chỉ số | trước | sau | ngưỡng |
 |---|---|---|---|

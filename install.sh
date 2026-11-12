@@ -18,7 +18,7 @@ DESCS=(
   "skillOverrides that switch off org skills"
   "cmux settings (cmux/install.sh)"
   "OMC HUD (hud/install.sh)"
-  "ClaudeSessions widget (installs the release pinned in claude-sessions/release.lock after verifying it, swift build until one is pinned; needs macOS)"
+  "ClaudeSessions widget (installs the release pinned in claude-sessions/release.lock after verifying it; needs macOS)"
 )
 DEFAULTS=(1 0 0 0 0 0 0 0)
 COUNT=${#ITEMS[@]}
@@ -202,7 +202,7 @@ install_hud() {
 WIDGET_TMP=""
 WIDGET_DEST=""
 WIDGET_OLD=""
-WIDGET_MODE=""  # swift | pinned | current | skipped | dry: which path ran, for the summary
+WIDGET_MODE=""  # pinned | current | skipped | dry: which path ran, for the summary
 WIDGET_REOPEN=0  # 1 while a widget we quit has not been reopened yet
 widget_cleanup() {
   # An interrupt between the two mv calls leaves only the .old copy: put it back.
@@ -363,29 +363,11 @@ install_widget() {
     trap - EXIT INT TERM
     return 0
   fi
-  # No release.lock yet: build from the Swift sources (removed once a release is pinned).
-  if [ "${SKILLS_INSTALL_DRY_EXTERNAL:-}" = "1" ]; then
-    run_external claude-sessions/build.sh
-    WIDGET_MODE=dry
-    return 0
-  fi
-  WIDGET_MODE=swift
-  if [ "$(uname -s)" != "Darwin" ] || ! command -v swift >/dev/null 2>&1; then
-    echo "  widget skipped: needs macOS and swift (install the Command Line Tools: xcode-select --install)"
-    SUMMARY_SKIPPED="$SUMMARY_SKIPPED  widget: needs macOS and swift (xcode-select --install)"$'\n'
-    WIDGET_MODE=skipped
-    return 0
-  fi
-  (cd "$SRC" && bash claude-sessions/build.sh)
-  if pgrep -x ClaudeSessions >/dev/null 2>&1; then
-    osascript -e 'quit app "ClaudeSessions"' >/dev/null 2>&1 || true
-    local i
-    for ((i = 0; i < 10; i++)); do
-      pgrep -x ClaudeSessions >/dev/null 2>&1 || break
-      sleep 0.5
-    done
-  fi
-  open "$HOME/Applications/ClaudeSessions.app"
+  # No release.lock and no local dmg: nothing to install.
+  echo "  widget skipped: no release pinned"
+  SUMMARY_SKIPPED="$SUMMARY_SKIPPED  widget: no release pinned"$'\n'
+  WIDGET_MODE=skipped
+  return 0
 }
 
 print_list() {
@@ -559,7 +541,6 @@ case "$SUMMARY_INSTALLED" in
       current) echo "The pinned widget release is already installed; the running widget was left alone." ;;
       skipped) echo "The widget install was skipped; the installed widget (if any) is unchanged." ;;
       dry) echo "Dry run: nothing was downloaded, built, quit or reopened; the installed widget (if any) is unchanged." ;;
-      swift) echo "The installer built the widget from source, then quit the running widget and reopened the new one." ;;
     esac
     ;;
 esac
