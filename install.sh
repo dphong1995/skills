@@ -202,7 +202,7 @@ install_hud() {
 WIDGET_TMP=""
 WIDGET_DEST=""
 WIDGET_OLD=""
-WIDGET_MODE=""  # pinned | current | skipped | dry: which path ran, for the summary
+WIDGET_MODE=""  # pinned | local | current | skipped | dry: which path ran, for the summary
 WIDGET_REOPEN=0  # 1 while a widget we quit has not been reopened yet
 widget_cleanup() {
   # An interrupt between the two mv calls leaves only the .old copy: put it back.
@@ -332,7 +332,7 @@ widget_install_pinned() {  # $1 = lock file ("" when only SKILLS_WIDGET_DMG is s
   WIDGET_REOPEN=0
   open "$dest" || true
   echo "  widget ${want:-installed}"
-  WIDGET_MODE=pinned
+  if [ -n "${SKILLS_WIDGET_DMG:-}" ]; then WIDGET_MODE=local; else WIDGET_MODE=pinned; fi
   if [ -d /Applications/ClaudeSessions.app ]; then
     echo "  warning: /Applications/ClaudeSessions.app also exists; remove one of the two copies" >&2
   fi
@@ -538,6 +538,7 @@ case "$SUMMARY_INSTALLED" in
   *" widget"*)
     case "$WIDGET_MODE" in
       pinned) echo "The installer verified the pinned widget release, then quit the running widget and reopened the new one." ;;
+      local) echo "The installer installed the widget from the local dmg (no checksum), then quit the running widget and reopened the new one." ;;
       current) echo "The pinned widget release is already installed; the running widget was left alone." ;;
       skipped) echo "The widget install was skipped; the installed widget (if any) is unchanged." ;;
       dry) echo "Dry run: nothing was downloaded, built, quit or reopened; the installed widget (if any) is unchanged." ;;

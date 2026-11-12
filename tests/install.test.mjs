@@ -344,6 +344,8 @@ mac('widget: SKILLS_WIDGET_DMG skips download and checksum', () => {
   assert.match(r.out, /skipping download and checksum/);
   assert.ok(!/^curl /m.test(env.calls()));
   assert.ok(existsSync(join(installedApp(env), 'Contents/MacOS/ClaudeSessions')));
+  assert.ok(!/verified the pinned widget release/.test(r.out), r.out);
+  assert.match(r.out, /installed the widget from the local dmg/);
 });
 
 test('widget without a lock is skipped: no release pinned', () => {
