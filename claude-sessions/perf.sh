@@ -7,7 +7,10 @@
 # Thresholds: max of the 5 Rust rounds of "Run 3" in plans/2026-11-11-claude-sessions-rust/reports/phase-10-ab.md, x 1.1.
 #   footprint end: 29.5 MB (idle round 4; load max 28.5) x 1.1 = 32.5
 #   CPU idle: 2.72 % (round 5) x 1.1 = 3.0;  CPU load: 3.45 % (round 4) x 1.1 = 3.8
-#   idle wakeups: 0.60 /s (round 4) x 1.1 = 0.7;  footprint growth in a phase: 5 MB. No floors.
+#   idle wakeups: not from Run 3 (its 0.60 max was a quiet run): the highest clean Rust round of the later runs
+#   (0.83 /s, plans/2026-11-11-claude-sessions-focus-dialog-fixes/reports/phase-03-recheck-perf.md) x 1.1 = 0.9.
+#   Same-machine A/B on 2026-11-12: Swift 0.53-0.72 /s, Rust 0.60-0.73 /s, so ~0.5-0.8 is the machine's floor.
+#   Footprint growth in a phase: 5 MB. No floors.
 
 cd "$(dirname "$0")" || exit 1
 
@@ -18,7 +21,7 @@ FOOTPRINT_MAX_MB=32.5
 GROWTH_MAX_MB=5
 CPU_IDLE_MAX=3.0
 CPU_LOAD_MAX=3.8
-WAKEUPS_MAX=0.7
+WAKEUPS_MAX=0.9
 SETTLE_CAP=300
 SESSIONS=10
 SMALL_MB=50
