@@ -1,15 +1,17 @@
 //! Ticket chips with the menu count (`Block::Chips`, `layout::CHIPS_H`) and the inline link list (`Block::LinkList`,
-//! `layout::link_list_height`). The Jira icon is the fetched picture, a tinted placeholder until its bytes are in the snapshot.
+//! `layout::link_list_height`): per section a header and an inset list of 38 pt two-line items, the chips hidden while it is
+//! open. The Jira icon is the fetched picture, a tinted placeholder until its bytes are in the snapshot.
 
+use super::pr_row::{BADGE, TEXT_X, inset_list, state_badge};
 use super::{Canvas, Ctx};
 use crate::hits::Target;
 use crate::theme;
 use claude_sessions_core::credentials::Service;
 use claude_sessions_core::layout::{
-    BLOCK_GAP, CARD_INSET, CHIP_H, LINK_ROW_H, LINK_SECTION_H, TEXT_W,
+    BLOCK_GAP, CARD_INSET, CHIP_H, LINK_ITEM_H, LINK_ROW_H, LINK_SECTION_H, TEXT_W,
 };
 use claude_sessions_core::scene::{Align, Rect, ThemeColor, Weight};
-use claude_sessions_core::store::{ItemTone, LinkKind, Session, Snapshot};
+use claude_sessions_core::store::{ItemTone, LinkItem, LinkKind, Session, SessionLink, Snapshot};
 
 /// The Jira icon of `url` when the snapshot holds its bytes, else a tinted square.
 fn icon_or_placeholder(
@@ -35,10 +37,16 @@ pub fn draw_chips(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
     let view = ctx.view;
     let y = block.y + BLOCK_GAP;
     let mut x = CARD_INSET;
-    let count = s.menu_count().to_string();
+    let open = view.panel.open_menus.contains(&s.id);
+    // While the list is open it shows every ticket, so the chips give way to the one button that closes it.
+    let links: &[SessionLink] = if open { &[] } else { &s.links };
+    let count = if open {
+        format!("Ẩn danh sách · {}", s.menu_count())
+    } else {
+        s.menu_count().to_string()
+    };
     let menu_w = ctx.text_w(&count, &theme::META_FONT) + 34.0;
-    let widths: Vec<f64> = s
-        .links
+    let widths: Vec<f64> = links
         .iter()
         .map(|l| {
             let icon = if l.icon_url.is_some() { 18.0 } else { 0.0 };
@@ -59,7 +67,7 @@ pub fn draw_chips(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
             CARD_INSET + used + more + 6.0 + menu_w <= right
         })
         .unwrap_or(0);
-    for (link, &w) in s.links.iter().zip(&widths).take(shown) {
+    for (link, &w) in links.iter().zip(&widths).take(shown) {
         let icon = if link.icon_url.is_some() { 18.0 } else { 0.0 };
         let chip = Rect::new(x, y, w, CHIP_H);
         c.rrect(
@@ -116,7 +124,6 @@ pub fn draw_chips(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
         x += w + 6.0;
     }
     // The menu count; indigo while a PR it does not list yet is new.
-    let open = view.panel.open_menus.contains(&s.id);
     let hidden_mark = view
         .snap
         .unseen
@@ -149,103 +156,42 @@ pub fn draw_chips(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
 }
 
 pub fn draw_link_list(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
+    let ctx = &*ctx;
     let mut y = block.y;
     for section in &s.menu {
-        c.text(
-            Rect::new(CARD_INSET + 4.0, y + 2.0, TEXT_W, 14.0),
+        // The header band: 8 pt gap, 14 pt of text, 4 pt gap to the list.
+        let title_w = ctx.text_w(&section.title, &theme::SECTION_FONT);
+        let head = Rect::new(CARD_INSET + 4.0, y + 8.0, TEXT_W - 4.0, 14.0);
+        c.label(
+            Rect::new(head.x, head.y, title_w, head.h),
             &section.title,
-            theme::CAPTION_FONT,
-            theme::solid(ThemeColor::TextFaint),
-            1,
+            theme::SECTION_FONT,
+            theme::solid(ThemeColor::TextSecondary),
             Align::Left,
         );
-        y += LINK_SECTION_H;
-        for item in &section.items {
-            let row = Rect::new(CARD_INSET, y, TEXT_W, LINK_ROW_H);
-            let icon = Rect::new(row.x + 4.0, y + 4.0, 14.0, 14.0);
-            match item.kind {
-                LinkKind::Ticket => {
-                    if let Some(u) = &item.icon_url {
-                        icon_or_placeholder(
-                            ctx.view.snap,
-                            c,
-                            Rect::new(icon.x + 1.0, icon.y + 1.0, 12.0, 12.0),
-                            u,
-                            item.tone,
-                        );
-                    }
-                }
-                LinkKind::Pr => c.symbol(
-                    "arrow.triangle.branch",
-                    icon,
-                    theme::solid(ThemeColor::TextSecondary),
-                    Weight::Regular,
-                ),
-                LinkKind::Link => c.symbol(
-                    "link",
-                    icon,
-                    theme::solid(ThemeColor::TextSecondary),
-                    Weight::Regular,
-                ),
+        c.label(
+            Rect::new(head.x + title_w + 4.0, head.y, 40.0, head.h),
+            &section.items.len().to_string(),
+            theme::CAPTION_FONT,
+            theme::solid(ThemeColor::TextFaint),
+            Align::Left,
+        );
+        let list = Rect::new(
+            CARD_INSET,
+            y + LINK_SECTION_H,
+            TEXT_W,
+            section.items.len() as f64 * LINK_ITEM_H,
+        );
+        inset_list(c, list, |c| {
+            for (i, item) in section.items.iter().enumerate() {
+                let it = Rect::new(list.x, list.y + i as f64 * LINK_ITEM_H, list.w, LINK_ITEM_H);
+                link_item(ctx, c, s, item, it, i == 0);
             }
-            let code_w = ctx.text_w(&item.code, &theme::META_MONO_FONT) + 2.0;
-            c.label(
-                Rect::new(row.x + 24.0, y, code_w, LINK_ROW_H),
-                &item.code,
-                theme::META_MONO_FONT,
-                theme::solid(ThemeColor::TextFaint),
-                Align::Left,
-            );
-            let status_w = item.status.as_deref().map_or(0.0, |t| {
-                let w = ctx.text_w(t, &theme::STATE_FONT) + 16.0;
-                // With a title, at most 40% of the row, so a long status never leaves the title only an ellipsis;
-                // without one, the room right of the key.
-                if item.title.is_some() {
-                    w.min(0.4 * row.w)
-                } else {
-                    w.min(row.w - 24.0 - code_w - 6.0 - 4.0)
-                }
-            });
-            if let Some(title) = &item.title {
-                let tx = row.x + 24.0 + code_w + 6.0;
-                c.label(
-                    Rect::new(
-                        tx,
-                        y,
-                        (row.x + row.w - status_w - 12.0 - tx).max(0.0),
-                        LINK_ROW_H,
-                    ),
-                    title,
-                    theme::META_FONT,
-                    theme::solid(ThemeColor::Text),
-                    Align::Left,
-                );
-            }
-            if let Some(status) = &item.status {
-                let color = theme::tone_token(item.tone);
-                let tag = Rect::new(row.x + row.w - status_w - 4.0, y + 3.0, status_w, 16.0);
-                c.rrect(tag, 4.0, Some(theme::tag_fill(color)), None);
-                // Inset so a truncated "…" does not touch the tag edge.
-                c.label(
-                    Rect::new(tag.x + 6.0, tag.y, (tag.w - 12.0).max(0.0), tag.h),
-                    status,
-                    theme::STATE_FONT,
-                    theme::solid(color),
-                    Align::Center,
-                );
-            }
-            c.tip(row, item.help.as_deref().unwrap_or(&item.text));
-            c.hit(
-                row,
-                Target::Link {
-                    session: s.id.clone(),
-                    url: item.url.clone(),
-                },
-            );
-            y += LINK_ROW_H;
-        }
+        });
+        y += LINK_SECTION_H + list.h;
     }
     if s.menu_needs_jira {
+        y += BLOCK_GAP;
         let row = Rect::new(CARD_INSET, y, TEXT_W, LINK_ROW_H);
         let button = Rect::new(
             row.x,
@@ -266,4 +212,104 @@ pub fn draw_link_list(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
             Target::Connect(Service::Jira),
         );
     }
+}
+
+/// The state badge colour and symbol of a PR item, as in the PR list.
+fn pr_badge(tone: Option<ItemTone>) -> (ThemeColor, &'static str) {
+    match tone {
+        Some(ItemTone::Merged) => (ThemeColor::Indigo, "arrow.triangle.merge"),
+        Some(ItemTone::Closed) => (ThemeColor::Red, "xmark"),
+        _ => (ThemeColor::Green, "arrow.triangle.branch"),
+    }
+}
+
+/// One two-line item of `it`: badge, then the title over the code, a dot and the status; `first` has no hairline above.
+fn link_item(ctx: &Ctx, c: &mut Canvas, s: &Session, item: &LinkItem, it: Rect, first: bool) {
+    if !first {
+        c.hairline(it.x + TEXT_X, it.y, it.w - TEXT_X);
+    }
+    let badge = Rect::new(it.x + 10.0, it.y + (it.h - BADGE) / 2.0, BADGE, BADGE);
+    let mut dot = match item.tone {
+        Some(_) => theme::tone_token(item.tone),
+        None => ThemeColor::TextFaint,
+    };
+    match item.kind {
+        LinkKind::Ticket => {
+            c.rrect(badge, 6.0, Some(theme::solid(ThemeColor::Fill)), None);
+            if let Some(u) = &item.icon_url {
+                let icon = Rect::new(badge.x + 3.0, badge.y + 3.0, 14.0, 14.0);
+                icon_or_placeholder(ctx.view.snap, c, icon, u, item.tone);
+            }
+        }
+        LinkKind::Pr => {
+            let (color, symbol) = pr_badge(item.tone);
+            state_badge(c, badge, color, symbol);
+            dot = color;
+        }
+        LinkKind::Link => {
+            c.rrect(badge, 6.0, Some(theme::solid(ThemeColor::Fill)), None);
+            c.symbol(
+                "link",
+                Rect::new(badge.x + 4.0, badge.y + 4.0, 12.0, 12.0),
+                theme::solid(ThemeColor::TextSecondary),
+                Weight::Regular,
+            );
+        }
+    }
+
+    let (x, right) = (it.x + TEXT_X, it.x + it.w - 10.0);
+    let title = item.title.as_deref().filter(|t| !t.is_empty());
+    let status = item.status.as_deref().filter(|t| !t.is_empty());
+    let text = |c: &mut Canvas, y: f64, w: f64, t: &str| {
+        c.label(
+            Rect::new(x, y, w, 16.0),
+            t,
+            theme::PR_TITLE_FONT,
+            theme::solid(ThemeColor::Text),
+            Align::Left,
+        );
+    };
+    match (title, status) {
+        (None, None) => text(c, it.y + (it.h - 16.0) / 2.0, right - x, &item.code),
+        _ => {
+            // Line 1: the title, else the code. Line 2: the code only after a title, then the dot and the status.
+            text(c, it.y + 5.0, right - x, title.unwrap_or(&item.code));
+            let (y2, mut x2) = (it.y + 21.0, x);
+            if title.is_some() {
+                let w = ctx.text_w(&item.code, &theme::META_FONT).min(right - x);
+                c.label(
+                    Rect::new(x2, y2, w, 14.0),
+                    &item.code,
+                    theme::META_FONT,
+                    theme::solid(ThemeColor::TextSecondary),
+                    Align::Left,
+                );
+                x2 += w + 8.0;
+            }
+            if let Some(status) = status {
+                c.rrect(
+                    Rect::new(x2, y2 + 4.0, 6.0, 6.0),
+                    3.0,
+                    Some(theme::solid(dot)),
+                    None,
+                );
+                x2 += 11.0;
+                c.label(
+                    Rect::new(x2, y2, (right - x2).max(0.0), 14.0),
+                    status,
+                    theme::META_FONT,
+                    theme::solid(ThemeColor::TextSecondary),
+                    Align::Left,
+                );
+            }
+        }
+    }
+    c.tip(it, item.help.as_deref().unwrap_or(&item.text));
+    c.hit(
+        it,
+        Target::Link {
+            session: s.id.clone(),
+            url: item.url.clone(),
+        },
+    );
 }

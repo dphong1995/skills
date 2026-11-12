@@ -11,7 +11,7 @@ use claude_sessions_core::layout::{
 use claude_sessions_core::panel_state::{EditKind, Editing, PanelState};
 use claude_sessions_core::quota::Quota;
 use claude_sessions_core::scene::FontSpec;
-use claude_sessions_core::store::{Session, Snapshot};
+use claude_sessions_core::store::{LinkItem, LinkKind, LinkSection, Session, Snapshot};
 use claude_sessions_core::transcript::{Pending, PendingState};
 use std::time::SystemTime;
 
@@ -200,6 +200,51 @@ fn reply_open_menu_pr_lines_and_editor_add_height() {
     });
     let editing = card_layout(&s, &snap, &p, &FakeMeasure).height;
     assert_eq!(editing - with_lines, layout::editor_height());
+}
+
+fn menu_item(code: &str) -> LinkItem {
+    LinkItem {
+        text: code.into(),
+        url: url::Url::parse("https://x.atlassian.net/browse/K-1").unwrap(),
+        kind: LinkKind::Ticket,
+        code: code.into(),
+        title: None,
+        status: None,
+        tone: None,
+        icon_url: None,
+        help: None,
+    }
+}
+
+fn menu_section(title: &str, n: usize) -> LinkSection {
+    LinkSection {
+        title: title.into(),
+        items: (0..n).map(|i| menu_item(&format!("K-{i}"))).collect(),
+    }
+}
+
+#[test]
+fn link_list_height_two_line_items() {
+    assert_eq!(layout::LINK_SECTION_H, 26.0);
+    assert_eq!(layout::LINK_ITEM_H, 38.0);
+    let mut s = idle("a");
+    s.menu = vec![menu_section("Bạn nhắc", 2), menu_section("PR", 1)];
+    assert_eq!(layout::link_list_height(&s), 26.0 + 76.0 + 26.0 + 38.0);
+    s.menu_needs_jira = true;
+    assert_eq!(
+        layout::link_list_height(&s),
+        26.0 + 76.0 + 26.0 + 38.0 + layout::BLOCK_GAP + layout::LINK_ROW_H
+    );
+}
+
+#[test]
+fn no_menu_means_no_chip_row() {
+    let mut s = idle("a");
+    let none = card_layout(&s, &snapshot(vec![s.clone()]), &panel(), &FakeMeasure);
+    assert!(none.find(layout::Block::Chips).is_none());
+    s.menu = vec![menu_section("PR", 1)];
+    let some = card_layout(&s, &snapshot(vec![s.clone()]), &panel(), &FakeMeasure);
+    assert!(some.find(layout::Block::Chips).is_some());
 }
 
 #[test]

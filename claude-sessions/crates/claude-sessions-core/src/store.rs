@@ -8,7 +8,7 @@ mod refresh;
 mod sends;
 
 use self::links::{ButtonEntry, buttons, help, menu};
-pub use self::links::{link_text, pr_item};
+pub use self::links::{PR_LIST_MAX, display_status, link_text, pr_item};
 pub use self::model::*;
 use crate::closed_sessions::{ClosedSession, ClosedSessions, ClosedStore};
 use crate::credentials::{ConnectionState, Service};

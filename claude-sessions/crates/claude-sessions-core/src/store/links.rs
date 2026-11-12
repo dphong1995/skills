@@ -10,6 +10,9 @@ use std::collections::{HashMap, HashSet};
 use unicode_segmentation::UnicodeSegmentation;
 use url::Url;
 
+/// How many PRs of a session the PR list shows; the menu lists the ones past it.
+pub const PR_LIST_MAX: usize = 3;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Source {
     User,
@@ -71,6 +74,17 @@ pub(super) fn buttons(r: &ScanResult, projects: &HashMap<String, String>) -> Vec
         target: None,
     }));
     out
+}
+
+/// A status Jira wrote in capitals only (`CONFIRMING`) in sentence case (`Confirming`); any other status as it is.
+pub fn display_status(status: &str) -> String {
+    let has_letters = status.chars().any(char::is_alphabetic);
+    if !has_letters || status.chars().any(char::is_lowercase) {
+        return status.to_string();
+    }
+    let mut chars = status.chars();
+    let first = chars.next().map(|c| c.to_string()).unwrap_or_default();
+    first + &chars.as_str().to_lowercase()
 }
 
 /// `KEY · title · status` for a ticket button's hover text; `None` until Jira answered with a title.
@@ -137,7 +151,7 @@ pub fn pr_item(pr: &PRStatus) -> LinkItem {
     }
 }
 
-/// The inline menu: tickets by origin, then every PR. `prs` is `None` without a PR monitor, so every PR link is listed as it is.
+/// The inline menu: tickets by origin, then the PRs the PR list does not show. `prs` is `None` without a PR monitor, so every PR link is listed as it is.
 pub(super) fn menu(
     entries: &[ButtonEntry],
     issues: &HashMap<String, JiraIssue>,
@@ -157,7 +171,7 @@ pub(super) fn menu(
                     kind: LinkKind::Ticket,
                     code: t.key.clone(),
                     title: issue.and_then(|i| i.title.clone()),
-                    status: issue.and_then(|i| i.status.clone()),
+                    status: issue.and_then(|i| i.status.as_deref()).map(display_status),
                     tone: issue.and_then(|i| i.tone).map(ItemTone::from),
                     icon_url: issue.and_then(|i| i.icon_url.clone()),
                     help: help(&t.key, issue),
@@ -183,7 +197,12 @@ pub(super) fn menu(
         });
     let pr = LinkSection {
         title: "PR".into(),
-        items: prs.iter().map(pr_item).chain(untracked).collect(),
+        items: prs
+            .iter()
+            .skip(PR_LIST_MAX)
+            .map(pr_item)
+            .chain(untracked)
+            .collect(),
     };
     vec![
         tickets(Source::User, "Bạn nhắc"),

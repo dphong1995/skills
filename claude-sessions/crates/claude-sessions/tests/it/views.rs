@@ -404,6 +404,7 @@ use claude_sessions_core::code_rabbit::Rabbit;
 use claude_sessions_core::layout::{Block, TextMeasure, card_layout};
 use claude_sessions_core::panel_state::{EditKind, Editing};
 use claude_sessions_core::pull_requests::{PRRef, PRStatus};
+use claude_sessions_core::scene::Rect as GRect;
 use claude_sessions_core::scene::Run;
 use claude_sessions_core::store::{ItemTone, LinkItem, LinkKind, LinkSection, SessionLink};
 use url::Url;
@@ -985,7 +986,7 @@ fn the_open_menu_lists_links_and_the_jira_connection() {
         .iter()
         .filter(|t| matches!(t, Target::Link { url, .. } if url.path().starts_with("/browse/") ))
         .count();
-    assert_eq!(links, 1 + 2, "the chip and the two rows");
+    assert_eq!(links, 2, "the two items; the chips are hidden while open");
     assert!(t.contains(&Target::Connect(
         claude_sessions_core::credentials::Service::Jira
     )));
@@ -993,69 +994,257 @@ fn the_open_menu_lists_links_and_the_jira_connection() {
     assert!(node.cmds.iter().all(|c| bottom(c) <= l.height));
 }
 
-/// The drawn width of the status text of the one open-list row of a session whose items are `title`d or not.
-fn status_label_width(title: Option<&str>, status: &str) -> f64 {
-    let mut s = tickets();
-    for section in &mut s.menu {
-        for item in &mut section.items {
-            item.title = title.map(Into::into);
-            item.status = Some(status.into());
-        }
+/// The hits of a card, with their targets.
+fn hits_of<'a>(b: &'a Built, node: &'a Node) -> Vec<(GRect, &'a Target)> {
+    node.hits
+        .iter()
+        .map(|h| (h.rect, b.targets.get(h.id).unwrap()))
+        .collect()
+}
+
+/// The item hits of an open list (the chips are hidden while it is open).
+fn item_hits(b: &Built, node: &Node) -> Vec<GRect> {
+    hits_of(b, node)
+        .into_iter()
+        .filter(|(_, t)| matches!(t, Target::Link { .. }))
+        .map(|(r, _)| r)
+        .collect()
+}
+
+fn link_item(code: &str, kind: LinkKind, title: Option<&str>, status: Option<&str>) -> LinkItem {
+    LinkItem {
+        text: code.into(),
+        url: url(&format!("https://x.atlassian.net/browse/{code}")),
+        kind,
+        code: code.into(),
+        title: title.map(Into::into),
+        status: status.map(Into::into),
+        tone: None,
+        icon_url: None,
+        help: None,
     }
+}
+
+/// An open session whose menu is `sections`, drawn.
+fn open_list(sections: Vec<LinkSection>) -> Built {
+    let mut s = finished("done");
+    s.menu = sections;
     let snap = snapshot(vec![s]);
     let mut panel = open();
     panel.open_menus.insert("done".into());
-    let built = render(&snap, &panel);
-    card(&built.scene, "done")
-        .cmds
+    render(&snap, &panel)
+}
+
+fn section(title: &str, items: Vec<LinkItem>) -> LinkSection {
+    LinkSection {
+        title: title.into(),
+        items,
+    }
+}
+
+/// The rect of the text `want` drawn by the card.
+fn text_rect(node: &Node, want: &str) -> GRect {
+    node.cmds
         .iter()
         .find_map(|c| match c {
-            DrawCmd::Text { rect, text, .. } if text == status => Some(rect.w),
-            _ => None,
-        })
-        .expect("the status is drawn")
-}
-
-#[test]
-fn a_link_status_without_a_title_is_drawn_uncut() {
-    let status = "A rather long status label for a link";
-    let full = status.chars().count() as f64 * 7.0;
-    assert!(status_label_width(None, status) >= full);
-    assert!(
-        status_label_width(Some("Fix parser"), status) < full,
-        "with a title the status is capped at 40% of the row"
-    );
-}
-
-// A status too long for the row is cut to the room right of the ticket key, so its tag stays inside the row.
-#[test]
-fn a_link_status_too_long_for_the_row_stays_inside_it() {
-    let status = "x".repeat(120);
-    let mut s = tickets();
-    for section in &mut s.menu {
-        for item in &mut section.items {
-            item.title = None;
-            item.status = Some(status.clone());
-        }
-    }
-    let snap = snapshot(vec![s]);
-    let mut panel = open();
-    panel.open_menus.insert("done".into());
-    let built = render(&snap, &panel);
-    let node = card(&built.scene, "done");
-    let rect_of = |want: &str| {
-        node.cmds.iter().find_map(|c| match c {
             DrawCmd::Text { rect, text, .. } if text == want => Some(*rect),
             _ => None,
         })
+        .unwrap_or_else(|| panic!("{want:?} is not drawn"))
+}
+
+fn mid_y(r: GRect) -> f64 {
+    r.y + r.h / 2.0
+}
+
+#[test]
+fn open_list_hides_the_ticket_chips() {
+    let snap = snapshot(vec![tickets()]);
+    let mut panel = open();
+    // Closed: the chips as before.
+    let built = render(&snap, &panel);
+    let node = card(&built.scene, "done");
+    assert!(texts(node).contains(&"ABC-12 In Progress"));
+    assert!(!texts(node).iter().any(|t| t.starts_with("Ẩn danh sách")));
+    // Open: only the toggle, and no item is in the chip row.
+    panel.open_menus.insert("done".into());
+    let (built, l) = only_card(&snap, &panel);
+    let node = card(&built.scene, "done");
+    let chips = l.find(Block::Chips).expect("the chip row");
+    let row: Vec<_> = hits_of(&built, node)
+        .into_iter()
+        .filter(|(r, _)| r.y >= chips.y && r.y < chips.y + chips.h)
+        .collect();
+    assert_eq!(row.len(), 1, "{row:?}");
+    assert_eq!(row[0].1, &Target::Menu("done".into()));
+    assert!(texts(node).contains(&"Ẩn danh sách · 2"));
+    assert!(!texts(node).contains(&"ABC-12 In Progress"));
+    let toggle = row[0].0;
+    let label = text_rect(node, "Ẩn danh sách · 2");
+    assert!(label.x >= toggle.x && label.x + label.w <= toggle.x + toggle.w);
+    assert!(
+        node.cmds
+            .iter()
+            .any(|c| matches!(c, DrawCmd::Symbol { name, .. } if name == "list.bullet"))
+    );
+}
+
+#[test]
+fn link_items_are_two_line_items_in_inset_lists() {
+    let mut a = link_item("ABC-1", LinkKind::Ticket, Some("First"), Some("Confirming"));
+    a.tone = Some(ItemTone::Doing);
+    let b = link_item("ABC-2", LinkKind::Ticket, Some("Second"), Some("Done"));
+    let c = link_item("#41", LinkKind::Pr, Some("A pull request"), Some("mở"));
+    let built = open_list(vec![
+        section("Bạn nhắc", vec![a, b]),
+        section("PR", vec![c]),
+    ]);
+    let node = card(&built.scene, "done");
+    let lists: Vec<GRect> = node
+        .cmds
+        .iter()
+        .filter_map(|c| match c {
+            DrawCmd::RoundedRect {
+                rect,
+                radius,
+                fill: Some(f),
+                ..
+            } if f.token == ThemeColor::Inset && *radius == layout::PR_LIST_RADIUS => Some(*rect),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(lists.len(), 2, "one inset list per section");
+    assert_eq!(lists[0].h, 2.0 * layout::LINK_ITEM_H);
+    assert_eq!(lists[1].h, layout::LINK_ITEM_H);
+    assert_eq!(
+        lists[1].y - (lists[0].y + lists[0].h),
+        layout::LINK_SECTION_H
+    );
+    let items = item_hits(&built, node);
+    assert_eq!(items.len(), 3);
+    for r in &items {
+        assert_eq!(r.h, layout::LINK_ITEM_H);
+        assert!(
+            lists.iter().any(|l| r.x >= l.x
+                && r.x + r.w <= l.x + l.w
+                && r.y >= l.y
+                && r.y + r.h <= l.y + l.h),
+            "{r:?} sits in a list"
+        );
+    }
+    // Line 1: the title; line 2: the code and the status.
+    let first = items[0];
+    let title = text_rect(node, "First");
+    assert!(title.y >= first.y + 4.0 && title.y + title.h <= first.y + 22.0);
+    for word in ["ABC-1", "Confirming"] {
+        let r = text_rect(node, word);
+        assert!(
+            mid_y(r) > first.y + 20.0 && mid_y(r) < first.y + 36.0,
+            "{word}"
+        );
+    }
+    assert!(text_rect(node, "Confirming").x > text_rect(node, "ABC-1").x + 20.0);
+    // No status pill, no monospace.
+    assert!(node.cmds.iter().all(|c| match c {
+        DrawCmd::RoundedRect { fill: Some(f), .. } => f.alpha != theme::tag_fill(f.token).alpha,
+        DrawCmd::Text { font, .. } => !font.mono,
+        _ => true,
+    }));
+    // A hairline between the two items of the first list, none above a first item.
+    let hairlines = node
+        .cmds
+        .iter()
+        .filter(|c| {
+            matches!(c, DrawCmd::RoundedRect { rect, .. }
+                if rect.h == 0.5 && rect.x == layout::CARD_INSET + 38.0)
+        })
+        .count();
+    assert_eq!(hairlines, 1);
+}
+
+#[test]
+fn pr_item_dot_uses_the_badge_colour() {
+    let pr = |id: &str, tone: ItemTone, status: &str| {
+        let mut i = link_item(id, LinkKind::Pr, Some("T"), Some(status));
+        i.tone = Some(tone);
+        i
     };
-    let tag = rect_of(&status).expect("the status is drawn");
-    let code = rect_of("ABC-12").expect("the key is drawn");
+    let mut ticket = link_item("K-1", LinkKind::Ticket, Some("T"), Some("Doing"));
+    ticket.tone = Some(ItemTone::Doing);
+    let plain = link_item("K-2", LinkKind::Ticket, Some("T"), Some("Unknown"));
+    let built = open_list(vec![section(
+        "X",
+        vec![
+            pr("#1", ItemTone::Open, "mở"),
+            pr("#2", ItemTone::Merged, "đã merge"),
+            pr("#3", ItemTone::Closed, "đã đóng"),
+            ticket,
+            plain,
+        ],
+    )]);
+    let node = card(&built.scene, "done");
+    let dots: Vec<ThemeColor> = node
+        .cmds
+        .iter()
+        .filter_map(|c| match c {
+            DrawCmd::RoundedRect {
+                rect,
+                radius,
+                fill: Some(f),
+                ..
+            } if rect.w == 6.0 && rect.h == 6.0 && *radius == 3.0 => Some(f.token),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        dots,
+        vec![
+            ThemeColor::Green,
+            ThemeColor::Indigo,
+            ThemeColor::Red,
+            ThemeColor::Blue,
+            ThemeColor::TextFaint
+        ]
+    );
+}
+
+#[test]
+fn untitled_ticket_shows_code_then_status() {
+    let both = link_item("K-1", LinkKind::Ticket, None, Some("Confirming"));
+    let bare = link_item("K-2", LinkKind::Ticket, None, None);
+    let built = open_list(vec![section("X", vec![both, bare])]);
+    let node = card(&built.scene, "done");
+    let items = item_hits(&built, node);
+    let (one, two) = (items[0], items[1]);
+    // The code on line 1, the dot and the status on line 2.
+    let code = text_rect(node, "K-1");
+    assert!(code.y >= one.y + 4.0 && mid_y(code) < one.y + 22.0);
+    let status = text_rect(node, "Confirming");
+    assert!(mid_y(status) > one.y + 20.0);
+    assert_eq!(status.x, code.x + 11.0, "the dot (6 pt) and a 5 pt gap");
+    // Neither title nor status: the code alone, centred on the item.
+    let alone = text_rect(node, "K-2");
+    assert!((mid_y(alone) - mid_y(two)).abs() < 0.5);
+}
+
+// A status too long for the item is cut with an ellipsis inside it instead of running out of the card.
+#[test]
+fn a_long_status_stays_inside_the_item() {
+    let status = "x".repeat(120);
+    let item = link_item(
+        "ABC-12",
+        LinkKind::Ticket,
+        Some("Fix parser"),
+        Some(&status),
+    );
+    let built = open_list(vec![section("X", vec![item])]);
+    let node = card(&built.scene, "done");
+    let tag = text_rect(node, &status);
+    let code = text_rect(node, "ABC-12");
     assert!(tag.x >= code.x + code.w, "{tag:?} starts right of {code:?}");
     assert!(
-        tag.x + tag.w <= node.frame.w,
-        "{tag:?} ends inside the card of width {}",
-        node.frame.w
+        tag.x + tag.w <= layout::CARD_INSET + layout::TEXT_W,
+        "{tag:?} ends inside the item"
     );
 }
 
@@ -1072,7 +1261,7 @@ fn collapsing_drops_the_open_link_list() {
             .filter(|t| matches!(t, Target::Link { .. }))
             .count()
     };
-    assert_eq!(list_rows(&render(&snap, &panel)), 3);
+    assert_eq!(list_rows(&render(&snap, &panel)), 2);
     panel.hovering = false;
     panel.on_collapse();
     assert_eq!(render(&snap, &panel).scene.nodes.len(), 1, "just the pill");
@@ -1383,6 +1572,8 @@ fn tooltips_list_the_agents_and_describe_the_ticket_chips() {
 
     let mut s = tickets();
     s.links[0].help = Some("ABC-12 · Fix parser · In Progress".into());
+    // The open list shows the items, not the chips: the item's tip is its help text, else its own text.
+    s.menu[0].items[0].help = s.links[0].help.clone();
     let mut panel = open();
     panel.open_menus.insert("done".into());
     let built = render(&snapshot(vec![s]), &panel);
@@ -2607,7 +2798,7 @@ fn chips_overflow_at_panel_width() {
 }
 
 #[test]
-fn link_status_label_leaves_room_for_the_title() {
+fn link_status_label_stays_inside_its_item() {
     let built = fixture_built("29-link-list-open");
     let node = built
         .scene
@@ -2615,40 +2806,16 @@ fn link_status_label_leaves_room_for_the_title() {
         .iter()
         .find(|n| texts(n).contains(&"Ready for Grooming with Engineering"))
         .expect("the card with the long status");
-    let row_w = layout::TEXT_W;
-    let status = node
-        .cmds
-        .iter()
-        .find_map(|c| match c {
-            DrawCmd::Text { rect, text, .. } if text == "Ready for Grooming with Engineering" => {
-                Some(*rect)
-            }
-            _ => None,
-        })
-        .unwrap();
+    let status = text_rect(node, "Ready for Grooming with Engineering");
+    let item = item_hits(&built, node)
+        .into_iter()
+        .find(|r| status.y >= r.y && status.y < r.y + r.h)
+        .expect("the item of the status");
     assert!(
-        status.w <= 0.4 * row_w + 0.01,
-        "status {} wide in a {row_w} row",
-        status.w
+        status.x + status.w <= item.x + item.w - 10.0 + 0.01,
+        "{status:?} ends inside {item:?}"
     );
-    let status_cmd_x = status.x;
-    // The title label of that row ends before the status tag and is wider than an ellipsis.
-    let title = node
-        .cmds
-        .iter()
-        .find_map(|c| match c {
-            DrawCmd::Text { rect, text, .. }
-                if text.len() > 1
-                    && rect.y == status.y
-                    && rect.x + rect.w <= status_cmd_x
-                    && rect.x > layout::CARD_INSET + 24.0 =>
-            {
-                Some(*rect)
-            }
-            _ => None,
-        })
-        .expect("the title label on the status row");
-    assert!(title.w >= 0.3 * row_w, "title only {} wide", title.w);
+    assert!(status.x > item.x + 38.0, "right of the badge");
 }
 
 #[test]

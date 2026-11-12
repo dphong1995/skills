@@ -67,7 +67,11 @@ pub const PR_LIST_RADIUS: f64 = 10.0;
 pub const PR_BUTTON_H: f64 = 22.0;
 pub const CHIP_H: f64 = 20.0;
 pub const CHIPS_H: f64 = BLOCK_GAP + CHIP_H;
-pub const LINK_SECTION_H: f64 = 16.0;
+/// A link list section's header band: 8 pt gap, 14 pt text, 4 pt gap to its inset list.
+pub const LINK_SECTION_H: f64 = 26.0;
+/// One two-line item of a link list section.
+pub const LINK_ITEM_H: f64 = 38.0;
+/// The `Kết nối Jira…` row below the link list.
 pub const LINK_ROW_H: f64 = 22.0;
 /// The `Vừa đóng` disclosure row.
 pub const CLOSED_ROW_H: f64 = 30.0;
@@ -288,9 +292,13 @@ pub fn prs_height(n: usize) -> f64 {
 pub fn link_list_height(s: &Session) -> f64 {
     s.menu
         .iter()
-        .map(|sec| LINK_SECTION_H + LINK_ROW_H * sec.items.len() as f64)
+        .map(|sec| LINK_SECTION_H + LINK_ITEM_H * sec.items.len() as f64)
         .sum::<f64>()
-        + if s.menu_needs_jira { LINK_ROW_H } else { 0.0 }
+        + if s.menu_needs_jira {
+            BLOCK_GAP + LINK_ROW_H
+        } else {
+            0.0
+        }
 }
 
 pub fn editor_height() -> f64 {

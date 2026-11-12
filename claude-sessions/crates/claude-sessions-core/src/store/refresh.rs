@@ -285,7 +285,7 @@ impl Store {
                         new_unseen.remove(&s.id);
                     }
                 }
-                s.prs = all.iter().take(3).cloned().collect();
+                s.prs = all.iter().take(PR_LIST_MAX).cloned().collect();
                 let shown: HashSet<&PRRef> = s.prs.iter().map(|p| &p.ref_).collect();
                 if !shown.is_empty() {
                     let refs = &entries[&s.id];

@@ -6,7 +6,9 @@ use claude_sessions_core::credentials::Service;
 use claude_sessions_core::jira::JiraError;
 use claude_sessions_core::jira_monitor::JiraMonitor;
 use claude_sessions_core::pull_requests::{self, PRRef};
-use claude_sessions_core::store::{ItemTone, LinkKind, Session, link_text, pr_item};
+use claude_sessions_core::store::{
+    ItemTone, LinkKind, PR_LIST_MAX, Session, display_status, link_text, pr_item,
+};
 use serde_json::{Value, json};
 
 fn pr_ref(id: i64) -> PRRef {
@@ -366,6 +368,16 @@ struct MenuRig {
 
 /// One idle session `a`: the user mentions T6IR-2 then T6IR-3, Claude T6IR-4 and four PRs.
 fn menu_store(extra: &[String], jira: Option<Arc<FakeJira>>, prs: bool) -> MenuRig {
+    menu_store_with_prs(&[7571, 6874, 1, 2], extra, jira, prs)
+}
+
+/// `menu_store` with the PR ids Claude links (and Bitbucket answers for) chosen by the test.
+fn menu_store_with_prs(
+    ids: &[i64],
+    extra: &[String],
+    jira: Option<Arc<FakeJira>>,
+    prs: bool,
+) -> MenuRig {
     let fake_jira = jira.unwrap_or_else(|| {
         let j = Arc::new(FakeJira::default());
         j.issues
@@ -374,18 +386,25 @@ fn menu_store(extra: &[String], jira: Option<Arc<FakeJira>>, prs: bool) -> MenuR
             .insert("T6IR-2".into(), (MENU_TITLE.into(), Some("To Do".into())));
         j
     });
-    let api = fake(vec![
-        menu_pr(7571, "Fix site scope filter"),
-        menu_pr(6874, "Second"),
-        menu_pr(1, "Third"),
-        menu_pr(2, "Fourth"),
-    ]);
+    let titles = [
+        "Fix site scope filter",
+        "Second",
+        "Third",
+        "Fourth",
+        "Fifth",
+    ];
+    let api = fake(
+        ids.iter()
+            .zip(titles)
+            .map(|(&id, title)| menu_pr(id, title))
+            .collect(),
+    );
     let (dir, projects) = (make_temp_dir(), make_temp_dir());
     let mut lines = vec![
         user_line("T6IR-2", false, None),
         user_line("T6IR-3", false, None),
         assistant_line(Some("T6IR-4"), false),
-        pr_reply(&[7571, 6874, 1, 2]),
+        pr_reply(ids),
     ];
     lines.extend(extra.iter().cloned());
     lines.push(String::new());
@@ -467,13 +486,12 @@ fn bare_status(state: &str, title: Option<&str>) -> pull_requests::PRStatus {
 }
 
 #[test]
-fn menu_lists_all_prs() {
+fn menu_lists_the_prs_past_the_first_three() {
     let r = menu_store(&[], None, true);
     let s = &r.store.sessions[0];
     assert_eq!(s.prs.len(), 3);
     let prs = section(s, "PR").unwrap();
-    assert_eq!(prs.len(), 4);
-    assert_eq!(prs[0], "PR #7571  Fix site scope filter  ·  mở");
+    assert_eq!(prs, vec!["PR #2  Fourth  ·  mở"]);
     assert_eq!(
         link_text(&bare_status("MERGED", Some("Done"))),
         "PR #5  Done  ·  đã merge"
@@ -482,6 +500,64 @@ fn menu_lists_all_prs() {
         link_text(&bare_status("DECLINED", None)),
         "PR #5  ·  đã đóng"
     );
+}
+
+#[test]
+fn menu_lists_only_prs_past_the_pr_list() {
+    let r = menu_store_with_prs(
+        &[7571, 6874, 1, 2, 3],
+        &[assistant_line(
+            Some("https://github.com/a/b/pull/12"),
+            false,
+        )],
+        None,
+        true,
+    );
+    let s = &r.store.sessions[0];
+    assert_eq!(PR_LIST_MAX, 3);
+    assert_eq!(s.prs.len(), PR_LIST_MAX);
+    assert!(section(s, "Bạn nhắc").is_some());
+    // PRs 4 and 5 stay, the untracked link too; the three above are gone.
+    assert_eq!(
+        section(s, "PR"),
+        Some(vec![
+            "PR #2  Fourth  ·  mở".to_string(),
+            "PR #3  Fifth  ·  mở".to_string(),
+            "PR #12".to_string(),
+        ])
+    );
+    // 2 tickets by the user, 1 by Claude, 3 PR rows.
+    assert_eq!(s.menu_count(), 6);
+}
+
+#[test]
+fn prs_shown_above_leave_no_menu() {
+    let api = fake([7571, 6874].map(plain_pr).to_vec());
+    let (mut store, _d, _p) = pr_store(&api, pr_reply(&[7571, 6874]));
+    store.refresh(pr_t0());
+    let s = &store.sessions[0];
+    assert_eq!(s.prs.len(), 2);
+    assert!(s.menu.is_empty());
+    assert_eq!(s.menu_count(), 0);
+}
+
+#[test]
+fn display_status_sentence_cases_all_caps() {
+    assert_eq!(display_status("CONFIRMING"), "Confirming");
+    assert_eq!(display_status("IN PROGRESS"), "In progress");
+    assert_eq!(display_status("QA Verified"), "QA Verified");
+    assert_eq!(display_status("Done"), "Done");
+    assert_eq!(display_status(""), "");
+    assert_eq!(display_status("123"), "123");
+}
+
+#[test]
+fn ticket_item_status_is_sentence_cased_but_help_keeps_jira_text() {
+    let r = menu_store(&[], Some(jira_with("Title", Some("IN PROGRESS"))), true);
+    let item = &r.store.sessions[0].menu[0].items[0];
+    assert_eq!(item.status.as_deref(), Some("In progress"));
+    assert_eq!(item.help.as_deref(), Some("T6IR-2 · Title · IN PROGRESS"));
+    assert_eq!(item.text, "T6IR-2  Title  ·  IN PROGRESS");
 }
 
 #[test]
@@ -585,10 +661,10 @@ fn menu_items_carry_pr_fields() {
         .unwrap()
         .items;
     assert_eq!(items[0].kind, LinkKind::Pr);
-    assert_eq!(items[0].code, "#7571");
+    assert_eq!(items[0].code, "#2");
     assert_eq!(items[0].status.as_deref(), Some("mở"));
     assert_eq!(items[0].tone, Some(ItemTone::Open));
-    assert_eq!(items[0].help.as_deref(), Some("Fix site scope filter"));
+    assert_eq!(items[0].help.as_deref(), Some("Fourth"));
     let last = items.last().unwrap();
     assert_eq!(last.kind, LinkKind::Link);
     assert_eq!(last.code, "PR #12");
@@ -681,18 +757,22 @@ fn menu_count_excludes_footer() {
     let r = menu_store(&[], Some(failing_jira(JiraError::Transport)), true);
     let s = &r.store.sessions[0];
     assert!(s.menu_needs_jira);
-    assert_eq!(s.menu_count(), 2 + 1 + 4);
+    // Two user tickets, one by Claude, and the fourth PR (the first three are in the PR list).
+    assert_eq!(s.menu_count(), 2 + 1 + 1);
 }
 
 #[test]
 fn menu_row_for_pr_only_session() {
-    let (mut store, _d, _p) = pr_store(&fake(vec![plain_pr(7571)]), pr_reply(&[7571]));
+    let ids = [7571, 6874, 1, 2];
+    let (mut store, _d, _p) = pr_store(&fake(ids.map(plain_pr).to_vec()), pr_reply(&ids));
     store.refresh(pr_t0());
     let s = &store.sessions[0];
-    assert!(s.links.is_empty());
-    assert_eq!(s.prs.len(), 1);
+    // Only the fourth PR's button is left; the first three are in the PR list.
+    assert_eq!(s.links.len(), 1);
+    assert_eq!(s.prs.len(), 3);
     let titles: Vec<&str> = s.menu.iter().map(|m| m.title.as_str()).collect();
     assert_eq!(titles, vec!["PR"]);
+    assert_eq!(s.menu_count(), 1);
 }
 
 #[test]

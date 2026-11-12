@@ -905,7 +905,7 @@ fn link_store(dir: &Path, now: SystemTime, connected: bool) -> Fx {
         (
             "T6IR-102",
             "Fix site scope filter on the dashboard",
-            "In Progress",
+            "IN PROGRESS",
             Some("indeterminate"),
             None,
         ),
@@ -995,7 +995,7 @@ fn link_store(dir: &Path, now: SystemTime, connected: bool) -> Fx {
         .insert("T6IR".into(), "talo6.atlassian.net".into());
     f.refresh(0.0);
     if connected {
-        // Bitbucket is not faked here: swap the untracked PR links for one PR in each state.
+        // Bitbucket is not faked here: swap the untracked PR links for the PRs past the PR list, one in each state.
         let pr = |id: i64, status: &str, tone: ItemTone| LinkItem {
             text: format!("PR #{id}"),
             url: Url::parse(&format!("https://github.com/a/b/pull/{id}")).unwrap(),

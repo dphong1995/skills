@@ -16,7 +16,7 @@ use claude_sessions_core::text::{self, PartKind, PartTint, PrPart};
 use std::borrow::Cow;
 
 /// Text starts here inside an item (after the 20 pt badge at x 10).
-const TEXT_X: f64 = 38.0;
+pub(super) const TEXT_X: f64 = 38.0;
 /// Space between the parts of the meta line.
 const PART_GAP: f64 = 8.0;
 /// Space between the buttons.
@@ -25,7 +25,7 @@ const BTN_GAP: f64 = 6.0;
 const BTN_EDGE: f64 = 10.0;
 /// Space between the text and the buttons.
 const TEXT_BTN_GAP: f64 = 8.0;
-const BADGE: f64 = 20.0;
+pub(super) const BADGE: f64 = 20.0;
 const LINE_ONE_Y: f64 = 7.0;
 const LINE_ONE_H: f64 = 16.0;
 const LINE_TWO_Y: f64 = 24.0;
@@ -153,17 +153,24 @@ pub fn draw(ctx: &Ctx, c: &mut Canvas, s: &Session, block: Rect) {
         TEXT_W,
         n as f64 * PR_ITEM_H,
     );
+    inset_list(c, list, |c| {
+        for (i, pr) in s.prs.iter().enumerate() {
+            let it = Rect::new(list.x, list.y + i as f64 * PR_ITEM_H, list.w, PR_ITEM_H);
+            item(ctx, c, s, pr, it, (i == 0, i + 1 == n));
+        }
+    });
+}
+
+/// The rounded well of `list` with `items` drawn in it. The inner edge goes on top of the items: the scene strokes 1 pt, so
+/// it sits fully inside the list; half the token's alpha reads as 0.5 pt.
+pub(super) fn inset_list(c: &mut Canvas, list: Rect, items: impl FnOnce(&mut Canvas)) {
     c.rrect(
         list,
         PR_LIST_RADIUS,
         Some(theme::solid(ThemeColor::Inset)),
         None,
     );
-    for (i, pr) in s.prs.iter().enumerate() {
-        let it = Rect::new(list.x, list.y + i as f64 * PR_ITEM_H, list.w, PR_ITEM_H);
-        item(ctx, c, s, pr, it, (i == 0, i + 1 == n));
-    }
-    // The inner edge: the scene strokes 1 pt, so it sits fully inside the list; half the token's alpha reads as 0.5 pt.
+    items(c);
     c.rrect(
         Rect::new(list.x + 0.5, list.y + 0.5, list.w - 1.0, list.h - 1.0),
         PR_LIST_RADIUS - 0.5,
@@ -254,11 +261,16 @@ fn badge(c: &mut Canvas, pr: &PRStatus, it: Rect) {
     } else {
         (ThemeColor::Red, "xmark")
     };
-    let badge = Rect::new(it.x + 10.0, it.y + (it.h - BADGE) / 2.0, BADGE, BADGE);
-    c.rrect(badge, 6.0, Some(theme::tint(color, 0.16)), None);
+    let rect = Rect::new(it.x + 10.0, it.y + (it.h - BADGE) / 2.0, BADGE, BADGE);
+    state_badge(c, rect, color, symbol);
+}
+
+/// The 20 pt badge `rect`: `symbol` in `color` on a tint of it.
+pub(super) fn state_badge(c: &mut Canvas, rect: Rect, color: ThemeColor, symbol: &str) {
+    c.rrect(rect, 6.0, Some(theme::tint(color, 0.16)), None);
     c.symbol(
         symbol,
-        Rect::new(badge.x + 4.0, badge.y + 4.0, 12.0, 12.0),
+        Rect::new(rect.x + 4.0, rect.y + 4.0, 12.0, 12.0),
         theme::solid(color),
         Weight::Regular,
     );
