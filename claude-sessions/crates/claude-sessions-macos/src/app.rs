@@ -41,3 +41,10 @@ pub fn modal_open() -> bool {
 pub fn is_active() -> bool {
     MainThreadMarker::new().is_some_and(|mtm| NSApplication::sharedApplication(mtm).isActive())
 }
+
+/// Hands the active state to another application, so this one holds no keyboard focus. No-op off the main thread.
+pub fn deactivate() {
+    if let Some(mtm) = MainThreadMarker::new() {
+        NSApplication::sharedApplication(mtm).deactivate();
+    }
+}

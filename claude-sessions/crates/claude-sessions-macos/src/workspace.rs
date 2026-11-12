@@ -75,10 +75,10 @@ pub fn copy_to_pasteboard(text: &str) {
 pub struct FrontApp(Retained<NSRunningApplication>);
 
 impl FrontApp {
-    /// Brings the application to the front.
-    pub fn activate(&self) {
+    /// Brings the application to the front. False when it could not be activated (e.g. it quit).
+    pub fn activate(&self) -> bool {
         self.0
-            .activateWithOptions(NSApplicationActivationOptions::empty());
+            .activateWithOptions(NSApplicationActivationOptions::empty())
     }
 }
 

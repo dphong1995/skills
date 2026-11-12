@@ -938,9 +938,9 @@ fn run_settings_effect(weak: &WeakState, effect: SettingsEffect) {
                     with_state(weak, |s| s.panels.iter().any(|host| host.state.wants_key()))
                         .unwrap_or(false);
                 if keyboard_mode::give_back_after_settings(any_wants_key, mac_app::is_active())
-                    && let Some(previous) = &w.previous_app
+                    && !w.previous_app.as_ref().is_some_and(|p| p.activate())
                 {
-                    previous.activate();
+                    mac_app::deactivate();
                 }
             }
             schedule_key_sync(weak);
