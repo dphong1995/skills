@@ -97,10 +97,11 @@ fn flow(pr: &PRStatus, p: &PrPart) -> Option<Meta> {
             Some(meta(None, text, ThemeColor::TextFaint))
         }
         PartKind::Clock => Some(meta(None, p.text.clone(), ThemeColor::TextFaint)),
-        PartKind::State(tone) => Some(Meta {
+        // The word stays grey: the state colour (merged: Indigo) is unreadable on a fresh item's tint.
+        PartKind::State(_) => Some(Meta {
             drop_rank: 0,
             help: None,
-            ..meta(None, p.text.clone(), theme::tone_token(Some(tone)))
+            ..meta(None, p.text.clone(), ThemeColor::TextSecondary)
         }),
         PartKind::Rabbit => Some(Meta {
             rabbit: true,

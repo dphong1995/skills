@@ -2922,14 +2922,22 @@ fn merged_pr_item_has_state_word_and_no_button() {
         let (_, c) = text_cmd(node, "đã merge").unwrap();
         (*r, *c)
     };
-    assert_eq!(color.token, ThemeColor::Indigo);
+    assert_eq!(color.token, ThemeColor::TextSecondary);
     assert_eq!(cy(&word), merged.y + 24.0 + 7.0);
     let (_, title) = text_cmd(node, "Old fix").unwrap();
     assert_eq!(title.token, ThemeColor::TextSecondary);
     let (_, closed) = text_cmd(node, "đã đóng").unwrap();
-    assert_eq!(closed.token, ThemeColor::Red);
+    assert_eq!(closed.token, ThemeColor::TextSecondary);
     let syms = symbols(node);
     assert!(syms.contains(&"arrow.triangle.merge") && syms.contains(&"xmark"));
+    let badge = |name: &str| {
+        node.cmds.iter().find_map(|c| match c {
+            DrawCmd::Symbol { name: n, color, .. } if n == name => Some(color.token),
+            _ => None,
+        })
+    };
+    assert_eq!(badge("arrow.triangle.merge"), Some(ThemeColor::Indigo));
+    assert_eq!(badge("xmark"), Some(ThemeColor::Red));
     let t = texts(node);
     assert!(!t.contains(&"Nhờ Claude") && !t.contains(&"Nhắc duyệt"));
     assert!(
