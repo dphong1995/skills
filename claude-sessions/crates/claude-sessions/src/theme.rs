@@ -5,7 +5,7 @@ use claude_sessions_core::layout::PILL_HEIGHT;
 use claude_sessions_core::scene::{Color, FontSpec, Point, Shadow, ThemeColor, Weight};
 use claude_sessions_core::store::Session;
 
-pub use claude_sessions_core::layout::{REPLY_FONT, STATE_FONT, SUB_FONT, TITLE_FONT};
+pub use claude_sessions_core::layout::{REPLY_FONT, SUB_FONT, TITLE_FONT};
 
 /// Swift's `Layout.cardOpacity`: the opaque end of the background opacity menu, at which the pill looks as designed.
 pub const CARD_OPACITY: f64 = 0.92;

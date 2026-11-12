@@ -133,10 +133,18 @@ fn card<'a>(scene: &'a Scene, id: &str) -> &'a Node {
         .unwrap()
 }
 
-fn targets(b: &Built, node: &Node) -> Vec<Target> {
+/// The hits of a card, with their targets.
+fn hits_of<'a>(b: &'a Built, node: &'a Node) -> Vec<(GRect, &'a Target)> {
     node.hits
         .iter()
-        .map(|h| b.targets.get(h.id).unwrap().clone())
+        .map(|h| (h.rect, b.targets.get(h.id).unwrap()))
+        .collect()
+}
+
+fn targets(b: &Built, node: &Node) -> Vec<Target> {
+    hits_of(b, node)
+        .into_iter()
+        .map(|(_, t)| t.clone())
         .collect()
 }
 
@@ -992,14 +1000,40 @@ fn the_open_menu_lists_links_and_the_jira_connection() {
     )));
     assert!(texts(node).contains(&"Kết nối Jira…"));
     assert!(node.cmds.iter().all(|c| bottom(c) <= l.height));
+    // The capsule's row ends the list block, BLOCK_GAP below the last inset list.
+    let list = l.find(Block::LinkList).expect("the link list");
+    let hits = hits_of(&built, node);
+    let connect = hits
+        .iter()
+        .find(|(_, t)| matches!(t, Target::Connect(_)))
+        .unwrap()
+        .0;
+    let last_item_bottom = hits
+        .iter()
+        .filter(|(_, t)| matches!(t, Target::Link { .. }))
+        .map(|(r, _)| r.y + r.h)
+        .fold(0.0, f64::max);
+    assert_eq!(connect.y + connect.h, list.y + list.h);
+    assert_eq!(connect.y, last_item_bottom + layout::BLOCK_GAP);
 }
 
-/// The hits of a card, with their targets.
-fn hits_of<'a>(b: &'a Built, node: &'a Node) -> Vec<(GRect, &'a Target)> {
-    node.hits
-        .iter()
-        .map(|h| (h.rect, b.targets.get(h.id).unwrap()))
-        .collect()
+#[test]
+fn a_hidden_pr_with_an_unseen_mark_tints_the_menu_chip_indigo() {
+    use claude_sessions_core::store::NewMark;
+    let prs = (1..=3).map(|i| bare_pr(i, "OPEN", Some("A"))).collect();
+    let mut s = session_with(prs);
+    s.menu = vec![section(
+        "PR",
+        vec![link_item("#4", LinkKind::Pr, None, None)],
+    )];
+    let mut snap = snapshot(vec![s]);
+    let mut mark = NewMark::default();
+    mark.prs.insert(bare_pr(4, "OPEN", None).ref_);
+    snap.unseen.insert("done".into(), mark);
+    let built = render(&snap, &open());
+    let node = card(&built.scene, "done");
+    assert!(node.cmds.iter().any(|c| matches!(c,
+        DrawCmd::RoundedRect { fill: Some(f), .. } if f.token == ThemeColor::Indigo && f.alpha == 0.35)));
 }
 
 /// The item hits of an open list (the chips are hidden while it is open).
@@ -1023,6 +1057,13 @@ fn link_item(code: &str, kind: LinkKind, title: Option<&str>, status: Option<&st
         icon_url: None,
         help: None,
     }
+}
+
+/// A PR item of the given tone and status.
+fn pr_link(code: &str, tone: ItemTone, status: &str) -> LinkItem {
+    let mut i = link_item(code, LinkKind::Pr, Some("T"), Some(status));
+    i.tone = Some(tone);
+    i
 }
 
 /// An open session whose menu is `sections`, drawn.
@@ -1164,20 +1205,15 @@ fn link_items_are_two_line_items_in_inset_lists() {
 
 #[test]
 fn pr_item_dot_uses_the_badge_colour() {
-    let pr = |id: &str, tone: ItemTone, status: &str| {
-        let mut i = link_item(id, LinkKind::Pr, Some("T"), Some(status));
-        i.tone = Some(tone);
-        i
-    };
     let mut ticket = link_item("K-1", LinkKind::Ticket, Some("T"), Some("Doing"));
     ticket.tone = Some(ItemTone::Doing);
     let plain = link_item("K-2", LinkKind::Ticket, Some("T"), Some("Unknown"));
     let built = open_list(vec![section(
         "X",
         vec![
-            pr("#1", ItemTone::Open, "mở"),
-            pr("#2", ItemTone::Merged, "đã merge"),
-            pr("#3", ItemTone::Closed, "đã đóng"),
+            pr_link("#1", ItemTone::Open, "mở"),
+            pr_link("#2", ItemTone::Merged, "đã merge"),
+            pr_link("#3", ItemTone::Closed, "đã đóng"),
             ticket,
             plain,
         ],
@@ -1251,17 +1287,12 @@ fn link_item_draws_one_centred_line_with_the_link_badge() {
 
 #[test]
 fn pr_items_use_the_state_badge_symbols_of_the_pr_list() {
-    let pr = |id: &str, tone: ItemTone| {
-        let mut i = link_item(id, LinkKind::Pr, Some("T"), Some("x"));
-        i.tone = Some(tone);
-        i
-    };
     let built = open_list(vec![section(
         "PR",
         vec![
-            pr("#1", ItemTone::Open),
-            pr("#2", ItemTone::Merged),
-            pr("#3", ItemTone::Closed),
+            pr_link("#1", ItemTone::Open, "x"),
+            pr_link("#2", ItemTone::Merged, "x"),
+            pr_link("#3", ItemTone::Closed, "x"),
         ],
     )]);
     let node = card(&built.scene, "done");

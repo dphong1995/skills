@@ -386,17 +386,9 @@ fn menu_store_with_prs(
             .insert("T6IR-2".into(), (MENU_TITLE.into(), Some("To Do".into())));
         j
     });
-    let titles = [
-        "Fix site scope filter",
-        "Second",
-        "Third",
-        "Fourth",
-        "Fifth",
-    ];
     let api = fake(
         ids.iter()
-            .zip(titles)
-            .map(|(&id, title)| menu_pr(id, title))
+            .map(|&id| menu_pr(id, &format!("PR {id}")))
             .collect(),
     );
     let (dir, projects) = (make_temp_dir(), make_temp_dir());
@@ -491,7 +483,7 @@ fn menu_lists_the_prs_past_the_first_three() {
     let s = &r.store.sessions[0];
     assert_eq!(s.prs.len(), 3);
     let prs = section(s, "PR").unwrap();
-    assert_eq!(prs, vec!["PR #2  Fourth  ·  mở"]);
+    assert_eq!(prs, vec!["PR #2  PR 2  ·  mở"]);
     assert_eq!(
         link_text(&bare_status("MERGED", Some("Done"))),
         "PR #5  Done  ·  đã merge"
@@ -521,8 +513,8 @@ fn menu_lists_only_prs_past_the_pr_list() {
     assert_eq!(
         section(s, "PR"),
         Some(vec![
-            "PR #2  Fourth  ·  mở".to_string(),
-            "PR #3  Fifth  ·  mở".to_string(),
+            "PR #2  PR 2  ·  mở".to_string(),
+            "PR #3  PR 3  ·  mở".to_string(),
             "PR #12".to_string(),
         ])
     );
@@ -549,6 +541,7 @@ fn display_status_sentence_cases_all_caps() {
     assert_eq!(display_status("Done"), "Done");
     assert_eq!(display_status(""), "");
     assert_eq!(display_status("123"), "123");
+    assert_eq!(display_status("(QA) DONE"), "(Qa) done");
 }
 
 #[test]
@@ -672,7 +665,7 @@ fn menu_items_carry_pr_fields() {
     assert_eq!(items[0].code, "#2");
     assert_eq!(items[0].status.as_deref(), Some("mở"));
     assert_eq!(items[0].tone, Some(ItemTone::Open));
-    assert_eq!(items[0].help.as_deref(), Some("Fourth"));
+    assert_eq!(items[0].help.as_deref(), Some("PR 2"));
     let last = items.last().unwrap();
     assert_eq!(last.kind, LinkKind::Link);
     assert_eq!(last.code, "PR #12");

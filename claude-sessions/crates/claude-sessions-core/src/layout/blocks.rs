@@ -86,7 +86,6 @@ const fn font(size: f64, weight: Weight, mono: bool) -> FontSpec {
 }
 
 pub const TITLE_FONT: FontSpec = font(13.0, Weight::Semibold, false);
-pub const STATE_FONT: FontSpec = font(11.0, Weight::Semibold, false);
 pub const SUB_FONT: FontSpec = font(11.5, Weight::Regular, false);
 pub const REPLY_FONT: FontSpec = font(12.5, Weight::Regular, false);
 

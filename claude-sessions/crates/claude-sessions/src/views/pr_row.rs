@@ -11,7 +11,7 @@ use claude_sessions_core::layout::{
 };
 use claude_sessions_core::pull_requests::PRStatus;
 use claude_sessions_core::scene::{Align, Rect, ThemeColor, Weight};
-use claude_sessions_core::store::{SendKey, SendKind, SendState, Session};
+use claude_sessions_core::store::{ItemTone, SendKey, SendKind, SendState, Session, pr_tone};
 use claude_sessions_core::text::{self, PartKind, PartTint, PrPart};
 use std::borrow::Cow;
 
@@ -254,15 +254,18 @@ fn item(ctx: &Ctx, c: &mut Canvas, s: &Session, pr: &PRStatus, it: Rect, place: 
 
 /// The state badge at the item's left.
 fn badge(c: &mut Canvas, pr: &PRStatus, it: Rect) {
-    let (color, symbol) = if pr.is_open() {
-        (ThemeColor::Green, "arrow.triangle.branch")
-    } else if pr.state == "MERGED" {
-        (ThemeColor::Indigo, "arrow.triangle.merge")
-    } else {
-        (ThemeColor::Red, "xmark")
-    };
+    let (color, symbol) = pr_badge(Some(pr_tone(pr)));
     let rect = Rect::new(it.x + 10.0, it.y + (it.h - BADGE) / 2.0, BADGE, BADGE);
     state_badge(c, rect, color, symbol);
+}
+
+/// The state badge colour and symbol of a PR item, as in the PR list.
+pub(super) fn pr_badge(tone: Option<ItemTone>) -> (ThemeColor, &'static str) {
+    match tone {
+        Some(ItemTone::Merged) => (ThemeColor::Indigo, "arrow.triangle.merge"),
+        Some(ItemTone::Closed) => (ThemeColor::Red, "xmark"),
+        _ => (ThemeColor::Green, "arrow.triangle.branch"),
+    }
 }
 
 /// The 20 pt badge `rect`: `symbol` in `color` on a tint of it.

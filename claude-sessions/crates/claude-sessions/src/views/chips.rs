@@ -2,7 +2,8 @@
 //! `layout::link_list_height`): per section a header and an inset list of 38 pt two-line items, the chips hidden while it is
 //! open. The Jira icon is the fetched picture, a tinted placeholder until its bytes are in the snapshot.
 
-use super::pr_row::{BADGE, TEXT_X, inset_list, state_badge};
+use super::pr_row::{BADGE, TEXT_X, inset_list, pr_badge, state_badge};
+use super::section;
 use super::{Canvas, Ctx};
 use crate::hits::Target;
 use crate::theme;
@@ -155,26 +156,17 @@ pub fn draw_chips(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
     c.hit(chip, Target::Menu(s.id.clone()));
 }
 
-pub fn draw_link_list(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
-    let ctx = &*ctx;
+pub fn draw_link_list(ctx: &Ctx, c: &mut Canvas, s: &Session, block: Rect) {
     let mut y = block.y;
     for section in &s.menu {
         // The header band: 8 pt gap, 14 pt of text, 4 pt gap to the list.
-        let title_w = ctx.text_w(&section.title, &theme::SECTION_FONT);
-        let head = Rect::new(CARD_INSET + 4.0, y + 8.0, TEXT_W - 4.0, 14.0);
-        c.label(
-            Rect::new(head.x, head.y, title_w, head.h),
+        section::draw_title(
+            ctx,
+            c,
+            CARD_INSET + 4.0,
+            y + LINK_SECTION_H,
             &section.title,
-            theme::SECTION_FONT,
-            theme::solid(ThemeColor::TextSecondary),
-            Align::Left,
-        );
-        c.label(
-            Rect::new(head.x + title_w + 4.0, head.y, 40.0, head.h),
-            &section.items.len().to_string(),
-            theme::CAPTION_FONT,
-            theme::solid(ThemeColor::TextFaint),
-            Align::Left,
+            section.items.len(),
         );
         let list = Rect::new(
             CARD_INSET,
@@ -214,47 +206,37 @@ pub fn draw_link_list(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
     }
 }
 
-/// The state badge colour and symbol of a PR item, as in the PR list.
-fn pr_badge(tone: Option<ItemTone>) -> (ThemeColor, &'static str) {
-    match tone {
-        Some(ItemTone::Merged) => (ThemeColor::Indigo, "arrow.triangle.merge"),
-        Some(ItemTone::Closed) => (ThemeColor::Red, "xmark"),
-        _ => (ThemeColor::Green, "arrow.triangle.branch"),
-    }
-}
-
 /// One two-line item of `it`: badge, then the title over the code, a dot and the status; `first` has no hairline above.
 fn link_item(ctx: &Ctx, c: &mut Canvas, s: &Session, item: &LinkItem, it: Rect, first: bool) {
     if !first {
         c.hairline(it.x + TEXT_X, it.y, it.w - TEXT_X);
     }
     let badge = Rect::new(it.x + 10.0, it.y + (it.h - BADGE) / 2.0, BADGE, BADGE);
-    let mut dot = match item.tone {
-        Some(_) => theme::tone_token(item.tone),
-        None => ThemeColor::TextFaint,
+    let pr = (item.kind == LinkKind::Pr).then(|| pr_badge(item.tone));
+    let dot = match (pr, item.tone) {
+        (Some((color, _)), _) => color,
+        (None, Some(_)) => theme::tone_token(item.tone),
+        (None, None) => ThemeColor::TextFaint,
     };
+    if let Some((color, symbol)) = pr {
+        state_badge(c, badge, color, symbol);
+    } else {
+        c.rrect(badge, 6.0, Some(theme::solid(ThemeColor::Fill)), None);
+    }
     match item.kind {
         LinkKind::Ticket => {
-            c.rrect(badge, 6.0, Some(theme::solid(ThemeColor::Fill)), None);
             if let Some(u) = &item.icon_url {
                 let icon = Rect::new(badge.x + 3.0, badge.y + 3.0, 14.0, 14.0);
                 icon_or_placeholder(ctx.view.snap, c, icon, u, item.tone);
             }
         }
-        LinkKind::Pr => {
-            let (color, symbol) = pr_badge(item.tone);
-            state_badge(c, badge, color, symbol);
-            dot = color;
-        }
-        LinkKind::Link => {
-            c.rrect(badge, 6.0, Some(theme::solid(ThemeColor::Fill)), None);
-            c.symbol(
-                "link",
-                Rect::new(badge.x + 4.0, badge.y + 4.0, 12.0, 12.0),
-                theme::solid(ThemeColor::TextSecondary),
-                Weight::Regular,
-            );
-        }
+        LinkKind::Pr => {}
+        LinkKind::Link => c.symbol(
+            "link",
+            Rect::new(badge.x + 4.0, badge.y + 4.0, 12.0, 12.0),
+            theme::solid(ThemeColor::TextSecondary),
+            Weight::Regular,
+        ),
     }
 
     let (x, right) = (it.x + TEXT_X, it.x + it.w - 10.0);
@@ -286,7 +268,7 @@ fn link_item(ctx: &Ctx, c: &mut Canvas, s: &Session, item: &LinkItem, it: Rect, 
                 );
                 x2 += w + 8.0;
             }
-            if let Some(status) = status {
+            if let Some(status) = status.filter(|_| x2 + 11.0 < right) {
                 c.rrect(
                     Rect::new(x2, y2 + 4.0, 6.0, 6.0),
                     3.0,

@@ -82,9 +82,20 @@ pub fn display_status(status: &str) -> String {
     if !has_letters || status.chars().any(char::is_lowercase) {
         return status.to_string();
     }
-    let mut chars = status.chars();
-    let first = chars.next().map(|c| c.to_string()).unwrap_or_default();
-    first + &chars.as_str().to_lowercase()
+    let mut seen = false;
+    status
+        .chars()
+        .flat_map(|c| {
+            let lower = !c.is_alphabetic() || seen;
+            seen |= c.is_alphabetic();
+            let converted: String = if lower {
+                c.to_lowercase().collect()
+            } else {
+                c.to_uppercase().collect()
+            };
+            converted.chars().collect::<Vec<_>>()
+        })
+        .collect()
 }
 
 /// `KEY · title · status` for a ticket button's hover text; `None` until Jira answered with a title.
@@ -126,7 +137,7 @@ pub fn link_text(pr: &PRStatus) -> String {
     format!("PR #{}  {}{}", pr.ref_.id, title, pr.state_word())
 }
 
-fn pr_tone(pr: &PRStatus) -> ItemTone {
+pub fn pr_tone(pr: &PRStatus) -> ItemTone {
     if pr.is_open() {
         ItemTone::Open
     } else if pr.state == "MERGED" {

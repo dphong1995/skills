@@ -809,15 +809,20 @@ pub fn state_52_send_failed(dir: &Path, now: SystemTime) -> State {
 }
 
 /// Two sessions: `b` with two open PRs (7571, 7567), `c` plain, so unmarked cards show next to marked ones.
-fn marks(dir: &Path, now: SystemTime, marks: &[(&str, bool, &[i64])]) -> State {
-    let api = fake_bitbucket(vec![
-        pr_json(7571, 2, 0, None, "OPEN"),
-        pr_json(7567, 0, 0, None, "OPEN"),
-    ]);
+fn marks(dir: &Path, now: SystemTime, ids: &[i64], marks: &[(&str, bool, &[i64])]) -> State {
+    let api = fake_bitbucket(
+        ids.iter()
+            .map(|id| pr_json(*id, if *id == 7571 { 2 } else { 0 }, 0, None, "OPEN"))
+            .collect(),
+    );
     let mut options = options();
     options.prs = Some(pr_monitor(&api));
     let mut f = Fx::with(dir, now, options);
-    let links = [7571, 7567].map(pr_url).join(" ");
+    let links = ids
+        .iter()
+        .map(|id| pr_url(*id))
+        .collect::<Vec<_>>()
+        .join(" ");
     f.transcript(
         BACKEND,
         "b",
@@ -846,16 +851,21 @@ fn marks(dir: &Path, now: SystemTime, marks: &[(&str, bool, &[i64])]) -> State {
 }
 
 pub fn state_32_mark_claude(dir: &Path, now: SystemTime) -> State {
-    marks(dir, now, &[("b", true, &[])])
+    marks(dir, now, &[7571, 7567], &[("b", true, &[])])
 }
 pub fn state_33_mark_pr(dir: &Path, now: SystemTime) -> State {
-    marks(dir, now, &[("b", false, &[7571])])
+    marks(dir, now, &[7571, 7567], &[("b", false, &[7571])])
 }
 pub fn state_34_mark_both(dir: &Path, now: SystemTime) -> State {
-    marks(dir, now, &[("b", true, &[7571])])
+    marks(dir, now, &[7571, 7567], &[("b", true, &[7571])])
 }
 pub fn state_35_mark_pr_hidden(dir: &Path, now: SystemTime) -> State {
-    marks(dir, now, &[("b", false, &[9999])])
+    marks(
+        dir,
+        now,
+        &[7571, 7567, 7563, 7559],
+        &[("b", false, &[7559])],
+    )
 }
 
 pub fn state_27_fresh_long_title(dir: &Path, now: SystemTime) -> State {
@@ -885,9 +895,9 @@ type TicketSpec<'a> = (
     Option<(&'a str, String)>,
 );
 
-/// One session `b` mentioning eight tickets (the last has no type or icon data) and PRs; the icons come through the Jira fake.
-fn link_store(dir: &Path, now: SystemTime, connected: bool) -> Fx {
-    let urls: Vec<String> = (101..=108)
+/// One session `b` mentioning the first `tickets` of eight tickets (the last has no type or icon data) and PRs; the icons come through the Jira fake.
+fn link_store(dir: &Path, now: SystemTime, connected: bool, tickets: usize) -> Fx {
+    let urls: Vec<String> = (101..=100 + tickets as i32)
         .map(|i| format!("https://talo6.atlassian.net/browse/T6IR-{i}"))
         .collect();
     let prs = "https://github.com/a/b/pull/1 https://github.com/a/b/pull/2";
@@ -952,7 +962,7 @@ fn link_store(dir: &Path, now: SystemTime, connected: bool) -> Fx {
             Some(("Task", icon("task"))),
         ),
     ];
-    for (k, title, status, cat, ty) in spec {
+    for (k, title, status, cat, ty) in spec.into_iter().take(tickets) {
         api.issues
             .lock()
             .unwrap()
@@ -1024,18 +1034,18 @@ fn link_store(dir: &Path, now: SystemTime, connected: bool) -> Fx {
 }
 
 pub fn state_28_link_menu_row(dir: &Path, now: SystemTime) -> State {
-    link_store(dir, now, true).done()
+    link_store(dir, now, true, 8).done()
 }
 
 pub fn state_29_link_list_open(dir: &Path, now: SystemTime) -> State {
-    let mut f = link_store(dir, now, true);
+    let mut f = link_store(dir, now, true, 4);
     let id = f.store.sessions[0].id.clone();
     f.panel.open_menus = HashSet::from([id]);
     f.done()
 }
 
 pub fn state_30_link_list_connect(dir: &Path, now: SystemTime) -> State {
-    let mut f = link_store(dir, now, false);
+    let mut f = link_store(dir, now, false, 3);
     let id = f.store.sessions[0].id.clone();
     f.panel.open_menus = HashSet::from([id]);
     f.done()
