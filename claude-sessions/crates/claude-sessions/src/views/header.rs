@@ -1,4 +1,5 @@
-//! The header of the expanded card: the quota rings with the reset or forecast time on the left, the count groups on the right.
+//! The header of the expanded card: the quota rings with the reset or forecast time, a hairline, then the count groups, all at the
+//! right end so a notch never covers them.
 
 use super::pill::{draw_groups, quota_token, ring_sweep};
 use super::{Canvas, Ctx};
@@ -9,10 +10,9 @@ use claude_sessions_core::scene::{Align, Point, Rect, ThemeColor, Weight};
 
 const RING: f64 = 13.0;
 const GAP: f64 = 5.0;
-/// Space between the quota and the left edge of the node, and between the counts and its right edge.
-const PAD_LEFT: f64 = 8.0;
+/// Space between the counts and the right edge of the node.
 const PAD_RIGHT: f64 = 4.0;
-/// Space either side of the divider between the two quotas.
+/// Space either side of a divider.
 const DIVIDER_MARGIN: f64 = 5.0;
 
 /// A ring is green until the quota warns, then takes the level colour.
@@ -86,31 +86,70 @@ enum Note {
     Forecast(String),
 }
 
-fn draw_quota(ctx: &Ctx, c: &mut Canvas, q: &Quota, cy: f64) {
+/// Which optional parts of the quota block are drawn: the note after the 5h percent, the weekly quota.
+#[derive(Clone, Copy)]
+struct Parts {
+    note: bool,
+    weekly: bool,
+}
+
+/// Draws the quota block starting at `x0`; returns where it ends.
+fn draw_quota(ctx: &Ctx, c: &mut Canvas, q: &Quota, cy: f64, x0: f64, parts: Parts) -> f64 {
     let clock = ctx.view.clock;
-    let note = match q.forecast {
-        Some(f) => Note::Forecast(format!("hết ~{}", clock(f))),
-        None => Note::Reset(format!("· reset {}", clock(q.five_hour_reset))),
+    let note = match (parts.note, q.forecast) {
+        (false, _) => Note::None,
+        (true, Some(f)) => Note::Forecast(format!("hết ~{}", clock(f))),
+        (true, None) => Note::Reset(format!("· reset {}", clock(q.five_hour_reset))),
     };
-    let mut x = quota_part(ctx, c, PAD_LEFT, cy, "5h", q.five_hour, note);
-    x += GAP + DIVIDER_MARGIN;
-    c.rrect(
-        Rect::new(x, cy - 5.0, 1.0, 10.0),
-        0.5,
-        Some(theme::solid(ThemeColor::Separator)),
-        None,
-    );
-    x += 1.0 + DIVIDER_MARGIN + GAP;
-    quota_part(ctx, c, x, cy, "Tuần", q.weekly, Note::None);
+    let mut x = quota_part(ctx, c, x0, cy, "5h", q.five_hour, note);
+    if parts.weekly {
+        x += GAP + DIVIDER_MARGIN;
+        c.rrect(
+            Rect::new(x, cy - 5.0, 0.5, 10.0),
+            0.0,
+            Some(theme::solid(ThemeColor::Separator)),
+            None,
+        );
+        x += 0.5 + DIVIDER_MARGIN + GAP;
+        x = quota_part(ctx, c, x, cy, "Tuần", q.weekly, Note::None);
+    }
+    x
 }
 
 pub fn node(ctx: &mut Ctx, y: f64) -> claude_sessions_core::scene::Node {
     let snap = ctx.view.snap;
     let cy = HEADER_HEIGHT / 2.0;
     let mut c = Canvas::default();
-    draw_groups(&mut c, snap, CARD_W - PAD_RIGHT - groups_width(snap), cy);
+    let counts_w = groups_width(snap);
+    let counts_x = CARD_W - PAD_RIGHT - counts_w;
+    draw_groups(&mut c, snap, counts_x, cy);
     if let Some(q) = &snap.quota {
-        draw_quota(ctx, &mut c, q, cy);
+        // The block ends before the hairline that separates it from the counts; drop the reset note, then the weekly
+        // quota, until it fits in the right half of the header, left of that hairline.
+        let (right, line_x) = if counts_w > 0.0 {
+            let line_x = counts_x - DIVIDER_MARGIN - 0.5;
+            (line_x - DIVIDER_MARGIN, Some(line_x))
+        } else {
+            (CARD_W - PAD_RIGHT, None)
+        };
+        let width = |parts: Parts| draw_quota(ctx, &mut Canvas::default(), q, cy, 0.0, parts);
+        let parts = [(true, true), (false, true), (false, false)]
+            .map(|(note, weekly)| Parts { note, weekly })
+            .into_iter()
+            .find(|p| width(*p) <= right - 8.0)
+            .unwrap_or(Parts {
+                note: false,
+                weekly: false,
+            });
+        if let Some(x) = line_x {
+            c.rrect(
+                Rect::new(x, cy - 5.0, 0.5, 10.0),
+                0.0,
+                Some(theme::solid(ThemeColor::Separator)),
+                None,
+            );
+        }
+        draw_quota(ctx, &mut c, q, cy, right - width(parts), parts);
     }
     ctx.node("header", Rect::new(PANEL_PAD, y, CARD_W, HEADER_HEIGHT), c)
 }

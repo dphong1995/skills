@@ -129,12 +129,12 @@ fn place_scene_moves_grow_origin() {
             }
         }
     }
-    // One absolute case: a top-right panel in the 428 x 640 canvas grows from its top-right corner.
+    // One absolute case: a top-right panel in the 508 x 640 canvas grows from its top-right corner.
     let scene = Scene {
         size: Size::new(400.0, 200.0),
         nodes: vec![node("panel", Rect::new(0.0, 0.0, 400.0, 200.0), None)],
         ..Scene::default()
     };
     let placed = place_scene(scene, Anchor::default());
-    assert_eq!(placed.grow_origin, Point::new(414.0, 14.0));
+    assert_eq!(placed.grow_origin, Point::new(494.0, 14.0));
 }

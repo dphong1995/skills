@@ -196,10 +196,10 @@ pub fn draw_link_list(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
                 theme::solid(ThemeColor::TextFaint),
                 Align::Left,
             );
-            let status_w = item
-                .status
-                .as_deref()
-                .map_or(0.0, |t| ctx.text_w(t, &theme::STATE_FONT) + 16.0);
+            let status_w = item.status.as_deref().map_or(0.0, |t| {
+                // At most 40% of the row, so a long status never leaves the title only an ellipsis.
+                (ctx.text_w(t, &theme::STATE_FONT) + 16.0).min(0.4 * row.w)
+            });
             if let Some(title) = &item.title {
                 let tx = row.x + 24.0 + code_w + 6.0;
                 c.label(

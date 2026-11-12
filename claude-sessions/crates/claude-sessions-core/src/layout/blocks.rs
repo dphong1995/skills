@@ -1,6 +1,6 @@
 //! The size model of the redesigned widget. Heights are decided here and nowhere else: the views place every node and block
 //! with these helpers and `ExpandedLayout`, they never add heights up themselves. Measurements come from the glass prototype
-//! (`plans/2026-11-12-claude-sessions-glass-redesign`): panel 400 pt wide, 8 pt padding, rows that touch inside one section.
+//! (`plans/2026-11-12-claude-sessions-glass-redesign`): panel 480 pt wide, 8 pt padding, rows that touch inside one section.
 //! Positions are in scene points (top-left origin), relative to the panel.
 
 use super::{

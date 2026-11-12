@@ -1859,7 +1859,7 @@ fn section_labels_sentence_case() {
 }
 
 #[test]
-fn header_has_quota_left_counts_right() {
+fn header_groups_quota_and_counts_on_the_right() {
     let (mut snap, panel) = mixed();
     snap.quota = Some(claude_sessions_core::quota::Quota {
         five_hour: 78,
@@ -1876,34 +1876,72 @@ fn header_has_quota_left_counts_right() {
         .find(|n| n.key.0 == "header")
         .unwrap();
     assert_eq!(header.frame.h, layout::HEADER_HEIGHT);
-    let x_of = |want: &str| {
+    // The whole group hugs the right end: the left quarter of the header stays empty (the real quota block is narrower
+    // than FakeMeasure's, so it also clears the left half in the app).
+    let left_edge = header.frame.w / 4.0;
+    let rect_of = |want: &str| {
         header.cmds.iter().find_map(|c| match c {
-            DrawCmd::Text { rect, text, .. } if text == want => Some(rect.x),
+            DrawCmd::Text { rect, text, .. } if text == want => Some(*rect),
             _ => None,
         })
     };
-    let (five, pct, week) = (x_of("5h"), x_of("78%"), x_of("Tuần"));
-    assert!(five.is_some() && pct.is_some() && week.is_some());
+    let quota: Vec<Rect> = ["5h", "78%", "Tuần", "40%"]
+        .iter()
+        .map(|t| rect_of(t).unwrap_or_else(|| panic!("no {t}")))
+        .chain(
+            header
+                .cmds
+                .iter()
+                .filter_map(|c| match c {
+                    DrawCmd::Text { rect, text, .. } if text.starts_with("· reset") => Some(*rect),
+                    _ => None,
+                })
+                .take(1),
+        )
+        .collect();
+    assert_eq!(quota.len(), 5, "the reset note is drawn too");
     let rings = header
         .cmds
         .iter()
         .filter(|c| matches!(c, DrawCmd::Arc { .. }))
         .count();
     assert_eq!(rings, 4, "two rings, a track and a sweep each");
-    assert!(five < pct && pct < week);
-    let counts: Vec<f64> = header
+    assert!(quota[0].x < quota[1].x && quota[1].x < quota[2].x);
+    let counts: Vec<Rect> = header
         .cmds
         .iter()
         .filter_map(|c| match c {
             DrawCmd::Text { rect, text, .. } if text.chars().all(|c| c.is_ascii_digit()) => {
-                Some(rect.x)
+                Some(*rect)
             }
             _ => None,
         })
         .collect();
     assert!(!counts.is_empty());
-    let quota_end = x_of("Tuần").unwrap();
-    assert!(counts.iter().all(|x| *x > quota_end), "{counts:?}");
+    for r in quota.iter().chain(&counts) {
+        assert!(r.x >= left_edge, "{r:?} is left of {left_edge}");
+    }
+    // The hairline between the two quotas is the other 0.5 pt one: the divider to the counts is the right-most.
+    let divider = header
+        .cmds
+        .iter()
+        .filter_map(|c| match c {
+            DrawCmd::RoundedRect {
+                rect,
+                fill: Some(f),
+                ..
+            } if rect.w == 0.5 && f.token == ThemeColor::Separator => Some(*rect),
+            _ => None,
+        })
+        .max_by(|a, b| a.x.total_cmp(&b.x))
+        .expect("a 0.5 pt divider");
+    let quota_max = quota.iter().map(|r| r.x + r.w).fold(f64::MIN, f64::max);
+    let counts_min = counts.iter().map(|r| r.x).fold(f64::MAX, f64::min);
+    assert!(
+        quota_max < divider.x && divider.x < counts_min,
+        "{quota_max} < {} < {counts_min}",
+        divider.x
+    );
 }
 
 // ---- phase 4: grouped rows, buttons and fields ----
@@ -2226,7 +2264,7 @@ fn pr_row_two_tiers() {
 }
 
 #[test]
-fn chips_overflow_at_400() {
+fn chips_overflow_at_panel_width() {
     let built = fixture_built("23-ticket-row-overflow");
     let node = built
         .scene
@@ -2269,6 +2307,51 @@ fn chips_overflow_at_400() {
             );
         }
     }
+}
+
+#[test]
+fn link_status_label_leaves_room_for_the_title() {
+    let built = fixture_built("29-link-list-open");
+    let node = built
+        .scene
+        .nodes
+        .iter()
+        .find(|n| texts(n).contains(&"Ready for Grooming with Engineering"))
+        .expect("the card with the long status");
+    let row_w = layout::TEXT_W;
+    let status = node
+        .cmds
+        .iter()
+        .find_map(|c| match c {
+            DrawCmd::Text { rect, text, .. } if text == "Ready for Grooming with Engineering" => {
+                Some(*rect)
+            }
+            _ => None,
+        })
+        .unwrap();
+    assert!(
+        status.w <= 0.4 * row_w + 0.01,
+        "status {} wide in a {row_w} row",
+        status.w
+    );
+    let status_cmd_x = status.x;
+    // The title label of that row ends before the status tag and is wider than an ellipsis.
+    let title = node
+        .cmds
+        .iter()
+        .find_map(|c| match c {
+            DrawCmd::Text { rect, text, .. }
+                if text.len() > 1
+                    && rect.y == status.y
+                    && rect.x + rect.w <= status_cmd_x
+                    && rect.x > layout::CARD_INSET + 24.0 =>
+            {
+                Some(*rect)
+            }
+            _ => None,
+        })
+        .expect("the title label on the status row");
+    assert!(title.w >= 0.3 * row_w, "title only {} wide", title.w);
 }
 
 #[test]

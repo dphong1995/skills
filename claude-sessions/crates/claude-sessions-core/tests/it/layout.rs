@@ -87,7 +87,7 @@ fn shell_constants_follow_the_glass_prototype() {
     assert_eq!(COLLAPSED, sz(126.0, 30.0));
     assert_eq!(layout::PILL_HEIGHT, 30.0);
     assert_eq!(COLLAPSED.h, layout::PILL_HEIGHT);
-    assert_eq!(EXPANDED_WIDTH, 400.0);
+    assert_eq!(EXPANDED_WIDTH, 480.0);
     assert_eq!(layout::HEADER_HEIGHT, 38.0);
     assert_eq!(layout::PANEL_PAD, 8.0);
 }
@@ -95,7 +95,7 @@ fn shell_constants_follow_the_glass_prototype() {
 #[test]
 fn collapsed_size() {
     assert_eq!(COLLAPSED, sz(126.0, 30.0));
-    assert_eq!(CANVAS, sz(428.0, 640.0));
+    assert_eq!(CANVAS, sz(508.0, 640.0));
     assert_eq!(MARGIN, 14.0);
     assert_eq!(layout::SEEN_DWELL_SECS, 1.0);
 }
