@@ -355,6 +355,20 @@ pub fn label(r: &Rabbit, threads: Option<RabbitThreads>) -> String {
     }
 }
 
+/// Which buttons an open PR item shows: `(Nhờ Claude, Nhắc duyệt)`. The result of a send whose button is gone is shown
+/// by the view, not here.
+pub fn pr_buttons(pr: &crate::pull_requests::PRStatus) -> (bool, bool) {
+    let open = pr.is_open();
+    (
+        open && !hides_ask_claude(
+            pr.rabbit.as_ref(),
+            pr.rabbit_threads,
+            pr.rabbit_others_pending,
+        ),
+        open && pr.rabbit == Some(Rabbit::AwaitingApproval),
+    )
+}
+
 /// `Nhờ Claude` has nothing to ask while CodeRabbit is done and every thread is answered.
 pub fn hides_ask_claude(
     r: Option<&Rabbit>,

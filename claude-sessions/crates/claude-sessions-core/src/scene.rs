@@ -39,6 +39,10 @@ pub enum ThemeColor {
     Fill,
     Accent,
     Indigo,
+    /// The inset list a session's PRs sit in.
+    Inset,
+    /// Inner edge of the inset list.
+    InsetEdge,
 }
 
 impl ThemeColor {
@@ -87,6 +91,8 @@ impl ThemeColor {
             Self::Separator => pick([1.0, 1.0, 1.0, 0.08], [0.0, 0.0, 0.0, 0.08]),
             Self::RowHover => pick([1.0, 1.0, 1.0, 0.04], [0.0, 0.0, 0.0, 0.025]),
             Self::Fill => pick([1.0, 1.0, 1.0, 0.10], [0.0, 0.0, 0.0, 0.06]),
+            Self::Inset => pick([0.0, 0.0, 0.0, 0.16], [0.0, 0.0, 0.0, 0.035]),
+            Self::InsetEdge => pick([1.0, 1.0, 1.0, 0.06], [0.0, 0.0, 0.0, 0.06]),
             Self::Accent => Self::Blue.rgba(appearance),
             Self::Indigo => pick(
                 [94.0 / 255.0, 92.0 / 255.0, 230.0 / 255.0, 1.0],

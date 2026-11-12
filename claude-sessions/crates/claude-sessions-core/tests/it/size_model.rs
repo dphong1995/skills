@@ -203,13 +203,13 @@ fn a_row_is_at_least_the_glyph_with_its_padding_and_an_approval_is_taller() {
 }
 
 #[test]
-fn a_pr_row_is_two_tiers_and_a_merged_or_closed_one_is_a_single_line() {
-    assert_eq!(layout::pr_row_height(true), layout::PR_ROW_H);
-    assert_eq!(layout::pr_row_height(false), layout::PR_ROW_CLOSED_H);
-    assert_eq!(
-        layout::PR_ROW_H,
-        layout::PR_GAP + layout::PR_TIER_H + layout::BLOCK_GAP + layout::BUTTON_H
-    );
+fn the_pr_list_is_the_gap_and_one_fixed_item_per_pr() {
+    assert_eq!(layout::PR_ITEM_H, 42.0);
+    assert_eq!(layout::PR_LIST_RADIUS, 10.0);
+    assert_eq!(layout::PR_BUTTON_H, 22.0);
+    assert_eq!(layout::prs_height(0), layout::BLOCK_GAP);
+    assert_eq!(layout::prs_height(1), layout::BLOCK_GAP + 42.0);
+    assert_eq!(layout::prs_height(3), layout::BLOCK_GAP + 3.0 * 42.0);
 }
 
 #[test]

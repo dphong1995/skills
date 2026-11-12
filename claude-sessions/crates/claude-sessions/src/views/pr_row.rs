@@ -1,22 +1,37 @@
-//! One PR row in two tiers. Tier 1: `⑂ #n`, the parts of `text::pr_parts` as icon + number, the status label and the last
-//! reviewer at the right end. Tier 2 (open PRs): the `Nhờ Claude` / `Nhắc duyệt` capsules and the CodeRabbit label at the right
-//! end; with neither button (`layout::pr_has_buttons`) the row keeps tier 1 only and the label ends it. Positions follow
-//! `layout::pr_row_height`.
+//! The PRs of a session as one inset list: a rounded dark well of 42 pt items, one per PR. An item has the state badge, a
+//! title line (`#n` and the title), a meta line (`text::pr_parts`: checks, comments, CodeRabbit, last reviewer, staleness) and
+//! on open PRs the `Nhắc duyệt` / `Nhờ Claude` buttons at the right end. Positions follow `layout::prs_height`.
 
 use super::{Canvas, Ctx, send_label};
 use crate::hits::Target;
 use crate::theme;
-use claude_sessions_core::code_rabbit::{self, Rabbit};
+use claude_sessions_core::code_rabbit::{Rabbit, pr_buttons};
 use claude_sessions_core::layout::{
-    self, BLOCK_GAP, BUTTON_H, CARD_INSET, PR_GAP, PR_TIER_H, TEXT_W,
+    BLOCK_GAP, CARD_INSET, PR_BUTTON_H, PR_ITEM_H, PR_LIST_RADIUS, TEXT_W,
 };
-use claude_sessions_core::scene::{Align, FontSpec, Rect, ThemeColor, Weight};
+use claude_sessions_core::pull_requests::PRStatus;
+use claude_sessions_core::scene::{Align, Rect, ThemeColor, Weight};
 use claude_sessions_core::store::{SendKey, SendKind, SendState, Session};
 use claude_sessions_core::text::{self, PartKind, PartTint, PrPart};
 
-const PART_GAP: f64 = 12.0;
-/// Space between the buttons of tier 2.
+/// Text starts here inside an item (after the 20 pt badge at x 10).
+const TEXT_X: f64 = 38.0;
+/// Space between the parts of the meta line.
+const PART_GAP: f64 = 8.0;
+/// Space between the buttons.
 const BTN_GAP: f64 = 6.0;
+/// The buttons end this far from the list's right edge.
+const BTN_EDGE: f64 = 10.0;
+/// Space between the text and the buttons.
+const TEXT_BTN_GAP: f64 = 8.0;
+const BADGE: f64 = 20.0;
+const LINE_ONE_Y: f64 = 7.0;
+const LINE_ONE_H: f64 = 16.0;
+const LINE_TWO_Y: f64 = 24.0;
+const LINE_TWO_H: f64 = 14.0;
+/// An icon of the meta line and the space after it.
+const ICON_W: f64 = 16.0;
+const RABBIT_WORD: &str = "CodeRabbit ";
 
 fn rabbit_color(r: &Rabbit) -> ThemeColor {
     match r {
@@ -28,7 +43,19 @@ fn rabbit_color(r: &Rabbit) -> ThemeColor {
     }
 }
 
-/// The icon and text of a part drawn in the flow; `None` for the parts drawn elsewhere (state and CodeRabbit chips).
+/// One part of the meta line: an optional icon and its text.
+struct Meta {
+    icon: Option<&'static str>,
+    text: String,
+    color: ThemeColor,
+    drop_rank: u8,
+    help: Option<String>,
+    /// The CodeRabbit label: its text may lose the word `CodeRabbit `.
+    rabbit: bool,
+}
+
+/// The icon and text of a part drawn on the meta line; `None` for the parts drawn elsewhere (the number, the CodeRabbit
+/// label and the state word).
 fn flow(p: &PrPart) -> Option<(Option<&'static str>, String, ThemeColor)> {
     let tint = |t: Option<PartTint>, base| match t {
         Some(PartTint::Red) => ThemeColor::Red,
@@ -36,11 +63,6 @@ fn flow(p: &PrPart) -> Option<(Option<&'static str>, String, ThemeColor)> {
         None => base,
     };
     match p.kind {
-        PartKind::Pr => Some((
-            Some("arrow.triangle.branch"),
-            p.text.trim_start_matches("PR ").to_string(),
-            ThemeColor::Text,
-        )),
         PartKind::ChangesRequested => Some((
             Some("xmark"),
             p.text.split(' ').next().unwrap_or("").to_string(),
@@ -64,237 +86,381 @@ fn flow(p: &PrPart) -> Option<(Option<&'static str>, String, ThemeColor)> {
             };
             Some((None, text, ThemeColor::TextFaint))
         }
-        PartKind::Clock => Some((Some("clock"), p.text.clone(), ThemeColor::TextFaint)),
-        PartKind::State(_) | PartKind::Rabbit => None,
+        PartKind::Clock => Some((None, p.text.clone(), ThemeColor::TextFaint)),
+        PartKind::Pr | PartKind::State(_) | PartKind::Rabbit => None,
     }
 }
 
-/// `block` is the rect placed for `Block::Pr(index)`, relative to the card.
-pub fn draw(ctx: &mut Ctx, c: &mut Canvas, s: &Session, index: usize, block: Rect) {
-    let Some(pr) = s.prs.get(index) else {
-        return;
-    };
+/// The meta line of `pr` in the order checks, comments, CodeRabbit, reviewer, staleness.
+fn meta_parts(pr: &PRStatus, parts: &[PrPart]) -> Vec<Meta> {
+    let mut out: Vec<Meta> = Vec::new();
+    let mut rabbit = None;
+    for p in parts {
+        if let PartKind::State(tone) = p.kind {
+            out.push(Meta {
+                icon: None,
+                text: p.text.clone(),
+                color: theme::tone_token(Some(tone)),
+                drop_rank: 0,
+                help: None,
+                rabbit: false,
+            });
+        } else if p.kind == PartKind::Rabbit {
+            let color = pr
+                .rabbit
+                .as_ref()
+                .map_or(ThemeColor::TextFaint, rabbit_color);
+            rabbit = Some(Meta {
+                icon: Some("hare"),
+                text: p.text.clone(),
+                color,
+                drop_rank: p.drop_rank,
+                help: p.help.clone(),
+                rabbit: true,
+            });
+        } else if let Some((icon, text, color)) = flow(p) {
+            let m = Meta {
+                icon,
+                text,
+                color,
+                drop_rank: p.drop_rank,
+                help: p.help.clone(),
+                rabbit: false,
+            };
+            // CodeRabbit sits after the comments and before the reviewer.
+            if p.kind == PartKind::Person
+                && let Some(r) = rabbit.take()
+            {
+                out.push(r);
+            }
+            out.push(m);
+        }
+    }
+    out.extend(rabbit);
+    out
+}
+
+/// `block` is the rect placed for `Block::Prs`, relative to the card.
+pub fn draw(ctx: &Ctx, c: &mut Canvas, s: &Session, block: Rect) {
+    let n = s.prs.len();
+    let list = Rect::new(
+        CARD_INSET,
+        block.y + BLOCK_GAP,
+        TEXT_W,
+        n as f64 * PR_ITEM_H,
+    );
+    c.rrect(
+        list,
+        PR_LIST_RADIUS,
+        Some(theme::solid(ThemeColor::Inset)),
+        None,
+    );
+    for (i, pr) in s.prs.iter().enumerate() {
+        let it = Rect::new(list.x, list.y + i as f64 * PR_ITEM_H, list.w, PR_ITEM_H);
+        item(ctx, c, s, pr, it, (i == 0, i + 1 == n));
+    }
+    // The inner edge: the scene strokes 1 pt, so it sits fully inside the list.
+    c.rrect(
+        Rect::new(list.x + 0.5, list.y + 0.5, list.w - 1.0, list.h - 1.0),
+        PR_LIST_RADIUS - 0.5,
+        None,
+        Some(theme::solid(ThemeColor::InsetEdge)),
+    );
+}
+
+/// What one button slot of an item shows.
+struct Slot {
+    kind: SendKind,
+    /// A button (else the result line of a send whose button is gone).
+    button: bool,
+    state: Option<SendState>,
+}
+
+fn item(ctx: &Ctx, c: &mut Canvas, s: &Session, pr: &PRStatus, it: Rect, place: (bool, bool)) {
     let view = ctx.view;
     let snap = view.snap;
     let fresh = snap
         .unseen
         .get(&s.id)
         .is_some_and(|m| m.prs.contains(&pr.ref_));
-    let tier1 = Rect::new(CARD_INSET, block.y + PR_GAP, TEXT_W, PR_TIER_H);
-    let cy = tier1.y + tier1.h / 2.0;
+    let open = pr.is_open();
+    if fresh {
+        // Rounded like the list on its outer corners; the inner ones are covered by the neighbour's edge.
+        let radius = if place.0 || place.1 {
+            PR_LIST_RADIUS
+        } else {
+            0.0
+        };
+        c.rrect(
+            it,
+            radius,
+            Some(theme::tint(ThemeColor::Indigo, 0.10)),
+            None,
+        );
+    }
+    if !place.0 {
+        c.hairline(it.x + TEXT_X, it.y, it.w - TEXT_X);
+    }
+
+    // Badge.
+    let (badge_color, badge_symbol) = if open {
+        (ThemeColor::Green, "arrow.triangle.branch")
+    } else if pr.state == "MERGED" {
+        (ThemeColor::Indigo, "arrow.triangle.merge")
+    } else {
+        (ThemeColor::Red, "xmark")
+    };
+    let badge = Rect::new(it.x + 10.0, it.y + (it.h - BADGE) / 2.0, BADGE, BADGE);
+    c.rrect(badge, 6.0, Some(theme::tint(badge_color, 0.16)), None);
+    c.symbol(
+        badge_symbol,
+        Rect::new(badge.x + 4.0, badge.y + 4.0, 12.0, 12.0),
+        theme::solid(badge_color),
+        Weight::Regular,
+    );
+
+    // Buttons, right to left from the edge; `Nhắc duyệt` is the left one.
     let pr_key = |kind| {
         let mut k = SendKey::new(&s.id, kind);
         k.pr = Some(pr.ref_.clone());
         snap.send_state(&k, view.now)
     };
-
-    // The CodeRabbit label is drawn in tier 2, so it leaves the flow of tier 1.
-    let mut parts = text::pr_parts(pr, view.now, snap.pr_stale_since);
-    let rabbit = parts
-        .iter()
-        .position(|p| p.kind == PartKind::Rabbit)
-        .map(|i| parts.remove(i));
-
-    // Tier 2: the buttons from the left, the CodeRabbit label at the right end.
-    let tiered = layout::pr_has_buttons(s, pr, snap);
-    if tiered {
-        let tier2 = Rect::new(CARD_INSET, tier1.y + tier1.h + BLOCK_GAP, TEXT_W, BUTTON_H);
-        let mut left = tier2.x;
-        let ask = pr_key(SendKind::AskClaude);
-        if !code_rabbit::hides_ask_claude(
-            pr.rabbit.as_ref(),
-            pr.rabbit_threads,
-            pr.rabbit_others_pending,
-        ) {
-            // Only while Claude can take a message; an earlier send keeps showing its result.
-            left = button(
-                ctx,
-                c,
-                "Nhờ Claude",
-                ask,
-                s.can_ask_claude(),
-                left,
-                tier2,
-                || Target::AskClaude {
-                    session: s.id.clone(),
-                    pr: pr.ref_.clone(),
-                },
-            );
-        } else if let Some(state) = ask {
-            left = state_line(ctx, c, state, left, tier2);
+    let (ask, nudge) = pr_buttons(pr);
+    let slots: Vec<Slot> = [(SendKind::Nudge, nudge), (SendKind::AskClaude, ask)]
+        .into_iter()
+        .filter_map(|(kind, button)| {
+            let state = pr_key(kind);
+            (open && (button || state.is_some())).then_some(Slot {
+                kind,
+                button,
+                state,
+            })
+        })
+        .collect();
+    let label = |k: SendKind| {
+        if k == SendKind::Nudge {
+            "Nhắc duyệt"
+        } else {
+            "Nhờ Claude"
         }
-        let nudge = pr_key(SendKind::Nudge);
-        if pr.rabbit == Some(Rabbit::AwaitingApproval) {
-            left = button(ctx, c, "Nhắc duyệt", nudge, true, left, tier2, || {
-                Target::Nudge {
-                    session: s.id.clone(),
-                    pr: pr.ref_.clone(),
+    };
+    let width = |sl: &Slot| {
+        if sl.button {
+            ctx.button_w(label(sl.kind))
+        } else {
+            ctx.text_w(
+                send_label(sl.state.unwrap_or(SendState::Sent)),
+                &theme::META_FONT,
+            ) + 4.0
+        }
+    };
+    let total: f64 =
+        slots.iter().map(width).sum::<f64>() + BTN_GAP * slots.len().saturating_sub(1) as f64;
+    let right = it.x + it.w - BTN_EDGE;
+    let area_left = right - total;
+    let mut x = area_left;
+    for sl in &slots {
+        let w = width(sl);
+        if sl.button {
+            let rect = Rect::new(x, it.y + (it.h - PR_BUTTON_H) / 2.0, w, PR_BUTTON_H);
+            let target = |pr: &PRStatus| {
+                if sl.kind == SendKind::Nudge {
+                    Target::Nudge {
+                        session: s.id.clone(),
+                        pr: pr.ref_.clone(),
+                    }
+                } else {
+                    Target::AskClaude {
+                        session: s.id.clone(),
+                        pr: pr.ref_.clone(),
+                    }
                 }
-            });
-        } else if let Some(state) = nudge {
-            left = state_line(ctx, c, state, left, tier2);
-        }
-        if let (Some(p), Some(r)) = (&rabbit, &pr.rabbit) {
-            let y = tier2.y + (tier2.h - 20.0) / 2.0;
-            rabbit_chip(ctx, c, &p.text, r, left, tier2.x + tier2.w, y, 20.0);
-        }
-    }
-
-    // Tier 1: the flow on the left; what does not fit goes by drop rank, lowest first. The reviewer sits at the right end.
-    let mut x = tier1.x;
-    if fresh {
-        c.symbol(
-            "sparkle",
-            Rect::new(x, cy - 6.0, 12.0, 12.0),
-            theme::solid(ThemeColor::Indigo),
-            Weight::Bold,
-        );
-        x += 18.0;
-    }
-    let width = |p: &PrPart| match (&p.kind, flow(p)) {
-        (PartKind::State(_), _) => ctx.text_w(&p.text, &theme::STATE_FONT) + 14.0,
-        (_, Some((icon, text, _))) => {
-            ctx.text_w(&text, &flow_font(p)) + if icon.is_some() { 16.0 } else { 0.0 }
-        }
-        _ => 0.0,
-    };
-    let mut right = tier1.x + tier1.w;
-    // Without the button tier the CodeRabbit label takes the right end of tier 1; the reviewer moves left of it.
-    if let (false, Some(p), Some(r)) = (tiered, &rabbit, &pr.rabbit) {
-        right = rabbit_chip(ctx, c, &p.text, r, x, right, tier1.y, tier1.h) - PART_GAP;
-    }
-    let total = |rank: u8| -> f64 {
-        parts
-            .iter()
-            .filter(|p| p.drop_rank == 0 || p.drop_rank > rank)
-            .map(|p| width(p) + PART_GAP)
-            .sum()
-    };
-    let rank = (0..=2).find(|r| total(*r) <= right - x).unwrap_or(2);
-    for p in parts
-        .iter()
-        .filter(|p| p.drop_rank == 0 || p.drop_rank > rank)
-    {
-        let w = width(p);
-        let at = if p.kind == PartKind::Person {
-            right - w
-        } else {
-            x
-        };
-        let help = if p.kind == PartKind::Pr {
-            pr.title.as_deref()
-        } else {
-            p.help.as_deref()
-        };
-        c.tip(Rect::new(at, tier1.y, w, tier1.h), help.unwrap_or_default());
-        if p.kind == PartKind::Pr {
-            c.hit(
-                Rect::new(at, tier1.y, w, tier1.h),
-                Target::Link {
-                    session: s.id.clone(),
-                    url: pr.url.clone(),
-                },
+            };
+            button(
+                c,
+                label(sl.kind),
+                sl.state,
+                // Only while Claude can take a message; an earlier send keeps showing its result.
+                sl.kind == SendKind::Nudge || s.can_ask_claude(),
+                sl.kind == SendKind::Nudge,
+                rect,
+                || target(pr),
             );
-        }
-        if let PartKind::State(tone) = p.kind {
-            let color = theme::tone_token(Some(tone));
-            let chip = Rect::new(at, tier1.y, w, tier1.h);
-            c.rrect(chip, 5.0, Some(theme::tag_fill(color)), None);
-            c.label(
-                chip,
-                &p.text,
-                theme::STATE_FONT,
-                theme::solid(color),
-                Align::Center,
-            );
-        } else if let Some((icon, text, color)) = flow(p) {
-            let mut tx = at;
-            if let Some(icon) = icon {
-                c.symbol(
-                    icon,
-                    Rect::new(at, cy - 6.0, 12.0, 12.0),
-                    theme::solid(color),
-                    Weight::Regular,
-                );
-                tx += 16.0;
-            }
-            c.label(
-                Rect::new(tx, tier1.y, w, tier1.h),
-                &text,
-                flow_font(p),
-                theme::solid(color),
+        } else if let Some(state) = sl.state {
+            c.sent_line(
+                Rect::new(x, it.y + (it.h - 16.0) / 2.0, w, 16.0),
+                state,
                 Align::Left,
             );
         }
-        if p.kind != PartKind::Person {
-            x += w + PART_GAP;
+        x += w + BTN_GAP;
+    }
+    // Text ends before the buttons; with none it keeps the same margin as the buttons would.
+    let limit = if slots.is_empty() {
+        right
+    } else {
+        area_left - TEXT_BTN_GAP
+    };
+    let link_w = if slots.is_empty() {
+        it.w
+    } else {
+        area_left - it.x
+    };
+
+    // Meta line.
+    let parts = text::pr_parts(pr, view.now, snap.pr_stale_since);
+    let meta = meta_parts(pr, &parts);
+    let text_x = it.x + TEXT_X;
+    let line_one_y = if meta.is_empty() {
+        it.y + (it.h - LINE_ONE_H) / 2.0
+    } else {
+        it.y + LINE_ONE_Y
+    };
+    let mut help_tip = false;
+    if !meta.is_empty() {
+        let shown = |m: &Meta, rank: u8| m.drop_rank == 0 || m.drop_rank > rank;
+        let part_w = |m: &Meta, word: bool| {
+            let text = rabbit_text(m, word);
+            ctx.text_w(&text, &theme::META_FONT) + if m.icon.is_some() { ICON_W } else { 0.0 }
+        };
+        let total = |rank: u8, word: bool| -> f64 {
+            let ws: Vec<f64> = meta
+                .iter()
+                .filter(|m| shown(m, rank))
+                .map(|m| part_w(m, word))
+                .collect();
+            ws.iter().sum::<f64>() + PART_GAP * ws.len().saturating_sub(1) as f64
+        };
+        // Drop by rank (clock, then person), then the word `CodeRabbit `.
+        let (rank, word) = [(0, true), (1, true), (2, true), (2, false)]
+            .into_iter()
+            .find(|(r, w)| total(*r, *w) <= limit - text_x)
+            .unwrap_or((2, false));
+        let mut px = text_x;
+        for m in meta.iter().filter(|m| shown(m, rank)) {
+            let room = limit - px;
+            if room <= 0.0 {
+                break;
+            }
+            let w = part_w(m, word).min(room);
+            let line = Rect::new(px, it.y + LINE_TWO_Y, w, LINE_TWO_H);
+            let mut tx = px;
+            if let Some(icon) = m.icon {
+                c.symbol(
+                    icon,
+                    Rect::new(px, line.y + (line.h - 12.0) / 2.0, 12.0, 12.0),
+                    theme::solid(m.color),
+                    Weight::Regular,
+                );
+                tx += ICON_W;
+            }
+            c.label(
+                Rect::new(tx, line.y, (px + w - tx).max(0.0), line.h),
+                &rabbit_text(m, word),
+                theme::META_FONT,
+                theme::solid(m.color),
+                Align::Left,
+            );
+            if let Some(help) = &m.help {
+                c.tip(line, help);
+                help_tip = true;
+            }
+            px += w + PART_GAP;
         }
     }
-}
 
-/// The CodeRabbit label ending at `right`, no wider than `right - left`, `h` high from `y`; returns its left edge.
-#[allow(clippy::too_many_arguments)]
-fn rabbit_chip(
-    ctx: &Ctx,
-    c: &mut Canvas,
-    text: &str,
-    r: &Rabbit,
-    left: f64,
-    right: f64,
-    y: f64,
-    h: f64,
-) -> f64 {
-    let w = (ctx.text_w(text, &theme::STATE_FONT) + 28.0).min(right - left);
-    let chip = Rect::new(right - w, y, w, h);
-    let color = rabbit_color(r);
-    c.rrect(chip, theme::CHIP_RADIUS, Some(theme::tag_fill(color)), None);
-    c.symbol(
-        "hare",
-        Rect::new(chip.x + 6.0, y + (h - 12.0) / 2.0, 12.0, 12.0),
-        theme::solid(color),
-        Weight::Regular,
-    );
-    c.label(
-        Rect::new(chip.x + 20.0, y, chip.w - 24.0, h),
-        text,
-        theme::STATE_FONT,
-        theme::solid(color),
+    // Title line.
+    let mut lx = text_x;
+    if fresh {
+        c.symbol(
+            "sparkle",
+            Rect::new(lx, line_one_y + 2.0, 12.0, 12.0),
+            theme::solid(ThemeColor::Indigo),
+            Weight::Bold,
+        );
+        lx += 18.0;
+    }
+    let number = format!("#{}", pr.ref_.id);
+    let number_w = ctx.text_w(&number, &theme::PR_FONT);
+    c.text(
+        Rect::new(lx, line_one_y, number_w, LINE_ONE_H),
+        &number,
+        theme::PR_FONT,
+        theme::solid(ThemeColor::Text),
+        1,
         Align::Left,
     );
-    chip.x
+    let title = pr.title.as_deref().filter(|t| !t.is_empty());
+    if let Some(title) = title {
+        let tx = lx + number_w + 6.0;
+        if limit - tx > 0.0 {
+            c.text(
+                Rect::new(tx, line_one_y, limit - tx, LINE_ONE_H),
+                title,
+                theme::PR_TITLE_FONT,
+                theme::solid(if open {
+                    ThemeColor::Text
+                } else {
+                    ThemeColor::TextSecondary
+                }),
+                1,
+                Align::Left,
+            );
+        }
+    }
+
+    // Hover text and the link: the whole item except the button area. The reason of a failed approval keeps its own tip, so
+    // the item's tip then leaves the meta line.
+    let tip = title
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("PR #{}", pr.ref_.id));
+    let tip_h = if help_tip { LINE_TWO_Y } else { it.h };
+    c.tip(Rect::new(it.x, it.y, link_w, tip_h), &tip);
+    c.hit(
+        Rect::new(it.x, it.y, link_w, it.h),
+        Target::Link {
+            session: s.id.clone(),
+            url: pr.url.clone(),
+        },
+    );
 }
 
-/// The number is bold, the rest is the plain small text.
-fn flow_font(p: &PrPart) -> FontSpec {
-    if p.kind == PartKind::Pr {
-        theme::PR_FONT
+/// The text of a meta part: the CodeRabbit label wears its name unless the line is too crowded for it.
+fn rabbit_text(m: &Meta, word: bool) -> String {
+    if m.rabbit && word {
+        format!("{RABBIT_WORD}{}", m.text)
     } else {
-        theme::META_FONT
+        m.text.clone()
     }
 }
 
-/// A capsule button of tier 2 from `left`; returns where the next one starts. `usable` false dims it and takes its hit away
-/// unless a send state is showing.
-#[allow(clippy::too_many_arguments)]
+/// A capsule button of an item in `rect`. `usable` false dims it and takes its hit away unless a send state is showing;
+/// `primary` is the blue call to action.
 fn button(
-    ctx: &Ctx,
     c: &mut Canvas,
     label: &str,
     state: Option<SendState>,
     usable: bool,
-    left: f64,
-    tier: Rect,
+    primary: bool,
+    rect: Rect,
     target: impl FnOnce() -> Target,
-) -> f64 {
-    let w = ctx.button_w(label);
-    let rect = Rect::new(left, tier.y, w, tier.h);
+) {
     let dim = !usable && state.is_none();
-    let fill = if dim {
-        theme::tint(ThemeColor::Fill, 0.4)
+    let (fill, text) = if primary {
+        (
+            theme::solid(ThemeColor::Accent),
+            theme::solid(ThemeColor::White),
+        )
     } else {
-        theme::solid(ThemeColor::Fill)
+        (
+            if dim {
+                theme::tint(ThemeColor::Fill, 0.4)
+            } else {
+                theme::solid(ThemeColor::Fill)
+            },
+            theme::tint(ThemeColor::Text, if dim { 0.4 } else { 1.0 }),
+        )
     };
-    let text = theme::tint(ThemeColor::Text, if dim { 0.4 } else { 1.0 });
     if !usable {
         c.tip(rect, "Chỉ gửi được khi Claude đã xong lượt");
     }
@@ -302,16 +468,4 @@ fn button(
     if clickable && usable {
         c.hit(rect, target());
     }
-    rect.x + rect.w + BTN_GAP
-}
-
-/// The result of a send whose button is gone (the nudge moved CodeRabbit on) as one line, from `left`.
-fn state_line(ctx: &Ctx, c: &mut Canvas, state: SendState, left: f64, tier: Rect) -> f64 {
-    let w = ctx.text_w(send_label(state), &theme::META_FONT) + 4.0;
-    c.sent_line(
-        Rect::new(left, tier.y + (tier.h - 16.0) / 2.0, w, 16.0),
-        state,
-        Align::Left,
-    );
-    left + w + BTN_GAP
 }

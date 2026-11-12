@@ -864,114 +864,6 @@ fn a_pr_button_in_flight_shows_it_and_has_no_hit() {
     )));
 }
 
-#[test]
-fn an_open_pr_without_buttons_keeps_one_tier_with_its_rabbit_label() {
-    use claude_sessions_core::pull_requests::RabbitThreads;
-    let mut s = finished("done");
-    let mut p = pr(7631, "OPEN");
-    p.rabbit = Some(Rabbit::Approved);
-    p.rabbit_threads = Some(RabbitThreads {
-        pending: 0,
-        total: 1,
-    });
-    s.prs = vec![p];
-    let snap = snapshot(vec![s]);
-    let row = card_layout(&snap.sessions[0], &snap, &open(), &FakeMeasure)
-        .find(Block::Pr(0))
-        .unwrap();
-    // Neither `Nhờ Claude` nor `Nhắc duyệt` shows, so no empty button tier is kept.
-    assert_eq!(row.h, layout::PR_ROW_CLOSED_H);
-    let built = render(&snap, &open());
-    let node = card(&built.scene, "done");
-    let label = node
-        .cmds
-        .iter()
-        .find_map(|c| match c {
-            DrawCmd::Text { rect, text, .. } if text == "đã duyệt" => Some(*rect),
-            _ => None,
-        })
-        .expect("the CodeRabbit label is drawn");
-    assert!(label.y >= row.y && label.y + label.h <= row.y + row.h + 0.001);
-    assert!(label.x + label.w > layout::CARD_INSET + layout::TEXT_W - 40.0);
-}
-
-#[test]
-fn a_pr_send_result_keeps_the_button_tier() {
-    use claude_sessions_core::pull_requests::RabbitThreads;
-    let mut s = finished("done");
-    let mut p = pr(7631, "OPEN");
-    p.rabbit = Some(Rabbit::Approved);
-    p.rabbit_threads = Some(RabbitThreads {
-        pending: 0,
-        total: 1,
-    });
-    let mut key = SendKey::new("done", SendKind::AskClaude);
-    key.pr = Some(p.ref_.clone());
-    s.prs = vec![p];
-    let mut snap = snapshot(vec![s]);
-    snap.sends.insert(key, (SendState::Sent, now()));
-    let row = card_layout(&snap.sessions[0], &snap, &open(), &FakeMeasure)
-        .find(Block::Pr(0))
-        .unwrap();
-    assert_eq!(row.h, layout::PR_ROW_H);
-    let built = render(&snap, &open());
-    let node = card(&built.scene, "done");
-    assert!(texts(node).contains(&"Đã gửi ✓"));
-    let rect_of = |want: &str| {
-        node.cmds
-            .iter()
-            .find_map(|c| match c {
-                DrawCmd::Text { rect, text, .. } if text == want => Some(*rect),
-                _ => None,
-            })
-            .unwrap_or_else(|| panic!("{want} is drawn"))
-    };
-    let label = rect_of("đã duyệt");
-    let sent = rect_of("Đã gửi ✓");
-    assert!(
-        label.y > row.y + layout::PR_TIER_H - 0.001,
-        "label in tier 2"
-    );
-    assert!((label.y - sent.y).abs() < 6.0, "same tier as the sent line");
-}
-
-#[test]
-fn rabbit_label_and_reviewer_share_tier_one() {
-    use claude_sessions_core::pull_requests::{PRComment, RabbitThreads};
-    let mut s = finished("done");
-    let mut p = pr(7631, "OPEN");
-    p.rabbit = Some(Rabbit::Approved);
-    p.rabbit_threads = Some(RabbitThreads {
-        pending: 0,
-        total: 1,
-    });
-    p.last_other = Some(PRComment {
-        name: "Linh".into(),
-        at: now() - Duration::from_secs(120),
-    });
-    s.prs = vec![p, pr(7567, "MERGED")];
-    let snap = snapshot(vec![s]);
-    let row = card_layout(&snap.sessions[0], &snap, &open(), &FakeMeasure)
-        .find(Block::Pr(0))
-        .unwrap();
-    assert_eq!(row.h, layout::PR_ROW_CLOSED_H);
-    let built = render(&snap, &open());
-    let node = card(&built.scene, "done");
-    let rect_where = |f: &dyn Fn(&str) -> bool| {
-        node.cmds.iter().find_map(|c| match c {
-            DrawCmd::Text { rect, text, .. } if f(text) => Some(*rect),
-            _ => None,
-        })
-    };
-    let label = rect_where(&|t| t == "đã duyệt").expect("label drawn");
-    let who = rect_where(&|t| t.starts_with("Linh")).expect("reviewer drawn");
-    for r in [label, who] {
-        assert!(r.y >= row.y && r.y + r.h <= row.y + row.h + 0.001, "{r:?}");
-    }
-    assert!(who.x + who.w <= label.x + 0.001, "{who:?} vs {label:?}");
-    assert_eq!(symbols(node).iter().filter(|s| **s == "hare").count(), 1);
-}
-
 fn tickets() -> Session {
     let mut s = finished("done");
     let item = |code: &str, icon: bool| LinkItem {
@@ -1264,7 +1156,7 @@ fn a_shell_waiting_on_a_background_command_shows_the_hourglass() {
 
 #[test]
 fn every_block_takes_the_height_the_size_model_gives_it() {
-    use layout::{editor_height, link_list_height, pr_row_height, question_height, reply_height};
+    use layout::{editor_height, link_list_height, question_height, reply_height};
     let mut panel = open();
     panel.hovering = true;
     panel.open_menus.insert("done".into());
@@ -1298,7 +1190,7 @@ fn every_block_takes_the_height_the_size_model_gives_it() {
                         )
                         .h,
                 ),
-                Block::Pr(i) => pr_row_height(layout::pr_has_buttons(s, &s.prs[i], &snap)),
+                Block::Prs => layout::prs_height(s.prs.len()),
                 Block::Chips => layout::CHIPS_H,
                 Block::LinkList => link_list_height(s),
                 Block::Editor => editor_height(),
@@ -2252,7 +2144,7 @@ fn header_quota_and_counts_stay_in_the_right_half() {
 
 // ---- phase 4: grouped rows, buttons and fields ----
 
-use claude_sessions_core::scene::{Color, Rect};
+use claude_sessions_core::scene::{Color, Point, Rect};
 
 /// The first rounded rect of a card with a `Group` fill: the row's background, as `(rect, radius)`.
 fn group_bg(node: &Node) -> (Rect, f64) {
@@ -2616,30 +2508,6 @@ fn round_send_faces_keep_frame() {
 }
 
 #[test]
-fn pr_row_two_tiers() {
-    let snap = snapshot(vec![pr_session()]);
-    let built = render(&snap, &open());
-    let node = card(&built.scene, "done");
-    let (num, _) = text_cmd(node, "#7571").expect("the PR number");
-    let ask = node
-        .hits
-        .iter()
-        .find(|h| {
-            matches!(built.targets.get(h.id), Some(Target::AskClaude { pr, .. }) if pr.id == 7571)
-        })
-        .unwrap()
-        .rect;
-    assert!(
-        ask.y >= num.y + num.h,
-        "the buttons sit below the info line: {ask:?} vs {num:?}"
-    );
-    assert_eq!(ask.h, layout::BUTTON_H);
-    let l = card_layout(&snap.sessions[0], &snap, &open(), &FakeMeasure);
-    assert_eq!(l.find(Block::Pr(0)).unwrap().h, layout::PR_ROW_H);
-    assert_eq!(l.find(Block::Pr(2)).unwrap().h, layout::PR_ROW_CLOSED_H);
-}
-
-#[test]
 fn chips_overflow_at_panel_width() {
     let built = fixture_built("23-ticket-row-overflow");
     let (snap, _) = fixture_state("23-ticket-row-overflow");
@@ -2831,4 +2699,585 @@ fn every_fixture_draws_the_height_the_size_model_predicts() {
         }
     }
     assert!(seen > 20, "{seen} cards checked");
+}
+
+// ---- The PR inset list ----
+
+const ITEM_H: f64 = layout::PR_ITEM_H;
+/// Where an open PR's buttons stop short of the list's right edge.
+const BTN_EDGE: f64 = 10.0;
+
+/// A one-PR session whose PR has the title and no checks, comments or rabbit.
+fn bare_pr(id: i64, state: &str, title: Option<&str>) -> PRStatus {
+    let mut p = pr(id, state);
+    p.reviewers = 0;
+    p.changes_requested = 0;
+    p.comments = 0;
+    p.title = title.map(Into::into);
+    p
+}
+
+fn session_with(prs: Vec<PRStatus>) -> Session {
+    let mut s = finished("done");
+    s.prs = prs;
+    s
+}
+
+/// The inset list of the only card: (list rect, node), card-relative.
+fn pr_list(snap: &Snapshot) -> (Rect, Built, layout::CardLayout) {
+    let (built, l) = only_card(snap, &open());
+    let block = l.find(Block::Prs).expect("the PR block is placed");
+    let n = snap.sessions[0].prs.len() as f64;
+    let list = Rect::new(
+        layout::CARD_INSET,
+        block.y + layout::BLOCK_GAP,
+        layout::TEXT_W,
+        n * ITEM_H,
+    );
+    (list, built, l)
+}
+
+fn item_rect(list: Rect, i: usize) -> Rect {
+    Rect::new(list.x, list.y + i as f64 * ITEM_H, list.w, ITEM_H)
+}
+
+fn cy(r: &Rect) -> f64 {
+    r.y + r.h / 2.0
+}
+
+fn text_in<'a>(node: &'a Node, want: &str, within: Rect) -> Option<&'a Rect> {
+    node.cmds.iter().find_map(|c| match c {
+        DrawCmd::Text { rect, text, .. }
+            if text == want && rect.y >= within.y && rect.y < within.y + within.h =>
+        {
+            Some(rect)
+        }
+        _ => None,
+    })
+}
+
+/// The hit under `at`, first registered first like the real view.
+fn hit_under(b: &Built, node: &Node, at: Point) -> Option<Target> {
+    node.hits
+        .iter()
+        .find(|h| h.rect.contains(at))
+        .map(|h| b.targets.get(h.id).unwrap().clone())
+}
+
+fn hit_rect(b: &Built, node: &Node, want: impl Fn(&Target) -> bool) -> Rect {
+    node.hits
+        .iter()
+        .find(|h| want(b.targets.get(h.id).unwrap()))
+        .expect("the hit exists")
+        .rect
+}
+
+#[test]
+fn prs_block_height_is_fixed_per_pr() {
+    let mut with_buttons = pr(1, "OPEN");
+    with_buttons.rabbit = Some(Rabbit::AwaitingApproval);
+    let merged = pr(2, "MERGED");
+    let closed = pr(3, "CLOSED");
+    let bare = bare_pr(4, "OPEN", None);
+    for prs in [
+        vec![],
+        vec![bare.clone()],
+        vec![with_buttons.clone()],
+        vec![merged.clone()],
+        vec![with_buttons.clone(), merged.clone(), closed.clone()],
+        vec![bare, closed, with_buttons, merged],
+    ] {
+        let n = prs.len();
+        let snap = snapshot(vec![session_with(prs)]);
+        let l = card_layout(&snap.sessions[0], &snap, &open(), &FakeMeasure);
+        match l.find(Block::Prs) {
+            None => assert_eq!(n, 0),
+            Some(p) => {
+                assert_eq!(p.h, layout::BLOCK_GAP + n as f64 * 42.0, "{n} PRs");
+                assert_eq!(p.h, layout::prs_height(n));
+            }
+        }
+    }
+}
+
+#[test]
+fn pr_buttons_follow_the_rabbit_state() {
+    use claude_sessions_core::code_rabbit::pr_buttons;
+    use claude_sessions_core::pull_requests::RabbitThreads;
+    let mut p = pr(1, "OPEN");
+    assert_eq!(pr_buttons(&p), (true, false));
+    p.rabbit = Some(Rabbit::AwaitingApproval);
+    assert_eq!(pr_buttons(&p), (true, true));
+    p.rabbit_threads = Some(RabbitThreads {
+        pending: 0,
+        total: 1,
+    });
+    assert_eq!(pr_buttons(&p), (false, true));
+    assert_eq!(pr_buttons(&pr(2, "MERGED")), (false, false));
+}
+
+#[test]
+fn pr_item_draws_title_and_meta_on_two_lines() {
+    let mut p = bare_pr(7571, "OPEN", Some("Fix the parser"));
+    p.reviewers = 5;
+    p.comments = 3;
+    let snap = snapshot(vec![session_with(vec![p])]);
+    let (list, built, _) = pr_list(&snap);
+    let node = card(&built.scene, "done");
+    let it = item_rect(list, 0);
+    let num = text_in(node, "#7571", it).expect("the number");
+    let title = text_in(node, "Fix the parser", it).expect("the title");
+    assert_eq!(num.y, it.y + 7.0);
+    assert_eq!(num.h, 16.0);
+    assert_eq!(title.y, it.y + 7.0);
+    assert_eq!(num.x, it.x + 38.0);
+    assert_eq!(title.x, num.x + 7.0 * 5.0 + 6.0, "6 pt after the number");
+    let checks = text_in(node, "0/5", it).expect("the checks");
+    let comments = text_in(node, "3", it).expect("the comments");
+    assert_eq!(cy(checks), it.y + 24.0 + 7.0);
+    assert_eq!(cy(comments), cy(checks));
+    assert!(checks.x >= it.x + 38.0);
+    // The badge: 20 x 20 at x0 + 10, centred, the branch symbol.
+    assert!(symbols(node).contains(&"arrow.triangle.branch"));
+    let badge = node.cmds.iter().find_map(|c| match c {
+        DrawCmd::RoundedRect {
+            rect,
+            radius,
+            fill: Some(f),
+            ..
+        } if f.token == ThemeColor::Green && *radius == 6.0 => Some(*rect),
+        _ => None,
+    });
+    let badge = badge.expect("a green badge");
+    assert_eq!(
+        (badge.x, badge.w, badge.h),
+        (it.x + 10.0, 20.0, 20.0),
+        "{badge:?}"
+    );
+    assert_eq!(cy(&badge), cy(&it));
+}
+
+#[test]
+fn pr_item_without_title_shows_only_the_number() {
+    let mut p = bare_pr(7571, "OPEN", None);
+    p.comments = 3;
+    let snap = snapshot(vec![session_with(vec![p])]);
+    let (list, built, _) = pr_list(&snap);
+    let node = card(&built.scene, "done");
+    let it = item_rect(list, 0);
+    let line_one: Vec<&str> = node
+        .cmds
+        .iter()
+        .filter_map(|c| match c {
+            DrawCmd::Text { rect, text, .. } if rect.y == it.y + 7.0 && rect.x >= it.x => {
+                Some(text.as_str())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(line_one, ["#7571"]);
+    // The hover text of an untitled item is `PR #n`.
+    assert!(node.tips.iter().any(|t| t.text == "PR #7571"));
+}
+
+#[test]
+fn open_pr_without_meta_centres_line_one() {
+    let snap = snapshot(vec![session_with(vec![bare_pr(
+        7571,
+        "OPEN",
+        Some("Alone"),
+    )])]);
+    let (list, built, _) = pr_list(&snap);
+    let node = card(&built.scene, "done");
+    let it = item_rect(list, 0);
+    let num = text_in(node, "#7571", it).unwrap();
+    assert_eq!(cy(num), cy(&it));
+}
+
+#[test]
+fn merged_pr_item_has_state_word_and_no_button() {
+    let snap = snapshot(vec![session_with(vec![
+        bare_pr(7567, "MERGED", Some("Old fix")),
+        bare_pr(7568, "CLOSED", Some("Dropped")),
+    ])]);
+    let (list, built, _) = pr_list(&snap);
+    let node = card(&built.scene, "done");
+    let merged = item_rect(list, 0);
+    let (word, color) = {
+        let r = text_in(node, "đã merge", merged).expect("the state word");
+        let (_, c) = text_cmd(node, "đã merge").unwrap();
+        (*r, *c)
+    };
+    assert_eq!(color.token, ThemeColor::Indigo);
+    assert_eq!(cy(&word), merged.y + 24.0 + 7.0);
+    let (_, title) = text_cmd(node, "Old fix").unwrap();
+    assert_eq!(title.token, ThemeColor::TextSecondary);
+    let (_, closed) = text_cmd(node, "đã đóng").unwrap();
+    assert_eq!(closed.token, ThemeColor::Red);
+    let syms = symbols(node);
+    assert!(syms.contains(&"arrow.triangle.merge") && syms.contains(&"xmark"));
+    let t = texts(node);
+    assert!(!t.contains(&"Nhờ Claude") && !t.contains(&"Nhắc duyệt"));
+    assert!(
+        !targets(&built, node)
+            .iter()
+            .any(|t| matches!(t, Target::AskClaude { .. } | Target::Nudge { .. }))
+    );
+}
+
+fn awaiting() -> PRStatus {
+    let mut p = bare_pr(7580, "OPEN", Some("Show thumbnails"));
+    p.reviewers = 5;
+    p.rabbit = Some(Rabbit::AwaitingApproval);
+    p
+}
+
+#[test]
+fn nudge_is_the_primary_button_left_of_ask_claude() {
+    let snap = snapshot(vec![session_with(vec![awaiting()])]);
+    let (list, built, _) = pr_list(&snap);
+    let node = card(&built.scene, "done");
+    let it = item_rect(list, 0);
+    let nudge = hit_rect(&built, node, |t| matches!(t, Target::Nudge { .. }));
+    let ask = hit_rect(&built, node, |t| matches!(t, Target::AskClaude { .. }));
+    assert!(nudge.x + nudge.w < ask.x, "{nudge:?} {ask:?}");
+    assert_eq!(ask.x - (nudge.x + nudge.w), 6.0);
+    assert_eq!(ask.x + ask.w, list.x + list.w - BTN_EDGE);
+    for r in [nudge, ask] {
+        assert_eq!(r.h, layout::PR_BUTTON_H);
+        assert_eq!(cy(&r), cy(&it));
+    }
+    let fill_of = |r: Rect| {
+        node.cmds.iter().find_map(|c| match c {
+            DrawCmd::RoundedRect {
+                rect,
+                fill: Some(f),
+                ..
+            } if *rect == r => Some(f.token),
+            _ => None,
+        })
+    };
+    assert_eq!(fill_of(nudge), Some(ThemeColor::Accent));
+    assert_eq!(fill_of(ask), Some(ThemeColor::Fill));
+    let (_, white) = text_cmd(node, "Nhắc duyệt").unwrap();
+    assert_eq!(white.token, ThemeColor::White);
+}
+
+#[test]
+fn whole_pr_item_opens_the_pr_except_its_buttons() {
+    let mut second = awaiting();
+    second.ref_.id = 7581;
+    second.url = url("https://bitbucket.org/w/r/pull-requests/7581");
+    let snap = snapshot(vec![session_with(vec![
+        bare_pr(7567, "MERGED", Some("Old")),
+        awaiting(),
+        second,
+    ])]);
+    let (list, built, _) = pr_list(&snap);
+    let node = card(&built.scene, "done");
+    let want_url = |id: i64| url(&format!("https://bitbucket.org/w/r/pull-requests/{id}"));
+    // Merged item: all of it.
+    let it0 = item_rect(list, 0);
+    for at in [
+        Point::new(it0.x + 2.0, it0.y + 2.0),
+        Point::new(cy_x(&it0), cy(&it0)),
+        Point::new(it0.x + it0.w - 2.0, it0.y + it0.h - 2.0),
+    ] {
+        assert_eq!(
+            hit_under(&built, node, at),
+            Some(Target::Link {
+                session: "done".into(),
+                url: want_url(7567)
+            }),
+            "{at:?}"
+        );
+    }
+    // Open item: the link everywhere left of the buttons, the buttons win over it.
+    let it1 = item_rect(list, 1);
+    let nudge = hit_rect(
+        &built,
+        node,
+        |t| matches!(t, Target::Nudge { pr, .. } if pr.id == 7580),
+    );
+    let ask = hit_rect(
+        &built,
+        node,
+        |t| matches!(t, Target::AskClaude { pr, .. } if pr.id == 7580),
+    );
+    assert_eq!(
+        hit_under(&built, node, Point::new(it1.x + 40.0, it1.y + 4.0)),
+        Some(Target::Link {
+            session: "done".into(),
+            url: want_url(7580)
+        })
+    );
+    assert!(matches!(
+        hit_under(&built, node, Point::new(cy_x(&nudge), cy(&nudge))),
+        Some(Target::Nudge { .. })
+    ));
+    assert!(matches!(
+        hit_under(&built, node, Point::new(cy_x(&ask), cy(&ask))),
+        Some(Target::AskClaude { .. })
+    ));
+    // The third item is its own link.
+    let it2 = item_rect(list, 2);
+    assert_eq!(
+        hit_under(&built, node, Point::new(it2.x + 40.0, it2.y + 4.0)),
+        Some(Target::Link {
+            session: "done".into(),
+            url: want_url(7581)
+        })
+    );
+}
+
+fn cy_x(r: &Rect) -> f64 {
+    r.x + r.w / 2.0
+}
+
+#[test]
+fn crowded_meta_line_drops_parts_before_the_buttons() {
+    use claude_sessions_core::pull_requests::PRComment;
+    let mut p = awaiting();
+    p.title = Some("Show PDF thumbnails".into());
+    p.changes_requested = 1;
+    p.comments = 23;
+    p.last_other = Some(PRComment {
+        name: "Linh".into(),
+        at: now() - Duration::from_secs(120),
+    });
+    let mut snap = snapshot(vec![session_with(vec![p])]);
+    snap.pr_stale_since = Some(now() - Duration::from_secs(7 * 60));
+    let (list, built, _) = pr_list(&snap);
+    let node = card(&built.scene, "done");
+    let it = item_rect(list, 0);
+    let nudge = hit_rect(&built, node, |t| matches!(t, Target::Nudge { .. }));
+    let limit = nudge.x - 8.0;
+    let t = texts(node);
+    // The clock goes first, then the person, then the word `CodeRabbit `.
+    assert!(!t.contains(&"cũ 7m"), "{t:?}");
+    assert!(!t.iter().any(|s| s.starts_with("Linh")), "{t:?}");
+    assert!(t.contains(&"chờ duyệt"), "{t:?}");
+    // What stays keeps its place and ends before the buttons.
+    for c in &node.cmds {
+        if let DrawCmd::Text { rect, .. } | DrawCmd::Symbol { rect, .. } = c
+            && rect.y >= it.y
+            && rect.y < it.y + it.h
+            && rect.x < nudge.x
+            && rect.x >= it.x
+        {
+            assert!(
+                rect.x + rect.w <= limit + 0.001,
+                "{rect:?} under the buttons"
+            );
+        }
+    }
+    // With room all of it shows, the word included.
+    let mut roomy = awaiting();
+    roomy.rabbit = Some(Rabbit::Approved);
+    roomy.rabbit_threads = Some(claude_sessions_core::pull_requests::RabbitThreads {
+        pending: 0,
+        total: 1,
+    });
+    let snap = snapshot(vec![session_with(vec![roomy])]);
+    let (_, built, _) = pr_list(&snap);
+    assert!(texts(card(&built.scene, "done")).contains(&"CodeRabbit đã duyệt"));
+}
+
+#[test]
+fn long_title_truncates_before_the_buttons() {
+    let long = "x".repeat(100);
+    let mut p = awaiting();
+    p.title = Some(long.clone());
+    let snap = snapshot(vec![session_with(vec![p])]);
+    let (list, built, _) = pr_list(&snap);
+    let node = card(&built.scene, "done");
+    let it = item_rect(list, 0);
+    let title = text_in(node, &long, it)
+        .expect("the title is one text")
+        .to_owned();
+    let nudge = hit_rect(&built, node, |t| matches!(t, Target::Nudge { .. }));
+    let ask = hit_rect(&built, node, |t| matches!(t, Target::AskClaude { .. }));
+    assert!(title.w < 100.0 * 7.0, "the rect is narrower than the text");
+    assert!(
+        title.x + title.w <= nudge.x - 8.0 + 0.001,
+        "{title:?} {nudge:?}"
+    );
+    assert!(ask.x + ask.w <= list.x + list.w - BTN_EDGE + 0.001);
+    assert!(nudge.x > list.x + 38.0);
+    let max_lines = node.cmds.iter().find_map(|c| match c {
+        DrawCmd::Text {
+            text, max_lines, ..
+        } if *text == long => Some(*max_lines),
+        _ => None,
+    });
+    assert_eq!(max_lines, Some(1), "one line, cut with an ellipsis");
+}
+
+#[test]
+fn approval_failed_reason_is_the_rabbit_tooltip() {
+    let mut p = bare_pr(7580, "OPEN", Some("Failing"));
+    p.rabbit = Some(Rabbit::ApprovalFailed("Bitbucket 403".into()));
+    let snap = snapshot(vec![session_with(vec![p])]);
+    let (list, built, _) = pr_list(&snap);
+    let node = card(&built.scene, "done");
+    let it = item_rect(list, 0);
+    let tip = node
+        .tips
+        .iter()
+        .find(|t| t.text == "Bitbucket 403")
+        .expect("the reason is a tooltip");
+    assert!(tip.rect.y >= it.y + 20.0 && tip.rect.y + tip.rect.h <= it.y + it.h);
+    let (label, color) = text_cmd(node, "CodeRabbit duyệt lỗi").expect("the label");
+    assert_eq!(color.token, ThemeColor::Red);
+    assert!(tip.rect.contains(Point::new(label.x + 4.0, cy(label))));
+    // The tip sits on the label alone: no other tip overlaps it.
+    for other in node.tips.iter().filter(|t| t.text != "Bitbucket 403") {
+        let (a, b) = (other.rect, tip.rect);
+        let overlap = a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+        assert!(!overlap, "{other:?} overlaps the reason tip");
+    }
+}
+
+#[test]
+fn pr_send_result_without_button_stays_in_the_item() {
+    use claude_sessions_core::pull_requests::RabbitThreads;
+    let mut p = bare_pr(7631, "OPEN", Some("Done review"));
+    p.reviewers = 5;
+    p.rabbit = Some(Rabbit::Approved);
+    p.rabbit_threads = Some(RabbitThreads {
+        pending: 0,
+        total: 1,
+    });
+    let mut key = SendKey::new("done", SendKind::AskClaude);
+    key.pr = Some(p.ref_.clone());
+    let mut snap = snapshot(vec![session_with(vec![p])]);
+    snap.sends.insert(key, (SendState::Sent, now()));
+    let (list, built, l) = pr_list(&snap);
+    let node = card(&built.scene, "done");
+    let it = item_rect(list, 0);
+    assert_eq!(l.find(Block::Prs).unwrap().h, layout::prs_height(1));
+    let sent = text_in(node, "Đã gửi ✓", it).expect("the result is drawn in the item");
+    assert!(sent.x + sent.w <= list.x + list.w - BTN_EDGE + 0.001);
+    assert_eq!(cy(sent), cy(&it));
+    // No capsule: the button is gone, so is its hit.
+    assert!(
+        !targets(&built, node)
+            .iter()
+            .any(|t| matches!(t, Target::AskClaude { .. }))
+    );
+    // The title and the meta line stop before it.
+    let title = text_in(node, "Done review", it).unwrap();
+    assert!(title.x + title.w <= sent.x - 8.0 + 0.001);
+    let rabbit = text_in(node, "CodeRabbit đã duyệt", it)
+        .or_else(|| text_in(node, "đã duyệt", it))
+        .expect("the label");
+    assert!(rabbit.x + rabbit.w <= sent.x - 8.0 + 0.001);
+}
+
+#[test]
+fn pr_list_uses_light_tokens() {
+    use claude_sessions_core::scene::Appearance;
+    assert_eq!(
+        ThemeColor::Inset.rgba(Appearance::Dark),
+        [0.0, 0.0, 0.0, 0.16]
+    );
+    assert_eq!(
+        ThemeColor::Inset.rgba(Appearance::Light),
+        [0.0, 0.0, 0.0, 0.035]
+    );
+    assert_eq!(
+        ThemeColor::InsetEdge.rgba(Appearance::Dark),
+        [1.0, 1.0, 1.0, 0.06]
+    );
+    assert_eq!(
+        ThemeColor::InsetEdge.rgba(Appearance::Light),
+        [0.0, 0.0, 0.0, 0.06]
+    );
+    // The scene names the tokens, not colours: both appearances resolve them.
+    let snap = snapshot(vec![session_with(vec![awaiting()])]);
+    let (list, built, _) = pr_list(&snap);
+    let node = card(&built.scene, "done");
+    let rect = node.cmds.iter().find_map(|c| match c {
+        DrawCmd::RoundedRect {
+            rect,
+            radius,
+            fill: Some(f),
+            ..
+        } if f.token == ThemeColor::Inset && *rect == list => Some((*radius, f.alpha)),
+        _ => None,
+    });
+    assert_eq!(rect, Some((layout::PR_LIST_RADIUS, 1.0)));
+    let edge = node.cmds.iter().any(|c| {
+        matches!(
+            c,
+            DrawCmd::RoundedRect { stroke: Some(s), radius, .. }
+                if s.token == ThemeColor::InsetEdge && *radius == layout::PR_LIST_RADIUS - 0.5
+        )
+    });
+    assert!(edge, "the inner edge is drawn with its token");
+    // Text colours are tokens too, so they follow the appearance.
+    let (_, c) = text_cmd(node, "Show thumbnails").unwrap();
+    assert_eq!(c.token, ThemeColor::Text);
+}
+
+#[test]
+fn fresh_first_item_tint_follows_the_list_corners() {
+    use claude_sessions_core::store::NewMark;
+    let a = bare_pr(1, "OPEN", Some("A"));
+    let b = bare_pr(2, "OPEN", Some("B"));
+    let c = bare_pr(3, "OPEN", Some("C"));
+    let mut snap = snapshot(vec![session_with(vec![a.clone(), b, c])]);
+    let mut mark = NewMark::default();
+    mark.prs.insert(a.ref_.clone());
+    snap.unseen.insert("done".into(), mark);
+    let (list, built, _) = pr_list(&snap);
+    let node = card(&built.scene, "done");
+    let tints: Vec<(Rect, f64)> = node
+        .cmds
+        .iter()
+        .filter_map(|c| match c {
+            DrawCmd::RoundedRect {
+                rect,
+                radius,
+                fill: Some(f),
+                ..
+            } if f.token == ThemeColor::Indigo && f.alpha == 0.10 => Some((*rect, *radius)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(tints.len(), 1, "only the fresh item is tinted: {tints:?}");
+    let (rect, radius) = tints[0];
+    assert_eq!((rect.x, rect.y, rect.w), (list.x, list.y, list.w));
+    assert_eq!(radius, layout::PR_LIST_RADIUS, "the list's corner radius");
+    assert!(rect.h <= ITEM_H, "the tint stays inside its own item");
+    // The sparkle comes before the number.
+    let it = item_rect(list, 0);
+    let (num, _) = text_cmd(node, "#1").unwrap();
+    assert_eq!(num.x, it.x + 38.0 + 18.0);
+    assert!(symbols(node).contains(&"sparkle"));
+    // Separators sit between the items only.
+    let seps: Vec<Rect> = node
+        .cmds
+        .iter()
+        .filter_map(|c| match c {
+            DrawCmd::RoundedRect {
+                rect,
+                fill: Some(f),
+                ..
+            } if f.token == ThemeColor::Separator
+                && rect.h == 0.5
+                && rect.y >= list.y
+                && rect.y < list.y + list.h =>
+            {
+                Some(*rect)
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(seps.len(), 2);
+    for (i, s) in seps.iter().enumerate() {
+        assert_eq!(s.y, list.y + (i + 1) as f64 * ITEM_H);
+        assert_eq!(s.x, list.x + 38.0);
+        assert_eq!(s.x + s.w, list.x + list.w);
+    }
 }

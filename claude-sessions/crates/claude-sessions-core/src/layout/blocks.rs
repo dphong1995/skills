@@ -6,13 +6,11 @@
 use super::{
     COLLAPSED, EXPANDED_WIDTH, HEADER_HEIGHT, MAX_EXPANDED_HEIGHT, PILL_HEIGHT, TextMeasure,
 };
-use crate::code_rabbit::{self, Rabbit};
 use crate::feed::{self, BlockState, FeedQuestion};
 use crate::geometry::Size;
 use crate::panel_state::{EditKind, PanelState};
-use crate::pull_requests::PRStatus;
 use crate::scene::{FontSpec, Weight};
-use crate::store::{CommandFit, Section, SendKind, Session, Snapshot, command_fit};
+use crate::store::{CommandFit, Section, Session, Snapshot, command_fit};
 use crate::text;
 use crate::transcript::PendingState;
 
@@ -61,13 +59,12 @@ pub const OTHER_ROW_H: f64 = 24.0;
 pub const NOTE_H: f64 = 24.0;
 /// The one-line approve/deny result that replaces the approval block.
 pub const SENT_LINE_H: f64 = 24.0;
-/// Space above a PR row, and the first tier (number, checks, comments, status) of it.
-pub const PR_GAP: f64 = 8.0;
-pub const PR_TIER_H: f64 = 18.0;
-/// An open PR row: the information tier, then the tier of the buttons and the CodeRabbit label.
-pub const PR_ROW_H: f64 = PR_GAP + PR_TIER_H + BLOCK_GAP + BUTTON_H;
-/// A merged or closed PR row has the information tier only.
-pub const PR_ROW_CLOSED_H: f64 = PR_GAP + PR_TIER_H;
+/// One PR of the inset list: badge, title line, meta line, buttons.
+pub const PR_ITEM_H: f64 = 42.0;
+/// Corner radius of the inset list the PRs of a session sit in.
+pub const PR_LIST_RADIUS: f64 = 10.0;
+/// The `Nhờ Claude` / `Nhắc duyệt` buttons inside a PR item.
+pub const PR_BUTTON_H: f64 = 22.0;
 pub const CHIP_H: f64 = 20.0;
 pub const CHIPS_H: f64 = BLOCK_GAP + CHIP_H;
 pub const LINK_SECTION_H: f64 = 16.0;
@@ -282,25 +279,9 @@ pub fn sent_line_height() -> f64 {
     SENT_LINE_H
 }
 
-/// `buttons`: the row has its button tier (`pr_has_buttons`).
-pub fn pr_row_height(buttons: bool) -> f64 {
-    if buttons { PR_ROW_H } else { PR_ROW_CLOSED_H }
-}
-
-/// An open PR whose `Nhờ Claude` or `Nhắc duyệt` shows, or whose send result still does. Sends are pruned at refresh, so
-/// presence is enough and the height needs no clock (like `Snapshot::approval_send`).
-pub fn pr_has_buttons(s: &Session, pr: &PRStatus, snap: &Snapshot) -> bool {
-    pr.is_open()
-        && (!code_rabbit::hides_ask_claude(
-            pr.rabbit.as_ref(),
-            pr.rabbit_threads,
-            pr.rabbit_others_pending,
-        ) || pr.rabbit == Some(Rabbit::AwaitingApproval)
-            || snap.sends.keys().any(|k| {
-                k.session == s.id
-                    && k.pr.as_ref() == Some(&pr.ref_)
-                    && matches!(k.kind, SendKind::AskClaude | SendKind::Nudge)
-            }))
+/// The PR block: the gap above the inset list, then one fixed item per PR.
+pub fn prs_height(n: usize) -> f64 {
+    BLOCK_GAP + n as f64 * PR_ITEM_H
 }
 
 /// The inline ticket / PR list opened by the menu count.
@@ -339,8 +320,8 @@ pub enum Block {
     Reply,
     Todo,
     Activity,
-    /// Index into `Session::prs`.
-    Pr(usize),
+    /// The inset list of every PR of `Session::prs`.
+    Prs,
     /// The ticket buttons and the menu count.
     Chips,
     LinkList,
@@ -446,8 +427,8 @@ fn card_layout_with(
     if s.activity.is_some() {
         place(Block::Activity, LINE_ROW_H);
     }
-    for (i, pr) in s.prs.iter().enumerate() {
-        place(Block::Pr(i), pr_row_height(pr_has_buttons(s, pr, snap)));
+    if !s.prs.is_empty() {
+        place(Block::Prs, prs_height(s.prs.len()));
     }
     if !s.menu.is_empty() {
         place(Block::Chips, CHIPS_H);

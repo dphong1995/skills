@@ -71,6 +71,8 @@ pub const TIME_FONT: FontSpec = font(11.0, Weight::Regular);
 pub const META_FONT: FontSpec = font(11.5, Weight::Regular);
 /// The `#7583` of a PR row.
 pub const PR_FONT: FontSpec = font(11.5, Weight::Semibold);
+/// The title of a PR in the inset list.
+pub const PR_TITLE_FONT: FontSpec = font(12.0, Weight::Regular);
 pub const BUTTON_FONT: FontSpec = font(12.0, Weight::Medium);
 /// The folder line, and the state word at its start.
 pub const SUB_EM_FONT: FontSpec = font(11.5, Weight::Medium);

@@ -226,7 +226,7 @@ pub fn node(ctx: &mut Ctx, s: &Session, y: f64, layout: &CardLayout, pos: RowPos
                     );
                 }
             }
-            Block::Pr(i) => pr_row::draw(ctx, &mut c, s, i, block),
+            Block::Prs => pr_row::draw(ctx, &mut c, s, block),
             Block::Chips => chips::draw_chips(ctx, &mut c, s, block),
             Block::LinkList => chips::draw_link_list(ctx, &mut c, s, block),
             Block::Editor => reply_editor(&mut c, s, ctx, p.y),
