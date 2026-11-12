@@ -382,6 +382,9 @@ impl NodeView {
         // SAFETY: `initWithFrame:` is NSView's designated initialiser.
         let this: Retained<Self> = unsafe { msg_send![super(this), initWithFrame: ns_rect(frame)] };
         this.setWantsLayer(true);
+        // Commands may extend past the frame (a group's end rows do) and rely on the clip, as `render_png` applies;
+        // `clipsToBounds` defaults to NO since macOS 14.
+        this.setClipsToBounds(true);
         this
     }
 

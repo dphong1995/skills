@@ -1446,6 +1446,29 @@ fn glass_view_for_material_node() -> Result<(), String> {
     Ok(())
 }
 
+/// A node's commands may extend past its frame (`Canvas::row_shape` does), and the PNG clips them to the frame: the live
+/// view must too, or the spill covers the neighbouring node. `clipsToBounds` defaults to NO since macOS 14.
+fn node_view_clips_to_its_frame() -> Result<(), String> {
+    use claude_sessions_core::scene::Rect;
+    use claude_sessions_macos::ui::SceneView;
+    use objc2_foundation::{MainThreadMarker, NSSize};
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(200.0, 100.0));
+    view.set_scene(&one_node_scene(glass_node(
+        "row",
+        Rect::new(10.0, 10.0, 100.0, 40.0),
+        None,
+    )));
+    let nodes = node_views(&view);
+    let [n] = nodes.as_slice() else {
+        return Err(format!("{} node views", nodes.len()));
+    };
+    if !n.clipsToBounds() {
+        return Err("the node view does not clip to its bounds".into());
+    }
+    Ok(())
+}
+
 fn glass_alpha_follows_material() -> Result<(), String> {
     use claude_sessions_core::scene::Rect;
     use claude_sessions_macos::ui::SceneView;
@@ -2056,6 +2079,10 @@ fn main() {
     results.push((
         "node_without_material_has_no_glass",
         node_without_material_has_no_glass(),
+    ));
+    results.push((
+        "node_view_clips_to_its_frame",
+        node_view_clips_to_its_frame(),
     ));
     results.push(("render_png_ignores_material", render_png_ignores_material()));
     results.push(("open_zooms_from_grow_origin", open_zooms_from_grow_origin()));
