@@ -76,7 +76,7 @@ PR hiện trạng thái review của CodeRabbit; khi còn thread góp ý chưa �
 ![CodeRabbit](docs/images/31-pr-awaiting-approval.png)
 
 ### Ticket Jira và link
-Các ticket Jira và PR nhắc trong session thành chip bấm được (chip ticket tô màu theo trạng thái Jira); nút icon danh sách + `N` bung danh sách đầy đủ ngay trong widget.
+Các ticket Jira và PR nhắc trong session thành chip bấm được (chip ticket tô màu theo trạng thái Jira); nút icon danh sách + `N` bung danh sách các mục còn lại ngay trong thẻ (mỗi mục hai dòng: tiêu đề, rồi mã và trạng thái).
 
 ![Ticket và link](docs/images/29-link-list-open.png)
 
