@@ -88,6 +88,15 @@ pub fn new_widget_panel(mtm: MainThreadMarker, frame: NSRect) -> Retained<Widget
     panel
 }
 
+/// A widget panel that behaves like a window: it takes the keyboard and the mouse and sits one level above the widget.
+pub fn new_key_panel(mtm: MainThreadMarker, frame: NSRect) -> Retained<WidgetPanel> {
+    let panel = new_widget_panel(mtm, frame);
+    panel.set_wants_key(true);
+    panel.setIgnoresMouseEvents(false);
+    panel.setLevel(NSStatusWindowLevel + 1);
+    panel
+}
+
 pub fn props(panel: &WidgetPanel) -> PanelProps {
     PanelProps {
         style_mask: panel.styleMask().0,

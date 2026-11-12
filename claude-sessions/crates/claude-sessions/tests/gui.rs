@@ -269,6 +269,83 @@ fn small_move_still_clicks() -> Result<(), String> {
     click_row(true)
 }
 
+/// The Settings controls (switch on and off, a five-segment control with the third selected) drawn by `Canvas`, in both
+/// appearances, compared with `tests/snapshots/settings-controls-{light,dark}.png` like the state snapshots.
+fn settings_controls() -> Result<(), String> {
+    use claude_sessions::views::Canvas;
+    use claude_sessions_core::scene::{Node, Size, ThemeColor};
+
+    let mut c = Canvas::default();
+    c.rrect(
+        Rect::new(0.0, 0.0, 300.0, 120.0),
+        20.0,
+        Some(claude_sessions::theme::solid(ThemeColor::Glass)),
+        None,
+    );
+    let t = || Target::ToggleClosed;
+    c.switch(Rect::new(16.0, 14.0, 51.0, 31.0), true, t());
+    c.switch(Rect::new(84.0, 14.0, 51.0, 31.0), false, t());
+    c.segmented(
+        Rect::new(16.0, 64.0, 268.0, 32.0),
+        &["0%", "25%", "50%", "75%", "92%"],
+        2,
+        vec![t(), t(), t(), t(), t()],
+    );
+    let scene = Scene {
+        size: Size { w: 300.0, h: 120.0 },
+        nodes: vec![Node {
+            key: "controls".into(),
+            frame: Rect::new(0.0, 0.0, 300.0, 120.0),
+            cmds: c.cmds,
+            hits: vec![],
+            fields: vec![],
+            spinner: None,
+            tips: vec![],
+            scroll: None,
+            shadow: None,
+            material: None,
+        }],
+        images: Default::default(),
+        grow_origin: Default::default(),
+    };
+    let out = snapshots_out();
+    let refs = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots");
+    let update = std::env::var_os("UPDATE_SNAPSHOTS").is_some();
+    std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+    let mut failures = Vec::new();
+    for (name, appearance) in [
+        ("settings-controls-light", Appearance::Light),
+        ("settings-controls-dark", Appearance::Dark),
+    ] {
+        let png = out.join(format!("{name}.png"));
+        render_png(&scene, SCALE, appearance, &png)?;
+        let reference = refs.join(format!("{name}.png"));
+        if update {
+            std::fs::copy(&png, &reference).map_err(|e| e.to_string())?;
+            continue;
+        }
+        if !reference.exists() {
+            failures.push(format!("{name}: no reference; run with UPDATE_SNAPSHOTS=1"));
+            continue;
+        }
+        let diff = compare_png(&png, &reference, CHANNEL_TOLERANCE)?;
+        let ratio = diff.differing as f64 / diff.total.max(1) as f64;
+        if diff.size_a != diff.size_b || ratio > MAX_DIFFERING {
+            failures.push(format!(
+                "{name}: {}/{} pixels differ; see {}",
+                diff.differing,
+                diff.total,
+                png.display()
+            ));
+        }
+    }
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("\n  "))
+    }
+}
+
 type Case = fn() -> Result<(), String>;
 
 fn main() {
@@ -276,10 +353,11 @@ fn main() {
         println!("gui tests skipped (set CLAUDE_SESSIONS_GUI_TESTS=1)");
         return;
     }
-    let cases: [(&str, Case); 6] = [
+    let cases: [(&str, Case); 7] = [
         ("mixed_hover_renders_to_png", mixed_hover_renders_to_png),
         ("heights_meet_polish_targets", heights_meet_polish_targets),
         ("snapshots", snapshots),
+        ("settings_controls", settings_controls),
         (
             "edit_menu_handles_clipboard_shortcuts",
             edit_menu_handles_clipboard_shortcuts,
@@ -288,7 +366,16 @@ fn main() {
         ("small_move_still_clicks", small_move_still_clicks),
     ];
     let mut failed = false;
+    // `cargo test --test gui <name>` runs the cases whose name contains one of the arguments (so a snapshot case can be
+    // re-recorded alone).
+    let filters: Vec<String> = std::env::args()
+        .skip(1)
+        .filter(|a| !a.starts_with('-'))
+        .collect();
     for (name, case) in cases {
+        if !filters.is_empty() && !filters.iter().any(|f| name.contains(f.as_str())) {
+            continue;
+        }
         match case() {
             Ok(()) => println!("test {name} ... ok"),
             Err(e) => {

@@ -36,8 +36,8 @@ use crate::theme;
 use claude_sessions_core::layout::{self, Item, TextMeasure};
 use claude_sessions_core::panel_state::PanelState;
 use claude_sessions_core::scene::{
-    Align, Color, Cursor, DrawCmd, Field, FontSpec, Hit, Material, Node, NodeKey, Point, Rect, Run,
-    Scene, Size, ThemeColor, Tip, Weight,
+    Align, Color, Cursor, DrawCmd, Field, FieldKind, FontSpec, Hit, Material, Node, NodeKey, Point,
+    Rect, Run, Scene, Size, ThemeColor, Tip, Weight,
 };
 use claude_sessions_core::store::{SendState, Snapshot};
 use std::collections::HashMap;
@@ -322,6 +322,61 @@ impl Canvas {
         self.hits.push((rect, target));
     }
 
+    /// An on/off switch: a 51x31 capsule (green when on) with a 27 pt white knob inset 2 pt, at the right when on. One hit
+    /// over `rect`.
+    pub fn switch(&mut self, rect: Rect, on: bool, target: Target) {
+        let track = if on {
+            theme::solid(ThemeColor::Green)
+        } else {
+            theme::tint(ThemeColor::Text, 0.16)
+        };
+        self.capsule(rect, Some(track));
+        let d = rect.h - 4.0;
+        let x = if on {
+            rect.x + rect.w - 2.0 - d
+        } else {
+            rect.x + 2.0
+        };
+        self.capsule(
+            Rect::new(x, rect.y + 2.0, d, d),
+            Some(theme::solid(ThemeColor::White)),
+        );
+        self.hit(rect, target);
+    }
+
+    /// A segmented control: a `Fill` capsule track of `rect` split into equal segments, the selected one a raised rounded
+    /// rect inset 2 pt, the labels centred. One hit per segment.
+    pub fn segmented(
+        &mut self,
+        rect: Rect,
+        labels: &[&str],
+        selected: usize,
+        targets: Vec<Target>,
+    ) {
+        self.capsule(rect, Some(theme::solid(ThemeColor::Fill)));
+        let w = rect.w / labels.len() as f64;
+        let seg = |i: usize| Rect::new(rect.x + i as f64 * w, rect.y, w, rect.h);
+        if selected < labels.len() {
+            let s = seg(selected);
+            self.rrect(
+                Rect::new(s.x + 2.0, s.y + 2.0, s.w - 4.0, s.h - 4.0),
+                (s.h - 4.0) / 2.0,
+                Some(theme::solid(ThemeColor::Raised)),
+                None,
+            );
+        }
+        for (i, (label, target)) in labels.iter().zip(targets).enumerate() {
+            self.label(
+                seg(i),
+                label,
+                theme::BUTTON_FONT,
+                theme::solid(ThemeColor::Text),
+                Align::Center,
+            );
+            self.hit(seg(i), target);
+        }
+    }
+
     /// An icon button's face for its send state: the symbol, a spinner (or `ellipsis` when the node's spinner is taken) while
     /// sending, a check after `Sent`, a warning after `Failed`. Returns whether the control is clickable (not in flight).
     pub fn send_glyph(
@@ -380,6 +435,7 @@ impl Canvas {
         };
         self.fields.push(Field {
             key,
+            kind: FieldKind::Line,
             rect: Rect::new(
                 rect.x + 12.0,
                 rect.y + 5.0,

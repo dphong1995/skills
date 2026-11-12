@@ -1,7 +1,7 @@
 use crate::support::{FakeMeasure, snapshot};
 use claude_sessions::hits::{Click, ClickEnv, PanelChange, Target};
 use claude_sessions::theme;
-use claude_sessions::views::{Built, View, build};
+use claude_sessions::views::{Built, Canvas, View, build};
 use claude_sessions_core::feed::{BlockState, FeedItem, FeedOption, FeedQuestion};
 use claude_sessions_core::layout::{self, expanded_layout, expanded_size};
 use claude_sessions_core::panel_state::PanelState;
@@ -3639,4 +3639,96 @@ fn fresh_first_item_tint_follows_the_list_corners() {
         assert_eq!(s.x, list.x + 38.0);
         assert_eq!(s.x + s.w, list.x + list.w);
     }
+}
+
+fn rrect_fills(c: &Canvas) -> Vec<(Rect, ThemeColor)> {
+    c.cmds
+        .iter()
+        .filter_map(|cmd| match cmd {
+            DrawCmd::RoundedRect {
+                rect,
+                fill: Some(f),
+                ..
+            } => Some((*rect, f.token)),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn switch_draws_one_hit_and_its_state() {
+    for on in [true, false] {
+        let mut c = Canvas::default();
+        let rect = Rect::new(0.0, 0.0, 51.0, 31.0);
+        let t = Target::Menu("sw".into());
+        c.switch(rect, on, t.clone());
+        assert_eq!(c.hits, vec![(rect, t)]);
+        let fills = rrect_fills(&c);
+        let (track, track_color) = fills[0];
+        assert_eq!(track, rect);
+        assert_eq!(
+            track_color,
+            if on {
+                ThemeColor::Green
+            } else {
+                ThemeColor::Text
+            }
+        );
+        let (knob, knob_color) = *fills.last().unwrap();
+        assert_eq!(knob_color, ThemeColor::White);
+        assert_eq!((knob.w, knob.h), (27.0, 27.0));
+        // The knob is wider than half the track, so it is its centre that sits in the right or left half.
+        let mid = rect.x + rect.w / 2.0;
+        let centre = knob.x + knob.w / 2.0;
+        if on {
+            assert!(centre > mid && knob.x + knob.w == rect.x + rect.w - 2.0);
+        } else {
+            assert!(centre < mid && knob.x == rect.x + 2.0);
+        }
+    }
+}
+
+#[test]
+fn segmented_has_one_hit_per_segment() {
+    let mut c = Canvas::default();
+    let rect = Rect::new(0.0, 0.0, 300.0, 28.0);
+    let targets: Vec<Target> = (0..5).map(|i| Target::Menu(format!("s{i}"))).collect();
+    c.segmented(
+        rect,
+        &["0%", "25%", "50%", "75%", "92%"],
+        2,
+        targets.clone(),
+    );
+    assert_eq!(c.hits.len(), 5);
+    for (i, (r, t)) in c.hits.iter().enumerate() {
+        assert_eq!(*r, Rect::new(i as f64 * 60.0, 0.0, 60.0, 28.0));
+        assert_eq!(*t, targets[i]);
+    }
+    let fills = rrect_fills(&c);
+    assert_eq!(fills[0], (rect, ThemeColor::Fill));
+    let (raised, _) = *fills.last().unwrap();
+    let seg = c.hits[2].0;
+    assert!(
+        raised.x >= seg.x
+            && raised.y >= seg.y
+            && raised.x + raised.w <= seg.x + seg.w
+            && raised.y + raised.h <= seg.y + seg.h
+    );
+    assert_eq!(fills.len(), 2);
+}
+
+#[test]
+fn canvas_field_is_a_line_field() {
+    let mut c = Canvas::default();
+    c.field(
+        "k".into(),
+        Rect::new(0.0, 0.0, 100.0, 30.0),
+        "p",
+        String::new(),
+        false,
+    );
+    assert_eq!(
+        c.fields[0].kind,
+        claude_sessions_core::scene::FieldKind::Line
+    );
 }

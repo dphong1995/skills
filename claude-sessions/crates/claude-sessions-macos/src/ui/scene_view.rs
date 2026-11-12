@@ -12,7 +12,9 @@ use objc2::Message;
 use objc2::rc::Retained;
 use objc2::rc::Weak;
 use objc2::{DefinedClass, MainThreadOnly, define_class, msg_send};
-use objc2_app_kit::{NSAnimatablePropertyContainer, NSCursor, NSEvent, NSTextField, NSView};
+use objc2_app_kit::{
+    NSAnimatablePropertyContainer, NSCursor, NSEvent, NSTextField, NSTextView, NSView,
+};
 use objc2_app_kit::{NSScrollView, NSScrollerStyle, NSWindowOrderingMode};
 use objc2_core_foundation::CGPoint;
 use objc2_foundation::{MainThreadMarker, NSObjectProtocol, NSPoint, NSRect, NSSize};
@@ -345,6 +347,31 @@ impl SceneView {
             .borrow()
             .values()
             .find_map(|n| n.field(key))
+    }
+
+    /// The text view of the multi-line field with `Field.key` `key`, wherever it sits in the scene.
+    pub fn text_view(&self, key: &str) -> Option<Retained<NSTextView>> {
+        self.ivars()
+            .nodes
+            .borrow()
+            .values()
+            .find_map(|n| n.text_view(key))
+    }
+
+    /// Scrolls the control with `Field.key` `key` into view and makes it the first responder; false when there is none or
+    /// the window refuses.
+    pub fn focus_field(&self, key: &str) -> bool {
+        let target = self
+            .ivars()
+            .nodes
+            .borrow()
+            .values()
+            .find_map(|n| n.focus_target(key));
+        let (Some((responder, host)), Some(window)) = (target, self.window()) else {
+            return false;
+        };
+        host.scrollRectToVisible(host.bounds());
+        window.makeFirstResponder(Some(&responder))
     }
 
     fn emit(&self, event: UiEvent) {

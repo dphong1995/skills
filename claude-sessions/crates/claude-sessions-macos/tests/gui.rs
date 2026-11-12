@@ -240,7 +240,7 @@ fn open_link_allow_http_guards() -> Result<(), String> {
 }
 
 fn field_scene(text: &str, label: &str) -> claude_sessions_core::scene::Scene {
-    use claude_sessions_core::scene::{Field, Node, NodeKey, Rect, Scene, Size};
+    use claude_sessions_core::scene::{Field, FieldKind, Node, NodeKey, Rect, Scene, Size};
     Scene {
         size: Size { w: 200.0, h: 60.0 },
         nodes: vec![Node {
@@ -250,6 +250,7 @@ fn field_scene(text: &str, label: &str) -> claude_sessions_core::scene::Scene {
             hits: vec![],
             fields: vec![Field {
                 key: "email".into(),
+                kind: FieldKind::Line,
                 rect: Rect::new(10.0, 10.0, 180.0, 24.0),
                 text: text.into(),
                 placeholder: label.into(),
@@ -368,11 +369,12 @@ fn field_text_flows_and_survives() -> Result<(), String> {
 }
 
 fn two_field_scene(with_second: bool) -> claude_sessions_core::scene::Scene {
-    use claude_sessions_core::scene::{Field, Rect};
+    use claude_sessions_core::scene::{Field, FieldKind, Rect};
     let mut scene = field_scene("", "Email");
     if with_second {
         scene.nodes[0].fields.push(Field {
             key: "other".into(),
+            kind: FieldKind::Line,
             rect: Rect::new(10.0, 36.0, 180.0, 30.0),
             text: String::new(),
             placeholder: "Other".into(),
@@ -647,6 +649,180 @@ fn fading_node_ends_field_edit() -> Result<(), String> {
     }
     window.setContentView(None);
     Ok(())
+}
+
+/// A scene with one field of `kind` (key `k`, text `text`).
+fn kind_scene(
+    kind: claude_sessions_core::scene::FieldKind,
+    key: &str,
+    text: &str,
+) -> claude_sessions_core::scene::Scene {
+    let mut scene = field_scene(text, "p");
+    scene.nodes[0].fields[0].key = key.into();
+    scene.nodes[0].fields[0].kind = kind;
+    scene
+}
+
+/// `new_key` makes a hidden panel that takes keys and mouse events, one level above the widget.
+fn key_panel_props() -> Result<(), String> {
+    use claude_sessions_core::scene::Rect;
+    use claude_sessions_macos::ui::WidgetPanelHandle;
+    let panel = WidgetPanelHandle::new_key(
+        Rect::new(-3000.0, -3000.0, 200.0, 80.0),
+        std::rc::Rc::new(|_| {}),
+    )
+    .ok_or("not on the main thread")?;
+    let props = panel.props();
+    let result = if props.level != objc2_app_kit::NSStatusWindowLevel + 1 {
+        Err(format!("level {}", props.level))
+    } else if !props.can_become_key {
+        Err("cannot become key".to_string())
+    } else if panel.ignores_mouse() {
+        Err("ignores mouse events".to_string())
+    } else if panel.is_visible() {
+        Err("visible".to_string())
+    } else {
+        Ok(())
+    };
+    panel.close();
+    result
+}
+
+/// A secure field is a real `NSSecureTextField`; the scene's (empty) text never overwrites what was typed, and a new key
+/// is a new, empty field.
+fn secure_field_is_native_and_keeps_its_text() -> Result<(), String> {
+    use claude_sessions_core::scene::FieldKind;
+    use claude_sessions_macos::ui::SceneView;
+    use objc2::ClassType;
+    use objc2_app_kit::NSSecureTextField;
+    use objc2_foundation::{MainThreadMarker, NSObjectProtocol, NSSize, NSString};
+
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(200.0, 60.0));
+    view.set_scene(&kind_scene(FieldKind::Secure, "tok", ""));
+    let field = view.field("tok").ok_or("no secure field")?;
+    if !field.isKindOfClass(NSSecureTextField::class()) {
+        return Err("the field is not an NSSecureTextField".into());
+    }
+    field.setStringValue(&NSString::from_str("abc"));
+    view.set_scene(&kind_scene(FieldKind::Secure, "tok", ""));
+    view.set_scene(&kind_scene(FieldKind::Secure, "tok", ""));
+    if field.stringValue().to_string() != "abc" {
+        return Err(format!("typed text wiped: {:?}", field.stringValue()));
+    }
+    view.set_scene(&kind_scene(FieldKind::Secure, "tok2", ""));
+    let fresh = view.field("tok2").ok_or("no new secure field")?;
+    if !fresh.stringValue().to_string().is_empty() {
+        return Err("the new secure field is not empty".into());
+    }
+    if view.field("tok").is_some() {
+        return Err("the old secure field is still there".into());
+    }
+    Ok(())
+}
+
+/// A scene with a scroll node (viewport 200x60, content 200x400) and, scrolled with it, a node holding one field.
+fn scrolled_field_scene(
+    kind: claude_sessions_core::scene::FieldKind,
+    text: &str,
+) -> claude_sessions_core::scene::Scene {
+    use claude_sessions_core::scene::{Field, Node, Rect, Scene, Size};
+    let node = |key: &str, frame: Rect, scroll: Option<Size>, fields: Vec<Field>| Node {
+        key: key.into(),
+        frame,
+        cmds: vec![],
+        hits: vec![],
+        fields,
+        spinner: None,
+        tips: vec![],
+        scroll,
+        shadow: None,
+        material: None,
+    };
+    Scene {
+        size: Size { w: 200.0, h: 60.0 },
+        nodes: vec![
+            node(
+                "scroller",
+                Rect::new(0.0, 0.0, 200.0, 60.0),
+                Some(Size { w: 200.0, h: 400.0 }),
+                vec![],
+            ),
+            node(
+                "form",
+                Rect::new(0.0, 300.0, 200.0, 80.0),
+                None,
+                vec![Field {
+                    key: "x".into(),
+                    kind,
+                    rect: Rect::new(10.0, 10.0, 180.0, 60.0),
+                    text: text.into(),
+                    placeholder: String::new(),
+                }],
+            ),
+        ],
+        images: Default::default(),
+        grow_origin: Default::default(),
+    }
+}
+
+/// A multi-line field is an `NSTextView` in an `NSScrollView` that follows the field rect inside the scrolled document.
+fn multiline_field_is_a_text_view_in_the_scroll_content() -> Result<(), String> {
+    use claude_sessions_core::scene::FieldKind;
+    use claude_sessions_macos::ui::SceneView;
+    use objc2_foundation::{MainThreadMarker, NSSize};
+
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(200.0, 60.0));
+    view.set_scene(&scrolled_field_scene(FieldKind::Multiline, "a\nb"));
+    let text_view = view.text_view("x").ok_or("no text view")?;
+    if text_view.string().to_string() != "a\nb" {
+        return Err(format!("text {:?}", text_view.string()));
+    }
+    let host = text_view
+        .enclosingScrollView()
+        .ok_or("no scroll view around the text view")?;
+    let f = host.frame();
+    // The form node sits at y 300 of the scroll content; the field at (10, 10) inside it.
+    // SAFETY: a plain getter, called on the main thread.
+    let doc_y = unsafe { host.superview() }.map(|n| n.frame().origin.y + f.origin.y);
+    if (f.origin.x, f.size.width, f.size.height) != (10.0, 180.0, 60.0) || doc_y != Some(310.0) {
+        return Err(format!("frame {f:?}, document y {doc_y:?}"));
+    }
+    if view.field("x").is_some() {
+        return Err("a multi-line field is not an NSTextField".into());
+    }
+    Ok(())
+}
+
+/// `focus_field` finds a field below the visible area of the scrolled content, focuses it and scrolls to it.
+fn focus_field_finds_a_field_in_the_scroll_content() -> Result<(), String> {
+    use claude_sessions_core::scene::{FieldKind, Rect};
+    use claude_sessions_macos::ui::WidgetPanelHandle;
+    let panel = WidgetPanelHandle::new_key(
+        Rect::new(-3000.0, -3000.0, 200.0, 60.0),
+        std::rc::Rc::new(|_| {}),
+    )
+    .ok_or("not on the main thread")?;
+    panel.set_scene(&scrolled_field_scene(FieldKind::Line, ""));
+    let result = if panel.focus_field("nope") {
+        Err("focus_field found a field that is not there".to_string())
+    } else if !panel.focus_field("x") {
+        Err("focus_field did not find the field".to_string())
+    } else if !panel.is_editing() {
+        Err("the field is not being edited".to_string())
+    } else if panel.view().scroll_offset() <= 0.0 {
+        Err("the field was not scrolled into view".to_string())
+    } else {
+        panel.end_editing();
+        if panel.is_editing() {
+            Err("end_editing left the edit running".to_string())
+        } else {
+            Ok(())
+        }
+    };
+    panel.close();
+    result
 }
 
 /// A scroll host that went away takes its scroll view out of the view tree.
@@ -2117,6 +2293,19 @@ fn main() {
     results.push((
         "cancel_operation_emits_field_cancel",
         cancel_operation_emits_field_cancel(),
+    ));
+    results.push(("key_panel_props", key_panel_props()));
+    results.push((
+        "secure_field_is_native_and_keeps_its_text",
+        secure_field_is_native_and_keeps_its_text(),
+    ));
+    results.push((
+        "multiline_field_is_a_text_view_in_the_scroll_content",
+        multiline_field_is_a_text_view_in_the_scroll_content(),
+    ));
+    results.push((
+        "focus_field_finds_a_field_in_the_scroll_content",
+        focus_field_finds_a_field_in_the_scroll_content(),
     ));
     results.push(("scroll_host_is_removed", scroll_host_is_removed()));
     results.push((

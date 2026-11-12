@@ -4,22 +4,25 @@ use std::cell::{Cell, RefCell};
 use std::sync::OnceLock;
 
 use claude_sessions_core::scene::{
-    Appearance, Color, DrawCmd, Field, Rect, Shadow, Tip, appeared_symbols, colors_only_changed,
+    Appearance, Color, DrawCmd, Field, FieldKind, Rect, Shadow, Tip, appeared_symbols,
+    colors_only_changed,
 };
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Bool, ProtocolObject, Sel};
 use objc2::{DefinedClass, MainThreadOnly, define_class, msg_send, sel};
 use objc2_app_kit::{
-    NSAnimatablePropertyContainer, NSAnimationContext, NSAppearanceCustomization, NSColor,
-    NSControl, NSControlTextEditingDelegate, NSEvent, NSFocusRingType, NSTextField,
-    NSTextFieldDelegate, NSTextView, NSView, NSVisualEffectBlendingMode, NSVisualEffectMaterial,
-    NSVisualEffectState, NSVisualEffectView, NSWindowOrderingMode,
+    NSAnimatablePropertyContainer, NSAnimationContext, NSAppearanceCustomization,
+    NSAutoresizingMaskOptions, NSColor, NSControl, NSControlTextEditingDelegate, NSEvent,
+    NSFocusRingType, NSFont, NSScrollView, NSScrollerStyle, NSSecureTextField, NSTextDelegate,
+    NSTextField, NSTextFieldDelegate, NSTextView, NSTextViewDelegate, NSView,
+    NSVisualEffectBlendingMode, NSVisualEffectMaterial, NSVisualEffectState, NSVisualEffectView,
+    NSWindowOrderingMode,
 };
 use objc2_core_foundation::{CGPoint, CGRect, CGSize};
 use objc2_core_graphics::CGPath;
 use objc2_foundation::{
-    MainThreadMarker, NSNotification, NSNumber, NSObject, NSObjectProtocol, NSRect, NSSize,
-    NSString, ns_string,
+    MainThreadMarker, NSNotification, NSNumber, NSObject, NSObjectProtocol, NSPoint, NSRect,
+    NSSize, NSString, ns_string,
 };
 use objc2_quartz_core::{
     CABasicAnimation, CALayer, CAMediaTiming, CAShapeLayer, CATransaction, CATransition,
@@ -52,11 +55,72 @@ pub(crate) struct NodeIvars {
     shadow: RefCell<Option<Retained<ShadowView>>>,
 }
 
-/// A native text field of the node and its delegate (AppKit keeps delegates unretained).
+/// A native text control of the node and its delegate (AppKit keeps delegates unretained).
 struct FieldSlot {
     key: String,
-    view: Retained<NSTextField>,
-    _delegate: Retained<FieldDelegate>,
+    kind: FieldKind,
+    control: Control,
+}
+
+enum Control {
+    /// A line field, or a secure one (`NSSecureTextField` is an `NSTextField`).
+    Line {
+        view: Retained<NSTextField>,
+        _delegate: Retained<FieldDelegate>,
+    },
+    /// A text view inside the scroll view that sits at the field's rect.
+    Multi {
+        scroll: Retained<NSScrollView>,
+        text: Retained<NSTextView>,
+        _delegate: Retained<TextDelegate>,
+    },
+}
+
+impl FieldSlot {
+    /// The view that sits in the node and takes the field's rect.
+    fn host(&self) -> Retained<NSView> {
+        match &self.control {
+            Control::Line { view, .. } => Retained::into_super(Retained::into_super(view.clone())),
+            Control::Multi { scroll, .. } => Retained::into_super(scroll.clone()),
+        }
+    }
+
+    fn text(&self) -> String {
+        match &self.control {
+            Control::Line { view, .. } => view.stringValue().to_string(),
+            Control::Multi { text, .. } => text.string().to_string(),
+        }
+    }
+
+    fn set_text(&self, text: &str) {
+        match &self.control {
+            Control::Line { view, .. } => view.setStringValue(&NSString::from_str(text)),
+            Control::Multi { text: view, .. } => view.setString(&NSString::from_str(text)),
+        }
+    }
+
+    fn is_editing(&self) -> bool {
+        match &self.control {
+            Control::Line { view, .. } => view.currentEditor().is_some(),
+            Control::Multi { text, .. } => text
+                .window()
+                .and_then(|w| w.firstResponder())
+                .is_some_and(|r| {
+                    std::ptr::eq(
+                        &*r as *const _ as *const u8,
+                        &**text as *const _ as *const u8,
+                    )
+                }),
+        }
+    }
+
+    fn clear_delegate(&self) {
+        // SAFETY: clearing the delegate is always valid; the slot still keeps the delegate object alive.
+        match &self.control {
+            Control::Line { view, .. } => unsafe { view.setDelegate(None) },
+            Control::Multi { text, .. } => text.setDelegate(None),
+        }
+    }
 }
 
 pub(crate) struct DelegateIvars {
@@ -109,6 +173,65 @@ define_class!(
     unsafe impl NSTextFieldDelegate for FieldDelegate {}
 );
 
+define_class!(
+    /// Turns what happens in one multi-line text view into `UiEvent`s.
+    #[unsafe(super = NSObject)]
+    #[thread_kind = MainThreadOnly]
+    #[ivars = DelegateIvars]
+    pub(crate) struct TextDelegate;
+
+    unsafe impl NSObjectProtocol for TextDelegate {}
+
+    unsafe impl NSTextDelegate for TextDelegate {
+        #[unsafe(method(textDidChange:))]
+        fn text_did_change(&self, note: &NSNotification) {
+            let Some(object) = note.object() else { return };
+            let Some(text) = object.downcast_ref::<NSTextView>() else {
+                return;
+            };
+            (self.ivars().sink)(UiEvent::FieldChanged {
+                key: self.ivars().key.clone(),
+                text: text.string().to_string(),
+            });
+        }
+
+        /// Losing first responder status submits the field.
+        #[unsafe(method(textDidEndEditing:))]
+        fn text_did_end_editing(&self, _note: &NSNotification) {
+            let key = self.ivars().key.clone();
+            (self.ivars().sink)(UiEvent::FieldSubmit { key });
+        }
+    }
+
+    unsafe impl NSTextViewDelegate for TextDelegate {
+        #[unsafe(method(textView:doCommandBySelector:))]
+        unsafe fn text_view_do_command_by_selector(
+            &self,
+            _text_view: &NSTextView,
+            command: Sel,
+        ) -> Bool {
+            if command == sel!(cancelOperation:) {
+                let key = self.ivars().key.clone();
+                (self.ivars().sink)(UiEvent::FieldCancel { key });
+                Bool::YES
+            } else {
+                Bool::NO
+            }
+        }
+    }
+);
+
+impl TextDelegate {
+    fn new(mtm: MainThreadMarker, key: &str, sink: EventHandler) -> Retained<Self> {
+        let this = Self::alloc(mtm).set_ivars(DelegateIvars {
+            key: key.to_owned(),
+            sink,
+        });
+        // SAFETY: `init` is NSObject's designated initialiser.
+        unsafe { msg_send![super(this), init] }
+    }
+}
+
 impl FieldDelegate {
     fn new(mtm: MainThreadMarker, key: &str, sink: EventHandler) -> Retained<Self> {
         let this = Self::alloc(mtm).set_ivars(DelegateIvars {
@@ -118,6 +241,38 @@ impl FieldDelegate {
         // SAFETY: `init` is NSObject's designated initialiser.
         unsafe { msg_send![super(this), init] }
     }
+}
+
+/// A scroll view at `rect` with a plain-text view in it that grows with its content (Return inserts a newline).
+fn multiline_views(
+    mtm: MainThreadMarker,
+    rect: Rect,
+) -> (Retained<NSScrollView>, Retained<NSTextView>) {
+    let frame = ns_rect(rect);
+    let scroll = NSScrollView::initWithFrame(mtm.alloc(), frame);
+    scroll.setDrawsBackground(false);
+    scroll.setHasVerticalScroller(true);
+    scroll.setHasHorizontalScroller(false);
+    scroll.setAutohidesScrollers(true);
+    scroll.setScrollerStyle(NSScrollerStyle::Overlay);
+    let text =
+        NSTextView::initWithFrame(mtm.alloc(), NSRect::new(NSPoint::new(0.0, 0.0), frame.size));
+    text.setRichText(false);
+    text.setDrawsBackground(false);
+    text.setFont(Some(&NSFont::systemFontOfSize(13.0)));
+    text.setFocusRingType(NSFocusRingType::None);
+    text.setVerticallyResizable(true);
+    text.setHorizontallyResizable(false);
+    text.setMinSize(NSSize::new(0.0, frame.size.height));
+    text.setMaxSize(NSSize::new(frame.size.width, f64::MAX));
+    text.setAutoresizingMask(NSAutoresizingMaskOptions::ViewWidthSizable);
+    // SAFETY: a plain getter, called on the main thread.
+    if let Some(container) = unsafe { text.textContainer() } {
+        container.setContainerSize(NSSize::new(frame.size.width, f64::MAX));
+        container.setWidthTracksTextView(true);
+    }
+    scroll.setDocumentView(Some(&text));
+    (scroll, text)
 }
 
 /// `CLAUDE_SESSIONS_FRAME_LOG=1`: one stderr line per node redraw.
@@ -522,7 +677,8 @@ impl NodeView {
 
     /// Adds, moves and removes the native text fields. The text is set only when the scene's text for a field changed and
     /// the field is not being edited, so what the user typed survives a scene that did not change it; `sink` gets the
-    /// field's `FieldChanged`, `FieldSubmit` and `FieldCancel` events. Returns the last field this call created.
+    /// field's `FieldChanged`, `FieldSubmit` and `FieldCancel` events. A `Secure` field never takes the scene's text: it is
+    /// emptied only by being replaced under a new key. Returns the last `Line` field this call created.
     pub(crate) fn set_fields(
         &self,
         fields: &[Field],
@@ -532,9 +688,11 @@ impl NodeView {
         let mtm = self.mtm();
         let mut have = self.ivars().fields.borrow_mut();
         have.retain(|slot| {
-            let keep = fields.iter().any(|f| f.key == slot.key);
+            let keep = fields
+                .iter()
+                .any(|f| f.key == slot.key && f.kind == slot.kind);
             if !keep {
-                slot.view.removeFromSuperview();
+                slot.host().removeFromSuperview();
             }
             keep
         });
@@ -542,79 +700,158 @@ impl NodeView {
             let at = match have.iter().position(|slot| slot.key == field.key) {
                 Some(at) => at,
                 None => {
-                    let view = NSTextField::initWithFrame(mtm.alloc(), ns_rect(field.rect));
-                    style_field(&view);
-                    let delegate = FieldDelegate::new(mtm, &field.key, sink.clone());
-                    // SAFETY: the delegate lives in the slot as long as the field does.
-                    unsafe { view.setDelegate(Some(ProtocolObject::from_ref(&*delegate))) };
-                    self.addSubview(&view);
-                    view.setStringValue(&NSString::from_str(&field.text));
-                    created = Some(view.clone());
+                    let control = match field.kind {
+                        FieldKind::Line | FieldKind::Secure => {
+                            let view = if field.kind == FieldKind::Secure {
+                                Retained::into_super(NSSecureTextField::initWithFrame(
+                                    mtm.alloc(),
+                                    ns_rect(field.rect),
+                                ))
+                            } else {
+                                NSTextField::initWithFrame(mtm.alloc(), ns_rect(field.rect))
+                            };
+                            style_field(&view);
+                            let delegate = FieldDelegate::new(mtm, &field.key, sink.clone());
+                            // SAFETY: the delegate lives in the slot as long as the field does.
+                            unsafe { view.setDelegate(Some(ProtocolObject::from_ref(&*delegate))) };
+                            self.addSubview(&view);
+                            if field.kind == FieldKind::Line {
+                                view.setStringValue(&NSString::from_str(&field.text));
+                                created = Some(view.clone());
+                            }
+                            Control::Line {
+                                view,
+                                _delegate: delegate,
+                            }
+                        }
+                        FieldKind::Multiline => {
+                            let (scroll, text) = multiline_views(mtm, field.rect);
+                            let delegate = TextDelegate::new(mtm, &field.key, sink.clone());
+                            text.setDelegate(Some(ProtocolObject::from_ref(&*delegate)));
+                            text.setString(&NSString::from_str(&field.text));
+                            self.addSubview(&scroll);
+                            Control::Multi {
+                                scroll,
+                                text,
+                                _delegate: delegate,
+                            }
+                        }
+                    };
                     have.push(FieldSlot {
                         key: field.key.clone(),
-                        view,
-                        _delegate: delegate,
+                        kind: field.kind,
+                        control,
                     });
                     have.len() - 1
                 }
             };
             let slot = &mut have[at];
-            slot.view.setFrame(ns_rect(field.rect));
-            slot.view
-                .setPlaceholderString(Some(&NSString::from_str(&field.placeholder)));
+            slot.host().setFrame(ns_rect(field.rect));
+            if let Control::Line { view, .. } = &slot.control {
+                view.setPlaceholderString(Some(&NSString::from_str(&field.placeholder)));
+            }
             // Typed text reaches the draft (and so the scene) event by event, so a difference means the scene moved on
             // (a draft cleared after a send); an unchanged text is left alone to keep the cursor and selection.
-            if slot.view.stringValue().to_string() != field.text {
-                slot.view.setStringValue(&NSString::from_str(&field.text));
+            if field.kind != FieldKind::Secure && slot.text() != field.text {
+                slot.set_text(&field.text);
             }
         }
         created
     }
 
     /// Whether a native field shows other text than the scene's, so `set_fields` has to run although the scene is the same.
+    /// A secure field's text is never the scene's, so it never counts.
     pub(crate) fn field_text_differs(&self, fields: &[Field]) -> bool {
         let have = self.ivars().fields.borrow();
         fields.iter().any(|f| {
-            have.iter()
-                .find(|slot| slot.key == f.key)
-                .is_some_and(|slot| slot.view.stringValue().to_string() != f.text)
+            f.kind != FieldKind::Secure
+                && have
+                    .iter()
+                    .find(|slot| slot.key == f.key)
+                    .is_some_and(|slot| slot.text() != f.text)
         })
     }
 
-    /// The native text field with `Field.key` `key`, if this node has it.
+    /// The native text field (line or secure) with `Field.key` `key`, if this node has it.
     pub(crate) fn field(&self, key: &str) -> Option<Retained<NSTextField>> {
         self.ivars()
             .fields
             .borrow()
             .iter()
             .find(|slot| slot.key == key)
-            .map(|slot| slot.view.clone())
+            .and_then(|slot| match &slot.control {
+                Control::Line { view, .. } => Some(view.clone()),
+                Control::Multi { .. } => None,
+            })
     }
 
-    /// The first native text field of this node, if any.
+    /// The text view of the multi-line field with `Field.key` `key`, if this node has it.
+    pub(crate) fn text_view(&self, key: &str) -> Option<Retained<NSTextView>> {
+        self.ivars()
+            .fields
+            .borrow()
+            .iter()
+            .find(|slot| slot.key == key)
+            .and_then(|slot| match &slot.control {
+                Control::Multi { text, .. } => Some(text.clone()),
+                Control::Line { .. } => None,
+            })
+    }
+
+    /// The control with `Field.key` `key` as a first responder, and the view that has to be visible for it.
+    pub(crate) fn focus_target(&self, key: &str) -> Option<(Retained<NSView>, Retained<NSView>)> {
+        self.ivars()
+            .fields
+            .borrow()
+            .iter()
+            .find(|slot| slot.key == key)
+            .map(|slot| {
+                let responder = match &slot.control {
+                    Control::Line { view, .. } => {
+                        Retained::into_super(Retained::into_super(view.clone()))
+                    }
+                    Control::Multi { text, .. } => {
+                        Retained::into_super(Retained::into_super(text.clone()))
+                    }
+                };
+                (responder, slot.host())
+            })
+    }
+
+    /// The first native line field of this node, if any.
     pub(crate) fn first_field(&self) -> Option<Retained<NSTextField>> {
         self.ivars()
             .fields
             .borrow()
-            .first()
-            .map(|slot| slot.view.clone())
+            .iter()
+            .find_map(|slot| match &slot.control {
+                Control::Line { view, .. } => Some(view.clone()),
+                Control::Multi { .. } => None,
+            })
     }
 
     /// The node is leaving: its fields stop taking input and emit no more events. A field that is being edited first ends
     /// the edit; the window becomes first responder, as AppKit does when a first-responder view leaves the window.
     pub(crate) fn retire_fields(&self) {
         let fields = self.ivars().fields.borrow();
+        // A multi-line field submits when the edit ends: that is not an event of a node that is leaving.
+        for slot in fields.iter() {
+            if matches!(slot.control, Control::Multi { .. }) {
+                slot.clear_delegate();
+            }
+        }
         if let Some(window) = self.window()
-            && fields
-                .iter()
-                .any(|slot| slot.view.currentEditor().is_some())
+            && fields.iter().any(|slot| slot.is_editing())
         {
             window.makeFirstResponder(None);
         }
         for slot in fields.iter() {
-            slot.view.setEnabled(false);
-            // SAFETY: clearing the delegate is always valid; the slot still keeps the delegate object alive.
-            unsafe { slot.view.setDelegate(None) };
+            if let Control::Line { view, .. } = &slot.control {
+                view.setEnabled(false);
+            } else if let Control::Multi { text, .. } = &slot.control {
+                text.setEditable(false);
+            }
+            slot.clear_delegate();
         }
     }
 

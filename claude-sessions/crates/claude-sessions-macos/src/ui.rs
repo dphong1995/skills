@@ -12,7 +12,9 @@ use std::rc::Rc;
 pub use claude_sessions_core::scene::Appearance;
 use claude_sessions_core::scene::{HitId, Point, Rect, Scene};
 use objc2::rc::Retained;
-use objc2_foundation::MainThreadMarker;
+use objc2::{ClassType, MainThreadOnly};
+use objc2_app_kit::{NSApplication, NSTextView};
+use objc2_foundation::{MainThreadMarker, NSObjectProtocol};
 
 use self::draw::ns_rect;
 
@@ -21,7 +23,7 @@ pub use png::{PngDiff, compare_png, read_png_pixel, render_png};
 pub use scene_view::SceneView;
 
 /// What the user did in the scene; `at` is in scene points (top-left origin).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum UiEvent {
     Click(HitId),
     RightClick {
@@ -50,6 +52,37 @@ pub enum UiEvent {
     },
 }
 
+/// Field text can be a token, so `Debug` prints only its length.
+impl std::fmt::Debug for UiEvent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Click(id) => f.debug_tuple("Click").field(id).finish(),
+            Self::RightClick { hit, at } => f
+                .debug_struct("RightClick")
+                .field("hit", hit)
+                .field("at", at)
+                .finish(),
+            Self::Dragged {
+                start,
+                raw,
+                clamped,
+            } => f
+                .debug_struct("Dragged")
+                .field("start", start)
+                .field("raw", raw)
+                .field("clamped", clamped)
+                .finish(),
+            Self::FieldChanged { key, text } => write!(
+                f,
+                "FieldChanged {{ key: {key:?}, text: <{} chars> }}",
+                text.chars().count()
+            ),
+            Self::FieldSubmit { key } => f.debug_struct("FieldSubmit").field("key", key).finish(),
+            Self::FieldCancel { key } => f.debug_struct("FieldCancel").field("key", key).finish(),
+        }
+    }
+}
+
 /// Receives what the user does in a scene.
 pub type EventHandler = Rc<dyn Fn(UiEvent)>;
 
@@ -75,6 +108,17 @@ impl WidgetPanelHandle {
         Some(Self { panel, view })
     }
 
+    /// Like `new`, but the panel can become key, takes mouse events and sits one level above the widget's panels.
+    pub fn new_key(frame: Rect, on_event: EventHandler) -> Option<Self> {
+        let mtm = MainThreadMarker::new()?;
+        let frame = ns_rect(frame);
+        let panel = panel::new_key_panel(mtm, frame);
+        let view = SceneView::new(mtm, frame.size);
+        view.set_handler(on_event);
+        panel.setContentView(Some(&view));
+        Some(Self { panel, view })
+    }
+
     pub fn view(&self) -> Retained<SceneView> {
         self.view.clone()
     }
@@ -91,6 +135,32 @@ impl WidgetPanelHandle {
     pub fn show(&self) {
         self.panel.orderFrontRegardless();
         self.view.set_motion_live(true);
+    }
+
+    /// Activates the app and makes the panel key, like a normal window.
+    pub fn show_key(&self) {
+        // `activateIgnoringOtherApps:` is deprecated since macOS 14 but still forces activation, as `run_alert` does.
+        #[allow(deprecated)]
+        NSApplication::sharedApplication(self.panel.mtm()).activateIgnoringOtherApps(true);
+        self.panel.makeKeyAndOrderFront(None);
+        self.view.set_motion_live(true);
+    }
+
+    /// Whether the window's first responder is a text view: a field editor or a multi-line field.
+    pub fn is_editing(&self) -> bool {
+        self.panel
+            .firstResponder()
+            .is_some_and(|r| r.isKindOfClass(NSTextView::class()))
+    }
+
+    /// Ends the edit in progress (a multi-line field sends its `FieldSubmit`).
+    pub fn end_editing(&self) {
+        self.panel.makeFirstResponder(None);
+    }
+
+    /// Makes the native field with that `Field.key` first responder and scrolls it into view.
+    pub fn focus_field(&self, key: &str) -> bool {
+        self.view.focus_field(key)
     }
 
     /// Hidden panels keep no looping animation.
@@ -135,5 +205,23 @@ impl WidgetPanelHandle {
 
     pub fn is_key(&self) -> bool {
         self.panel.isKeyWindow()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::UiEvent;
+
+    #[test]
+    fn field_changed_debug_hides_the_text() {
+        let shown = format!(
+            "{:?}",
+            UiEvent::FieldChanged {
+                key: "k".into(),
+                text: "s3cr3t-token".into()
+            }
+        );
+        assert!(!shown.contains("s3cr3t"), "{shown}");
+        assert!(shown.contains("12 chars"), "{shown}");
     }
 }

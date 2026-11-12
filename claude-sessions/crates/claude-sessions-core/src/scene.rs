@@ -33,6 +33,8 @@ pub enum ThemeColor {
     GlassEdge,
     /// Background of a group of rows.
     Group,
+    /// The raised thumb of a segmented control: white in light, a lighter tint in dark.
+    Raised,
     Separator,
     RowHover,
     /// Resting fill of a small control.
@@ -88,6 +90,7 @@ impl ThemeColor {
             ),
             Self::GlassEdge => pick([1.0, 1.0, 1.0, 0.16], [1.0, 1.0, 1.0, 0.75]),
             Self::Group => pick([1.0, 1.0, 1.0, 0.07], [1.0, 1.0, 1.0, 0.66]),
+            Self::Raised => pick([1.0, 1.0, 1.0, 0.20], [1.0, 1.0, 1.0, 1.0]),
             Self::Separator => pick([1.0, 1.0, 1.0, 0.08], [0.0, 0.0, 0.0, 0.08]),
             Self::RowHover => pick([1.0, 1.0, 1.0, 0.04], [0.0, 0.0, 0.0, 0.025]),
             Self::Fill => pick([1.0, 1.0, 1.0, 0.10], [0.0, 0.0, 0.0, 0.06]),
@@ -236,10 +239,24 @@ pub struct Tip {
     pub text: String,
 }
 
+/// What kind of native control a `Field` is.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum FieldKind {
+    /// One line of text.
+    #[default]
+    Line,
+    /// One line whose text is hidden. The scene never carries its text: `Field.text` stays empty and the renderer never
+    /// writes into it after creation; a new `Field.key` makes a new, empty field.
+    Secure,
+    /// Several lines; Return inserts a newline, the field submits when it stops being first responder.
+    Multiline,
+}
+
 /// A native, editable text field laid over the scene.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Field {
     pub key: String,
+    pub kind: FieldKind,
     pub rect: Rect,
     pub text: String,
     pub placeholder: String,
