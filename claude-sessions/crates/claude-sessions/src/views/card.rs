@@ -53,13 +53,7 @@ pub fn node(ctx: &mut Ctx, s: &Session, y: f64, layout: &CardLayout, pos: RowPos
         c.row_shape(CARD_W, layout.height, pos, theme::card_fresh_fill());
     }
     if !pos.first {
-        // The hairline is a 0.5 pt rect: a stroke is always 1 pt.
-        c.rrect(
-            Rect::new(CARD_INSET, 0.0, CARD_W - CARD_INSET, 0.5),
-            0.0,
-            Some(theme::solid(ThemeColor::Separator)),
-            None,
-        );
+        c.hairline(CARD_INSET, 0.0, CARD_W - CARD_INSET);
     }
     if selected {
         c.rrect(
@@ -97,10 +91,7 @@ pub fn node(ctx: &mut Ctx, s: &Session, y: f64, layout: &CardLayout, pos: RowPos
         );
         tx += SPARKLE_W;
     }
-    let title = view
-        .measure
-        .measure(s.title(), &theme::TITLE_FONT, layout.title_w, 2);
-    let text_h = title.h.min(layout.title_h);
+    let text_h = layout.title_text_h.min(layout.title_h);
     c.text(
         Rect::new(
             tx,
@@ -114,7 +105,6 @@ pub fn node(ctx: &mut Ctx, s: &Session, y: f64, layout: &CardLayout, pos: RowPos
         2,
         Align::Left,
     );
-    debug_assert!(layout.title_h >= TITLE_LINE_H);
 
     // The folder line: the state word in its colour, then `· folder · branch`.
     let sub = Rect::new(
@@ -276,36 +266,24 @@ fn reply_editor(c: &mut Canvas, s: &Session, ctx: &Ctx, y: f64) {
 }
 
 /// The time at the right end of the title line and, while the row is `active` (hovered or keyboard-selected), the quick
-/// button before it: `Trả lời` on a finished row, `Dừng` on a running one. An armed `Dừng` is the red capsule `Dừng?` and stays
-/// until it lapses; a send in flight or done shows its face on the button whether or not the row is active.
+/// button before it: `Trả lời` on a finished row, `Dừng` on a running one. An armed `Dừng` is the red capsule `Dừng?`, in the
+/// time's place, and stays until it lapses; a send in flight or done shows its face on the button whether or not the row is
+/// active.
 fn right_column(ctx: &Ctx, c: &mut Canvas, s: &Session, active: bool) {
     let (snap, panel, now) = (ctx.view.snap, ctx.view.panel, ctx.view.now);
-    let armed = s.shown_status() == "busy"
-        && panel
-            .stop_armed
-            .get(&s.id)
-            .is_some_and(|t| secs_since(now, *t) < STOP_ARM_SECS);
-    let time = text::elapsed(s.since, now);
-    let time_w = ctx.text_w(&time, &theme::TIME_FONT).ceil();
     let right = CARD_W - CARD_PAD_RIGHT;
-    c.label(
-        Rect::new(right - time_w, CARD_PAD_Y, time_w, TITLE_LINE_H),
-        &time,
-        theme::TIME_FONT,
-        theme::solid(ThemeColor::TextFaint),
-        Align::Right,
-    );
-    let (symbol, target) = if s.can_ask_claude() {
-        ("arrowshape.turn.up.left", Target::Reply(s.id.clone()))
+    let quick = if s.can_ask_claude() {
+        Some(("arrowshape.turn.up.left", Target::Reply(s.id.clone())))
     } else if s.shown_status() == "busy" {
-        ("stop.fill", Target::Stop(s.id.clone()))
+        Some(("stop.fill", Target::Stop(s.id.clone())))
     } else {
-        return;
+        None
     };
+    let slot = quick.as_ref().and_then(|_| {
+        snap.send_state(&SendKey::new(&s.id, SendKind::Reply), now)
+            .or_else(|| snap.send_state(&SendKey::new(&s.id, SendKind::Stop), now))
+    });
     let in_cmux = !snap.surface_misses.contains(&s.id);
-    let slot = snap
-        .send_state(&SendKey::new(&s.id, SendKind::Reply), now)
-        .or_else(|| snap.send_state(&SendKey::new(&s.id, SendKind::Stop), now));
     let tip = if !in_cmux {
         "Chỉ dùng được trong cmux"
     } else if s.can_ask_claude() {
@@ -313,16 +291,19 @@ fn right_column(ctx: &Ctx, c: &mut Canvas, s: &Session, active: bool) {
     } else {
         "Dừng (bấm hai lần)"
     };
-    let end = right - time_w - 6.0;
-    if armed && slot.is_none() {
+    let armed = s.shown_status() == "busy"
+        && panel
+            .stop_armed
+            .get(&s.id)
+            .is_some_and(|t| secs_since(now, *t) < STOP_ARM_SECS);
+    if let Some((_, target)) = &quick
+        && armed
+        && slot.is_none()
+    {
+        // The capsule takes the place of the time, inside the right column the title leaves free.
         let w = (ctx.text_w("Dừng?", &theme::DANGER_FONT) + 18.0).ceil();
-        let rect = Rect::new(end - w, CARD_PAD_Y, w, theme::ROW_BUTTON);
-        c.rrect(
-            rect,
-            rect.h / 2.0,
-            Some(theme::solid(ThemeColor::Red)),
-            None,
-        );
+        let rect = Rect::new(right - w, CARD_PAD_Y, w, theme::ROW_BUTTON);
+        c.capsule(rect, Some(theme::solid(ThemeColor::Red)));
         c.label(
             rect,
             "Dừng?",
@@ -332,26 +313,33 @@ fn right_column(ctx: &Ctx, c: &mut Canvas, s: &Session, active: bool) {
         );
         c.tip(rect, tip);
         if in_cmux {
-            c.hit(rect, target);
+            c.hit(rect, target.clone());
         }
         return;
     }
+    let time = text::elapsed(s.since, now);
+    let time_w = ctx.text_w(&time, &theme::TIME_FONT).ceil();
+    c.label(
+        Rect::new(right - time_w, CARD_PAD_Y, time_w, TITLE_LINE_H),
+        &time,
+        theme::TIME_FONT,
+        theme::solid(ThemeColor::TextFaint),
+        Align::Right,
+    );
+    let Some((symbol, target)) = quick else {
+        return;
+    };
     if !(active || slot.is_some()) {
         return;
     }
     let rect = Rect::new(
-        end - theme::ROW_BUTTON,
+        right - time_w - 6.0 - theme::ROW_BUTTON,
         CARD_PAD_Y,
         theme::ROW_BUTTON,
         theme::ROW_BUTTON,
     );
     if slot.is_none() {
-        c.rrect(
-            rect,
-            rect.h / 2.0,
-            Some(theme::solid(ThemeColor::Fill)),
-            None,
-        );
+        c.capsule(rect, Some(theme::solid(ThemeColor::Fill)));
     }
     let mut color = theme::solid(ThemeColor::TextSecondary);
     if !in_cmux {

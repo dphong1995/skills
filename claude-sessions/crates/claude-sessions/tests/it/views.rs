@@ -1550,20 +1550,17 @@ fn fixture_built(name: &str) -> Built {
 }
 
 fn fixture_built_with(name: &str, tweak: impl Fn(&mut Snapshot)) -> Built {
-    let (_, f) = claude_sessions_core::fixtures::STATES
-        .iter()
-        .find(|(n, _)| *n == name)
-        .unwrap();
-    let dir = tempfile::tempdir().unwrap();
-    let now = claude_sessions_core::fixtures::fixed_now();
-    let (mut snap, panel) = f(dir.path(), now);
+    let (mut snap, panel) = fixture_state(name);
     tweak(&mut snap);
     let clock = |_: SystemTime| "14:30".to_string();
     build(&View {
         snap: &snap,
         panel: &panel,
         measure: &FakeMeasure,
-        now: claude_sessions_core::fixtures::view_now(name, now),
+        now: claude_sessions_core::fixtures::view_now(
+            name,
+            claude_sessions_core::fixtures::fixed_now(),
+        ),
         clock: &clock,
     })
 }
@@ -1964,10 +1961,6 @@ fn group_bg(node: &Node) -> (Rect, f64) {
         .expect("a row draws its Group background")
 }
 
-fn finished_rows(n: usize) -> Snapshot {
-    snapshot((0..n).map(|i| finished(&format!("r{i}"))).collect())
-}
-
 fn text_cmd<'a>(node: &'a Node, want: &str) -> Option<(&'a Rect, &'a Color)> {
     node.cmds.iter().find_map(|c| match c {
         DrawCmd::Text {
@@ -1995,8 +1988,8 @@ fn rows_in_a_section_touch() {
 
 #[test]
 fn group_corners_first_and_last() {
-    let scene = render(&finished_rows(3), &open()).scene;
-    let (first, mid, last) = (card(&scene, "r0"), card(&scene, "r1"), card(&scene, "r2"));
+    let scene = render(&long_list(3), &open()).scene;
+    let (first, mid, last) = (card(&scene, "s0"), card(&scene, "s1"), card(&scene, "s2"));
     // Nodes clip to their frame: a 13 pt rounded rect pushed past the edge that stays square leaves only the other corners round.
     let (r, radius) = group_bg(first);
     assert_eq!((radius, r.y), (13.0, 0.0));
@@ -2007,15 +2000,15 @@ fn group_corners_first_and_last() {
     let (r, radius) = group_bg(mid);
     assert_eq!(radius, 0.0);
     assert_eq!((r.y, r.h), (0.0, mid.frame.h));
-    let one = render(&finished_rows(1), &open()).scene;
-    let (r, radius) = group_bg(card(&one, "r0"));
+    let one = render(&long_list(1), &open()).scene;
+    let (r, radius) = group_bg(card(&one, "s0"));
     assert_eq!(radius, 13.0);
-    assert_eq!((r.y, r.h), (0.0, card(&one, "r0").frame.h));
+    assert_eq!((r.y, r.h), (0.0, card(&one, "s0").frame.h));
 }
 
 #[test]
 fn separator_inset_to_text_column() {
-    let scene = render(&finished_rows(3), &open()).scene;
+    let scene = render(&long_list(3), &open()).scene;
     let seps = |node: &Node| -> Vec<Rect> {
         node.cmds
             .iter()
@@ -2030,10 +2023,10 @@ fn separator_inset_to_text_column() {
             .collect()
     };
     assert!(
-        seps(card(&scene, "r0")).is_empty(),
+        seps(card(&scene, "s0")).is_empty(),
         "the first row has none"
     );
-    for id in ["r1", "r2"] {
+    for id in ["s1", "s2"] {
         let want = Rect::new(
             layout::CARD_INSET,
             0.0,
@@ -2043,6 +2036,31 @@ fn separator_inset_to_text_column() {
         assert_eq!(seps(card(&scene, id)), [want], "{id}");
     }
     assert_eq!(layout::CARD_INSET, 40.0);
+}
+
+#[test]
+fn hover_fixtures_show_their_quick_button() {
+    for (name, id, target) in [
+        ("10-last-reply-hover", "a", Target::Reply("a".into())),
+        ("12-actions-hover", "f", Target::Stop("f".into())),
+    ] {
+        let (_, panel) = fixture_state(name);
+        assert_eq!(panel.hovered_row.as_deref(), Some(id), "{name}");
+        let built = fixture_built(name);
+        let node = card(&built.scene, id);
+        assert!(targets(&built, node).contains(&target), "{name}");
+        assert!(
+            built
+                .scene
+                .nodes
+                .iter()
+                .filter(|n| n.key.0.starts_with("card-") && n.key.0 != format!("card-{id}"))
+                .all(|n| targets(&built, n)
+                    .iter()
+                    .all(|t| !matches!(t, Target::Reply(_) | Target::Stop(_)))),
+            "{name}: only the hovered row shows a quick button"
+        );
+    }
 }
 
 #[test]
@@ -2129,6 +2147,55 @@ fn stop_arms_to_red_capsule() {
     )));
     // Armed, the click is the second step: the button is in the hits without any hover.
     assert!(targets(&built, run).contains(&Target::Stop("run".into())));
+}
+
+/// The right-aligned time of the title line, when the row draws one.
+fn time_cmd(node: &Node) -> Option<&DrawCmd> {
+    node.cmds.iter().find(|c| {
+        matches!(c, DrawCmd::Text { font, align: Align::Right, .. } if *font == theme::TIME_FONT)
+    })
+}
+
+#[test]
+fn armed_stop_stays_in_the_right_column() {
+    let mut run = busy("run");
+    run.since = Some(now() - Duration::from_secs(2 * 3600 + 30 * 60));
+    let snap = snapshot(vec![run]);
+    let mut panel = open();
+    let rest = render(&snap, &panel);
+    assert!(time_cmd(card(&rest.scene, "run")).is_some());
+    panel.stop_armed.insert("run".into(), now());
+    let built = render(&snap, &panel);
+    let run = card(&built.scene, "run");
+    let title = run
+        .cmds
+        .iter()
+        .find_map(|c| match c {
+            DrawCmd::Text { rect, text, .. } if text == "run" => Some(*rect),
+            _ => None,
+        })
+        .expect("the title");
+    let capsule = run
+        .cmds
+        .iter()
+        .find_map(|c| match c {
+            DrawCmd::RoundedRect {
+                rect,
+                fill: Some(f),
+                ..
+            } if f.token == ThemeColor::Red => Some(*rect),
+            _ => None,
+        })
+        .expect("a red capsule");
+    assert!(
+        capsule.x >= title.x + title.w,
+        "the capsule {capsule:?} covers the title {title:?}"
+    );
+    assert!(capsule.x + capsule.w <= layout::CARD_W - layout::CARD_PAD_RIGHT + 0.01);
+    assert!(
+        time_cmd(run).is_none(),
+        "the time makes way for the armed button"
+    );
 }
 
 #[test]
@@ -2266,6 +2333,7 @@ fn pr_row_two_tiers() {
 #[test]
 fn chips_overflow_at_panel_width() {
     let built = fixture_built("23-ticket-row-overflow");
+    let (snap, _) = fixture_state("23-ticket-row-overflow");
     let node = built
         .scene
         .nodes
@@ -2276,20 +2344,38 @@ fn chips_overflow_at_panel_width() {
                 .any(|h| matches!(built.targets.get(h.id), Some(Target::Menu(_))))
         })
         .expect("the card with the chips");
+    let session = snap
+        .sessions
+        .iter()
+        .find(|s| node.key.0 == format!("card-{}", s.id))
+        .expect("the session of the card");
+    let is_fill_chip = |c: &DrawCmd| {
+        matches!(c, DrawCmd::RoundedRect { rect, radius, fill: Some(f), .. }
+            if rect.h == layout::CHIP_H && *radius == 6.0 && f.token == ThemeColor::Fill)
+    };
+    // The link chips are the chips with a link hit; the `+M` chip and the menu chip are the two Menu hits.
+    let links = node
+        .hits
+        .iter()
+        .filter(|h| matches!(built.targets.get(h.id), Some(Target::Link { .. })))
+        .count();
     let more = texts(node)
         .into_iter()
         .find(|t| t.starts_with('+'))
         .expect("a +M chip");
-    let shown = node
-        .cmds
-        .iter()
-        .filter(|c| {
-            matches!(c, DrawCmd::RoundedRect { rect, radius, fill: Some(f), .. }
-                if rect.h == layout::CHIP_H && *radius == 6.0 && f.token == ThemeColor::Fill)
-        })
-        .count();
-    assert!(shown >= 2, "chips on Fill, 20 tall, radius 6");
-    assert!(more[1..].parse::<usize>().unwrap() >= 1);
+    let more: usize = more[1..].parse().unwrap();
+    assert!(links >= 2 && more >= 1, "{links} shown, +{more}");
+    assert_eq!(
+        links + more,
+        session.links.len(),
+        "every link is a chip or counted in the +M chip"
+    );
+    // Fill chips: the links, the `+M` chip; the menu chip (`list.bullet`) is a Fill chip too, since no menu is open.
+    assert!(symbols(node).contains(&"list.bullet"));
+    assert_eq!(
+        node.cmds.iter().filter(|c| is_fill_chip(c)).count(),
+        links + 2
+    );
     let edge = layout::CARD_W - layout::CARD_PAD_RIGHT;
     for c in &node.cmds {
         if let DrawCmd::RoundedRect {
@@ -2419,7 +2505,12 @@ fn every_fixture_draws_the_height_the_size_model_predicts() {
                     "{name} {id}"
                 );
                 assert!(
-                    node.cmds.iter().all(|c| bottom(c) <= layout.height + 14.0),
+                    node.cmds.iter().all(|c| {
+                        // The row shape of a group's first / last row is pushed past the frame on purpose (the node clips it).
+                        let row_shape = matches!(c, DrawCmd::RoundedRect { rect, .. }
+                            if rect.x == 0.0 && rect.w == layout::CARD_W);
+                        row_shape || bottom(c) <= layout.height + 0.001
+                    }),
                     "{name} {id} draws past its row"
                 );
                 seen += 1;

@@ -154,6 +154,12 @@ impl Fx {
         self.panel.hovering = true;
     }
 
+    /// The mouse is over row `id` (hover, so its quick button shows).
+    fn hover_row(&mut self, id: &str) {
+        self.hover();
+        self.panel.note_row_hover(id, true, self.now);
+    }
+
     fn done(self) -> (Snapshot, PanelState) {
         (self.store.snapshot(), self.panel)
     }

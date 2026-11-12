@@ -2,7 +2,7 @@
 //! separator between rows. A row opens the session (`Target::Resume`) and shows `Đang mở…` / `Lỗi — đã copy lệnh` while its send
 //! is in flight or failed.
 
-use super::{Canvas, Ctx};
+use super::{Canvas, Ctx, section};
 use crate::hits::Target;
 use crate::theme;
 use claude_sessions_core::layout::{CARD_W, CLOSED_ITEM_H, CLOSED_ROW_H, KEY_HINT_H, PANEL_PAD};
@@ -43,24 +43,13 @@ pub fn node(ctx: &mut Ctx, y: f64, h: f64) -> Node {
         theme::solid(ThemeColor::TextSecondary),
         Weight::Bold,
     );
-    let label = "Vừa đóng";
-    let label_x = TEXT_X + CHEVRON_W + 5.0;
-    let label_w = ctx.text_w(label, &theme::SECTION_FONT);
-    c.text(
-        Rect::new(label_x, top, label_w + 2.0, 14.0),
-        label,
-        theme::SECTION_FONT,
-        theme::solid(ThemeColor::TextSecondary),
-        1,
-        Align::Left,
-    );
-    c.text(
-        Rect::new(label_x + label_w + 6.0, top, 40.0, 14.0),
-        &snap.closed.len().to_string(),
-        theme::SECTION_FONT,
-        theme::solid(ThemeColor::TextFaint),
-        1,
-        Align::Left,
+    section::draw_title(
+        ctx,
+        &mut c,
+        TEXT_X + CHEVRON_W + 5.0,
+        CLOSED_ROW_H,
+        "Vừa đóng",
+        snap.closed.len(),
     );
     c.hit(
         Rect::new(0.0, 0.0, CARD_W, CLOSED_ROW_H),
@@ -82,12 +71,7 @@ pub fn node(ctx: &mut Ctx, y: f64, h: f64) -> Node {
             let y = CLOSED_ROW_H + CLOSED_ITEM_H * i as f64;
             let row = Rect::new(0.0, y, CARD_W, CLOSED_ITEM_H);
             if i > 0 {
-                c.rrect(
-                    Rect::new(12.0, y, CARD_W - 12.0, 0.5),
-                    0.0,
-                    Some(theme::solid(ThemeColor::Separator)),
-                    None,
-                );
+                c.hairline(12.0, y, CARD_W - 12.0);
             }
             let title_w = ctx.text_w(&item.title, &theme::ROW_FONT).min(CARD_W / 2.0);
             c.label(

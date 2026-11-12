@@ -77,6 +77,15 @@ pub struct Canvas {
     pub tips: Vec<Tip>,
 }
 
+/// What a button or a line says while its send is in flight, done or failed.
+pub fn send_label(state: SendState) -> &'static str {
+    match state {
+        SendState::Sending => "Đang gửi…",
+        SendState::Sent => "Đã gửi ✓",
+        SendState::Failed => "Lỗi — bấm thử lại",
+    }
+}
+
 impl Canvas {
     /// A hover text over `rect`; an empty text adds nothing.
     pub fn tip(&mut self, rect: Rect, text: &str) {
@@ -171,12 +180,19 @@ impl Canvas {
 
     /// The result of a send whose button is gone, as one line: sending, sent (green) or failed (red).
     pub fn sent_line(&mut self, rect: Rect, state: SendState, align: Align) {
-        let (text, color) = match state {
-            SendState::Sending => ("Đang gửi…", ThemeColor::TextSecondary),
-            SendState::Sent => ("Đã gửi ✓", ThemeColor::Green),
-            SendState::Failed => ("Lỗi — bấm thử lại", ThemeColor::Red),
+        let color = match state {
+            SendState::Sending => ThemeColor::TextSecondary,
+            SendState::Sent => ThemeColor::Green,
+            SendState::Failed => ThemeColor::Red,
         };
-        self.text(rect, text, theme::META_FONT, theme::solid(color), 1, align);
+        self.text(
+            rect,
+            send_label(state),
+            theme::META_FONT,
+            theme::solid(color),
+            1,
+            align,
+        );
     }
 
     /// `fill` over a whole row of `w` x `h`, in the shape of its place in the group: 13 pt corners on the outer edge of the
@@ -192,8 +208,28 @@ impl Canvas {
         self.rrect(Rect::new(0.0, y, w, height), radius, Some(fill), None);
     }
 
-    /// A button capsule: filled, or bare while a send state shows.
-    fn capsule(&mut self, rect: Rect, fill: Option<Color>) {
+    /// A 0.5 pt separator line from `x`, `w` wide: a filled rect, because a stroke is always 1 pt.
+    pub fn hairline(&mut self, x: f64, y: f64, w: f64) {
+        self.rrect(
+            Rect::new(x, y, w, 0.5),
+            0.0,
+            Some(theme::solid(ThemeColor::Separator)),
+            None,
+        );
+    }
+
+    /// `hairline` standing up: `h` tall, from `y`.
+    pub fn vhairline(&mut self, x: f64, y: f64, h: f64) {
+        self.rrect(
+            Rect::new(x, y, 0.5, h),
+            0.0,
+            Some(theme::solid(ThemeColor::Separator)),
+            None,
+        );
+    }
+
+    /// A capsule: `rect` rounded to half its height, filled or bare.
+    pub fn capsule(&mut self, rect: Rect, fill: Option<Color>) {
         self.rrect(rect, rect.h / 2.0, fill, None);
     }
 
@@ -224,12 +260,20 @@ impl Canvas {
         let (label, fill, text) = match state {
             None => (label, Some(fill), text),
             Some(SendState::Sending) => (
-                "Đang gửi…",
+                send_label(SendState::Sending),
                 Some(theme::tint(ThemeColor::Fill, 0.5)),
                 theme::tint(ThemeColor::Text, 0.5),
             ),
-            Some(SendState::Sent) => ("Đã gửi ✓", None, theme::solid(ThemeColor::Green)),
-            Some(SendState::Failed) => ("Lỗi — bấm thử lại", None, theme::solid(ThemeColor::Red)),
+            Some(SendState::Sent) => (
+                send_label(SendState::Sent),
+                None,
+                theme::solid(ThemeColor::Green),
+            ),
+            Some(SendState::Failed) => (
+                send_label(SendState::Failed),
+                None,
+                theme::solid(ThemeColor::Red),
+            ),
         };
         self.capsule(rect, fill);
         let mut face = rect;
@@ -319,15 +363,10 @@ impl Canvas {
         state != Some(SendState::Sending)
     }
 
-    /// A round field in `rect` (a `FIELD_H` capsule on `Fill`, ringed in `Accent` as it holds the focus while it is open) and
-    /// the native text field inside it, leaving room at the right for the round send button when `send` is set.
+    /// A round field in `rect` (a `FIELD_H` capsule on `Fill`) and the native text field inside it, leaving room at the right
+    /// for the round send button when `send` is set. The `Accent` ring is always drawn: focus is not modelled in the views.
     pub fn field(&mut self, key: String, rect: Rect, placeholder: &str, text: String, send: bool) {
-        self.rrect(
-            rect,
-            rect.h / 2.0,
-            Some(theme::solid(ThemeColor::Fill)),
-            None,
-        );
+        self.capsule(rect, Some(theme::solid(ThemeColor::Fill)));
         self.rrect(
             Rect::new(rect.x + 0.5, rect.y + 0.5, rect.w - 1.0, rect.h - 1.0),
             rect.h / 2.0 - 0.5,
@@ -371,7 +410,7 @@ impl Canvas {
             Some(SendState::Sent) => (ThemeColor::Green, Some(("checkmark", Weight::Bold))),
             Some(SendState::Failed) => (ThemeColor::Red, Some(("exclamationmark", Weight::Bold))),
         };
-        self.rrect(rect, d / 2.0, Some(theme::solid(fill)), None);
+        self.capsule(rect, Some(theme::solid(fill)));
         match face {
             Some((name, weight)) => self.symbol(name, glyph, white, weight),
             None if self.spinner.is_none() => self.spinner = Some(glyph),
@@ -383,7 +422,7 @@ impl Canvas {
             ),
         }
         if state == Some(SendState::Failed) {
-            self.tip(rect, "Lỗi — bấm thử lại");
+            self.tip(rect, send_label(SendState::Failed));
         }
         (state != Some(SendState::Sending)).then_some(rect)
     }
@@ -457,24 +496,6 @@ pub fn scene(view: &View) -> Scene {
     build(view).scene
 }
 
-/// Whether each session is the first and / or the last row of its section.
-fn row_positions(snap: &Snapshot) -> HashMap<String, RowPos> {
-    let mut out = HashMap::new();
-    for (_, ids) in snap.sections() {
-        let n = ids.len();
-        for (i, id) in ids.into_iter().enumerate() {
-            out.insert(
-                id,
-                RowPos {
-                    first: i == 0,
-                    last: i + 1 == n,
-                },
-            );
-        }
-    }
-    out
-}
-
 fn expanded(ctx: &mut Ctx) -> Scene {
     let view = ctx.view;
     let l = layout::expanded_layout(view.snap, view.panel, view.measure);
@@ -494,8 +515,7 @@ fn expanded(ctx: &mut Ctx) -> Scene {
         alpha: 1.0,
     });
     let mut nodes = vec![panel];
-    let positions = row_positions(view.snap);
-    for item in &l.items {
+    for (i, item) in l.items.iter().enumerate() {
         if let Item::Section { y, .. } | Item::Empty { y } = item
             && l.content_h > l.size.h
             && !nodes.iter().any(|n| n.key.0 == SCROLL_KEY)
@@ -517,7 +537,14 @@ fn expanded(ctx: &mut Ctx) -> Scene {
             }
             Item::Card { id, y, layout } => {
                 if let Some(s) = view.snap.sessions.iter().find(|s| &s.id == id) {
-                    let pos = positions.get(id).copied().unwrap_or_default();
+                    // The cards of a section follow each other: a card is first (last) unless a card comes before (after) it.
+                    let is_card = |i: Option<usize>| {
+                        matches!(i.and_then(|i| l.items.get(i)), Some(Item::Card { .. }))
+                    };
+                    let pos = RowPos {
+                        first: !is_card(i.checked_sub(1)),
+                        last: !is_card(Some(i + 1)),
+                    };
                     nodes.push(card::node(ctx, s, *y, layout, pos));
                 }
             }

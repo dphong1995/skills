@@ -167,7 +167,13 @@ impl ApprovalLook {
 
 /// The look of the approval block for a pending state. The command is measured on the width the view draws it at: a
 /// command not shown whole is cut to `CMD_COLLAPSED_LINES` lines, a shown one is not cut.
-pub fn approval_look(pending: &PendingState, snap: &Snapshot, m: &dyn TextMeasure) -> ApprovalLook {
+/// `pitch` is `mono_line_pitch(m)`: the card layout measures it once for all cards.
+pub fn approval_look(
+    pending: &PendingState,
+    snap: &Snapshot,
+    m: &dyn TextMeasure,
+    pitch: f64,
+) -> ApprovalLook {
     let PendingState::One(p) = pending else {
         return ApprovalLook::Unclear;
     };
@@ -198,12 +204,16 @@ pub fn approval_look(pending: &PendingState, snap: &Snapshot, m: &dyn TextMeasur
         prefix.as_str()
     };
     let h = m.measure(text, &CMD_FONT, CMD_TEXT_W, limit).h;
-    // The lines are counted in the pitch the measure gives one line of this font: the box then grows by `CMD_LINE_H` per line.
-    let pitch = m.measure("x", &CMD_FONT, CMD_TEXT_W, 1).h.max(1.0);
     ApprovalLook::Command {
         lines: ((h / pitch).round() as usize).max(1),
         row,
     }
+}
+
+/// The pitch the measure gives one line of the command font: the lines of a command are counted in it, so the box grows by
+/// `CMD_LINE_H` per line.
+pub fn mono_line_pitch(m: &dyn TextMeasure) -> f64 {
+    m.measure("x", &CMD_FONT, CMD_TEXT_W, 1).h.max(1.0)
 }
 
 pub fn header_height() -> f64 {
@@ -331,6 +341,8 @@ pub struct CardLayout {
     pub height: f64,
     /// The title height (one line at least), for the head block.
     pub title_h: f64,
+    /// The height the title measures at `title_w`, before the one-line minimum.
+    pub title_text_h: f64,
     /// Where the title may wrap: the text column less the right column and the new-mark sparkle.
     pub title_w: f64,
     /// What `Block::Approval` shows, when the card has one.
@@ -350,12 +362,21 @@ pub fn card_layout(
     panel: &PanelState,
     m: &dyn TextMeasure,
 ) -> CardLayout {
+    card_layout_with(s, snap, panel, m, mono_line_pitch(m))
+}
+
+/// `card_layout` with the `mono_line_pitch` already measured.
+fn card_layout_with(
+    s: &Session,
+    snap: &Snapshot,
+    panel: &PanelState,
+    m: &dyn TextMeasure,
+    pitch: f64,
+) -> CardLayout {
     let new = snap.unseen.get(&s.id).is_some_and(|n| n.claude);
     let title_w = TEXT_W - RIGHT_COLUMN - if new { SPARKLE_W } else { 0.0 };
-    let title_h = m
-        .measure(s.title(), &TITLE_FONT, title_w.max(40.0), 2)
-        .h
-        .max(TITLE_LINE_H);
+    let title_text_h = m.measure(s.title(), &TITLE_FONT, title_w.max(40.0), 2).h;
+    let title_h = title_text_h.max(TITLE_LINE_H);
 
     let mut blocks = Vec::new();
     let mut approval = None;
@@ -375,7 +396,7 @@ pub fn card_layout(
         .pending
         .as_ref()
         .filter(|_| s.is_permission_prompt())
-        .map(|p| approval_look(p, snap, m))
+        .map(|p| approval_look(p, snap, m, pitch))
     {
         let deny = editing.is_some_and(|e| e.kind == EditKind::Deny)
             && matches!(
@@ -421,6 +442,7 @@ pub fn card_layout(
     CardLayout {
         height: y + CARD_PAD_Y,
         title_h,
+        title_text_h,
         title_w,
         approval,
         blocks,
@@ -467,6 +489,7 @@ pub struct ExpandedLayout {
 /// Every item of the expanded card with its position: header, per non-empty section its title and cards (touching),
 /// the empty note when there is no session, the `Vừa đóng` row.
 pub fn expanded_layout(snap: &Snapshot, panel: &PanelState, m: &dyn TextMeasure) -> ExpandedLayout {
+    let pitch = mono_line_pitch(m);
     let mut items = vec![Item::Header { y: PANEL_PAD }];
     let mut y = PANEL_PAD + header_height();
     if snap.sessions.is_empty() {
@@ -487,7 +510,7 @@ pub fn expanded_layout(snap: &Snapshot, panel: &PanelState, m: &dyn TextMeasure)
             let Some(s) = snap.sessions.iter().find(|s| s.id == id) else {
                 continue;
             };
-            let layout = card_layout(s, snap, panel, m);
+            let layout = card_layout_with(s, snap, panel, m, pitch);
             let h = layout.height;
             items.push(Item::Card { id, y, layout });
             y += h + CARD_GAP;

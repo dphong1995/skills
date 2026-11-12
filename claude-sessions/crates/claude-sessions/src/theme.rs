@@ -1,4 +1,4 @@
-//! Design tokens of the redesign, from `plans/2026-11-11-claude-sessions-rust/mockups/src/base.css`: colours (resolved per
+//! Design tokens of the redesign, from `plans/2026-11-12-claude-sessions-glass-redesign/design.md`: colours (resolved per
 //! appearance by `ThemeColor`), radii, spacing and font sizes. Dark and light share one layout.
 
 use claude_sessions_core::layout::PILL_HEIGHT;
@@ -85,6 +85,11 @@ pub const META_MONO_FONT: FontSpec = FontSpec {
     mono: true,
 };
 
+/// The fill of a status tag or label chip: its colour at 18%.
+pub fn tag_fill(token: ThemeColor) -> Color {
+    tint(token, 0.18)
+}
+
 /// Laid over the row of a session with a fresh Claude mark.
 pub fn card_fresh_fill() -> Color {
     tint(ThemeColor::Yellow, 0.05)
@@ -136,7 +141,7 @@ pub fn tone_token(tone: Option<claude_sessions_core::store::ItemTone>) -> ThemeC
         None | Some(Todo) => ThemeColor::TextSecondary,
         Some(Doing) | Some(Open) => ThemeColor::Blue,
         Some(Done) => ThemeColor::Green,
-        Some(Merged) => ThemeColor::Purple,
+        Some(Merged) => ThemeColor::Indigo,
         Some(Closed) => ThemeColor::Red,
     }
 }

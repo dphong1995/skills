@@ -10,6 +10,7 @@ use claude_sessions_core::panel_state::PanelState;
 use claude_sessions_core::pr_monitor::PRMonitor;
 use claude_sessions_core::pull_requests::{PRRef, RabbitThreads};
 use claude_sessions_core::quota::Quota;
+use claude_sessions_core::scene::{Appearance, ThemeColor};
 use claude_sessions_core::store::{
     ItemTone, LinkItem, LinkKind, LinkSection, SendKey, SendKind, SendState, Store,
 };
@@ -674,15 +675,8 @@ fn luminance(c: [f64; 3]) -> f64 {
 
 #[test]
 fn surface_tokens_are_neutral() {
-    use claude_sessions_core::scene::{Appearance, ThemeColor};
     for appearance in [Appearance::Dark, Appearance::Light] {
-        for token in [
-            ThemeColor::Glass,
-            ThemeColor::Row,
-            ThemeColor::Group,
-            ThemeColor::Button,
-            ThemeColor::Fill,
-        ] {
+        for token in [ThemeColor::Glass, ThemeColor::Group, ThemeColor::Fill] {
             let [r, g, b, _] = token.rgba(appearance);
             let spread = r.max(g).max(b) - r.min(g).min(b);
             assert!(spread <= 0.04, "{token:?} {appearance:?} spread {spread}");
@@ -693,10 +687,9 @@ fn surface_tokens_are_neutral() {
 /// The prototype's secondary text (`rgba(60,60,67,.66)` on the light glass) reaches 4.0 over a white backdrop, the worst case.
 #[test]
 fn secondary_text_contrast_meets_4_0() {
-    use claude_sessions_core::scene::{Appearance, ThemeColor};
     for (appearance, backdrop) in [(Appearance::Dark, [0.0; 3]), (Appearance::Light, [1.0; 3])] {
         let panel = composite(ThemeColor::Glass.rgba(appearance), backdrop);
-        let card = composite(ThemeColor::Row.rgba(appearance), panel);
+        let card = composite(ThemeColor::Group.rgba(appearance), panel);
         let text = composite(ThemeColor::TextSecondary.rgba(appearance), card);
         let (a, b) = (luminance(text), luminance(card));
         let ratio = (a.max(b) + 0.05) / (a.min(b) + 0.05);
@@ -704,15 +697,26 @@ fn secondary_text_contrast_meets_4_0() {
     }
 }
 
+fn assert_rgba(token: ThemeColor, appearance: Appearance, want: [f64; 4]) {
+    let got = token.rgba(appearance);
+    for i in 0..4 {
+        assert!(
+            (got[i] - want[i]).abs() <= 0.002,
+            "{token:?} {appearance:?} {got:?} vs {want:?}"
+        );
+    }
+}
+
+/// Every token of the glass palette against the values of design.md, dark then light.
 #[test]
-fn new_tokens_match_prototype() {
-    use claude_sessions_core::scene::{Appearance, ThemeColor};
-    let hex = |r: f64, g: f64, b: f64, a: f64| [r / 255.0, g / 255.0, b / 255.0, a];
+fn palette_matches_prototype() {
+    let rgb = |r: f64, g: f64, b: f64, a: f64| [r / 255.0, g / 255.0, b / 255.0, a];
+    let solid = |r: f64, g: f64, b: f64| rgb(r, g, b, 1.0);
     let cases = [
         (
             ThemeColor::Glass,
-            hex(34.0, 34.0, 38.0, 0.60),
-            hex(250.0, 250.0, 252.0, 0.68),
+            rgb(34.0, 34.0, 38.0, 0.60),
+            rgb(250.0, 250.0, 252.0, 0.68),
         ),
         (
             ThemeColor::GlassEdge,
@@ -740,53 +744,19 @@ fn new_tokens_match_prototype() {
             [0.0, 0.0, 0.0, 0.06],
         ),
         (
-            ThemeColor::FillHover,
-            [1.0, 1.0, 1.0, 0.16],
-            [0.0, 0.0, 0.0, 0.10],
-        ),
-        (
-            ThemeColor::Accent,
-            hex(10.0, 132.0, 255.0, 1.0),
-            hex(0.0, 122.0, 255.0, 1.0),
-        ),
-        (
-            ThemeColor::Indigo,
-            hex(94.0, 92.0, 230.0, 1.0),
-            hex(88.0, 86.0, 214.0, 1.0),
-        ),
-    ];
-    for (token, dark, light) in cases {
-        for (appearance, want) in [(Appearance::Dark, dark), (Appearance::Light, light)] {
-            let got = token.rgba(appearance);
-            for i in 0..4 {
-                assert!(
-                    (got[i] - want[i]).abs() <= 0.002,
-                    "{token:?} {appearance:?} {got:?} vs {want:?}"
-                );
-            }
-        }
-    }
-}
-
-#[test]
-fn palette_matches_prototype() {
-    use claude_sessions_core::scene::{Appearance, ThemeColor};
-    let hex = |r: f64, g: f64, b: f64| [r / 255.0, g / 255.0, b / 255.0, 1.0];
-    let cases = [
-        (
             ThemeColor::Text,
             [1.0, 1.0, 1.0, 0.94],
             [0.0, 0.0, 0.0, 0.86],
         ),
         (
             ThemeColor::TextSecondary,
-            [235.0 / 255.0, 235.0 / 255.0, 245.0 / 255.0, 0.62],
-            [60.0 / 255.0, 60.0 / 255.0, 67.0 / 255.0, 0.66],
+            rgb(235.0, 235.0, 245.0, 0.62),
+            rgb(60.0, 60.0, 67.0, 0.66),
         ),
         (
             ThemeColor::TextFaint,
-            [235.0 / 255.0, 235.0 / 255.0, 245.0 / 255.0, 0.38],
-            [60.0 / 255.0, 60.0 / 255.0, 67.0 / 255.0, 0.42],
+            rgb(235.0, 235.0, 245.0, 0.38),
+            rgb(60.0, 60.0, 67.0, 0.42),
         ),
         (
             ThemeColor::Code,
@@ -795,44 +765,42 @@ fn palette_matches_prototype() {
         ),
         (
             ThemeColor::Red,
-            hex(255.0, 69.0, 58.0),
-            hex(255.0, 59.0, 48.0),
+            solid(255.0, 69.0, 58.0),
+            solid(255.0, 59.0, 48.0),
         ),
         (
             ThemeColor::Orange,
-            hex(255.0, 159.0, 10.0),
-            hex(255.0, 149.0, 0.0),
+            solid(255.0, 159.0, 10.0),
+            solid(255.0, 149.0, 0.0),
         ),
         (
             ThemeColor::Blue,
-            hex(10.0, 132.0, 255.0),
-            hex(0.0, 122.0, 255.0),
+            solid(10.0, 132.0, 255.0),
+            solid(0.0, 122.0, 255.0),
+        ),
+        (
+            ThemeColor::Accent,
+            solid(10.0, 132.0, 255.0),
+            solid(0.0, 122.0, 255.0),
         ),
         (
             ThemeColor::Green,
-            hex(48.0, 209.0, 88.0),
-            hex(40.0, 167.0, 69.0),
+            solid(48.0, 209.0, 88.0),
+            solid(40.0, 167.0, 69.0),
         ),
         (
             ThemeColor::Yellow,
-            hex(255.0, 214.0, 10.0),
-            hex(230.0, 167.0, 0.0),
+            solid(255.0, 214.0, 10.0),
+            solid(230.0, 167.0, 0.0),
         ),
         (
             ThemeColor::Indigo,
-            hex(94.0, 92.0, 230.0),
-            hex(88.0, 86.0, 214.0),
+            solid(94.0, 92.0, 230.0),
+            solid(88.0, 86.0, 214.0),
         ),
     ];
     for (token, dark, light) in cases {
-        for (appearance, want) in [(Appearance::Dark, dark), (Appearance::Light, light)] {
-            let got = token.rgba(appearance);
-            for i in 0..4 {
-                assert!(
-                    (got[i] - want[i]).abs() <= 0.002,
-                    "{token:?} {appearance:?} {got:?} vs {want:?}"
-                );
-            }
-        }
+        assert_rgba(token, Appearance::Dark, dark);
+        assert_rgba(token, Appearance::Light, light);
     }
 }

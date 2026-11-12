@@ -2,7 +2,7 @@
 //! reviewer at the right end. Tier 2 (open PRs): the `Nhờ Claude` / `Nhắc duyệt` capsules and the CodeRabbit label at the right
 //! end. Positions follow `layout::pr_row_height`.
 
-use super::{Canvas, Ctx};
+use super::{Canvas, Ctx, send_label};
 use crate::hits::Target;
 use crate::theme;
 use claude_sessions_core::code_rabbit::{self, Rabbit};
@@ -85,8 +85,14 @@ pub fn draw(ctx: &mut Ctx, c: &mut Canvas, s: &Session, index: usize, block: Rec
         snap.send_state(&k, view.now)
     };
 
-    // Tier 2: the buttons from the left, the CodeRabbit label at the right end.
+    // The CodeRabbit label is drawn in tier 2, so it leaves the flow of tier 1.
     let mut parts = text::pr_parts(pr, view.now, snap.pr_stale_since);
+    let rabbit = parts
+        .iter()
+        .position(|p| p.kind == PartKind::Rabbit)
+        .map(|i| parts.remove(i));
+
+    // Tier 2: the buttons from the left, the CodeRabbit label at the right end.
     if pr.is_open() {
         let tier2 = Rect::new(CARD_INSET, tier1.y + tier1.h + BLOCK_GAP, TEXT_W, BUTTON_H);
         let mut left = tier2.x;
@@ -124,36 +130,27 @@ pub fn draw(ctx: &mut Ctx, c: &mut Canvas, s: &Session, index: usize, block: Rec
         } else if let Some(state) = nudge {
             left = state_line(ctx, c, state, left, tier2);
         }
-        if let Some(i) = parts.iter().position(|p| p.kind == PartKind::Rabbit) {
-            let p = parts.remove(i);
-            if let Some(r) = &pr.rabbit {
-                let right = tier2.x + tier2.w;
-                let w = (ctx.text_w(&p.text, &theme::STATE_FONT) + 28.0).min(right - left);
-                let chip = Rect::new(right - w, tier2.y + (tier2.h - 20.0) / 2.0, w, 20.0);
-                let color = rabbit_color(r);
-                c.rrect(
-                    chip,
-                    theme::CHIP_RADIUS,
-                    Some(theme::tint(color, 0.18)),
-                    None,
-                );
-                c.symbol(
-                    "hare",
-                    Rect::new(chip.x + 6.0, chip.y + 4.0, 12.0, 12.0),
-                    theme::solid(color),
-                    Weight::Regular,
-                );
-                c.label(
-                    Rect::new(chip.x + 20.0, chip.y, chip.w - 24.0, 20.0),
-                    &p.text,
-                    theme::STATE_FONT,
-                    theme::solid(color),
-                    Align::Left,
-                );
-            }
+        if let (Some(p), Some(r)) = (&rabbit, &pr.rabbit) {
+            let right = tier2.x + tier2.w;
+            let w = (ctx.text_w(&p.text, &theme::STATE_FONT) + 28.0).min(right - left);
+            let chip = Rect::new(right - w, tier2.y + (tier2.h - 20.0) / 2.0, w, 20.0);
+            let color = rabbit_color(r);
+            c.rrect(chip, theme::CHIP_RADIUS, Some(theme::tag_fill(color)), None);
+            c.symbol(
+                "hare",
+                Rect::new(chip.x + 6.0, chip.y + 4.0, 12.0, 12.0),
+                theme::solid(color),
+                Weight::Regular,
+            );
+            c.label(
+                Rect::new(chip.x + 20.0, chip.y, chip.w - 24.0, 20.0),
+                &p.text,
+                theme::STATE_FONT,
+                theme::solid(color),
+                Align::Left,
+            );
         }
     }
-    parts.retain(|p| p.kind != PartKind::Rabbit);
 
     // Tier 1: the flow on the left; what does not fit goes by drop rank, lowest first. The reviewer sits at the right end.
     let mut x = tier1.x;
@@ -201,7 +198,7 @@ pub fn draw(ctx: &mut Ctx, c: &mut Canvas, s: &Session, index: usize, block: Rec
         if let PartKind::State(tone) = p.kind {
             let color = theme::tone_token(Some(tone));
             let chip = Rect::new(at, tier1.y, w, tier1.h);
-            c.rrect(chip, 5.0, Some(theme::tint(color, 0.18)), None);
+            c.rrect(chip, 5.0, Some(theme::tag_fill(color)), None);
             c.label(
                 chip,
                 &p.text,
@@ -277,12 +274,7 @@ fn button(
 
 /// The result of a send whose button is gone (the nudge moved CodeRabbit on) as one line, from `left`.
 fn state_line(ctx: &Ctx, c: &mut Canvas, state: SendState, left: f64, tier: Rect) -> f64 {
-    let text = match state {
-        SendState::Sending => "Đang gửi…",
-        SendState::Sent => "Đã gửi ✓",
-        SendState::Failed => "Lỗi — bấm thử lại",
-    };
-    let w = ctx.text_w(text, &theme::META_FONT) + 4.0;
+    let w = ctx.text_w(send_label(state), &theme::META_FONT) + 4.0;
     c.sent_line(
         Rect::new(left, tier.y + (tier.h - 16.0) / 2.0, w, 16.0),
         state,

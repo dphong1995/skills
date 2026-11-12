@@ -1,12 +1,12 @@
 //! The header of the expanded card: the quota rings with the reset or forecast time, a hairline, then the count groups, all at the
 //! right end so a notch never covers them.
 
-use super::pill::{draw_groups, quota_token, ring_sweep};
+use super::pill::{draw_groups, quota_token, ring};
 use super::{Canvas, Ctx};
 use crate::theme;
 use claude_sessions_core::layout::{CARD_W, HEADER_HEIGHT, PANEL_PAD, groups_width};
 use claude_sessions_core::quota::Quota;
-use claude_sessions_core::scene::{Align, Point, Rect, ThemeColor, Weight};
+use claude_sessions_core::scene::{Align, Node, Point, Rect, ThemeColor, Weight};
 
 const RING: f64 = 13.0;
 const GAP: f64 = 5.0;
@@ -26,23 +26,7 @@ fn ring_token(p: i64) -> ThemeColor {
 /// Draws one ring, then its label, percent and (for the five-hour quota) the reset or forecast; returns where it ends.
 fn quota_part(ctx: &Ctx, c: &mut Canvas, x: f64, cy: f64, label: &str, p: i64, note: Note) -> f64 {
     let mut x = x;
-    let center = Point::new(x + RING / 2.0, cy);
-    c.arc(
-        center,
-        5.25,
-        2.0,
-        0.0,
-        360.0,
-        theme::tint(ThemeColor::Text, 0.15),
-    );
-    c.arc(
-        center,
-        5.25,
-        2.0,
-        0.0,
-        ring_sweep(p),
-        theme::solid(ring_token(p)),
-    );
+    ring(c, Point::new(x + RING / 2.0, cy), 5.25, p, ring_token(p));
     x += RING + GAP;
     let text = |c: &mut Canvas, x: f64, t: &str, font, color| {
         let w = ctx.text_w(t, &font);
@@ -104,19 +88,14 @@ fn draw_quota(ctx: &Ctx, c: &mut Canvas, q: &Quota, cy: f64, x0: f64, parts: Par
     let mut x = quota_part(ctx, c, x0, cy, "5h", q.five_hour, note);
     if parts.weekly {
         x += GAP + DIVIDER_MARGIN;
-        c.rrect(
-            Rect::new(x, cy - 5.0, 0.5, 10.0),
-            0.0,
-            Some(theme::solid(ThemeColor::Separator)),
-            None,
-        );
+        c.vhairline(x, cy - 5.0, 10.0);
         x += 0.5 + DIVIDER_MARGIN + GAP;
         x = quota_part(ctx, c, x, cy, "Tuần", q.weekly, Note::None);
     }
     x
 }
 
-pub fn node(ctx: &mut Ctx, y: f64) -> claude_sessions_core::scene::Node {
+pub fn node(ctx: &mut Ctx, y: f64) -> Node {
     let snap = ctx.view.snap;
     let cy = HEADER_HEIGHT / 2.0;
     let mut c = Canvas::default();
@@ -142,12 +121,7 @@ pub fn node(ctx: &mut Ctx, y: f64) -> claude_sessions_core::scene::Node {
                 weekly: false,
             });
         if let Some(x) = line_x {
-            c.rrect(
-                Rect::new(x, cy - 5.0, 0.5, 10.0),
-                0.0,
-                Some(theme::solid(ThemeColor::Separator)),
-                None,
-            );
+            c.vhairline(x, cy - 5.0, 10.0);
         }
         draw_quota(ctx, &mut c, q, cy, right - width(parts), parts);
     }

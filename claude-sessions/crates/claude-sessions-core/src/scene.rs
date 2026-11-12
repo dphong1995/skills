@@ -14,16 +14,11 @@ pub enum Appearance {
 /// Colour tokens; each resolves to an RGBA value per appearance.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ThemeColor {
-    Row,
-    RowAttention,
     Code,
-    Button,
     Text,
     TextSecondary,
     /// Timestamps, section titles and other third-level text.
     TextFaint,
-    /// Label on a filled accent (the green `Cho phép` button).
-    OnAccent,
     /// White in both appearances (the count inside the red badge).
     White,
     Black,
@@ -32,7 +27,6 @@ pub enum ThemeColor {
     Green,
     Blue,
     Yellow,
-    Purple,
     /// Tint laid over the vibrancy behind a panel or pill.
     Glass,
     /// Inner edge of the glass.
@@ -43,7 +37,6 @@ pub enum ThemeColor {
     RowHover,
     /// Resting fill of a small control.
     Fill,
-    FillHover,
     Accent,
     Indigo,
 }
@@ -53,10 +46,7 @@ impl ThemeColor {
         let dark = appearance == Appearance::Dark;
         let pick = |d: [f64; 4], l: [f64; 4]| if dark { d } else { l };
         match self {
-            Self::Row => pick([1.0, 1.0, 1.0, 0.07], [1.0, 1.0, 1.0, 0.66]),
-            Self::RowAttention => pick([1.0, 0.75, 0.2, 0.10], [1.0, 0.6, 0.0, 0.12]),
             Self::Code => pick([0.0, 0.0, 0.0, 0.26], [0.0, 0.0, 0.0, 0.045]),
-            Self::Button => pick([1.0, 1.0, 1.0, 0.10], [0.0, 0.0, 0.0, 0.06]),
             Self::Text => pick([1.0, 1.0, 1.0, 0.94], [0.0, 0.0, 0.0, 0.86]),
             Self::TextSecondary => pick(
                 [235.0 / 255.0, 235.0 / 255.0, 245.0 / 255.0, 0.62],
@@ -66,7 +56,6 @@ impl ThemeColor {
                 [235.0 / 255.0, 235.0 / 255.0, 245.0 / 255.0, 0.38],
                 [60.0 / 255.0, 60.0 / 255.0, 67.0 / 255.0, 0.42],
             ),
-            Self::OnAccent => pick([0.03, 0.15, 0.06, 1.0], [1.0, 1.0, 1.0, 1.0]),
             Self::White => [1.0, 1.0, 1.0, 1.0],
             Self::Black => [0.0, 0.0, 0.0, 1.0],
             Self::Red => pick(
@@ -89,11 +78,6 @@ impl ThemeColor {
                 [1.0, 214.0 / 255.0, 10.0 / 255.0, 1.0],
                 [230.0 / 255.0, 167.0 / 255.0, 0.0, 1.0],
             ),
-            // Takes the indigo of the system palette until the rows that use it move to `Indigo`.
-            Self::Purple => pick(
-                [94.0 / 255.0, 92.0 / 255.0, 230.0 / 255.0, 1.0],
-                [88.0 / 255.0, 86.0 / 255.0, 214.0 / 255.0, 1.0],
-            ),
             Self::Glass => pick(
                 [34.0 / 255.0, 34.0 / 255.0, 38.0 / 255.0, 0.60],
                 [250.0 / 255.0, 250.0 / 255.0, 252.0 / 255.0, 0.68],
@@ -103,11 +87,7 @@ impl ThemeColor {
             Self::Separator => pick([1.0, 1.0, 1.0, 0.08], [0.0, 0.0, 0.0, 0.08]),
             Self::RowHover => pick([1.0, 1.0, 1.0, 0.04], [0.0, 0.0, 0.0, 0.025]),
             Self::Fill => pick([1.0, 1.0, 1.0, 0.10], [0.0, 0.0, 0.0, 0.06]),
-            Self::FillHover => pick([1.0, 1.0, 1.0, 0.16], [0.0, 0.0, 0.0, 0.10]),
-            Self::Accent => pick(
-                [10.0 / 255.0, 132.0 / 255.0, 1.0, 1.0],
-                [0.0, 122.0 / 255.0, 1.0, 1.0],
-            ),
+            Self::Accent => Self::Blue.rgba(appearance),
             Self::Indigo => pick(
                 [94.0 / 255.0, 92.0 / 255.0, 230.0 / 255.0, 1.0],
                 [88.0 / 255.0, 86.0 / 255.0, 214.0 / 255.0, 1.0],

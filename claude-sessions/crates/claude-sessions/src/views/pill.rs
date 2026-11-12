@@ -25,6 +25,26 @@ pub fn ring_sweep(percent: i64) -> f64 {
     360.0 * percent.clamp(0, 100) as f64 / 100.0
 }
 
+/// A quota ring of `radius` around `center`: the faint track, then the arc swept by `percent` in `token`.
+pub fn ring(c: &mut Canvas, center: Point, radius: f64, percent: i64, token: ThemeColor) {
+    c.arc(
+        center,
+        radius,
+        2.0,
+        0.0,
+        360.0,
+        theme::tint(ThemeColor::Text, 0.15),
+    );
+    c.arc(
+        center,
+        radius,
+        2.0,
+        0.0,
+        ring_sweep(percent),
+        theme::solid(token),
+    );
+}
+
 /// Draws the count groups left to right from `x`, centred on `cy`; returns where they end.
 pub fn draw_groups(c: &mut Canvas, snap: &Snapshot, x: f64, cy: f64) -> f64 {
     let mut x = x;
@@ -133,16 +153,7 @@ pub fn node(ctx: &mut Ctx) -> Node {
             x += PILL_GAP;
         }
         let token = quota_token(p);
-        let ring = Point { x: x + 9.0, y: cy };
-        c.arc(
-            ring,
-            7.0,
-            2.0,
-            0.0,
-            360.0,
-            theme::tint(ThemeColor::Text, 0.15),
-        );
-        c.arc(ring, 7.0, 2.0, 0.0, ring_sweep(p), theme::solid(token));
+        ring(&mut c, Point { x: x + 9.0, y: cy }, 7.0, p, token);
         c.text(
             Rect::new(x + 22.0, cy - 8.0, PILL_QUOTA_W - 22.0, 16.0),
             &format!("{p}%"),

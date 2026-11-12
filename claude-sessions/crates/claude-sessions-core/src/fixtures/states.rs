@@ -229,7 +229,8 @@ pub fn state_10_last_reply_hover(dir: &Path, now: SystemTime) -> State {
     f.waiting("c", "input needed", 75.0, "ocr-service-a1", OCR);
     f.session("d", "busy", 3700.0, "talo-v2-9c", TALOS);
     f.refresh(0.0);
-    f.hover();
+    // The finished row under the mouse shows its `Trả lời` button.
+    f.hover_row("a");
     f.done()
 }
 
@@ -585,16 +586,24 @@ fn actions(dir: &Path, now: SystemTime, deny: bool) -> State {
     f.waiting("b", "permission prompt", 5.0, BACK_NAME, BACKEND);
     f.waiting("c", "permission prompt", 9.0, "ocr-service-a1", OCR);
     f.waiting("d", "permission prompt", 12.0, "talo-v2-9c", TALOS);
-    f.session("a", "idle", 30.0, FRONT_NAME, FRONTEND);
-    f.session("e", "idle", 40.0, "api-5e", "/Users/phong/api");
-    f.refresh(0.0);
-    f.hover();
     if deny {
+        f.session("a", "idle", 30.0, FRONT_NAME, FRONTEND);
+        f.session("e", "idle", 40.0, "api-5e", "/Users/phong/api");
+    } else {
+        // The three approvals leave no room under them for the finished rows: a running row takes their place, and the mouse
+        // over it shows its `Dừng` button.
+        f.session("f", "busy", 60.0, "api-5e", "/Users/phong/api");
+    }
+    f.refresh(0.0);
+    if deny {
+        f.hover();
         f.panel.editing = Some(Editing {
             id: "b".into(),
             kind: EditKind::Deny,
             tool_id: Some("t1".into()),
         });
+    } else {
+        f.hover_row("f");
     }
     f.done()
 }

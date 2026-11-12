@@ -310,6 +310,27 @@ fn a_generic_state_label_is_not_reserved_room_in_the_title() {
 }
 
 #[test]
+fn the_title_is_one_line_high_at_least() {
+    // A measure that finds no height at all still leaves the title room for one line.
+    struct Flat;
+    impl TextMeasure for Flat {
+        fn measure(&self, _: &str, _: &FontSpec, _: f64, _: u32) -> Size {
+            Size::new(0.0, 0.0)
+        }
+    }
+    let s = Session::new("a", "a", "/w", "idle");
+    let snap = snapshot(vec![s.clone()]);
+    let flat = card_layout(&s, &snap, &panel(), &Flat);
+    assert_eq!(
+        (flat.title_text_h, flat.title_h),
+        (0.0, layout::TITLE_LINE_H)
+    );
+    let l = card_layout(&s, &snap, &panel(), &FakeMeasure);
+    assert!(l.title_h >= layout::TITLE_LINE_H);
+    assert_eq!(l.title_h, l.title_text_h.max(layout::TITLE_LINE_H));
+}
+
+#[test]
 fn keyboard_mode_adds_the_hint_line_to_the_panel() {
     let snap = snapshot(vec![approval("a", "ls")]);
     let mut keys = panel();

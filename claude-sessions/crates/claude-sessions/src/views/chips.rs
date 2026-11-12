@@ -115,7 +115,7 @@ pub fn draw_chips(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
         c.hit(chip, Target::Menu(s.id.clone()));
         x += w + 6.0;
     }
-    // The menu count; purple while a PR it does not list yet is new.
+    // The menu count; indigo while a PR it does not list yet is new.
     let open = view.panel.open_menus.contains(&s.id);
     let hidden_mark = view
         .snap
@@ -218,7 +218,7 @@ pub fn draw_link_list(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
             if let Some(status) = &item.status {
                 let color = theme::tone_token(item.tone);
                 let tag = Rect::new(row.x + row.w - status_w - 4.0, y + 3.0, status_w, 16.0);
-                c.rrect(tag, 4.0, Some(theme::tint(color, 0.18)), None);
+                c.rrect(tag, 4.0, Some(theme::tag_fill(color)), None);
                 c.label(
                     tag,
                     status,
@@ -240,31 +240,22 @@ pub fn draw_link_list(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
     }
     if s.menu_needs_jira {
         let row = Rect::new(CARD_INSET, y, TEXT_W, LINK_ROW_H);
-        c.rrect(
-            Rect::new(
-                row.x,
-                y + 2.0,
-                ctx.button_w("Kết nối Jira…"),
-                LINK_ROW_H - 4.0,
-            ),
-            (LINK_ROW_H - 4.0) / 2.0,
-            Some(theme::solid(ThemeColor::Fill)),
-            None,
+        let button = Rect::new(
+            row.x,
+            y + 2.0,
+            ctx.button_w("Kết nối Jira…"),
+            LINK_ROW_H - 4.0,
         );
+        c.capsule(button, Some(theme::solid(ThemeColor::Fill)));
         c.label(
-            Rect::new(
-                row.x,
-                y + 2.0,
-                ctx.button_w("Kết nối Jira…"),
-                LINK_ROW_H - 4.0,
-            ),
+            button,
             "Kết nối Jira…",
             theme::BUTTON_FONT,
             theme::solid(ThemeColor::Text),
             Align::Center,
         );
         c.hit(
-            Rect::new(row.x, y, ctx.button_w("Kết nối Jira…"), LINK_ROW_H),
+            Rect::new(row.x, y, button.w, LINK_ROW_H),
             Target::Connect(Service::Jira),
         );
     }

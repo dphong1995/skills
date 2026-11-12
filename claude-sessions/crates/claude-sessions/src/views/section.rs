@@ -26,14 +26,13 @@ pub fn title(section: Section) -> &'static str {
 const LABEL_X: f64 = 8.0;
 const LABEL_GAP: f64 = 6.0;
 
-pub fn node(ctx: &mut Ctx, section: Section, count: usize, y: f64) -> Node {
-    let mut c = Canvas::default();
-    let label = title(section);
+/// A group title from `x`: the label, then its count in the faint colour. It sits low in its row of height `row_h`, 4 pt above
+/// what follows.
+pub fn draw_title(ctx: &Ctx, c: &mut Canvas, x: f64, row_h: f64, label: &str, count: usize) {
     let w = ctx.text_w(label, &theme::SECTION_FONT);
-    // The label sits low in its row, 4 pt above the cards.
-    let top = SECTION_TITLE_H - 18.0;
+    let top = row_h - 18.0;
     c.text(
-        Rect::new(LABEL_X, top, w + 2.0, 14.0),
+        Rect::new(x, top, w + 2.0, 14.0),
         label,
         theme::SECTION_FONT,
         theme::solid(ThemeColor::TextSecondary),
@@ -41,13 +40,18 @@ pub fn node(ctx: &mut Ctx, section: Section, count: usize, y: f64) -> Node {
         Align::Left,
     );
     c.text(
-        Rect::new(LABEL_X + w + LABEL_GAP, top, 40.0, 14.0),
+        Rect::new(x + w + LABEL_GAP, top, 40.0, 14.0),
         &count.to_string(),
         theme::SECTION_FONT,
         theme::solid(ThemeColor::TextFaint),
         1,
         Align::Left,
     );
+}
+
+pub fn node(ctx: &mut Ctx, section: Section, count: usize, y: f64) -> Node {
+    let mut c = Canvas::default();
+    draw_title(ctx, &mut c, LABEL_X, SECTION_TITLE_H, title(section), count);
     ctx.node(
         key(section),
         Rect::new(PANEL_PAD, y, CARD_W, SECTION_TITLE_H),
