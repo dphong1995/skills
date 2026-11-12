@@ -11,6 +11,7 @@ use std::process::Command;
 use claude_sessions_core::kv::KeyValueStore;
 use claude_sessions_macos::defaults::UserDefaultsStore;
 use claude_sessions_macos::ui::read_png_pixel;
+use objc2_quartz_core::CAMediaTiming;
 use serde_json::{Map, Value, json};
 
 const CLOSED_SESSIONS: &[u8] =
@@ -1338,6 +1339,466 @@ fn cmux_cli_comes_from_the_bundle() -> Result<(), String> {
     }
 }
 
+fn glass_node(
+    key: &str,
+    frame: claude_sessions_core::scene::Rect,
+    material: Option<claude_sessions_core::scene::Material>,
+) -> claude_sessions_core::scene::Node {
+    let mut node = shadow_node(frame, false);
+    node.key = key.into();
+    node.material = material;
+    node
+}
+
+fn glass(corner: f64, alpha: f64) -> Option<claude_sessions_core::scene::Material> {
+    Some(claude_sessions_core::scene::Material::Glass { corner, alpha })
+}
+
+/// The effect views among the scene view's direct subviews.
+fn glass_views(
+    view: &claude_sessions_macos::ui::SceneView,
+) -> Vec<objc2::rc::Retained<objc2_app_kit::NSVisualEffectView>> {
+    view.subviews()
+        .iter()
+        .filter_map(|v| v.downcast::<objc2_app_kit::NSVisualEffectView>().ok())
+        .collect()
+}
+
+/// The direct subviews that are not effect views (the node views).
+fn node_views(
+    view: &claude_sessions_macos::ui::SceneView,
+) -> Vec<objc2::rc::Retained<objc2_app_kit::NSView>> {
+    view.subviews()
+        .iter()
+        .filter(|v| {
+            v.downcast_ref::<objc2_app_kit::NSVisualEffectView>()
+                .is_none()
+        })
+        .collect()
+}
+
+fn glass_view_for_material_node() -> Result<(), String> {
+    use claude_sessions_core::scene::Rect;
+    use claude_sessions_macos::ui::SceneView;
+    use objc2_app_kit::{NSVisualEffectBlendingMode, NSVisualEffectMaterial, NSVisualEffectState};
+    use objc2_foundation::{MainThreadMarker, NSSize};
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(200.0, 100.0));
+    let frame = Rect::new(10.0, 10.0, 100.0, 40.0);
+    view.set_scene(&one_node_scene(glass_node(
+        "panel",
+        frame,
+        glass(20.0, 1.0),
+    )));
+    let glasses = glass_views(&view);
+    let [g] = glasses.as_slice() else {
+        return Err(format!("{} effect views", glasses.len()));
+    };
+    if g.material() != NSVisualEffectMaterial::Popover {
+        return Err(format!("material {:?}", g.material()));
+    }
+    if g.blendingMode() != NSVisualEffectBlendingMode::BehindWindow {
+        return Err(format!("blending {:?}", g.blendingMode()));
+    }
+    if g.state() != NSVisualEffectState::Active {
+        return Err(format!("state {:?}", g.state()));
+    }
+    let layer = g.layer().ok_or("no glass layer")?;
+    if layer.cornerRadius() != 20.0 || !layer.masksToBounds() {
+        return Err(format!(
+            "corner {} masks {}",
+            layer.cornerRadius(),
+            layer.masksToBounds()
+        ));
+    }
+    let f = g.frame();
+    if (f.origin.x, f.origin.y, f.size.width, f.size.height) != (10.0, 10.0, 100.0, 40.0) {
+        return Err(format!("glass frame {f:?}"));
+    }
+    if g.alphaValue() != 1.0 {
+        return Err(format!("alpha {}", g.alphaValue()));
+    }
+    Ok(())
+}
+
+fn glass_alpha_follows_material() -> Result<(), String> {
+    use claude_sessions_core::scene::Rect;
+    use claude_sessions_macos::ui::SceneView;
+    use objc2_foundation::{MainThreadMarker, NSSize};
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(200.0, 100.0));
+    let frame = Rect::new(10.0, 10.0, 100.0, 40.0);
+    view.set_scene(&one_node_scene(glass_node(
+        "pill",
+        frame,
+        glass(15.0, 0.27),
+    )));
+    let alpha = || glass_views(&view).first().map(|g| g.alphaValue());
+    if alpha() != Some(0.27) {
+        return Err(format!("alpha {:?}", alpha()));
+    }
+    view.set_scene(&one_node_scene(glass_node("pill", frame, glass(15.0, 0.0))));
+    if alpha() != Some(0.0) {
+        return Err(format!("alpha after 0.0: {:?}", alpha()));
+    }
+    Ok(())
+}
+
+fn glass_sits_below_node_content() -> Result<(), String> {
+    use claude_sessions_core::scene::Rect;
+    use claude_sessions_macos::ui::SceneView;
+    use objc2_app_kit::NSVisualEffectView;
+    use objc2_foundation::{MainThreadMarker, NSPoint, NSSize};
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(200.0, 100.0));
+    view.set_scene(&one_node_scene(glass_node(
+        "panel",
+        Rect::new(10.0, 10.0, 100.0, 40.0),
+        glass(20.0, 1.0),
+    )));
+    let subs = view.subviews();
+    let kinds: Vec<bool> = subs
+        .iter()
+        .map(|v| v.downcast_ref::<NSVisualEffectView>().is_some())
+        .collect();
+    if kinds != [true, false] {
+        return Err(format!("subview order (true = glass): {kinds:?}"));
+    }
+    // The view is flipped, so a scene point is a point of its own coordinates.
+    let hit = view
+        .hitTest(NSPoint::new(50.0, 30.0))
+        .ok_or("nothing at the click point")?;
+    if hit.downcast_ref::<NSVisualEffectView>().is_some() {
+        return Err("the glass took the hit".into());
+    }
+    Ok(())
+}
+
+fn glass_follows_frame_change() -> Result<(), String> {
+    use claude_sessions_core::scene::Rect;
+    use claude_sessions_macos::ui::SceneView;
+    use objc2_foundation::{MainThreadMarker, NSSize};
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(200.0, 100.0));
+    view.set_scene(&one_node_scene(glass_node(
+        "panel",
+        Rect::new(10.0, 10.0, 100.0, 40.0),
+        glass(20.0, 1.0),
+    )));
+    view.set_scene(&one_node_scene(glass_node(
+        "panel",
+        Rect::new(10.0, 10.0, 100.0, 70.0),
+        glass(20.0, 1.0),
+    )));
+    // The frame animates; its model value lands when the run loop has run the animation.
+    spin(0.6);
+    let glasses = glass_views(&view);
+    let g = glasses.first().ok_or("no glass")?;
+    let node = node_views(&view).into_iter().next().ok_or("no node")?;
+    if g.frame() != node.frame() || g.frame().size.height != 70.0 {
+        return Err(format!("glass {:?} node {:?}", g.frame(), node.frame()));
+    }
+    Ok(())
+}
+
+fn glass_removed_with_material() -> Result<(), String> {
+    use claude_sessions_core::scene::{Rect, Scene};
+    use claude_sessions_macos::ui::SceneView;
+    use objc2_foundation::{MainThreadMarker, NSSize};
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(200.0, 100.0));
+    let frame = Rect::new(10.0, 10.0, 100.0, 40.0);
+    view.set_scene(&one_node_scene(glass_node(
+        "panel",
+        frame,
+        glass(20.0, 1.0),
+    )));
+    view.set_scene(&one_node_scene(glass_node("panel", frame, None)));
+    if !glass_views(&view).is_empty() {
+        return Err("the glass stayed after the material went away".into());
+    }
+    view.set_scene(&one_node_scene(glass_node(
+        "panel",
+        frame,
+        glass(20.0, 1.0),
+    )));
+    if glass_views(&view).len() != 1 {
+        return Err("the glass did not come back".into());
+    }
+    view.set_scene(&Scene::default());
+    spin(0.5);
+    if !view.subviews().is_empty() {
+        return Err(format!("{} views left", view.subviews().len()));
+    }
+    Ok(())
+}
+
+fn node_without_material_has_no_glass() -> Result<(), String> {
+    use claude_sessions_core::scene::Rect;
+    use claude_sessions_macos::ui::SceneView;
+    use objc2_foundation::{MainThreadMarker, NSSize};
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(200.0, 100.0));
+    view.set_scene(&one_node_scene(glass_node(
+        "panel",
+        Rect::new(10.0, 10.0, 100.0, 40.0),
+        None,
+    )));
+    if !glass_views(&view).is_empty() || view.subviews().len() != 1 {
+        return Err("a node without material got an effect view".into());
+    }
+    Ok(())
+}
+
+fn render_png_ignores_material() -> Result<(), String> {
+    use claude_sessions_core::scene::{Appearance, Rect};
+    let dir = std::path::PathBuf::from(env!("CARGO_TARGET_TMPDIR"));
+    let frame = Rect::new(40.0, 20.0, 100.0, 40.0);
+    let (a, b) = (dir.join("material-off.png"), dir.join("material-on.png"));
+    let render = |material, path: &std::path::Path| {
+        let mut node = shadow_node(frame, true);
+        node.material = material;
+        claude_sessions_macos::ui::render_png(&one_node_scene(node), 2.0, Appearance::Dark, path)
+    };
+    render(None, &a)?;
+    render(glass(20.0, 0.5), &b)?;
+    let (x, y) = (
+        std::fs::read(&a).map_err(|e| e.to_string())?,
+        std::fs::read(&b).map_err(|e| e.to_string())?,
+    );
+    if x != y {
+        return Err("material changed the PNG".into());
+    }
+    Ok(())
+}
+
+/// Runs the main run loop for `seconds`.
+fn spin(seconds: f64) {
+    use objc2_foundation::{NSDate, NSDefaultRunLoopMode, NSRunLoop};
+    // SAFETY: a plain run-loop mode constant.
+    let mode = unsafe { NSDefaultRunLoopMode };
+    let end = std::time::Instant::now() + std::time::Duration::from_secs_f64(seconds);
+    while std::time::Instant::now() < end {
+        NSRunLoop::currentRunLoop()
+            .runMode_beforeDate(mode, &NSDate::dateWithTimeIntervalSinceNow(0.02));
+    }
+}
+
+/// The `CABasicAnimation` on `layer` for `key_path` (any key), if there is one.
+fn animation_for(
+    layer: &objc2_quartz_core::CALayer,
+    key_path: &str,
+) -> Option<objc2::rc::Retained<objc2_quartz_core::CABasicAnimation>> {
+    use objc2_quartz_core::CABasicAnimation;
+    let keys = layer.animationKeys()?;
+    keys.iter().find_map(|key| {
+        // SAFETY: a plain getter on a layer owned here.
+        let a = unsafe { layer.animationForKey(&key) }?;
+        let a: objc2::rc::Retained<CABasicAnimation> = a.downcast().ok()?;
+        (a.keyPath()?.to_string() == key_path).then_some(a)
+    })
+}
+
+/// Whether `value` (the from or to transform of a zoom) leaves the scene point `fixed` where it is; returns its scale.
+fn zoom_check(
+    layer: &objc2_quartz_core::CALayer,
+    value: &objc2_foundation::NSValue,
+    fixed: objc2_core_foundation::CGPoint,
+) -> Result<f64, String> {
+    use objc2_quartz_core::{CATransform3DIdentity, NSValueCATransform3DAdditions};
+    // SAFETY: the value was made from a CATransform3D by `valueWithCATransform3D:`.
+    let m = unsafe { value.CATransform3DValue() };
+    // The layer point that sits at `fixed` (a layer of a view in no window has no superlayer: `None` is the top of its
+    // own tree, where the scene's coordinates are).
+    let local = layer.convertPoint_fromLayer(fixed, None);
+    layer.setTransform(m);
+    let after = layer.convertPoint_toLayer(local, None);
+    // SAFETY: a plain extern constant.
+    layer.setTransform(unsafe { CATransform3DIdentity });
+    if (after.x - fixed.x).abs() > 0.5 || (after.y - fixed.y).abs() > 0.5 {
+        return Err(format!("the fixed point moved from {fixed:?} to {after:?}"));
+    }
+    Ok(m.m11)
+}
+
+/// Checks one view's zoom animation: the 0.96 scale (at the `closing` end or the start) fixed at `origin` (scene
+/// point), `seconds` long.
+fn check_zoom(
+    layer: &objc2_quartz_core::CALayer,
+    origin: claude_sessions_core::scene::Point,
+    closing: bool,
+    seconds: f64,
+) -> Result<(), String> {
+    use objc2_core_foundation::CGPoint;
+    use objc2_foundation::NSValue;
+    let a = animation_for(layer, "transform").ok_or("no transform animation")?;
+    if (a.duration() - seconds).abs() > 1e-6 {
+        return Err(format!("zoom lasts {}", a.duration()));
+    }
+    let value = |v: Option<objc2::rc::Retained<objc2::runtime::AnyObject>>| {
+        v.and_then(|v| v.downcast::<NSValue>().ok())
+            .ok_or("no transform value".to_string())
+    };
+    let shrunk = if closing { a.toValue() } else { a.fromValue() };
+    let scale = zoom_check(layer, &*value(shrunk)?, CGPoint::new(origin.x, origin.y))?;
+    if (scale - 0.96).abs() > 1e-6 {
+        return Err(format!("zoom scale {scale}"));
+    }
+    Ok(())
+}
+
+fn pop_scenes(
+    origin: claude_sessions_core::scene::Point,
+) -> (
+    claude_sessions_core::scene::Scene,
+    claude_sessions_core::scene::Scene,
+) {
+    use claude_sessions_core::scene::{Rect, Scene, Size};
+    let closed = Scene {
+        size: Size { w: 300.0, h: 200.0 },
+        nodes: vec![glass_node(
+            "pill",
+            Rect::new(10.0, 10.0, 100.0, 30.0),
+            glass(15.0, 1.0),
+        )],
+        images: Default::default(),
+        grow_origin: origin,
+    };
+    let open = Scene {
+        size: Size { w: 300.0, h: 200.0 },
+        nodes: vec![
+            glass_node(
+                "panel",
+                Rect::new(10.0, 10.0, 200.0, 150.0),
+                glass(20.0, 1.0),
+            ),
+            glass_node("header", Rect::new(18.0, 18.0, 180.0, 38.0), None),
+        ],
+        images: Default::default(),
+        grow_origin: origin,
+    };
+    (closed, open)
+}
+
+/// Every added view (node and glass) zooms from 0.96 about `origin`, 0.28 s, with a 0.18 s fade.
+fn check_open_zoom(origin: claude_sessions_core::scene::Point) -> Result<(), String> {
+    use claude_sessions_macos::ui::SceneView;
+    use objc2_foundation::{MainThreadMarker, NSSize};
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(300.0, 200.0));
+    let (closed, open) = pop_scenes(origin);
+    view.set_scene(&closed);
+    let leaving: Vec<_> = view.subviews().iter().collect();
+    view.set_scene(&open);
+    let mut checked = 0;
+    for v in view.subviews().iter() {
+        if leaving.contains(&v) {
+            continue;
+        }
+        let layer = v.layer().ok_or("no layer")?;
+        check_zoom(&layer, origin, false, 0.28)?;
+        let fade = animation_for(&layer, "opacity").ok_or("no fade animation")?;
+        if (fade.duration() - 0.18).abs() > 1e-6 {
+            return Err(format!("fade lasts {}", fade.duration()));
+        }
+        checked += 1;
+    }
+    // panel + its glass, header.
+    if checked != 3 {
+        return Err(format!("{checked} views zoomed"));
+    }
+    Ok(())
+}
+
+fn open_zooms_from_grow_origin() -> Result<(), String> {
+    check_open_zoom(claude_sessions_core::scene::Point { x: 210.0, y: 10.0 })
+}
+
+fn open_origin_follows_anchor() -> Result<(), String> {
+    use claude_sessions_core::scene::Point;
+    check_open_zoom(Point { x: 10.0, y: 160.0 })?;
+    check_open_zoom(Point { x: 110.0, y: 10.0 })
+}
+
+fn close_shrinks_to_grow_origin() -> Result<(), String> {
+    use claude_sessions_core::scene::Point;
+    use claude_sessions_macos::ui::SceneView;
+    use objc2_foundation::{MainThreadMarker, NSSize};
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(300.0, 200.0));
+    let origin = Point { x: 210.0, y: 10.0 };
+    let (closed, open) = pop_scenes(origin);
+    view.set_scene(&open);
+    let leaving: Vec<_> = view.subviews().iter().collect();
+    view.set_scene(&closed);
+    for v in &leaving {
+        let layer = v.layer().ok_or("no layer")?;
+        check_zoom(&layer, origin, true, 0.16)?;
+        let fade = animation_for(&layer, "opacity").ok_or("no fade animation")?;
+        if (fade.duration() - 0.16).abs() > 1e-6 {
+            return Err(format!("fade lasts {}", fade.duration()));
+        }
+    }
+    let pills: Vec<_> = node_views(&view)
+        .into_iter()
+        .filter(|v| !leaving.contains(v))
+        .collect();
+    let [pill] = pills.as_slice() else {
+        return Err(format!("{} pill views", pills.len()));
+    };
+    if pill
+        .layer()
+        .and_then(|l| animation_for(&l, "opacity"))
+        .is_none()
+    {
+        return Err("the pill does not fade in".into());
+    }
+    Ok(())
+}
+
+fn close_keeps_leaving_nodes_until_done() -> Result<(), String> {
+    use claude_sessions_core::scene::Point;
+    use claude_sessions_macos::ui::SceneView;
+    use objc2_foundation::{MainThreadMarker, NSSize};
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(300.0, 200.0));
+    let (closed, open) = pop_scenes(Point { x: 210.0, y: 10.0 });
+    view.set_scene(&open);
+    view.set_scene(&closed);
+    // The panel, its glass and the header, plus the pill and its glass.
+    if view.subviews().len() != 5 {
+        return Err(format!("{} views right after", view.subviews().len()));
+    }
+    spin(0.6);
+    // The pill and its glass are left.
+    if view.subviews().len() != 2 {
+        return Err(format!("{} views after the close", view.subviews().len()));
+    }
+    Ok(())
+}
+
+fn in_panel_resize_keeps_spring() -> Result<(), String> {
+    use claude_sessions_core::scene::Rect;
+    use claude_sessions_macos::ui::SceneView;
+    use objc2_foundation::{MainThreadMarker, NSSize};
+    let mtm = MainThreadMarker::new().ok_or("not on the main thread")?;
+    let view = SceneView::new(mtm, NSSize::new(200.0, 100.0));
+    view.set_scene(&one_node_scene(shadow_node(
+        Rect::new(10.0, 10.0, 100.0, 40.0),
+        true,
+    )));
+    view.set_scene(&one_node_scene(shadow_node(
+        Rect::new(10.0, 10.0, 100.0, 70.0),
+        true,
+    )));
+    let layer = node_layer(&view)?;
+    shadow_animation_sizes(&layer)?;
+    if animation_for(&layer, "transform").is_some() {
+        return Err("an in-panel resize zoomed".into());
+    }
+    Ok(())
+}
+
 fn main() {
     if std::env::var_os("CLAUDE_SESSIONS_GUI_TESTS").is_none() {
         println!("gui tests skipped (set CLAUDE_SESSIONS_GUI_TESTS=1)");
@@ -1468,6 +1929,39 @@ fn main() {
     results.push((
         "cmux_cli_comes_from_the_bundle",
         cmux_cli_comes_from_the_bundle(),
+    ));
+    results.push((
+        "glass_view_for_material_node",
+        glass_view_for_material_node(),
+    ));
+    results.push((
+        "glass_alpha_follows_material",
+        glass_alpha_follows_material(),
+    ));
+    results.push((
+        "glass_sits_below_node_content",
+        glass_sits_below_node_content(),
+    ));
+    results.push(("glass_follows_frame_change", glass_follows_frame_change()));
+    results.push(("glass_removed_with_material", glass_removed_with_material()));
+    results.push((
+        "node_without_material_has_no_glass",
+        node_without_material_has_no_glass(),
+    ));
+    results.push(("render_png_ignores_material", render_png_ignores_material()));
+    results.push(("open_zooms_from_grow_origin", open_zooms_from_grow_origin()));
+    results.push(("open_origin_follows_anchor", open_origin_follows_anchor()));
+    results.push((
+        "close_shrinks_to_grow_origin",
+        close_shrinks_to_grow_origin(),
+    ));
+    results.push((
+        "close_keeps_leaving_nodes_until_done",
+        close_keeps_leaving_nodes_until_done(),
+    ));
+    results.push((
+        "in_panel_resize_keeps_spring",
+        in_panel_resize_keeps_spring(),
     ));
     let mut failed = false;
     for (name, result) in results {

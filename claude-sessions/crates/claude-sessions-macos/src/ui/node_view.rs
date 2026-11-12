@@ -12,7 +12,8 @@ use objc2::{DefinedClass, MainThreadOnly, define_class, msg_send, sel};
 use objc2_app_kit::{
     NSAnimatablePropertyContainer, NSAnimationContext, NSAppearanceCustomization, NSColor,
     NSControl, NSControlTextEditingDelegate, NSEvent, NSTextField, NSTextFieldDelegate, NSTextView,
-    NSView,
+    NSView, NSVisualEffectBlendingMode, NSVisualEffectMaterial, NSVisualEffectState,
+    NSVisualEffectView,
 };
 use objc2_core_foundation::{CGPoint, CGRect, CGSize};
 use objc2_core_graphics::CGPath;
@@ -162,6 +163,45 @@ define_class!(
         }
     }
 );
+
+define_class!(
+    /// The vibrancy behind a node with a `Material`: a sibling placed directly below the node view, so the node's drawn
+    /// commands and subviews stay above it. It never takes a mouse event.
+    #[unsafe(super = NSVisualEffectView)]
+    #[thread_kind = MainThreadOnly]
+    pub(crate) struct GlassView;
+
+    unsafe impl NSObjectProtocol for GlassView {}
+
+    impl GlassView {
+        #[unsafe(method(hitTest:))]
+        fn hit_test(&self, _point: CGPoint) -> Option<&NSView> {
+            None
+        }
+    }
+);
+
+impl GlassView {
+    pub(crate) fn new(mtm: MainThreadMarker, frame: Rect) -> Retained<Self> {
+        let this = Self::alloc(mtm).set_ivars(());
+        // SAFETY: `initWithFrame:` is NSView's designated initialiser.
+        let this: Retained<Self> = unsafe { msg_send![super(this), initWithFrame: ns_rect(frame)] };
+        this.setMaterial(NSVisualEffectMaterial::Popover);
+        this.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
+        // The app is never the active one; any other state falls back to a flat grey.
+        this.setState(NSVisualEffectState::Active);
+        this.setWantsLayer(true);
+        this
+    }
+
+    /// The rounded corner of the glass.
+    pub(crate) fn set_look(&self, corner: f64) {
+        if let Some(layer) = self.layer() {
+            layer.setCornerRadius(corner);
+            layer.setMasksToBounds(true);
+        }
+    }
+}
 
 impl NodeView {
     pub(crate) fn new(mtm: MainThreadMarker, key: &str, frame: Rect) -> Retained<Self> {
