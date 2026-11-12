@@ -47,7 +47,8 @@ pub fn surface(cmux: &Path, session_id: &str) -> Option<String> {
     surface_from_sessions_output(&out)
 }
 
-pub fn new_surface_args(command: &str) -> Vec<String> {
+/// The `cmux` arguments that open a focused terminal tab in the current workspace running `command`.
+pub fn new_surface_args(command: &str) -> [&str; 7] {
     [
         "new-surface",
         "--type",
@@ -57,11 +58,10 @@ pub fn new_surface_args(command: &str) -> Vec<String> {
         "--focus",
         "true",
     ]
-    .map(String::from)
-    .to_vec()
 }
 
-pub fn new_workspace_args(cwd: &str, command: &str) -> Vec<String> {
+/// The `cmux` arguments that open a focused workspace in `cwd` running `command`.
+pub fn new_workspace_args<'a>(cwd: &'a str, command: &'a str) -> [&'a str; 7] {
     [
         "new-workspace",
         "--cwd",
@@ -71,38 +71,20 @@ pub fn new_workspace_args(cwd: &str, command: &str) -> Vec<String> {
         "--focus",
         "true",
     ]
-    .map(String::from)
-    .to_vec()
+}
+
+fn open(cmux: &Path, args: &[&str]) -> bool {
+    run_process(cmux, args, Duration::from_secs(5), true, None).is_some()
 }
 
 /// Blocking. Opens a focused terminal tab in the current cmux workspace running `command`; false on any failure.
 pub fn new_surface(cmux: &Path, command: &str) -> bool {
-    run_process(
-        cmux,
-        &new_surface_args(command)
-            .iter()
-            .map(String::as_str)
-            .collect::<Vec<_>>(),
-        Duration::from_secs(5),
-        true,
-        None,
-    )
-    .is_some()
+    open(cmux, &new_surface_args(command))
 }
 
 /// Blocking. Opens a focused cmux workspace in `cwd` running `command`; false on any failure.
 pub fn new_workspace(cmux: &Path, cwd: &str, command: &str) -> bool {
-    run_process(
-        cmux,
-        &new_workspace_args(cwd, command)
-            .iter()
-            .map(String::as_str)
-            .collect::<Vec<_>>(),
-        Duration::from_secs(5),
-        true,
-        None,
-    )
-    .is_some()
+    open(cmux, &new_workspace_args(cwd, command))
 }
 
 /// Blocking. The focused terminal surface of cmux; None when the focus is not a terminal.
@@ -119,12 +101,10 @@ pub fn focused_surface(cmux: &Path) -> Option<String> {
 
 /// Blocking. Reopens a closed session in a new tab of the current cmux workspace, else in a new workspace; false when its id is not a canonical UUID or cmux fails.
 pub fn resume(cmux: &Path, session: &ClosedSession) -> bool {
-    match (session.resume_command(), session.shell_command()) {
-        (Some(command), Some(shell)) => {
-            new_surface(cmux, &shell) || new_workspace(cmux, &session.cwd, &command)
-        }
-        _ => false,
-    }
+    let (Some(command), Some(shell)) = (session.resume_command(), session.shell_command()) else {
+        return false;
+    };
+    new_surface(cmux, &shell) || new_workspace(cmux, &session.cwd, &command)
 }
 
 #[derive(Clone, Debug, PartialEq)]

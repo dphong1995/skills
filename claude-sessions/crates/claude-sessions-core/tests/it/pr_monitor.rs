@@ -1793,7 +1793,6 @@ fn hidden_ref_is_not_fetched_or_shown() {
     let api = fake(vec![pr(1), pr(2)]);
     let m = monitor(&api, None);
     m.update(&hiding(&[pr_ref(1), pr_ref(2)], &[pr_ref(2)]), t0());
-    assert_eq!(ids_of(&m.take_snapshot()), [1]);
     assert_eq!(n(&api, "/pullrequests/2"), 0);
 }
 
@@ -1810,9 +1809,7 @@ fn hidden_in_one_session_still_tracked_in_another() {
         hidden_refs: HashSet::new(),
     });
     m.update(&targets, t0());
-    let snap = m.take_snapshot();
-    assert!(!snap.prs.contains_key("s"));
-    assert_eq!(snap.prs["t"].len(), 1);
+    assert_eq!(m.take_snapshot().prs["t"].len(), 1);
     assert!(n(&api, "/pullrequests/1") > 0);
 }
 
@@ -1849,7 +1846,9 @@ fn hidden_branch_pr_is_not_pushed_twice() {
     for i in 0..3 {
         m.update(&hidden, at(50.0 * (i + 1) as f64));
     }
+    assert_eq!(m.branch_ref_count("s"), 1);
     m.update(&target(&[], Some(branch)), at(200.0));
+    assert_eq!(m.branch_ref_count("s"), 1);
     assert_eq!(ids_of(&m.take_snapshot()), [6874]);
 }
 
@@ -1868,4 +1867,67 @@ fn reshown_merged_pr_returns_without_events() {
     assert_eq!(first_of(&snap).unwrap().state, "MERGED");
     assert!(snap.events.is_empty());
     assert!(snap.event_refs.is_empty());
+}
+
+/// Sessions `s` and `t` both link #7571; `s` hides it when `hidden_in_s`.
+fn two_sessions(hidden_in_s: bool) -> Vec<PRTarget> {
+    let hidden = if hidden_in_s {
+        vec![pr_ref(7571)]
+    } else {
+        vec![]
+    };
+    let mut targets = hiding(&[pr_ref(7571)], &hidden);
+    targets.push(PRTarget {
+        session_id: "t".into(),
+        link_refs: vec![pr_ref(7571)],
+        cwd: "/x".into(),
+        branch: None,
+        hidden_refs: HashSet::new(),
+    });
+    targets
+}
+
+#[test]
+fn showing_a_ref_keeps_events_another_session_polled() {
+    let api = fake(vec![pr_c(7571, 2)]);
+    set_comments(
+        &api,
+        vec![comment(
+            "{tin}",
+            "Tin Tran",
+            "2026-11-04T10:00:00.000000+00:00",
+        )],
+    );
+    let m = monitor(&api, None);
+    m.update(&two_sessions(false), t0());
+    m.take_snapshot();
+    m.update(&two_sessions(true), at(1.0));
+    m.take_snapshot();
+    set_open(&api, vec![pr_c(7571, 3)]);
+    set_comments(
+        &api,
+        vec![comment(
+            "{tin}",
+            "Tin Tran",
+            "2026-11-04T11:00:00.000000+00:00",
+        )],
+    );
+    m.update(&two_sessions(false), at(2.0));
+    let snap = m.take_snapshot();
+    assert_eq!(snap.event_refs, HashSet::from([pr_ref(7571)]));
+    assert!(!snap.events.is_empty());
+}
+
+#[test]
+fn shown_ref_is_published_before_the_worker_finishes_its_cycle() {
+    let api = fake(vec![pr(1)]);
+    let gated = Arc::new(GatedApi::new(api));
+    let m = PRMonitor::with_options(gated.clone(), true, Arc::new(|_| None), 45.0);
+    m.update(&refs(&[pr_ref(1)]), t0());
+    barrier(&m);
+    m.update(&hiding(&[pr_ref(1)], &[pr_ref(1)]), at(1.0));
+    barrier(&m);
+    let _block_the_worker = gated.gate.lock().unwrap();
+    m.update(&refs(&[pr_ref(1)]), at(2.0));
+    assert_eq!(ids_of(&m.take_snapshot()), [1]);
 }

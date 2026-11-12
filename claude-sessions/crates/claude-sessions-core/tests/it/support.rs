@@ -601,6 +601,33 @@ impl BitbucketApi for FakeBitbucket {
     }
 }
 
+/// A `FakeBitbucket` whose calls wait while the test holds `gate`: keeps a threaded monitor's worker mid-cycle.
+pub struct GatedApi {
+    inner: Arc<FakeBitbucket>,
+    pub gate: Mutex<()>,
+}
+
+impl GatedApi {
+    pub fn new(inner: Arc<FakeBitbucket>) -> Self {
+        GatedApi {
+            inner,
+            gate: Mutex::new(()),
+        }
+    }
+}
+
+impl BitbucketApi for GatedApi {
+    fn get(&self, path: &str) -> Result<Vec<u8>, BitbucketError> {
+        let _open = self.gate.lock().unwrap();
+        self.inner.get(path)
+    }
+
+    fn post(&self, path: &str, json: &Value) -> Result<Vec<u8>, BitbucketError> {
+        let _open = self.gate.lock().unwrap();
+        self.inner.post(path, json)
+    }
+}
+
 /// Routes for the user, an open list and default passing CI status / no comments.
 pub fn fake(open: Vec<Value>) -> Arc<FakeBitbucket> {
     let api = Arc::new(FakeBitbucket::default());

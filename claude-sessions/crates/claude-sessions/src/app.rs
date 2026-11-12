@@ -529,18 +529,10 @@ fn handle_event(weak: &WeakState, key: &str, event: UiEvent) {
             let Some((view, screen, ctx)) = with_state(weak, |s| {
                 let host = s.panels.iter().find(|p| p.key == key)?;
                 let target = hit.and_then(|id| host.targets.get(id));
-                let session = target.and_then(Target::session);
-                let hide = target.zip(session).and_then(|(t, sid)| {
-                    let pr = t.pr().filter(|p| s.store.can_hide_pr(sid, p))?;
-                    Some((sid.to_string(), pr))
-                });
-                let show_hidden = session
-                    .map(|sid| (sid.to_string(), s.store.hidden_pr_count(sid)))
-                    .filter(|(_, n)| *n > 0);
                 Some((
                     host.window.view(),
                     host.screen,
-                    MenuContext { hide, show_hidden },
+                    MenuContext::new(target, &s.store),
                 ))
             })
             .flatten() else {

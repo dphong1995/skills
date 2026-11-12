@@ -247,6 +247,16 @@ impl PRMonitor {
         );
     }
 
+    /// Test accessor: how many branch-discovered refs `session` holds (inline monitors only).
+    #[doc(hidden)]
+    pub fn branch_ref_count(&self, session: &str) -> usize {
+        self.inner
+            .ticker()
+            .sessions
+            .get(session)
+            .map_or(0, |s| s.branch_refs.len())
+    }
+
     /// The current state; drains `events` and `event_refs`.
     pub fn take_snapshot(&self) -> PRSnapshot {
         let mut s = self.inner.shared();
@@ -350,6 +360,8 @@ impl Inner {
             .last_cycle
             .is_none_or(|l| secs_since(now, l) >= self.interval);
         let mut reshown: Vec<PRRef> = Vec::new();
+        // Refs some session already polled keep their events when another session shows them again.
+        let polled: HashSet<PRRef> = t.sessions.values().flat_map(|s| s.refs()).collect();
         for target in targets {
             let existing = t.sessions.contains_key(&target.session_id);
             let s = t.sessions.entry(target.session_id.clone()).or_default();
@@ -363,7 +375,12 @@ impl Inner {
             s.branch = target.branch.clone();
             if s.hidden_refs != target.hidden_refs {
                 need_cycle = true;
-                reshown.extend(s.hidden_refs.difference(&target.hidden_refs).cloned());
+                reshown.extend(
+                    s.hidden_refs
+                        .difference(&target.hidden_refs)
+                        .filter(|r| !polled.contains(*r))
+                        .cloned(),
+                );
                 s.hidden_refs = target.hidden_refs.clone();
             }
             for r in &target.link_refs {
@@ -398,6 +415,13 @@ impl Inner {
         t.comments_owed.retain(|k| used.contains(k));
         t.hidden.retain(|k| used.contains(k));
         t.closed.retain(|k| used.contains(k));
+        let Ticker {
+            reshown,
+            closed,
+            hidden,
+            ..
+        } = &mut *t;
+        reshown.retain(|r| !closed.contains(r) && !hidden.contains(r));
 
         let mut events = Vec::new();
         let mut event_refs = HashSet::new();
@@ -413,7 +437,7 @@ impl Inner {
         let mut prs = HashMap::new();
         for (id, s) in &t.sessions {
             let list: Vec<PRStatus> = s
-                .refs()
+                .all_refs()
                 .iter()
                 .filter_map(|r| t.statuses.get(r).cloned())
                 .collect();
@@ -698,14 +722,9 @@ impl Inner {
                 continue;
             }
             let found = self.cycle_pr(t, &ref_, open.get(&ref_).cloned(), now);
-            let found = if t.reshown.contains(&ref_) {
-                if found.is_some() {
-                    t.reshown.remove(&ref_);
-                }
-                None
-            } else {
-                found
-            };
+            if found.is_some() && t.reshown.remove(&ref_) {
+                continue;
+            }
             if let Some(found) = found
                 && !found.is_empty()
             {

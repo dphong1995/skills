@@ -1094,6 +1094,44 @@ fn show_hidden_brings_back_a_merged_pr() {
 }
 
 #[test]
+fn shown_pr_is_back_on_the_first_refresh_with_a_threaded_monitor() {
+    let api = fake(vec![plain_pr(1)]);
+    let gated = Arc::new(GatedApi::new(api));
+    let (dir, projects) = (make_temp_dir(), make_temp_dir());
+    write_transcript(
+        projects.path(),
+        FRONTEND,
+        "a",
+        &[pr_reply(&[1]), String::new()],
+    );
+    write_session(dir.path(), "a", me(), "idle", 0.0, "a", FRONTEND);
+    let monitor = PRMonitor::with_options(gated.clone(), true, Arc::new(|_| None), 45.0);
+    let mut store = make_store_with(
+        dir.path(),
+        StoreSetup {
+            projects: Some(projects.path().into()),
+            prs: Some(monitor),
+            ..Default::default()
+        },
+    );
+    for _ in 0..250 {
+        store.refresh(pr_t0());
+        if store.sessions.first().is_some_and(|s| !s.prs.is_empty()) {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    assert_eq!(pr_ids(&store, 0), vec![1]);
+    store.hide_pr("a", &pr_ref(1));
+    store.refresh(at(1));
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let _block_the_worker = gated.gate.lock().unwrap();
+    store.show_hidden_prs("a");
+    store.refresh(at(2));
+    assert_eq!(pr_ids(&store, 0), vec![1]);
+}
+
+#[test]
 fn hidden_list_is_dropped_with_its_session() {
     let api = fake(vec![plain_pr(1)]);
     let (mut store, dir, _p) = pr_store(&api, pr_reply(&[1]));

@@ -156,6 +156,8 @@ pub struct Store {
     pub surface_misses: HashSet<String>,
     /// Session id -> PRs the user hid in that session. In memory only.
     hidden_prs: HashMap<String, HashSet<PRRef>>,
+    /// Session id -> PRs shown as rows or tracked menu lines at the last refresh.
+    tracked_prs: HashMap<String, HashSet<PRRef>>,
     /// Tool ids whose long command the user expanded with Xem đủ.
     pub shown_commands: HashSet<String>,
     /// Typed text per `draft_key`: a reply and a deny reason of one session are kept apart.
@@ -258,6 +260,7 @@ impl Store {
             unseen: HashMap::new(),
             surface_misses: HashSet::new(),
             hidden_prs: HashMap::new(),
+            tracked_prs: HashMap::new(),
             shown_commands: HashSet::new(),
             drafts: HashMap::new(),
             quota: None,
@@ -355,16 +358,9 @@ impl Store {
 
     /// True when the monitor tracks `pr` for `session`: it is in the PR list or on a tracked line of the menu.
     pub fn can_hide_pr(&self, session: &str, pr: &PRRef) -> bool {
-        let Some(s) = self.sessions.iter().find(|s| s.id == session) else {
-            return false;
-        };
-        let path = format!("/{}/{}/pull-requests/{}", pr.workspace, pr.repo, pr.id);
-        s.prs.iter().any(|p| &p.ref_ == pr)
-            || s.menu.iter().flat_map(|m| &m.items).any(|i| {
-                i.kind == LinkKind::Pr
-                    && i.status.is_some()
-                    && i.url.path().trim_end_matches('/') == path
-            })
+        self.tracked_prs
+            .get(session)
+            .is_some_and(|s| s.contains(pr))
     }
 
     /// `HEAD` file reads of the store's own branch reader; 0 when a custom reader was injected.

@@ -38,8 +38,9 @@ fn menu_without_context_is_unchanged() {
 #[test]
 fn menu_with_hide_and_show_hidden() {
     let m = menu::build(&MenuContext {
-        hide: Some(("s".into(), pr(7571))),
-        show_hidden: Some(("s".into(), 2)),
+        session: Some("s".into()),
+        hide: Some(pr(7571)),
+        hidden: 2,
     });
     assert_eq!(
         titles(&m.entries),
@@ -78,16 +79,18 @@ fn menu_with_hide_and_show_hidden() {
 #[test]
 fn menu_with_only_show_hidden() {
     let m = menu::build(&MenuContext {
+        session: Some("s".into()),
         hide: None,
-        show_hidden: Some(("s".into(), 1)),
+        hidden: 1,
     });
     assert_eq!(
         titles(&m.entries),
         ["Hiện lại 1 PR đã ẩn", "-", "Cài đặt…", "-", "Thoát"]
     );
     let zero = menu::build(&MenuContext {
+        session: Some("s".into()),
         hide: None,
-        show_hidden: Some(("s".into(), 0)),
+        hidden: 0,
     });
     assert_eq!(titles(&zero.entries), ["Cài đặt…", "-", "Thoát"]);
 }
@@ -151,4 +154,46 @@ fn off_is_checked_when_the_hotkey_is_off() {
         m.commands.last(),
         Some(&Command::Hotkey(Which::Next, HotKeyChoice::Off))
     );
+}
+
+fn link_to(id: i64) -> Target {
+    Target::Link {
+        session: "a".into(),
+        url: Url::parse(&format!(
+            "https://bitbucket.org/t6engineering/talo6-dct-backend/pull-requests/{id}"
+        ))
+        .unwrap(),
+    }
+}
+
+#[test]
+fn context_hides_a_tracked_pr_only() {
+    let (store, _dir) = crate::support::pr_store(&[1, 2]);
+    let ctx = MenuContext::new(Some(&link_to(2)), &store);
+    assert_eq!(ctx.session.as_deref(), Some("a"));
+    assert_eq!(ctx.hide, Some(pr(2)));
+    assert_eq!(ctx.hidden, 0);
+    let untracked = MenuContext::new(Some(&link_to(999)), &store);
+    assert_eq!(untracked.session.as_deref(), Some("a"));
+    assert_eq!(untracked.hide, None);
+}
+
+#[test]
+fn context_counts_hidden_prs_on_a_jump() {
+    let (mut store, _dir) = crate::support::pr_store(&[1, 2]);
+    store.hide_pr("a", &pr(1));
+    store.hide_pr("a", &pr(2));
+    let ctx = MenuContext::new(Some(&Target::Jump("a".into())), &store);
+    assert_eq!(ctx.hidden, 2);
+    assert_eq!(ctx.hide, None);
+    assert_eq!(ctx.session.as_deref(), Some("a"));
+}
+
+#[test]
+fn context_without_target_is_empty() {
+    let (store, _dir) = crate::support::pr_store(&[1]);
+    let ctx = MenuContext::new(None, &store);
+    assert_eq!(ctx.session, None);
+    assert_eq!(ctx.hide, None);
+    assert_eq!(ctx.hidden, 0);
 }
