@@ -936,6 +936,40 @@ fn the_open_menu_lists_links_and_the_jira_connection() {
     assert!(node.cmds.iter().all(|c| bottom(c) <= l.height));
 }
 
+/// The drawn width of the status text of the one open-list row of a session whose items are `title`d or not.
+fn status_label_width(title: Option<&str>, status: &str) -> f64 {
+    let mut s = tickets();
+    for section in &mut s.menu {
+        for item in &mut section.items {
+            item.title = title.map(Into::into);
+            item.status = Some(status.into());
+        }
+    }
+    let snap = snapshot(vec![s]);
+    let mut panel = open();
+    panel.open_menus.insert("done".into());
+    let built = render(&snap, &panel);
+    card(&built.scene, "done")
+        .cmds
+        .iter()
+        .find_map(|c| match c {
+            DrawCmd::Text { rect, text, .. } if text == status => Some(rect.w),
+            _ => None,
+        })
+        .expect("the status is drawn")
+}
+
+#[test]
+fn a_link_status_without_a_title_is_drawn_uncut() {
+    let status = "A rather long status label for a link";
+    let full = status.chars().count() as f64 * 7.0;
+    assert!(status_label_width(None, status) >= full);
+    assert!(
+        status_label_width(Some("Fix parser"), status) < full,
+        "with a title the status is capped at 40% of the row"
+    );
+}
+
 #[test]
 fn collapsing_drops_the_open_link_list() {
     // Re-homes the phase 5 `on_collapse` assertion: the view after the collapse has no list.
@@ -1873,9 +1907,8 @@ fn header_groups_quota_and_counts_on_the_right() {
         .find(|n| n.key.0 == "header")
         .unwrap();
     assert_eq!(header.frame.h, layout::HEADER_HEIGHT);
-    // The whole group hugs the right end: the left quarter of the header stays empty (the real quota block is narrower
-    // than FakeMeasure's, so it also clears the left half in the app).
-    let left_edge = header.frame.w / 4.0;
+    // The whole group stays in the right half of the header; the reset note drops when it would not fit there.
+    let left_edge = header.frame.w / 2.0;
     let rect_of = |want: &str| {
         header.cmds.iter().find_map(|c| match c {
             DrawCmd::Text { rect, text, .. } if text == want => Some(*rect),
@@ -1885,18 +1918,14 @@ fn header_groups_quota_and_counts_on_the_right() {
     let quota: Vec<Rect> = ["5h", "78%", "Tuần", "40%"]
         .iter()
         .map(|t| rect_of(t).unwrap_or_else(|| panic!("no {t}")))
-        .chain(
-            header
-                .cmds
-                .iter()
-                .filter_map(|c| match c {
-                    DrawCmd::Text { rect, text, .. } if text.starts_with("· reset") => Some(*rect),
-                    _ => None,
-                })
-                .take(1),
-        )
         .collect();
-    assert_eq!(quota.len(), 5, "the reset note is drawn too");
+    assert!(
+        !header
+            .cmds
+            .iter()
+            .any(|c| matches!(c, DrawCmd::Text { text, .. } if text.starts_with("· reset"))),
+        "the reset note gives way first"
+    );
     let rings = header
         .cmds
         .iter()
@@ -1939,6 +1968,66 @@ fn header_groups_quota_and_counts_on_the_right() {
         "{quota_max} < {} < {counts_min}",
         divider.x
     );
+}
+
+/// Every quota and count element of the header lies in its right half (the notch sits over the left half); the reset
+/// note, then the weekly part, are what give way.
+#[test]
+fn header_quota_and_counts_stay_in_the_right_half() {
+    for name in [
+        "quota-1-normal",
+        "quota-2-warn",
+        "quota-3-high-forecast",
+        "07-mixed-hover",
+        "11-pending-hover",
+        "35-background-agents",
+    ] {
+        // The count-heavy fixtures get a quota with a forecast, the widest note.
+        let built = fixture_built_with(name, |snap| {
+            snap.quota
+                .get_or_insert(claude_sessions_core::quota::Quota {
+                    five_hour: 97,
+                    five_hour_reset: now(),
+                    weekly: 40,
+                    weekly_reset: now(),
+                    forecast: Some(now()),
+                });
+        });
+        let header = built
+            .scene
+            .nodes
+            .iter()
+            .find(|n| n.key.0 == "header")
+            .unwrap();
+        let mid = header.frame.w / 2.0;
+        let mut texts = Vec::new();
+        for cmd in &header.cmds {
+            match cmd {
+                DrawCmd::Text { rect, text, .. } => {
+                    texts.push(text.as_str());
+                    assert!(
+                        rect.x >= mid,
+                        "{name}: {text:?} at {} is left of {mid}",
+                        rect.x
+                    );
+                }
+                DrawCmd::Symbol { rect, .. } => assert!(rect.x >= mid, "{name}: symbol {rect:?}"),
+                DrawCmd::Arc { center, radius, .. } => {
+                    assert!(center.x - radius >= mid, "{name}: ring at {center:?}")
+                }
+                _ => {}
+            }
+        }
+
+        assert!(
+            texts.contains(&"5h"),
+            "{name}: the 5h quota stays: {texts:?}"
+        );
+        assert!(
+            texts.iter().any(|t| t.ends_with('%')),
+            "{name}: its percent stays: {texts:?}"
+        );
+    }
 }
 
 // ---- phase 4: grouped rows, buttons and fields ----

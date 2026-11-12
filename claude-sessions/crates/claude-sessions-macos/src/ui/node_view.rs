@@ -322,10 +322,14 @@ impl ShadowView {
         let Some(layer) = self.layer() else { return };
         let shadow = self.ivars().shadow.get();
         let size = self.bounds().size;
+        // Not animated: a standalone mask layer would otherwise get a 0.25 s implicit animation of `path`.
+        CATransaction::begin();
+        CATransaction::setDisableActions(true);
         layer.setShadowPath(Some(&shadow_path(&shadow, size.width, size.height)));
         self.ivars()
             .mask
             .setPath(Some(&shadow_mask_path(&shadow, size.width, size.height)));
+        CATransaction::commit();
     }
 
     /// Animates the frame (inside the caller's animation group) and the shadow path and mask with it, so the shadow never

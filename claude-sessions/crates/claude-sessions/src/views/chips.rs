@@ -197,8 +197,13 @@ pub fn draw_link_list(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
                 Align::Left,
             );
             let status_w = item.status.as_deref().map_or(0.0, |t| {
-                // At most 40% of the row, so a long status never leaves the title only an ellipsis.
-                (ctx.text_w(t, &theme::STATE_FONT) + 16.0).min(0.4 * row.w)
+                let w = ctx.text_w(t, &theme::STATE_FONT) + 16.0;
+                // With a title, at most 40% of the row, so a long status never leaves the title only an ellipsis.
+                if item.title.is_some() {
+                    w.min(0.4 * row.w)
+                } else {
+                    w
+                }
             });
             if let Some(title) = &item.title {
                 let tx = row.x + 24.0 + code_w + 6.0;
@@ -219,8 +224,9 @@ pub fn draw_link_list(ctx: &mut Ctx, c: &mut Canvas, s: &Session, block: Rect) {
                 let color = theme::tone_token(item.tone);
                 let tag = Rect::new(row.x + row.w - status_w - 4.0, y + 3.0, status_w, 16.0);
                 c.rrect(tag, 4.0, Some(theme::tag_fill(color)), None);
+                // Inset so a truncated "…" does not touch the tag edge.
                 c.label(
-                    tag,
+                    Rect::new(tag.x + 6.0, tag.y, (tag.w - 12.0).max(0.0), tag.h),
                     status,
                     theme::STATE_FONT,
                     theme::solid(color),

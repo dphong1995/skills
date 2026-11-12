@@ -1198,6 +1198,12 @@ fn second_resize_retargets_the_shadow_animation() -> Result<(), String> {
     if (b.size.width, b.size.height) != (100.0, 90.0) {
         return Err(format!("model shadowPath bounds {b:?}"));
     }
+    // The mask that cuts the shape out of the shadow follows the same path.
+    let mask = layer.mask().ok_or("the shadow layer has no mask")?;
+    let path = animation_for(&mask, "path").ok_or("no path animation on the mask")?;
+    if path.fromValue().is_none() || path.toValue().is_none() {
+        return Err("the mask's path animation has no values".into());
+    }
     Ok(())
 }
 
@@ -1777,24 +1783,29 @@ fn pop_scenes(
     claude_sessions_core::scene::Scene,
 ) {
     use claude_sessions_core::scene::{Rect, Scene, Size};
+    // The panel and the pill cast a shadow, each from a view of its own below the node's glass.
+    let shadowed = |mut node: claude_sessions_core::scene::Node| {
+        node.shadow = shadow_node(node.frame, true).shadow;
+        node
+    };
     let closed = Scene {
         size: Size { w: 300.0, h: 200.0 },
-        nodes: vec![glass_node(
+        nodes: vec![shadowed(glass_node(
             "pill",
             Rect::new(10.0, 10.0, 100.0, 30.0),
             glass(15.0, 1.0),
-        )],
+        ))],
         images: Default::default(),
         grow_origin: origin,
     };
     let open = Scene {
         size: Size { w: 300.0, h: 200.0 },
         nodes: vec![
-            glass_node(
+            shadowed(glass_node(
                 "panel",
                 Rect::new(10.0, 10.0, 200.0, 150.0),
                 glass(20.0, 1.0),
-            ),
+            )),
             glass_node("header", Rect::new(18.0, 18.0, 180.0, 38.0), None),
         ],
         images: Default::default(),
@@ -1826,8 +1837,8 @@ fn check_open_zoom(origin: claude_sessions_core::scene::Point) -> Result<(), Str
         }
         checked += 1;
     }
-    // panel + its glass, header.
-    if checked != 3 {
+    // panel + its glass and shadow, header.
+    if checked != 4 {
         return Err(format!("{checked} views zoomed"));
     }
     Ok(())
@@ -1866,15 +1877,18 @@ fn close_shrinks_to_grow_origin() -> Result<(), String> {
         .into_iter()
         .filter(|v| !leaving.contains(v))
         .collect();
-    let [pill] = pills.as_slice() else {
+    // The pill and its shadow.
+    if pills.len() != 2 {
         return Err(format!("{} pill views", pills.len()));
-    };
-    if pill
-        .layer()
-        .and_then(|l| animation_for(&l, "opacity"))
-        .is_none()
-    {
-        return Err("the pill does not fade in".into());
+    }
+    for pill in &pills {
+        if pill
+            .layer()
+            .and_then(|l| animation_for(&l, "opacity"))
+            .is_none()
+        {
+            return Err("the pill or its shadow does not fade in".into());
+        }
     }
     Ok(())
 }
@@ -1888,13 +1902,13 @@ fn close_keeps_leaving_nodes_until_done() -> Result<(), String> {
     let (closed, open) = pop_scenes(Point { x: 210.0, y: 10.0 });
     view.set_scene(&open);
     view.set_scene(&closed);
-    // The panel, its glass and the header, plus the pill and its glass.
-    if view.subviews().len() != 5 {
+    // The panel, its glass, its shadow and the header, plus the pill, its glass and its shadow.
+    if view.subviews().len() != 7 {
         return Err(format!("{} views right after", view.subviews().len()));
     }
     spin(0.6);
-    // The pill and its glass are left.
-    if view.subviews().len() != 2 {
+    // The pill, its glass and its shadow are left; the panel's shadow view went with the panel.
+    if view.subviews().len() != 3 {
         return Err(format!("{} views after the close", view.subviews().len()));
     }
     Ok(())

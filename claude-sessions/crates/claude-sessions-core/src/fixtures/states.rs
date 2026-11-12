@@ -571,22 +571,22 @@ fn actions(dir: &Path, now: SystemTime, deny: bool) -> State {
             json!({"command": twenty.join("\n")}),
         )],
     );
-    f.transcript(
-        FRONTEND,
-        "a",
-        &[assistant_line(
-            "Đã sửa xong, bạn xem lại diff giúp mình nhé.",
-        )],
-    );
-    f.transcript(
-        "/Users/phong/api",
-        "e",
-        &[assistant_line("Bạn muốn mình làm tiếp phần nào?")],
-    );
     f.waiting("b", "permission prompt", 5.0, BACK_NAME, BACKEND);
     f.waiting("c", "permission prompt", 9.0, "ocr-service-a1", OCR);
     f.waiting("d", "permission prompt", 12.0, "talo-v2-9c", TALOS);
     if deny {
+        f.transcript(
+            FRONTEND,
+            "a",
+            &[assistant_line(
+                "Đã sửa xong, bạn xem lại diff giúp mình nhé.",
+            )],
+        );
+        f.transcript(
+            "/Users/phong/api",
+            "e",
+            &[assistant_line("Bạn muốn mình làm tiếp phần nào?")],
+        );
         f.session("a", "idle", 30.0, FRONT_NAME, FRONTEND);
         f.session("e", "idle", 40.0, "api-5e", "/Users/phong/api");
     } else {

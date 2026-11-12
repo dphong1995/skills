@@ -115,7 +115,7 @@ pub fn node(ctx: &mut Ctx, y: f64) -> Node {
         let parts = [(true, true), (false, true), (false, false)]
             .map(|(note, weekly)| Parts { note, weekly })
             .into_iter()
-            .find(|p| width(*p) <= right - 8.0)
+            .find(|p| width(*p) <= right - CARD_W / 2.0)
             .unwrap_or(Parts {
                 note: false,
                 weekly: false,
