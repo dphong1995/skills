@@ -85,3 +85,33 @@ fn persist_store_writes_a_change_and_skips_the_rest() {
     assert_eq!(kv.get_bool("muted"), Some(true));
     assert!(saved.muted);
 }
+
+#[test]
+fn jira_site_round_trips() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = store(dir.path());
+    let kv = MemoryStore::default();
+    let mut saved = settings::load(&kv, &mut store);
+    let prompt = saved.pr_prompt.clone();
+    assert_eq!(store.jira_site, None);
+    // Unchanged: nothing written.
+    settings::persist_store(&kv, &mut saved, &store, &prompt);
+    assert_eq!(kv.get_string("jiraSite"), None);
+    store.jira_site = Some("a.atlassian.net".into());
+    settings::persist_store(&kv, &mut saved, &store, &prompt);
+    assert_eq!(
+        kv.get_string("jiraSite").as_deref(),
+        Some("a.atlassian.net")
+    );
+    let mut again = self::store(dir.path());
+    settings::load(&kv, &mut again);
+    assert_eq!(again.jira_site.as_deref(), Some("a.atlassian.net"));
+    // An empty saved value counts as none.
+    kv.set_string("jiraSite", "");
+    let mut empty = self::store(dir.path());
+    settings::load(&kv, &mut empty);
+    assert_eq!(empty.jira_site, None);
+    store.jira_site = None;
+    settings::persist_store(&kv, &mut saved, &store, &prompt);
+    assert_eq!(kv.get_string("jiraSite"), None);
+}

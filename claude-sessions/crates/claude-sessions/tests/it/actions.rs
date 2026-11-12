@@ -493,12 +493,15 @@ fn actions_that_need_a_monitor_fail_without_one() {
 }
 
 #[test]
-fn connect_opens_the_dialog_but_jira_needs_a_site() {
+fn connect_opens_settings_even_without_a_jira_site() {
     let mut store = store_with(vec![]);
     let mut rec = Recorder::default();
     run(&Action::Connect(Service::Bitbucket), &mut store, &mut rec);
     run(&Action::Connect(Service::Jira), &mut store, &mut rec);
-    assert_eq!(rec.fx, vec![Fx::Connect(Service::Bitbucket), Fx::Beep]);
+    assert_eq!(
+        rec.fx,
+        vec![Fx::Connect(Service::Bitbucket), Fx::Connect(Service::Jira)]
+    );
 }
 
 #[test]

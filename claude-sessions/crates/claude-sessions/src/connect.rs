@@ -1,21 +1,9 @@
-//! The pure parts of the connect and prompt dialogs: what is checked before a token is stored, the error lines and the saved
-//! prompt. The dialogs themselves are `claude-sessions-macos::dialogs`; the Keychain writer and the service check are injected.
+//! The pure parts of the token check and save in the Settings window: what is checked before a token is stored and the error
+//! lines. The Keychain reader and writer and the service check are injected.
 
 use claude_sessions_core::bitbucket::{BitbucketApi, BitbucketClient};
 use claude_sessions_core::credentials::{ClientError, Service, is_safe};
 use claude_sessions_core::jira::{JiraApi, JiraClient};
-use claude_sessions_macos::dialogs::PromptAnswer;
-
-/// The dialog text under the title (Swift `showDialog`'s `how`).
-pub fn info(service: Service, host: Option<&str>) -> String {
-    match service {
-        Service::Bitbucket => "Tạo token bằng nút \"Create API token with scopes\": app Bitbucket, quyền read:user, read:repository, read:pullrequest.".to_string(),
-        Service::Jira => format!(
-            "Tạo token bằng nút \"Create API token\" (loại classic) cho site {}.",
-            host.unwrap_or("")
-        ),
-    }
-}
 
 /// The trimmed account and token, or the notice to show when they cannot be used. Nothing reaches the Keychain or a request
 /// line unless it passes `is_safe`.
@@ -79,15 +67,21 @@ pub fn store_credentials(
     (!write(service, account, token)).then(|| "✗ Không lưu được vào Keychain".to_string())
 }
 
-/// The new prompt template for a dialog answer, or `None` to keep the current one (Swift `editPrompt`): an empty `Lưu` falls
-/// back to `default`.
-pub fn prompt_value(answer: &PromptAnswer, default: &str) -> Option<String> {
-    match answer {
-        PromptAnswer::Save(text) => {
-            let t = text.trim();
-            Some(if t.is_empty() { default } else { t }.to_string())
-        }
-        PromptAnswer::Default => Some(default.to_string()),
-        PromptAnswer::Cancel => None,
+/// The account a check confirmed, or the notice to show. `typed` is the email and token from the Settings fields; without it
+/// the saved pair is read with `read`. `validate` calls the service (it blocks: background thread only).
+pub fn check(
+    service: Service,
+    typed: Option<(String, String)>,
+    site: Option<&str>,
+    read: impl FnOnce(Service) -> Option<(String, String)>,
+    validate: impl FnOnce(Service, &str, &str, Option<&str>) -> Option<String>,
+) -> Result<String, String> {
+    let (account, token) = match typed {
+        Some(pair) => pair,
+        None => read(service).ok_or_else(|| "✗ Chưa có token đã lưu".to_string())?,
+    };
+    match validate(service, &account, &token, site) {
+        Some(failure) => Err(failure),
+        None => Ok(account),
     }
 }

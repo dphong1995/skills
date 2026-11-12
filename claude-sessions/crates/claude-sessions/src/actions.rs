@@ -43,7 +43,7 @@ pub enum Completion {
         ok: bool,
     },
     Nudged(SendKey, bool),
-    /// `Action::Connect` passed its checks: the app shows the token dialog on a later run-loop turn.
+    /// `Action::Connect`: the app opens the Settings window on a later run-loop turn.
     ConnectDialog(Service),
     /// The token check and Keychain write of `connect` finished: `failure` is the notice to show, `None` when stored.
     /// Never carries the token.
@@ -51,6 +51,11 @@ pub enum Completion {
         service: Service,
         account: String,
         failure: Option<String>,
+    },
+    /// The `Kiểm tra` of the Settings window finished: the confirmed account or the failure text. Never carries the token.
+    Checked {
+        service: Service,
+        result: Result<String, String>,
     },
     /// The 2 s focused-pane check finished (`generation` tells a stale one).
     Focus {
@@ -145,11 +150,7 @@ pub fn run(
     match action {
         Action::MarkSeen(_) | Action::ShowCommand { .. } => {}
         Action::Connect(service) => {
-            if *service == Service::Jira && store.jira_host().is_none() {
-                runner.beep();
-            } else {
-                runner.connect(*service);
-            }
+            runner.connect(*service);
         }
         Action::OpenLink(_, url) => {
             store.mark_seen(&id);
@@ -382,9 +383,10 @@ pub fn complete(c: Completion, store: &mut Store, runner: &mut dyn EffectRunner,
                 runner.beep();
             }
         }
-        // The app owns these: they need its dialogs and its cmux state.
+        // The app owns these: they need its Settings window and its cmux state.
         Completion::ConnectDialog(_)
         | Completion::Connected { .. }
+        | Completion::Checked { .. }
         | Completion::Focus { .. }
         | Completion::NextWaiting { .. }
         | Completion::Alert { .. } => {}

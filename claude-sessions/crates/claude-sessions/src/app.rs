@@ -18,35 +18,39 @@ use claude_sessions_core::closed_sessions::ClosedStore;
 use claude_sessions_core::cmux;
 use claude_sessions_core::credentials::{self, Service};
 use claude_sessions_core::feed::{FeedMonitor, UnixFeedTransport};
-use claude_sessions_core::hotkeys::advance;
+use claude_sessions_core::hotkeys::{HotKeyChoice, advance};
 use claude_sessions_core::jira::JiraClient;
 use claude_sessions_core::jira_monitor::JiraMonitor;
 use claude_sessions_core::keyboard::KeyOutcome;
 use claude_sessions_core::layout;
 use claude_sessions_core::panel_state::{HotkeyToggle, PanelState};
 use claude_sessions_core::pr_monitor::PRMonitor;
-use claude_sessions_core::pull_requests::DEFAULT_PROMPT;
 use claude_sessions_core::quota::QuotaReader;
-use claude_sessions_core::scene::HitId;
+use claude_sessions_core::scene::{HitId, Rect};
 use claude_sessions_core::store::{Effect, Paths, Snapshot, Store, StoreOptions};
 use claude_sessions_macos::defaults::{UserDefaultsStore, beep};
-use claude_sessions_macos::dialogs::{self, TokenAnswer};
 use claude_sessions_macos::keys::{self, KeyInfo, KeyMonitor};
 use claude_sessions_macos::main_queue::{self, Ticker};
 use claude_sessions_macos::menu as mac_menu;
 use claude_sessions_macos::mouse::{self, MouseMonitors};
 use claude_sessions_macos::process;
-use claude_sessions_macos::ui::{UiEvent, WidgetPanelHandle};
+use claude_sessions_macos::text::CoreTextMeasure;
+use claude_sessions_macos::ui::{EventHandler, UiEvent, WidgetPanelHandle};
 use claude_sessions_macos::{NotificationObserver, app as mac_app, screens, workspace};
 use url::Url;
 
 use crate::actions::{self, Completion, Poster};
 use crate::effects::RealRunner;
-use crate::hits::{Click, ClickEnv, Target};
+use crate::hits::{Click, ClickEnv, Target, Targets};
 use crate::hotkey::{Hotkeys, Which};
-use crate::menu::{self, Command, Outcome};
+use crate::menu::{self, Command};
 use crate::panels::PanelHost;
 use crate::settings::{self, Settings};
+use crate::settings_model::{
+    Job, SettingsAction, SettingsEffect, SettingsModel, apply, changed_action, email_key,
+    external_key, submit_action, token_service,
+};
+use crate::views::settings::{SettingsView, WIDTH as SETTINGS_WIDTH};
 use crate::{connect, drag, fields, focus, keyboard_mode, placement};
 
 type Shared = Rc<RefCell<AppState>>;
@@ -70,6 +74,20 @@ struct Credentials {
     jira: Option<(String, String)>,
 }
 
+/// The Settings window. `tokens` holds what is typed in the secure token fields: it never goes into the model, the scene or a log
+/// line, and is dropped with the window.
+struct SettingsWindow {
+    window: WidgetPanelHandle,
+    model: SettingsModel,
+    targets: Targets,
+    tokens: HashMap<Service, String>,
+    _key_monitor: Option<KeyMonitor>,
+    /// The tallest the window may be (0.8 of its screen); taller content scrolls.
+    max_h: f64,
+    /// `settings_model::external_key` as of the last render; the tick re-renders only when it changes.
+    rendered_key: String,
+}
+
 pub struct AppState {
     pub store: Store,
     pub kv: UserDefaultsStore,
@@ -89,8 +107,8 @@ pub struct AppState {
     /// Results of cmux lookups, AppleScript and socket calls; `poster` fills it and wakes the main queue.
     completions: Receiver<Completion>,
     poster: Poster,
-    /// One connect dialog at a time (Swift `connecting`).
-    connecting: bool,
+    /// The Settings window while it is open.
+    settings: Option<SettingsWindow>,
     /// Sessions whose cmux surface lookup of the focus check is still running.
     looking_up: HashSet<String>,
     checking_focus: bool,
@@ -307,6 +325,13 @@ impl AppState {
             }
             settings::persist_store(&self.kv, &mut self.saved, &self.store, &self.pr_prompt);
         }
+        if self
+            .settings
+            .as_ref()
+            .is_some_and(|w| w.rendered_key != external_key(&self.store, &self.hotkeys.failed))
+        {
+            self.render_settings();
+        }
         let snap = self.snapshot();
         let dropped = self.sync_visibility(&snap);
         self.track_mouse();
@@ -499,17 +524,17 @@ fn handle_event(weak: &WeakState, key: &str, event: UiEvent) {
             });
         }
         UiEvent::RightClick { at, .. } => {
-            let Some(view) = with_state(weak, |s| {
+            let Some((view, screen)) = with_state(weak, |s| {
                 s.panels
                     .iter()
                     .find(|p| p.key == key)
-                    .map(|p| p.window.view())
+                    .map(|p| (p.window.view(), p.screen))
             })
             .flatten() else {
                 return;
             };
             let weak = weak.clone();
-            main_queue::run_loop_later(move || show_menu(&weak, &view, at));
+            main_queue::run_loop_later(move || show_menu(&weak, &view, at, screen));
         }
         // AppKit is inside the delegate method of the field: a render that freed the field (and its delegate) now would
         // free it while it runs. The draft is kept at once, so it always equals the text on screen when the render runs.
@@ -595,15 +620,15 @@ fn query_cmux(
     )
 }
 
-/// Pops up the right-click menu; a choice is applied on a later turn, so a dialog never opens inside the menu's run loop.
+/// Pops up the right-click menu of the panel on `screen`; a choice is applied on a later turn, so a window never opens inside
+/// the menu's run loop.
 fn show_menu(
     weak: &WeakState,
     view: &claude_sessions_macos::ui::SceneView,
     at: claude_sessions_core::scene::Point,
+    screen: Rect,
 ) {
-    let Some(built) = with_state(weak, |s| menu::build(&s.store, &s.hotkeys)) else {
-        return;
-    };
+    let built = menu::build();
     let commands = built.commands;
     set_menu_open(weak, true);
     let pick_weak = weak.clone();
@@ -616,7 +641,7 @@ fn show_menu(
             return;
         };
         let weak = pick_weak.clone();
-        main_queue::run_loop_later(move || apply_command(&weak, &command));
+        main_queue::run_loop_later(move || apply_command(&weak, &command, screen));
     });
     set_menu_open(weak, false);
 }
@@ -661,118 +686,347 @@ fn try_apply<T>(weak: &Weak<RefCell<T>>, apply: &impl Fn(&mut T)) -> bool {
     true
 }
 
-fn apply_command(weak: &WeakState, command: &Command) {
-    let outcome = with_state(weak, |s| {
-        let pr_prompt = s.pr_prompt.clone();
-        let outcome = menu::choose(command, &mut s.store, &s.kv, &mut s.saved, &pr_prompt);
-        s.render("menu");
-        outcome
-    });
-    match outcome {
-        Some(Outcome::Hotkey(which, choice)) => {
-            with_state(weak, |s| {
-                s.hotkeys
-                    .set(&s.kv, which, choice, hotkey_handler(weak, which));
-                if s.hotkeys.failed.contains(which.name()) {
-                    eprintln!("hotkey {} is used by another app", which.name());
-                }
-            });
-        }
-        Some(Outcome::EditPrompt) => edit_prompt(weak),
-        Some(Outcome::Connect(service)) => apply_action(weak, &Action::Connect(service)),
-        Some(Outcome::Quit) => mac_app::quit(),
-        Some(Outcome::Done) | None => {}
+fn apply_command(weak: &WeakState, command: &Command, screen: Rect) {
+    match command {
+        Command::Settings => open_settings(weak, None, screen),
+        Command::Hotkey(which, choice) => apply_hotkey(weak, *which, choice.clone()),
+        Command::Quit => mac_app::quit(),
     }
 }
 
-/// The prompt dialog; the answer is saved with the other settings.
-fn edit_prompt(weak: &WeakState) {
-    let Some(current) = with_state(weak, |s| s.pr_prompt.clone()) else {
-        return;
-    };
-    let answer = dialogs::ask_prompt(&current, "{url} = link PR, {id} = số PR");
-    // A key-take skipped while the dialog was open is retried now.
-    schedule_key_sync(weak);
+fn apply_hotkey(weak: &WeakState, which: Which, choice: HotKeyChoice) {
     with_state(weak, |s| {
-        if let Some(value) = connect::prompt_value(&answer, DEFAULT_PROMPT) {
-            s.pr_prompt = value;
-            settings::persist(
-                &s.kv,
-                &mut s.saved,
-                settings::current(&s.store, s.pr_prompt.clone()),
-            );
+        s.hotkeys
+            .set(&s.kv, which, choice, hotkey_handler(weak, which));
+        if s.hotkeys.failed.contains(which.name()) {
+            eprintln!("hotkey {} is used by another app", which.name());
+        }
+        s.render_settings();
+    });
+}
+
+/// Opens the Settings window centred on `screen`, or brings the open one to the front; `focus` puts the cursor in that
+/// service's Email field. Call it with no state borrowed.
+fn open_settings(weak: &WeakState, focus: Option<Service>, screen: Rect) {
+    with_state(weak, |s| {
+        if s.settings.is_none() {
+            let on_event: EventHandler = {
+                let weak = weak.clone();
+                Rc::new(move |event| handle_settings_event(&weak, event))
+            };
+            let Some(window) = WidgetPanelHandle::new_key(
+                Rect::new(screen.x, screen.y, SETTINGS_WIDTH, 100.0),
+                on_event,
+            ) else {
+                return;
+            };
+            s.settings = Some(SettingsWindow {
+                window,
+                model: SettingsModel::new(&s.store, &s.pr_prompt, s.live),
+                targets: Targets::default(),
+                tokens: HashMap::new(),
+                _key_monitor: make_settings_key_monitor(weak),
+                max_h: screen.h * 0.8,
+                rendered_key: String::new(),
+            });
+            s.render_settings();
+            if let Some(w) = &s.settings {
+                let f = w.window.frame();
+                w.window.set_frame(Rect::new(
+                    screen.x + (screen.w - f.w) / 2.0,
+                    screen.y + (screen.h - f.h) / 2.0,
+                    f.w,
+                    f.h,
+                ));
+            }
+        }
+        if let Some(w) = &s.settings {
+            w.window.show_key();
+            if let Some(service) = focus {
+                w.window.focus_field(&email_key(service));
+            }
         }
     });
 }
 
-/// Asks for the email and token on a later turn, then checks and stores them off the main thread (Swift `showDialog`).
-fn connect_dialog(
-    weak: &WeakState,
-    service: Service,
-    notice: Option<String>,
-    account: Option<String>,
-) {
+/// The key monitor of the Settings window: Esc (when no field is being edited) and ⌘W close it. It acts only while the
+/// window is key; Esc in a field reaches the field, which sends `FieldCancel`.
+fn make_settings_key_monitor(weak: &WeakState) -> Option<KeyMonitor> {
+    const MODIFIERS: u64 = 0x1e_0000;
+    const COMMAND: u64 = 0x10_0000;
     let weak = weak.clone();
-    main_queue::run_loop_later(move || {
-        let Some((host, saved_account, poster)) = with_state(&weak, |s| {
-            (
-                s.store.jira_host(),
-                s.store.accounts.get(&service).cloned(),
-                s.poster.clone(),
-            )
-        }) else {
-            return;
-        };
-        let account = account.or(saved_account).unwrap_or_default();
-        let title = format!("Kết nối {}", service.display_name());
-        let info = connect::info(service, host.as_deref());
-        let answer = dialogs::ask_token(&title, &info, notice.as_deref(), &account);
-        // A key-take skipped while the dialog was open is retried now.
-        schedule_key_sync(&weak);
-        match answer {
-            TokenAnswer::Cancel => {
-                with_state(&weak, |s| s.connecting = false);
+    KeyMonitor::new(move |info: &KeyInfo| {
+        let close = with_state(&weak, |s| {
+            let w = s.settings.as_ref()?;
+            if !w.window.is_key() {
+                return None;
             }
-            TokenAnswer::OpenTokenPage { account } => {
-                if let Ok(url) = Url::parse(Service::TOKEN_PAGE) {
-                    workspace::open_https(&url);
-                }
-                connect_dialog(&weak, service, notice, Some(account));
+            let escape = info.key_code == keys::KEY_CODE_ESCAPE
+                && info.flags & MODIFIERS == 0
+                && !w.window.is_editing();
+            let close_key = info.chars == "w" && info.flags & MODIFIERS == COMMAND;
+            Some(escape || close_key)
+        })
+        .flatten()
+        .unwrap_or(false);
+        if close {
+            let weak = weak.clone();
+            main_queue::async_main(move || run_settings_action(&weak, SettingsAction::Close));
+        }
+        close
+    })
+}
+
+/// Events of the Settings window. Each is handled on a later turn: AppKit is inside the view or field when it sends one,
+/// and a render or a close now would free what is running. Only the typed text is kept at once.
+fn handle_settings_event(weak: &WeakState, event: UiEvent) {
+    match event {
+        UiEvent::Click(id) => {
+            let action = with_state(weak, |s| match s.settings.as_ref()?.targets.get(id)? {
+                Target::Settings(a) => Some(a.clone()),
+                _ => None,
+            })
+            .flatten();
+            if let Some(action) = action {
+                let weak = weak.clone();
+                main_queue::async_main(move || run_settings_action(&weak, action));
             }
-            TokenAnswer::Save { account, token } => match connect::precheck(&account, &token) {
-                Err(notice) => {
-                    connect_dialog(
-                        &weak,
-                        service,
-                        Some(notice),
-                        Some(account.trim().to_string()),
-                    );
-                }
-                Ok((account, token)) => {
-                    let spawned = std::thread::Builder::new()
-                        .name("claude-sessions.connect".into())
-                        .spawn(move || {
-                            let failure = connect::store_credentials(
-                                service,
-                                &account,
-                                &token,
-                                || connect::validate(service, &account, &token, host.as_deref()),
-                                credentials::write,
-                            );
-                            poster(Completion::Connected {
-                                service,
-                                account,
-                                failure,
-                            });
-                        });
-                    if let Err(e) = spawned {
-                        eprintln!("connect thread: {e}");
-                        with_state(&weak, |s| s.connecting = false);
+        }
+        UiEvent::FieldChanged { key, text } => {
+            let action = with_state(weak, |s| {
+                let w = s.settings.as_mut()?;
+                if let Some(service) = token_service(&key) {
+                    if text.is_empty() {
+                        w.tokens.remove(&service);
+                    } else {
+                        w.tokens.insert(service, text.clone());
                     }
                 }
-            },
+                changed_action(&key, &text)
+            })
+            .flatten();
+            if let Some(action) = action {
+                let weak = weak.clone();
+                main_queue::async_main(move || run_settings_action(&weak, action));
+            }
         }
+        UiEvent::FieldSubmit { key } => {
+            if let Some(action) = submit_action(&key) {
+                let weak = weak.clone();
+                main_queue::async_main(move || run_settings_action(&weak, action));
+            }
+        }
+        UiEvent::FieldCancel { .. } => {
+            let weak = weak.clone();
+            main_queue::async_main(move || {
+                // A multi-line field sends its `FieldSubmit` when the edit ends.
+                let window =
+                    with_state(&weak, |s| s.settings.as_ref().map(|w| w.window.clone())).flatten();
+                if let Some(window) = window {
+                    window.end_editing();
+                }
+            });
+        }
+        UiEvent::RightClick { .. } | UiEvent::Dragged { .. } => {}
+    }
+}
+
+/// Applies an action to the model, runs what it asks for and shows the result.
+fn run_settings_action(weak: &WeakState, action: SettingsAction) {
+    let effects = with_state(weak, |s| {
+        let w = s.settings.as_mut()?;
+        Some(apply(&mut w.model, &mut s.store, action))
+    })
+    .flatten()
+    .unwrap_or_default();
+    with_state(weak, |s| s.render_settings());
+    for effect in effects {
+        run_settings_effect(weak, effect);
+    }
+}
+
+fn run_settings_effect(weak: &WeakState, effect: SettingsEffect) {
+    match effect {
+        SettingsEffect::Persist => {
+            with_state(weak, |s| {
+                s.persist_settings();
+                s.render("settings");
+            });
+        }
+        SettingsEffect::SetPrompt(prompt) => {
+            with_state(weak, |s| {
+                s.pr_prompt = prompt;
+                s.persist_settings();
+            });
+        }
+        SettingsEffect::PopupHotkey(which) => {
+            let weak = weak.clone();
+            main_queue::run_loop_later(move || popup_hotkey_menu(&weak, which));
+        }
+        SettingsEffect::RunCheck {
+            service,
+            email,
+            site,
+        } => run_check(weak, service, &email, site),
+        SettingsEffect::RunSave {
+            service,
+            email,
+            site,
+        } => run_save(weak, service, &email, site),
+        SettingsEffect::OpenTokenPage => {
+            if let Ok(url) = Url::parse(Service::TOKEN_PAGE) {
+                workspace::open_https(&url);
+            }
+        }
+        SettingsEffect::CloseWindow => {
+            let closed = with_state(weak, |s| s.settings.take()).flatten();
+            if let Some(w) = closed {
+                w.window.close();
+            }
+            schedule_key_sync(weak);
+        }
+    }
+}
+
+/// The hotkey choices as a popup at the pointer; the pick is applied on a later turn. No state is borrowed while it runs.
+fn popup_hotkey_menu(weak: &WeakState, which: Which) {
+    let Some((view, frame, built)) = with_state(weak, |s| {
+        let w = s.settings.as_ref()?;
+        Some((
+            w.window.view(),
+            w.window.frame(),
+            menu::hotkey_menu(which, &s.hotkeys),
+        ))
+    })
+    .flatten() else {
+        return;
+    };
+    let pointer = mouse::pointer();
+    let at = claude_sessions_core::scene::Point {
+        x: pointer.x - frame.x,
+        y: frame.y + frame.h - pointer.y,
+    };
+    let commands = built.commands;
+    let pick_weak = weak.clone();
+    mac_menu::popup(&view, &built.entries, at, move |id| {
+        let Some(command) = usize::try_from(id)
+            .ok()
+            .and_then(|i| commands.get(i))
+            .cloned()
+        else {
+            return;
+        };
+        let weak = pick_weak.clone();
+        main_queue::run_loop_later(move || match command {
+            Command::Hotkey(which, choice) => apply_hotkey(&weak, which, choice),
+            Command::Settings | Command::Quit => {}
+        });
     });
+}
+
+/// The typed token (checked) of `service`, or `None` when the field is empty; `Err` is the notice to show.
+fn typed_pair(
+    weak: &WeakState,
+    service: Service,
+    email: &str,
+) -> Result<Option<(String, String)>, String> {
+    let token = with_state(weak, |s| {
+        s.settings
+            .as_ref()
+            .and_then(|w| w.tokens.get(&service).cloned())
+    })
+    .flatten();
+    match token {
+        Some(token) => connect::precheck(email, &token).map(Some),
+        None => Ok(None),
+    }
+}
+
+fn settings_done(weak: &WeakState, service: Service, job: Job, result: Result<String, String>) {
+    with_state(weak, |s| {
+        if let Some(w) = s.settings.as_mut() {
+            w.model.done(service, job, result);
+        }
+        s.render_settings();
+    });
+}
+
+fn spawn_connect(name: &str, work: impl FnOnce() + Send + 'static) -> bool {
+    let spawned = std::thread::Builder::new().name(name.into()).spawn(work);
+    if let Err(e) = &spawned {
+        eprintln!("{name} thread: {e}");
+    }
+    spawned.is_ok()
+}
+
+/// `Kiểm tra`: the typed pair, else the saved one, is tried off the main thread; nothing is written.
+fn run_check(weak: &WeakState, service: Service, email: &str, site: Option<String>) {
+    let typed = match typed_pair(weak, service, email) {
+        Ok(typed) => typed,
+        Err(text) => return settings_done(weak, service, Job::Check, Err(text)),
+    };
+    let Some(poster) = with_state(weak, |s| s.poster.clone()) else {
+        return;
+    };
+    let started = spawn_connect("claude-sessions.settings-check", move || {
+        let result = connect::check(
+            service,
+            typed,
+            site.as_deref(),
+            credentials::read,
+            connect::validate,
+        );
+        poster(Completion::Checked { service, result });
+    });
+    if !started {
+        settings_done(
+            weak,
+            service,
+            Job::Check,
+            Err("✗ Không chạy được kiểm tra".into()),
+        );
+    }
+}
+
+/// `Lưu`: checks the typed pair off the main thread, then writes the Keychain; `Completion::Connected` follows.
+fn run_save(weak: &WeakState, service: Service, email: &str, site: Option<String>) {
+    let (account, token) = match typed_pair(weak, service, email) {
+        Ok(Some(pair)) => pair,
+        Ok(None) => {
+            return settings_done(
+                weak,
+                service,
+                Job::Save,
+                Err("✗ Nhập token mới để lưu".into()),
+            );
+        }
+        Err(text) => return settings_done(weak, service, Job::Save, Err(text)),
+    };
+    let Some(poster) = with_state(weak, |s| s.poster.clone()) else {
+        return;
+    };
+    let started = spawn_connect("claude-sessions.connect", move || {
+        let failure = connect::store_credentials(
+            service,
+            &account,
+            &token,
+            || connect::validate(service, &account, &token, site.as_deref()),
+            credentials::write,
+        );
+        poster(Completion::Connected {
+            service,
+            account,
+            failure,
+        });
+    });
+    if !started {
+        settings_done(
+            weak,
+            service,
+            Job::Save,
+            Err("✗ Không lưu được vào Keychain".into()),
+        );
+    }
 }
 
 /// A click on a hit: an action goes through `Store::apply`, a panel change is applied here.
@@ -958,6 +1212,12 @@ impl AppState {
         }
         match completion {
             Completion::ConnectDialog(service) => return self.start_connect(service),
+            Completion::Checked { service, result } => {
+                if let Some(w) = self.settings.as_mut() {
+                    w.model.done(service, Job::Check, result);
+                }
+                return self.render_settings();
+            }
             Completion::Connected {
                 service,
                 account,
@@ -1022,27 +1282,59 @@ impl AppState {
         self.render("action");
     }
 
-    /// Opens the connect dialog on a later turn unless one is open.
+    /// Opens the Settings window with the service's Email field focused, on a later turn (this runs inside a borrow).
     fn start_connect(&mut self, service: Service) {
-        // Saving writes the real Keychain: never under a fixture or `CLAUDE_SESSIONS_ROOT`.
-        if self.connecting || !self.live {
+        let Some(screen) = self.panels.first().map(|p| p.screen) else {
             return beep();
-        }
-        self.connecting = true;
+        };
         if let Some(weak) = APP.with(|a| a.borrow().clone()) {
-            connect_dialog(&weak, service, None, None);
+            main_queue::run_loop_later(move || open_settings(&weak, Some(service), screen));
         }
     }
 
-    /// The check and Keychain write finished: a failure re-opens the dialog, a success restarts the monitors.
-    fn connected(&mut self, service: Service, account: String, failure: Option<String>) {
-        if let Some(notice) = failure {
-            if let Some(weak) = APP.with(|a| a.borrow().clone()) {
-                connect_dialog(&weak, service, Some(notice), Some(account));
-            }
+    /// The Settings window's scene, built from the model and the store; the window is resized to it, keeping its top edge.
+    fn render_settings(&mut self) {
+        let Some(w) = self.settings.as_mut() else {
             return;
+        };
+        let built = crate::views::settings::build(&SettingsView {
+            model: &w.model,
+            store: &self.store,
+            hotkeys: &self.hotkeys,
+            measure: &CoreTextMeasure,
+            max_h: w.max_h,
+        });
+        w.rendered_key = external_key(&self.store, &self.hotkeys.failed);
+        let f = w.window.frame();
+        let size = built.scene.size;
+        if (f.w, f.h) != (size.w, size.h) {
+            w.window
+                .set_frame(Rect::new(f.x, f.y + f.h - size.h, size.w, size.h));
         }
-        self.connecting = false;
+        w.window.set_scene(&built.scene);
+        w.targets = built.targets;
+    }
+
+    /// Saves the settings that changed.
+    fn persist_settings(&mut self) {
+        settings::persist_store(&self.kv, &mut self.saved, &self.store, &self.pr_prompt);
+    }
+
+    /// The check and Keychain write finished: the Settings window shows the result, a success restarts the monitors.
+    fn connected(&mut self, service: Service, account: String, failure: Option<String>) {
+        if let Some(w) = self.settings.as_mut() {
+            let result = match &failure {
+                Some(text) => Err(text.clone()),
+                None => Ok(account.clone()),
+            };
+            w.model.done(service, Job::Save, result);
+            if failure.is_none() {
+                w.tokens.remove(&service);
+            }
+        }
+        if failure.is_some() {
+            return self.render_settings();
+        }
         self.store.accounts.insert(service, account);
         // A service with a client re-reads the Keychain off the main thread; one without gets its monitor from the next read.
         let existing: Option<Arc<dyn CredentialReloading>> = match service {
@@ -1066,6 +1358,7 @@ impl AppState {
             }
             None => self.credentials = Some(read_credentials()),
         }
+        self.render_settings();
     }
 
     fn close_editor(&mut self, session: Option<String>) {
@@ -1105,6 +1398,8 @@ fn schedule_key_sync(weak: &WeakState) {
             let hidden = s.hidden();
             // A dialog keeps key until it ends; the next sync after it takes the key.
             let modal = mac_app::modal_open();
+            // The Settings window keeps the keyboard while it is open.
+            let settings_open = s.settings.as_ref().is_some_and(|w| w.window.is_visible());
             let mut steps = Vec::new();
             for host in &mut s.panels {
                 if host.state.keyboard && host.key_monitor.is_none() {
@@ -1113,7 +1408,7 @@ fn schedule_key_sync(weak: &WeakState) {
                     host.key_monitor = None;
                 }
                 if host.state.wants_key() {
-                    if !hidden && !modal && !host.window.is_key() {
+                    if !hidden && !modal && !settings_open && !host.window.is_key() {
                         steps.push((host.window.clone(), Step::Take));
                     }
                 } else if host
@@ -1140,10 +1435,16 @@ fn schedule_key_sync(weak: &WeakState) {
 fn make_key_monitor(weak: &WeakState, key: &str) -> Option<KeyMonitor> {
     let (weak, key) = (weak.clone(), key.to_string());
     KeyMonitor::new(move |info: &KeyInfo| {
+        let mut open_on = None;
         let outcome = with_state(&weak, |s| {
             let host = s.panels.iter_mut().find(|p| p.key == key)?;
             if !host.window.is_key() {
                 return None;
+            }
+            // ⌘, opens the Settings window.
+            if info.chars == "," && info.flags & 0x1e_0000 == 0x10_0000 {
+                open_on = Some(host.screen);
+                return Some(KeyOutcome::Consumed(None));
             }
             let outcome = keyboard_mode::handle(
                 info.key_code,
@@ -1158,6 +1459,11 @@ fn make_key_monitor(weak: &WeakState, key: &str) -> Option<KeyMonitor> {
             Some(outcome)
         })
         .flatten();
+        if let Some(screen) = open_on {
+            let weak = weak.clone();
+            main_queue::async_main(move || open_settings(&weak, None, screen));
+            return true;
+        }
         match outcome {
             None | Some(KeyOutcome::PassThrough) => false,
             Some(KeyOutcome::Beep) => {
@@ -1385,7 +1691,7 @@ fn start() -> Running {
         kv,
         completions,
         poster,
-        connecting: false,
+        settings: None,
         looking_up: HashSet::new(),
         checking_focus: false,
         focus_gen: 0,

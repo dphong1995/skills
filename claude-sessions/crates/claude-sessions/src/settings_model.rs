@@ -377,3 +377,19 @@ pub fn status_line(model: &SettingsModel, store: &Store, service: Service) -> (S
     };
     (text, color)
 }
+
+/// What the Settings window shows that the monitors, the app and the hotkey registration change on their own: the connection
+/// lines, the accounts and the failed hotkeys. The tick re-renders the window only when this differs from the last render's.
+pub fn external_key(store: &Store, failed: &std::collections::BTreeSet<&'static str>) -> String {
+    let mut key = String::new();
+    for s in Service::ALL {
+        key.push_str(&format!(
+            "{:?}|{:?}|{:?};",
+            s,
+            store.connections.get(&s),
+            store.accounts.get(&s)
+        ));
+    }
+    key.push_str(&format!("{failed:?}"));
+    key
+}

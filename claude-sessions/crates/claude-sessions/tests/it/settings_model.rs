@@ -388,3 +388,19 @@ fn typed_token_stays_out_of_scene_model_and_debug() {
         }
     }
 }
+
+#[test]
+fn external_key_changes_only_with_connections_accounts_or_failed_hotkeys() {
+    let (_d, mut s, _m) = setup();
+    let none = std::collections::BTreeSet::new();
+    let base = external_key(&s, &none);
+    assert_eq!(base, external_key(&s, &none));
+    s.connections.insert(Jira, ConnectionLine::Rejected);
+    let rejected = external_key(&s, &none);
+    assert_ne!(base, rejected);
+    s.accounts.insert(Jira, "j@x".into());
+    let with_account = external_key(&s, &none);
+    assert_ne!(rejected, with_account);
+    let failed = std::collections::BTreeSet::from(["open"]);
+    assert_ne!(with_account, external_key(&s, &failed));
+}

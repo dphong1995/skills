@@ -1,4 +1,4 @@
-//! The pure parts of the token and prompt dialogs. No dialog is shown and no Keychain is touched: the writer is injected.
+//! The pure parts of the token check and save. No dialog is shown and no Keychain is touched: the writer is injected.
 
 use std::cell::Cell;
 
@@ -6,7 +6,6 @@ use claude_sessions::connect;
 use claude_sessions_core::bitbucket::BitbucketError;
 use claude_sessions_core::credentials::Service;
 use claude_sessions_core::jira::JiraError;
-use claude_sessions_macos::dialogs::{PromptAnswer, TokenAnswer};
 
 #[test]
 fn an_unsafe_token_or_email_is_rejected_before_anything_is_stored() {
@@ -93,34 +92,74 @@ fn failure_lines_follow_the_status() {
     );
 }
 
+fn pair(a: &str, t: &str) -> Option<(String, String)> {
+    Some((a.to_string(), t.to_string()))
+}
+
 #[test]
-fn the_dialog_text_names_the_site() {
-    assert!(connect::info(Service::Bitbucket, None).contains("read:pullrequest"));
+fn check_uses_the_typed_pair() {
+    let seen = Cell::new(false);
+    let got = connect::check(
+        Service::Jira,
+        pair("a@b.c", "typed"),
+        Some("x.atlassian.net"),
+        |_| {
+            seen.set(true);
+            None
+        },
+        |s, a, t, site| {
+            assert_eq!(
+                (s, a, t, site),
+                (Service::Jira, "a@b.c", "typed", Some("x.atlassian.net"))
+            );
+            None
+        },
+    );
+    assert_eq!(got, Ok("a@b.c".to_string()));
     assert!(
-        connect::info(Service::Jira, Some("acme.atlassian.net"))
-            .contains("site acme.atlassian.net.")
+        !seen.get(),
+        "the Keychain is not read when a token is typed"
     );
 }
 
 #[test]
-fn a_token_answer_never_prints_the_token() {
-    let a = TokenAnswer::Save {
-        account: "a@b.c".into(),
-        token: "SECRET-TOKEN".into(),
-    };
-    let shown = format!("{a:?}");
-    assert!(!shown.contains("SECRET") && !shown.contains("a@b.c"));
+fn check_reads_the_saved_pair_when_none_is_typed() {
+    let got = connect::check(
+        Service::Bitbucket,
+        None,
+        None,
+        |s| {
+            assert_eq!(s, Service::Bitbucket);
+            pair("me@x.y", "saved")
+        },
+        |_, a, t, _| {
+            assert_eq!((a, t), ("me@x.y", "saved"));
+            None
+        },
+    );
+    assert_eq!(got, Ok("me@x.y".to_string()));
 }
 
 #[test]
-fn prompt_answers_become_the_saved_prompt() {
-    let d = "default {url}";
-    let v = |a: PromptAnswer| connect::prompt_value(&a, d);
-    assert_eq!(
-        v(PromptAnswer::Save("  mine {id} \n".into())).as_deref(),
-        Some("mine {id}")
+fn check_without_a_saved_token_fails() {
+    let got = connect::check(
+        Service::Jira,
+        None,
+        Some("x.atlassian.net"),
+        |_| None,
+        |_, _, _, _| panic!("nothing to validate"),
     );
-    assert_eq!(v(PromptAnswer::Save("   ".into())).as_deref(), Some(d));
-    assert_eq!(v(PromptAnswer::Default).as_deref(), Some(d));
-    assert_eq!(v(PromptAnswer::Cancel), None);
+    assert_eq!(got, Err("✗ Chưa có token đã lưu".to_string()));
+}
+
+#[test]
+fn check_returns_the_failure_text() {
+    let got = connect::check(
+        Service::Jira,
+        pair("a@b.c", "t"),
+        Some("x.atlassian.net"),
+        |_| None,
+        |_, _, _, _| Some("✗ Lỗi HTTP 500".to_string()),
+    );
+    assert_eq!(got, Err("✗ Lỗi HTTP 500".to_string()));
 }

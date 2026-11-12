@@ -1,4 +1,4 @@
-//! The settings the Swift widget keeps in `UserDefaults` (`muted`, `bgOpacity`, `prPrompt`, `jiraProjects`): loaded into the
+//! The settings the Swift widget keeps in `UserDefaults` (`muted`, `bgOpacity`, `prPrompt`, `jiraProjects`, `jiraSite`): loaded into the
 //! store at start, written back when a value changed (Swift's `$muted.dropFirst().sink`).
 
 use std::collections::HashMap;
@@ -19,6 +19,7 @@ pub struct Settings {
     pub bg_opacity: f64,
     pub pr_prompt: String,
     pub jira_projects: HashMap<String, String>,
+    pub jira_site: Option<String>,
 }
 
 /// Reads the saved values into `store` and returns the prompt template (the default when none is saved).
@@ -43,6 +44,7 @@ pub fn load(kv: &dyn KeyValueStore, store: &mut Store) -> Settings {
     {
         store.jira_projects = map;
     }
+    store.jira_site = kv.get_string("jiraSite").filter(|s| !s.is_empty());
     current(store, pr_prompt)
 }
 
@@ -52,6 +54,7 @@ pub fn current(store: &Store, pr_prompt: String) -> Settings {
         bg_opacity: store.bg_opacity,
         pr_prompt,
         jira_projects: store.jira_projects.clone(),
+        jira_site: store.jira_site.clone(),
     }
 }
 
@@ -61,6 +64,7 @@ pub fn persist_store(kv: &dyn KeyValueStore, saved: &mut Settings, store: &Store
         && store.bg_opacity == saved.bg_opacity
         && pr_prompt == saved.pr_prompt
         && store.jira_projects == saved.jira_projects
+        && store.jira_site == saved.jira_site
     {
         return;
     }
@@ -85,6 +89,12 @@ pub fn persist(kv: &dyn KeyValueStore, saved: &mut Settings, now: Settings) {
             .map(|(k, v)| (k.clone(), Value::String(v.clone())))
             .collect();
         kv.set_dict("jiraProjects", &dict);
+    }
+    if now.jira_site != saved.jira_site {
+        match &now.jira_site {
+            Some(site) => kv.set_string("jiraSite", site),
+            None => kv.remove("jiraSite"),
+        }
     }
     *saved = now;
 }
