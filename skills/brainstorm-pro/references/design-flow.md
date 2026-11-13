@@ -26,6 +26,7 @@ Run Phases 1–6 below as written. Do nothing the next step does (invoking a ski
 | "I'll just batch the questions" | Batching dependent questions breaks adaptive follow-up. Group only independent ones (up to 4 on one page). |
 | "This one is quick, I'll ask it in chat" | Every interview question goes on the HTML question page. Chat carries the file path; the answers come back from the page (or pasted). |
 | "A short question is easier to answer" | A short question makes the user reconstruct the context. Fill the card: why, evidence, example per option, pros/cons, recommendation. |
+| "Reading the files myself is faster" | Their output then stays in context for every later call. The report carries `file:line`; the script cuts the code for cards. |
 | "Skip scout, the ticket is detailed" | Tickets often miss existing infra. Scout anyway, briefly. |
 | "User wants action, not talk" | Bad action wastes more time than good design. |
 | "Just propose one approach" | Always 2-3. Lead with rec, but show alternatives. |
@@ -78,23 +79,26 @@ Every later question and the design build on what the scout finds in the code.
 **Required actions:**
 1. **Read `CLAUDE.md`** + any `.claude/rules/*.md` to internalize project conventions
 2. **Save the Jira stories** when the topic names Jira issues: run `~/.claude/skills/brainstorm-pro/references/jira-snapshot.md` (Sonnet agents in the background; it keeps Story/Epic only). Read their one-line reports, then the saved files of the stories you design.
-3. **Identify related areas** in the codebase:
-   - `ls` and `grep` related directories (`src/pages/`, `src/components/`, etc.)
-   - Find existing similar features (search for keywords from the topic)
-   - Read any relevant existing components / hooks / services
-4. **Cross-repo scan** if the project has additional working directories (e.g. backend repo) — check there too
-5. **Read related docs** in `docs/` if any
+3. **Dispatch the scout** (replaces the old steps 3-5: related areas, cross-repo scan, `docs/`). Run step 2 first, then send this brief to `Agent(subagent_type: "explore", model: "sonnet")`, one agent per working directory when the project has several, all in one message. If `explore` is not registered, use `general-purpose` with `model: "sonnet"` and the same brief; never fall back to reading inline.
+
+   ```text
+   Topic: <topic, one paragraph, plus the Jira story summaries from step 2 if any>
+   Repo: <absolute working directory>
+   Find what this feature can build on. Read code, not only names.
+   Report format (use this instead of your default one), at most ~1500 words:
+   ## Existing infrastructure   what exists and could be reused, each with /abs/path:line
+   ## Reuse opportunities       files/functions/types to build on, /abs/path:line-range
+   ## Conflict risks            patterns the feature must respect, /abs/path:line
+   ## Open questions            gaps the code does not answer
+   ## Not checked / unsure      what you skipped or could not confirm
+   ```
 6. **List user memory** if available — past feedback informs design
 
-**Scout output (keep in working memory):**
-- "Existing infrastructure" summary: what already exists and could be reused
-- "Reuse opportunities": specific files/functions/types to build on
-- "Conflict risks": existing patterns this feature must respect
-- "Open questions for user": gaps the code does NOT answer
+**Scout output:** the agent's report, with the five sections above (one report per working directory). Cite its `file:line` on cards through `{t:"code", file, lines}`; the script cuts the snippet, so no Read is needed for that. Read a span yourself only when a section lacks what a card or the design needs, or the item is under `Not checked / unsure`.
 
 **Cite scout evidence in later questions.** Never ask "what database does the project use?" if scout already showed it.
 
-**Budget:** 5-15 actions typical. Stop when you have a clear picture of reuse landscape.
+**Budget (main thread):** the brief plus at most a few targeted Reads. Stop when you have a clear picture of reuse landscape.
 
 ---
 
@@ -336,6 +340,7 @@ the words they used when you proceed, so the assumption is visible and correctab
 - `Write` (question JSON) + `Bash` (`render-interview.mjs --serve` in the foreground, 10-minute timeout, same message) for every interview question (Q0, Phase 2, Phase 3) — `~/.claude/skills/brainstorm-pro/references/html-interview.md`; chat only as its fallback
 - Sub-agents OK for parallel research IF Phase 1 reveals multiple unknown areas — but keep it focused
 - `Write` to save the document in Phase 4; `Bash` (`render-interview.mjs <document> … --serve`, foreground, 10-minute timeout) to show it in Phase 6 — `~/.claude/skills/brainstorm-pro/references/html-doc.md`
+- `Agent` → `explore` (`model: "sonnet"`) for Phase 1's reading, per the brief in Phase 1
 - `Agent` for the builder check — settings and prompt in `~/.claude/skills/brainstorm-pro/references/builder-check.md` (its round goes on the interview page like any other)
 
 ## Examples
@@ -361,6 +366,7 @@ Why bad: scout would reveal `TypeORM` instantly. Wastes a round.
 ## Final Checklist
 
 - [ ] Phase 1 scout findings cited in later questions
+- [ ] Phase 1 reading ran in `explore` (Sonnet) with the five-section brief; main thread read only targeted spans
 - [ ] Phase 1.5 best-practice research done right after scout when warranted (all 3 conditions), or consciously skipped (reuse/bespoke/no real fork); deep-dive reserved for a real open fork
 - [ ] Q&A ran one round at a time (one question, or up to 4 independent ones), max 8 rounds
 - [ ] Every interview question (Q0, Q&A, approach pick) went on the interview page as a full card (why, context with evidence, options with example/pros/cons, recommendation; the playback card excepted: its own field set); each answer taken from the page's reply (or the user's pasted one) before the next question

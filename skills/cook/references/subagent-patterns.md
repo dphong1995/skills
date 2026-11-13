@@ -27,6 +27,7 @@ do the work inline.
 | Implementation (backend / general) | `executor` → `general-purpose` |
 | Implementation (frontend / UI) | `designer` → `executor` → `general-purpose` |
 | Codebase file discovery | `Explore` → `explore` → `general-purpose` |
+| Design scout (1A, design-flow.md Phase 1) | `explore` → `general-purpose`, both `model: "sonnet"` |
 | External docs / prior art | `document-specialist` → `general-purpose` |
 | Requirements analysis | `analyst` → `general-purpose` |
 | Testing | `test-engineer` → `executor` → `general-purpose` |
@@ -39,12 +40,12 @@ Older names that no longer exist anywhere — `fullstack-developer`, `ui-ux-desi
 `project-manager`, `docs-manager`, `researcher`, `scout` — map through the table
 above. Do not dispatch them directly.
 
-## Step 1A/1B Helpers (OPTIONAL — Step 1 itself is orchestrator-run)
+## Step 1A/1B Helpers (1A reading required in `explore`; 1B optional — Step 1 itself is orchestrator-run)
 ```
 Agent(subagent_type="document-specialist", prompt="Research [topic]. Report conclusions with file:line or URL citations, not file dumps.", description="Research [topic]")
-Agent(subagent_type="Explore", prompt="Find files related to [feature] in codebase. Breadth: medium.", description="Explore [feature]")
+Agent(subagent_type="explore", model="sonnet", prompt="<scout brief from design-flow.md Phase 1>", description="Scout [feature]")
 ```
-- Only for parallel reading during deep scout (1A) / best-practice research (1B)
+- 1A's code reading is required in `explore` (Sonnet; fallback `general-purpose`, Sonnet); best-practice research helpers (1B) stay optional
 - Reports carry conclusions with citations, not file dumps; the orchestrator owns synthesis, Q&A and design
 - NEVER delegate the design conversation (1C/1D/1E) — it stays with the orchestrator. One exception: the 1E builder check runs per `../brainstorm-pro/references/builder-check.md` and reads the written design.md; the orchestrator triages its questions and still owns Q&A, the design and the review page. When cook dispatches it, append the § Every prompt lines like any other prompt cook writes
 

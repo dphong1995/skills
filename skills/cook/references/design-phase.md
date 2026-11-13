@@ -8,7 +8,7 @@ goes to Step 2, where the **orchestrator itself** writes the plan files next to 
 sub-agent), and execution continues in the same run.
 
 **The orchestrator runs this step itself** — scout/Q&A/design are conversational and must not
-be delegated. Sub-agents are allowed only as research helpers in 1A/1B and the builder check in 1E.
+be delegated. 1A's code reading runs in `explore` (Sonnet) per `../../brainstorm-pro/references/design-flow.md` Phase 1 (fallback `general-purpose`, Sonnet); the orchestrator keeps synthesis. Other sub-agents are allowed only as research helpers in 1B and the builder check in 1E.
 
 ## Mapping to `design-flow.md`
 
@@ -28,8 +28,7 @@ step* = Step 2.
 
 - 1A: **Save the Jira stories** when the topic names Jira issues (not in the collapsed bug-fix Step 1): run `../brainstorm-pro/references/jira-snapshot.md` (Sonnet agents in the background; it keeps Story/Epic only). Read their one-line reports, then the saved files of the stories you design.
 
-**1A budget:** 5-15 actions typical. `document-specialist` / `Explore` sub-agents may be dispatched in
-parallel for distinct areas (reports carry conclusions and citations, not file dumps); the orchestrator still owns synthesis.
+**1A budget:** 5-15 actions typical. 1A's reading runs in `explore` (Sonnet; fallback `general-purpose`, Sonnet), one per working directory, in parallel (reports carry conclusions and citations, not file dumps); the orchestrator still owns synthesis. `document-specialist` may help in 1B.
 
 Anti-Rationalization rows (in addition to `design-flow.md`'s):
 

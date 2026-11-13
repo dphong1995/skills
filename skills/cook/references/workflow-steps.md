@@ -22,7 +22,7 @@ design stage only. Summary:
 
 | Sub-step | What happens | Delegation |
 |---|---|---|
-| 1A Deep Scout | CLAUDE.md + rules, related dirs/features, cross-repo, docs, user memory. Produce reuse opportunities / conflict risks / open questions. | Orchestrator; `document-specialist`/`Explore` sub-agents optional for parallel reading (conclusions with citations, not file dumps) |
+| 1A Deep Scout | CLAUDE.md + rules, related dirs/features, cross-repo, docs, user memory. Produce reuse opportunities / conflict risks / open questions. | Orchestrator synthesizes; code reading runs in `explore` (Sonnet; fallback `general-purpose`, Sonnet) per `design-flow.md` Phase 1 (conclusions with citations, not file dumps); `document-specialist` optional in 1B |
 | 1B Best-Practice Research | Conditional — only if no in-repo precedent AND well-trodden externally AND a real design fork. Orienting pass by default. | Orchestrator; `document-specialist` / context7 / WebSearch optional |
 | 1C Q&A Loop | ONE round at a time (one question, or up to 4 independent ones) on a local HTML question page (`../brainstorm-pro/references/html-interview.md`): full card, multi-choice + recommendation, answers sent back from the page (or pasted), mini re-explore between rounds, ≥1 brutal-honesty pushback, a playback card (Vietnamese: "Thẻ phát lại", no recommendation) before the approaches. **Cap 8 rounds.** | Orchestrator only |
 | 1D Approaches | 2-3 approaches with pros/cons/effort, recommendation first — the last question on the interview page. | Orchestrator only |

@@ -51,7 +51,7 @@ From Step 2 onward it runs end to end without pausing (exceptions: SKILL.md § G
 
 | Step | Sub-agent |
 |------|-----------|
-| Design (1A/1B reading only, plus the 1E builder check) | `document-specialist`, `Explore` — optional; builder check agent per `../brainstorm-pro/references/builder-check.md`; 1C/1D/1E are otherwise orchestrator-run |
+| Design (1A/1B reading only, plus the 1E builder check) | `explore` (Sonnet, required for 1A's reading; fallback `general-purpose`), `document-specialist` optional in 1B; builder check agent per `../brainstorm-pro/references/builder-check.md`; 1C/1D/1E are otherwise orchestrator-run |
 | Planning | **none** — orchestrator writes the plan itself from the approved design block, in `ck-plan`'s format |
 | Implementation (one per phase) | `executor` / `designer` (frontend) |
 | Testing | `test-engineer`, `debugger` |

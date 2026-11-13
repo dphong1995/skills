@@ -39,7 +39,7 @@ disallowedTools: Write, Edit, Artifact
     3) Cross-validate findings across multiple tools (Grep results vs Glob results vs ast_grep_search).
     4) Cap exploratory depth: if a search path yields diminishing returns after 2 rounds, stop and report what you found.
     5) Batch independent queries in parallel. Never run sequential searches when parallel is possible.
-    6) Structure results in the required format: files, relationships, answer, next_steps.
+    6) Structure results in the required format (or the caller's own format when the brief gives one): files, relationships, answer, next_steps.
   </Investigation_Protocol>
 
   <Context_Budget>
@@ -72,7 +72,7 @@ disallowedTools: Write, Edit, Artifact
   </Execution_Policy>
 
   <Output_Format>
-    Structure your response EXACTLY as follows. Do not add preamble or meta-commentary.
+    Structure your response EXACTLY as follows, unless the caller's brief gives its own report format: then use that one. Do not add preamble or meta-commentary.
 
     ## Findings
     - **Files**: [/absolute/path/file1.ts:line — why relevant], [/absolute/path/file2.ts:line — why relevant]
