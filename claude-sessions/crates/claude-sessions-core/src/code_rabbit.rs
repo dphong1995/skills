@@ -29,6 +29,8 @@ pub struct RabbitFacts {
     /// CodeRabbit inline threads (a live top-level inline comment and its descendants), and those not answered:
     /// no human reply, or the newest comment is not CodeRabbit's.
     pub threads: RabbitThreads,
+    /// Inline threads nobody but CodeRabbit wrote in and CodeRabbit has not marked addressed.
+    pub unreplied: i64,
     /// The newest approve command is newer than every top-level CodeRabbit comment.
     pub nudge_pending: bool,
     /// When the newest approve command was posted.
@@ -311,7 +313,7 @@ pub fn derive(i: &RabbitInputs, now: SystemTime) -> RabbitView {
     let mut shown = resolve(status.as_ref(), &i.approvers, facts.as_ref());
     // The failure CodeRabbit wrote in a comment after the newest command stays until a new review (a status that is not
     // an approve command) or a newer command replaces it.
-    if matches!(status, Some(Rabbit::Reviewed(_)))
+    if matches!(status, Some(Rabbit::Reviewed(_) | Rabbit::Skipped))
         && let Some(f) = &facts
         && let Some(command) = f.command
         && let Some(failed) = f.approval_failed_at
@@ -453,25 +455,26 @@ pub fn facts(values: &[Value], me: Option<&str>, author: Option<&str>) -> Rabbit
         .copied()
         .filter(|v| v.get("inline").is_some() && parent(v).is_none())
         .collect();
-    let pending = roots
+    // Per open root (CodeRabbit rewrites a root it has dealt with to `✅ Addressed in commit …`): whether anyone else
+    // replied, and whether the newest comment is someone else's.
+    let open: Vec<(bool, bool)> = roots
         .iter()
-        .filter(|root| {
-            // CodeRabbit rewrites a root it has dealt with to `✅ Addressed in commit …`.
-            if raw(root).contains("Addressed in commit") {
-                return false;
-            }
+        .filter(|root| !raw(root).contains("Addressed in commit"))
+        .map(|root| {
             let thread: Vec<&Value> = id(root)
                 .and_then(|i| threads.get(&i).cloned())
                 .unwrap_or_else(|| vec![root]);
-            if !thread.iter().any(|v| !is_comment(v)) {
-                return true;
-            }
-            match max_first(thread.iter().copied(), |a, b| created(a) < created(b)) {
-                Some(newest) => !is_comment(newest),
-                None => true,
-            }
+            let replied = thread.iter().any(|v| !is_comment(v));
+            let newest_other = max_first(thread.iter().copied(), |a, b| created(a) < created(b))
+                .is_none_or(|newest| !is_comment(newest));
+            (replied, newest_other)
         })
+        .collect();
+    let pending = open
+        .iter()
+        .filter(|(replied, newest_other)| !replied || *newest_other)
         .count() as i64;
+    let unreplied = open.iter().filter(|(replied, _)| !replied).count() as i64;
 
     let command = live
         .iter()
@@ -533,6 +536,7 @@ pub fn facts(values: &[Value], me: Option<&str>, author: Option<&str>) -> Rabbit
             pending,
             total: roots.len() as i64,
         },
+        unreplied,
         nudge_pending,
         command,
         approval_failed_at: failed.map(created),
@@ -556,6 +560,19 @@ pub fn resolve(
         return Some(Rabbit::Reviewing);
     }
     match status {
+        // CodeRabbit can skip the review of the commit that fixes its findings and then never answer the replies to them;
+        // with every finding replied to, the PR waits for approval as if it had.
+        Some(Rabbit::Skipped)
+            if facts.is_some_and(|f| {
+                f.rabbit_user.is_some() && f.threads.total > 0 && f.unreplied == 0
+            }) =>
+        {
+            Some(if facts.is_some_and(|f| f.nudge_pending) {
+                Rabbit::Nudged
+            } else {
+                Rabbit::AwaitingApproval
+            })
+        }
         Some(Rabbit::Failed | Rabbit::Skipped | Rabbit::ApprovalFailed(_)) => status.cloned(),
         Some(Rabbit::Reviewed(_) | Rabbit::Approved) => {
             let Some(facts) = facts.filter(|f| f.rabbit_user.is_some()) else {

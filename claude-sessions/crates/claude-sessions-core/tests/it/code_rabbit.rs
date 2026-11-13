@@ -429,6 +429,12 @@ fn resolve_order() {
     );
     assert_eq!(
         res(Some(Rabbit::Skipped), &none, Some(&answered_facts)),
+        Some(Rabbit::AwaitingApproval)
+    );
+    let mut unreplied_facts = known.clone();
+    unreplied_facts.unreplied = 1;
+    assert_eq!(
+        res(Some(Rabbit::Skipped), &none, Some(&unreplied_facts)),
         Some(Rabbit::Skipped)
     );
     let unknown = RabbitFacts {
@@ -779,4 +785,42 @@ fn hides_ask_claude_keeps_button_for_others() {
         none,
         false
     ));
+}
+
+fn replied_threads() -> Vec<Value> {
+    vec![
+        rabbit_inline(1, "nit", &at(-500.0), None),
+        rabbit_inline(2, "nit", &at(-500.0), None),
+        human_reply(3, Some(1), "{me}", "fixed", &at(-400.0), true),
+        human_reply(4, Some(2), "{me}", "fixed", &at(-400.0), true),
+    ]
+}
+
+#[test]
+fn skipped_after_replied_review_awaits_approval() {
+    let skipped = || done("Review skipped", &at(-300.0), None);
+    assert_eq!(
+        derived(vec![skipped()], replied_threads(), 0.0).rabbit,
+        Some(Rabbit::AwaitingApproval)
+    );
+    let nudged = plus(replied_threads(), vec![approve_command()]);
+    assert_eq!(
+        derived(vec![skipped()], nudged, 30.0).rabbit,
+        Some(Rabbit::Nudged)
+    );
+    // A thread nobody replied to keeps the skip.
+    let open = plus(
+        replied_threads(),
+        vec![rabbit_inline(5, "nit", &at(-500.0), None)],
+    );
+    assert_eq!(
+        derived(vec![skipped()], open, 0.0).rabbit,
+        Some(Rabbit::Skipped)
+    );
+    // Skipped from the start: no finding to have replied to.
+    let skip_note = rabbit_comment("Review skipped", &at(-300.0));
+    assert_eq!(
+        derived(vec![skipped()], vec![skip_note], 0.0).rabbit,
+        Some(Rabbit::Skipped)
+    );
 }

@@ -1590,8 +1590,8 @@
     "total" : 1
   },
   "talo6-dct-backend#7530\/noApprovers" : {
-    "hidesAskClaude" : false,
-    "label" : "bỏ qua",
+    "hidesAskClaude" : true,
+    "label" : "chờ duyệt",
     "pending" : 0,
     "total" : 1
   },
@@ -1800,14 +1800,14 @@
     "total" : 0
   },
   "talo6-dct-backend#7548" : {
-    "hidesAskClaude" : false,
-    "label" : "bỏ qua",
+    "hidesAskClaude" : true,
+    "label" : "chờ duyệt",
     "pending" : 0,
     "total" : 9
   },
   "talo6-dct-backend#7548\/noApprovers" : {
-    "hidesAskClaude" : false,
-    "label" : "bỏ qua",
+    "hidesAskClaude" : true,
+    "label" : "chờ duyệt",
     "pending" : 0,
     "total" : 9
   },
@@ -4374,8 +4374,8 @@
     "total" : 1
   },
   "talo6-dct-frontend#6845\/noApprovers" : {
-    "hidesAskClaude" : false,
-    "label" : "bỏ qua",
+    "hidesAskClaude" : true,
+    "label" : "chờ duyệt",
     "pending" : 0,
     "total" : 1
   },
@@ -4398,8 +4398,8 @@
     "total" : 1
   },
   "talo6-dct-frontend#6847\/noApprovers" : {
-    "hidesAskClaude" : false,
-    "label" : "bỏ qua",
+    "hidesAskClaude" : true,
+    "label" : "chờ duyệt",
     "pending" : 0,
     "total" : 1
   },
