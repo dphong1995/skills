@@ -1,17 +1,19 @@
 //! The size model of the redesigned widget (replaces the Swift `HeightTests` and the height tests of `LayoutTests`).
 
 use crate::support::{feed_question, make_store, make_temp_dir};
+use claude_sessions_core::closed_sessions::ClosedSession;
 use claude_sessions_core::feed::BlockState;
 use claude_sessions_core::geometry::Size;
 use claude_sessions_core::layout::{
-    self, CARD_GAP, CLOSED_ITEM_H, CLOSED_ROW_H, EXPANDED_WIDTH, HEADER_HEIGHT, Item,
-    MAX_EXPANDED_HEIGHT, PANEL_PAD, SECTION_TITLE_H, TextMeasure, approval_height, card_layout,
-    closed_height, collapsed_width, expanded_layout, expanded_size, question_height,
+    self, CARD_GAP, CLOSED_CHILD_H, CLOSED_ITEM_H, CLOSED_ROW_H, EXPANDED_WIDTH, HEADER_HEIGHT,
+    Item, MAX_EXPANDED_HEIGHT, PANEL_PAD, SECTION_TITLE_H, TextMeasure, approval_height,
+    card_layout, closed_height, collapsed_width, expanded_layout, expanded_size, question_height,
 };
 use claude_sessions_core::panel_state::{EditKind, Editing, PanelState};
+use claude_sessions_core::procs::{GroupKind, ProcGroup, SessionProcs};
 use claude_sessions_core::quota::Quota;
 use claude_sessions_core::scene::FontSpec;
-use claude_sessions_core::store::{LinkItem, LinkKind, LinkSection, Session, Snapshot};
+use claude_sessions_core::store::{ClosedRow, LinkItem, LinkKind, LinkSection, Session, Snapshot};
 use claude_sessions_core::transcript::{Pending, PendingState};
 use std::time::SystemTime;
 
@@ -117,18 +119,16 @@ fn expanded_height_is_header_titles_cards_gaps_and_closed_row() {
 
 #[test]
 fn closed_row_adds_its_height_and_grows_with_the_open_list() {
-    assert_eq!(closed_height(0, true), 0.0);
-    assert_eq!(closed_height(3, false), CLOSED_ROW_H);
-    assert_eq!(closed_height(3, true), CLOSED_ROW_H + 3.0 * CLOSED_ITEM_H);
+    assert_eq!(closed_height(&[], true), 0.0);
+    let three = [(false, 0); 3];
+    assert_eq!(closed_height(&three, false), CLOSED_ROW_H);
+    assert_eq!(
+        closed_height(&three, true),
+        CLOSED_ROW_H + 3.0 * CLOSED_ITEM_H
+    );
     let mut snap = snapshot(vec![idle("a")]);
     let none = expanded_size(&snap, &panel(), &FakeMeasure).h;
-    snap.closed = vec![claude_sessions_core::closed_sessions::ClosedSession {
-        id: "c".into(),
-        title: "t".into(),
-        cwd: "/x".into(),
-        branch: None,
-        closed_at: SystemTime::now(),
-    }];
+    snap.closed_rows = vec![plain_row("c")];
     let shut = expanded_size(&snap, &panel(), &FakeMeasure).h;
     assert_eq!(shut - none, CLOSED_ROW_H);
     let mut open = panel();
@@ -136,6 +136,102 @@ fn closed_row_adds_its_height_and_grows_with_the_open_list() {
     assert_eq!(
         expanded_size(&snap, &open, &FakeMeasure).h - shut,
         CLOSED_ITEM_H
+    );
+}
+
+fn plain_row(id: &str) -> ClosedRow {
+    let session = ClosedSession {
+        id: id.into(),
+        title: "t".into(),
+        cwd: "/x".into(),
+        branch: None,
+        closed_at: SystemTime::now(),
+    };
+    ClosedRow {
+        id: id.into(),
+        title: "t".into(),
+        folder: "x".into(),
+        closed_at: Some(session.closed_at),
+        session,
+        procs: None,
+    }
+}
+
+fn group(key: &str, kind: GroupKind) -> ProcGroup {
+    ProcGroup {
+        key: key.into(),
+        kind,
+        name: key.into(),
+        command: key.into(),
+        ports: vec![],
+        rss: 1 << 20,
+        cpu_percent: None,
+        started_us: 0,
+        members: vec![(10, 1)],
+    }
+}
+
+fn procs_of(session: &str, commands: usize) -> SessionProcs {
+    SessionProcs {
+        session: session.into(),
+        commands: (0..commands)
+            .map(|i| group(&format!("{session}:{i}"), GroupKind::Command))
+            .collect(),
+        claude_and_mcp: Some(group(&format!("{session}:claude"), GroupKind::ClaudeAndMcp)),
+        pwd: None,
+        started_us: 0,
+    }
+}
+
+#[test]
+fn card_with_open_procs_grows_by_rows() {
+    let a = idle("a");
+    let mut snap = snapshot(vec![a.clone()]);
+    snap.procs.insert("a".into(), procs_of("a", 2));
+    let shut = card_layout(&a, &snap, &panel(), &FakeMeasure).height;
+    let mut open = panel();
+    open.open_procs.insert("a".into());
+    let l = card_layout(&a, &snap, &open, &FakeMeasure);
+    assert_eq!(l.height - shut, 3.0 * CLOSED_CHILD_H);
+    assert_eq!(
+        l.find(layout::Block::Procs).map(|p| p.h),
+        Some(3.0 * CLOSED_CHILD_H)
+    );
+}
+
+#[test]
+fn closed_height_counts_open_child_rows() {
+    let rows = [(true, 3), (false, 2), (false, 0)];
+    assert_eq!(
+        closed_height(&rows, true),
+        CLOSED_ROW_H + 3.0 * CLOSED_ITEM_H + 3.0 * CLOSED_CHILD_H
+    );
+    assert_eq!(closed_height(&rows, false), CLOSED_ROW_H);
+    let mut snap = snapshot(vec![]);
+    snap.closed_rows = vec![ClosedRow {
+        procs: Some(procs_of("c", 1)),
+        ..plain_row("c")
+    }];
+    let mut open = panel();
+    open.closed_open = true;
+    let shut = layout::closed_shape(&snap, &open);
+    assert_eq!(shut, [(false, 2)]);
+    open.open_procs.insert("c".into());
+    assert_eq!(layout::closed_shape(&snap, &open), [(true, 2)]);
+}
+
+#[test]
+fn pill_widens_for_leftover_dot() {
+    let mut snap = snapshot(vec![idle("a")]);
+    let before = collapsed_width(&snap);
+    snap.closed_rows = vec![ClosedRow {
+        procs: Some(procs_of("c", 1)),
+        ..plain_row("c")
+    }];
+    assert_eq!(layout::pill_groups(&snap)[4], 2);
+    assert_eq!(
+        collapsed_width(&snap) - before,
+        layout::PILL_GAP + layout::pill_group_width(4, 2)
     );
 }
 

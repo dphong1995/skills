@@ -3,17 +3,23 @@
 //! drawn as one rounded group, each row knowing its place in it. Blocks (approval, question, PR rows, chips) are drawn by their
 //! own modules at the rect `card_layout` placed them.
 
-use super::{Canvas, Ctx, RowPos, approval, chips, pr_row, question};
+use super::{Canvas, Ctx, RowPos, approval, chips, pr_row, proc_row, question};
 use crate::hits::{STOP_ARM_SECS, Target};
 use crate::theme;
 use claude_sessions_core::layout::{
-    BLOCK_GAP, Block, CARD_INSET, CARD_PAD_RIGHT, CARD_PAD_Y, CARD_W, CardLayout, FIELD_H,
-    PANEL_PAD, REPLY_GAP, RIGHT_COLUMN, SPARKLE_W, SUB_H, TEXT_W, TITLE_LINE_H, state_label,
+    BLOCK_GAP, Block, CARD_INSET, CARD_PAD_RIGHT, CARD_PAD_Y, CARD_W, CLOSED_CHILD_H, CardLayout,
+    FIELD_H, PANEL_PAD, REPLY_GAP, RIGHT_COLUMN, SPARKLE_W, SUB_H, TEXT_W, TITLE_LINE_H,
+    state_label,
 };
+use claude_sessions_core::procs::{GroupKind, HEAVY_BYTES, SessionProcs, format_bytes};
 use claude_sessions_core::scene::{Align, Node, Rect, ThemeColor, Weight};
 use claude_sessions_core::store::{SendKey, SendKind, Session};
 use claude_sessions_core::text;
 use claude_sessions_core::time::secs_since;
+
+/// Space before each part of the process tail, and the chevron at its end.
+const SUFFIX_GAP: f64 = 4.0;
+const SUFFIX_CHEVRON_W: f64 = 8.0;
 
 pub fn key(id: &str) -> String {
     format!("card-{id}")
@@ -31,6 +37,42 @@ pub fn subtitle(s: &Session) -> String {
         n => t.push_str(&format!(" · {n} agent")),
     }
     t
+}
+
+/// The quiet tail of the folder line of a live card with processes, as `(text, colour)` parts: `· :5173 :8080` (`:5173 +2`
+/// from three ports on, `· 2 lệnh nền` without ports), `· 2,6 GB` from `HEAVY_BYTES`, `· CPU cao`. Empty when the session
+/// has nothing worth a line.
+pub fn procs_suffix(p: &SessionProcs) -> Vec<(String, ThemeColor)> {
+    let heavy = p.rss() >= HEAVY_BYTES;
+    if p.commands.is_empty() && !heavy && !p.cpu_high() {
+        return Vec::new();
+    }
+    let mut parts = Vec::new();
+    let mut ports: Vec<u16> = p.commands.iter().flat_map(|g| g.ports.clone()).collect();
+    ports.sort_unstable();
+    ports.dedup();
+    let first = match (ports.len(), p.commands.len()) {
+        (0, 0) => None,
+        (0, n) => Some(format!("{n} lệnh nền")),
+        (1 | 2, _) => Some(
+            ports
+                .iter()
+                .map(|port| format!(":{port}"))
+                .collect::<Vec<_>>()
+                .join(" "),
+        ),
+        (n, _) => Some(format!(":{} +{}", ports[0], n - 1)),
+    };
+    if let Some(t) = first {
+        parts.push((format!("· {t}"), ThemeColor::TextSecondary));
+    }
+    if heavy {
+        parts.push((format!("· {}", format_bytes(p.rss())), ThemeColor::Orange));
+    }
+    if p.cpu_high() {
+        parts.push(("· CPU cao".to_string(), ThemeColor::Red));
+    }
+    parts
 }
 
 pub fn node(ctx: &mut Ctx, s: &Session, y: f64, layout: &CardLayout, pos: RowPos) -> Node {
@@ -128,7 +170,20 @@ pub fn node(ctx: &mut Ctx, s: &Session, y: f64, layout: &CardLayout, pos: RowPos
         );
         (sub.x + w + 4.0, format!("· {}", subtitle(s)))
     };
-    let rest_w = (sub.x + sub.w - rest_x).max(0.0);
+    let avail = (sub.x + sub.w - rest_x).max(0.0);
+    // The process tail keeps its room; the folder part gives way first.
+    let procs = view.snap.procs.get(&s.id);
+    let suffix = procs.map(procs_suffix).unwrap_or_default();
+    let widths: Vec<f64> = suffix
+        .iter()
+        .map(|(t, _)| ctx.text_w(t, &theme::SUB_FONT).ceil())
+        .collect();
+    let suffix_w = if suffix.is_empty() {
+        0.0
+    } else {
+        widths.iter().map(|w| w + SUFFIX_GAP).sum::<f64>() + SUFFIX_CHEVRON_W
+    };
+    let rest_w = (avail - suffix_w).max(0.0);
     if rest_w > 0.0 {
         c.text(
             Rect::new(rest_x, sub.y, rest_w, SUB_H),
@@ -137,6 +192,36 @@ pub fn node(ctx: &mut Ctx, s: &Session, y: f64, layout: &CardLayout, pos: RowPos
             theme::solid(ThemeColor::TextSecondary),
             1,
             Align::Left,
+        );
+    }
+    if !suffix.is_empty() {
+        let start = rest_x + ctx.text_w(&rest, &theme::SUB_FONT).ceil().min(rest_w) + SUFFIX_GAP;
+        let mut x = start;
+        for ((text, color), w) in suffix.iter().zip(&widths) {
+            c.text(
+                Rect::new(x, sub.y, *w, SUB_H),
+                text,
+                theme::SUB_FONT,
+                theme::solid(*color),
+                1,
+                Align::Left,
+            );
+            x += w + SUFFIX_GAP;
+        }
+        let open = view.panel.open_procs.contains(&s.id);
+        c.symbol(
+            if open {
+                "chevron.down"
+            } else {
+                "chevron.right"
+            },
+            Rect::new(x - 1.0, sub.y + 3.0, 8.0, 9.0),
+            theme::solid(ThemeColor::TextSecondary),
+            Weight::Bold,
+        );
+        c.hit(
+            Rect::new(start - 2.0, sub.y - 2.0, x - start + 12.0, SUB_H + 4.0),
+            Target::ToggleProcs(s.id.clone()),
         );
     }
     if s.agent_count() > 0 {
@@ -224,6 +309,22 @@ pub fn node(ctx: &mut Ctx, s: &Session, y: f64, layout: &CardLayout, pos: RowPos
                         1,
                         Align::Left,
                     );
+                }
+            }
+            Block::Procs => {
+                if let Some(procs) = view.snap.procs.get(&s.id) {
+                    for (i, g) in procs.groups().enumerate() {
+                        let live = g.kind == GroupKind::ClaudeAndMcp;
+                        proc_row::draw(
+                            ctx,
+                            &mut c,
+                            g,
+                            p.y + i as f64 * CLOSED_CHILD_H,
+                            CARD_INSET,
+                            Some((s.id.as_str(), g.key.as_str())),
+                            live,
+                        );
+                    }
                 }
             }
             Block::Prs => pr_row::draw(ctx, &mut c, s, block),

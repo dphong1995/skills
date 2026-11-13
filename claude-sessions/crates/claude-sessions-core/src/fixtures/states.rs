@@ -9,6 +9,7 @@ use crate::jira_monitor::JiraMonitor;
 use crate::layout::{Anchor, HAnchor};
 use crate::panel_state::{EditKind, Editing};
 use crate::pr_monitor::PRMonitor;
+use crate::procs::ProcTable;
 use crate::pull_requests::PRRef;
 use crate::quota::Quota;
 use crate::store::{ItemTone, LinkItem, LinkKind, LinkSection, NewMark, SendKey, SendKind};
@@ -1182,6 +1183,147 @@ pub fn state_40_card_states(dir: &Path, now: SystemTime) -> State {
     f.done()
 }
 
+// ---- processes of live and closed sessions ----
+
+const INFRA: &str = "/Users/phong/infra-scripts";
+/// A folder the widget never saw a session of: the leftover row takes its title from it.
+const KAFKA: &str = "/Users/phong/Thử Kafka local";
+
+/// Three live sessions (`w` waiting with one command, `a` done with two, `b` running and heavy) and a `Vừa đóng` list whose
+/// first three rows left processes behind (one of them never seen by the widget), as the approved prototype shows them.
+fn procs_store(dir: &Path, now: SystemTime) -> Fx {
+    let mut f = Fx::new(dir, now);
+    f.waiting("w", "input needed", 0.0, BACK_NAME, BACKEND);
+    f.session(
+        "a",
+        "idle",
+        120.0,
+        "Thêm bộ lọc site cho dashboard",
+        FRONTEND,
+    );
+    f.session("b", "busy", 3660.0, "talo-v2-9c", TALOS);
+    f.refresh(0.0);
+    let started = (unix_secs(now) - 26.0 * 3600.0) as u64 * 1_000_000;
+    let table = ProcTable {
+        live: HashMap::from([
+            (
+                "w".to_string(),
+                session_procs(
+                    "w",
+                    vec![proc_group("w", 101, "gradle bootRun", &[8080], 910, None)],
+                    Some(claude_group("w", "Claude và MCP", 800)),
+                    None,
+                    0,
+                ),
+            ),
+            (
+                "a".to_string(),
+                session_procs(
+                    "a",
+                    vec![
+                        proc_group("a", 102, "vite", &[5173], 412, None),
+                        proc_group("a", 103, "tsc --watch", &[], 260, None),
+                    ],
+                    Some(claude_group("a", "Claude và MCP", 750)),
+                    None,
+                    0,
+                ),
+            ),
+            (
+                "b".to_string(),
+                session_procs(
+                    "b",
+                    vec![],
+                    Some(claude_group("b", "Claude và MCP", 2630)),
+                    None,
+                    0,
+                ),
+            ),
+        ]),
+        closed: vec![
+            session_procs(
+                "x",
+                vec![
+                    proc_group("x", 201, "vite", &[3000], 412, None),
+                    proc_group("x", 202, "mock-auth-server.js", &[4010], 64, None),
+                ],
+                Some(claude_group("x", "7 MCP và agent", 410)),
+                Some(BACKEND),
+                0,
+            ),
+            session_procs(
+                "y",
+                vec![
+                    proc_group("y", 301, "http.server", &[8000], 22, None),
+                    proc_group("y", 302, "ugrep", &[], 38, Some(590.0)),
+                ],
+                None,
+                Some(OCR),
+                0,
+            ),
+            session_procs(
+                "k",
+                vec![proc_group("k", 401, "docker compose", &[9092], 96, None)],
+                None,
+                Some(KAFKA),
+                started,
+            ),
+        ],
+    };
+    f.store.set_procs(table);
+    f.store.closed = ClosedSessions::new(vec![
+        ClosedSession {
+            id: "x".into(),
+            title: "Sửa lỗi đăng nhập".into(),
+            cwd: BACKEND.into(),
+            branch: None,
+            closed_at: f.at(-12.0 * 60.0),
+        },
+        ClosedSession {
+            id: "y".into(),
+            title: "ocr-service-a1".into(),
+            cwd: OCR.into(),
+            branch: None,
+            closed_at: f.at(-5.0 * 3600.0),
+        },
+        ClosedSession {
+            id: "z".into(),
+            title: "Dọn script deploy".into(),
+            cwd: INFRA.into(),
+            branch: None,
+            closed_at: f.at(-3.0 * 3600.0),
+        },
+    ]);
+    f
+}
+
+pub fn state_40_procs_live_open(dir: &Path, now: SystemTime) -> State {
+    let mut f = procs_store(dir, now);
+    f.hover();
+    f.panel.open_procs.insert("a".into());
+    f.done()
+}
+
+pub fn state_41_procs_closed_open(dir: &Path, now: SystemTime) -> State {
+    let mut f = procs_store(dir, now);
+    f.hover_row("x");
+    f.panel.closed_open = true;
+    f.panel.open_procs.insert("x".into());
+    f.done()
+}
+
+pub fn state_42_procs_armed(dir: &Path, now: SystemTime) -> State {
+    let mut f = procs_store(dir, now);
+    f.hover_row("a");
+    f.panel.open_procs.insert("a".into());
+    f.panel.kill_armed.insert("a:102".into(), now);
+    f.done()
+}
+
+pub fn state_43_procs_collapsed_pill(dir: &Path, now: SystemTime) -> State {
+    procs_store(dir, now).done()
+}
+
 pub fn state_stop_armed(dir: &Path, now: SystemTime) -> State {
     let mut f = Fx::new(dir, now);
     f.session("b", "busy", 42.0, FRONT_NAME, FRONTEND);
@@ -1394,6 +1536,10 @@ pub const STATES: &[(&str, StateFn)] = &[
     ("reply-2-editor", state_reply_2_editor),
     ("40-card-states", state_40_card_states),
     ("stop-armed", state_stop_armed),
+    ("40-procs-live-open", state_40_procs_live_open),
+    ("41-procs-closed-open", state_41_procs_closed_open),
+    ("42-procs-armed", state_42_procs_armed),
+    ("43-procs-collapsed-pill", state_43_procs_collapsed_pill),
     ("quota-1-normal", state_quota_1_normal),
     ("quota-2-warn", state_quota_2_warn),
     ("quota-3-high-forecast", state_quota_3_high_forecast),

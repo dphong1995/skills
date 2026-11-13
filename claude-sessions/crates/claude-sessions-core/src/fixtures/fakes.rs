@@ -4,6 +4,7 @@
 use crate::bitbucket::{BitbucketApi, BitbucketError};
 use crate::feed::{FeedTransport, TransportError};
 use crate::jira::{JiraApi, JiraError};
+use crate::procs::{GroupKind, ProcGroup, SessionProcs};
 use crate::shell::format_iso_date;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -303,4 +304,57 @@ pub fn swatch_png(rgb: [u8; 3]) -> Vec<u8> {
     chunk(&mut png, b"IDAT", &z);
     chunk(&mut png, b"IEND", &[]);
     png
+}
+
+/// A command group of `session`: its leader pid is `pgid`, `mb` MB of memory, `cpu` the CPU percent while the flag is on.
+pub fn proc_group(
+    session: &str,
+    pgid: i32,
+    name: &str,
+    ports: &[u16],
+    mb: u64,
+    cpu: Option<f64>,
+) -> ProcGroup {
+    ProcGroup {
+        key: format!("{session}:{pgid}"),
+        kind: GroupKind::Command,
+        name: name.into(),
+        command: name.into(),
+        ports: ports.to_vec(),
+        rss: mb * 1_048_576,
+        cpu_percent: cpu,
+        started_us: 0,
+        members: vec![(pgid, 1)],
+    }
+}
+
+/// The `Claude và MCP` group of `session` (named `7 MCP và agent` once the session is closed).
+pub fn claude_group(session: &str, name: &str, mb: u64) -> ProcGroup {
+    ProcGroup {
+        key: format!("{session}:claude"),
+        kind: GroupKind::ClaudeAndMcp,
+        name: name.into(),
+        command: name.into(),
+        ports: vec![],
+        rss: mb * 1_048_576,
+        cpu_percent: None,
+        started_us: 0,
+        members: vec![(1000, 1)],
+    }
+}
+
+pub fn session_procs(
+    session: &str,
+    commands: Vec<ProcGroup>,
+    claude_and_mcp: Option<ProcGroup>,
+    pwd: Option<&str>,
+    started_us: u64,
+) -> SessionProcs {
+    SessionProcs {
+        session: session.into(),
+        commands,
+        claude_and_mcp,
+        pwd: pwd.map(Into::into),
+        started_us,
+    }
 }

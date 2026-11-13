@@ -1,4 +1,5 @@
-//! The collapsed pill: one node with the counts per group (new, `Cần bạn` badge, `Xong`, `Đang chạy`).
+//! The collapsed pill: one node with the counts per group (new, `Cần bạn` badge, `Xong`, `Đang chạy`, and the grey dot of
+//! processes left over by closed sessions).
 
 use super::{Canvas, Ctx};
 use crate::theme;
@@ -52,6 +53,7 @@ pub fn draw_groups(c: &mut Canvas, snap: &Snapshot, x: f64, cy: f64) {
         ThemeColor::Red,
         ThemeColor::Orange,
         ThemeColor::Blue,
+        ThemeColor::TextSecondary,
     ];
     let mut first = true;
     for (i, n) in pill_groups(snap).into_iter().enumerate() {

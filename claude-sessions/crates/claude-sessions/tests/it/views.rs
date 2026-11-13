@@ -1,12 +1,15 @@
 use crate::support::{FakeMeasure, snapshot};
 use claude_sessions::hits::{Click, ClickEnv, PanelChange, Target};
 use claude_sessions::theme;
-use claude_sessions::views::{Built, Canvas, View, build};
+use claude_sessions::views::{Built, Canvas, View, build, card};
 use claude_sessions_core::feed::{BlockState, FeedItem, FeedOption, FeedQuestion};
 use claude_sessions_core::layout::{self, expanded_layout, expanded_size};
 use claude_sessions_core::panel_state::PanelState;
+use claude_sessions_core::procs::{GroupKind, ProcGroup, SessionProcs};
 use claude_sessions_core::scene::{Align, DrawCmd, Material, Node, Scene, ThemeColor};
-use claude_sessions_core::store::{Action, SendKey, SendKind, SendState, Session, Snapshot};
+use claude_sessions_core::store::{
+    Action, ClosedRow, SendKey, SendKind, SendState, Session, Snapshot,
+};
 use claude_sessions_core::transcript::{Pending, PendingState};
 use std::time::{Duration, SystemTime};
 
@@ -1388,10 +1391,277 @@ fn closed(id: &str) -> ClosedSession {
     }
 }
 
+fn plain_row(c: &ClosedSession) -> ClosedRow {
+    ClosedRow {
+        id: c.id.clone(),
+        title: c.title.clone(),
+        folder: c.folder(),
+        closed_at: Some(c.closed_at),
+        session: c.clone(),
+        procs: None,
+    }
+}
+
+fn pgroup(key: &str, name: &str, kind: GroupKind, ports: &[u16], mb: u64) -> ProcGroup {
+    ProcGroup {
+        key: key.into(),
+        kind,
+        name: name.into(),
+        command: name.into(),
+        ports: ports.to_vec(),
+        rss: mb * 1_048_576,
+        cpu_percent: None,
+        started_us: 0,
+        members: vec![(10, 1)],
+    }
+}
+
+fn command(key: &str, name: &str, ports: &[u16], mb: u64) -> ProcGroup {
+    pgroup(key, name, GroupKind::Command, ports, mb)
+}
+
+fn session_procs(id: &str, commands: Vec<ProcGroup>, own_mb: u64) -> SessionProcs {
+    SessionProcs {
+        session: id.into(),
+        commands,
+        claude_and_mcp: Some(pgroup(
+            &format!("{id}:claude"),
+            "Claude và MCP",
+            GroupKind::ClaudeAndMcp,
+            &[],
+            own_mb,
+        )),
+        pwd: None,
+        started_us: 0,
+    }
+}
+
+fn hovered(id: &str) -> PanelState {
+    let mut panel = open();
+    panel.hovering = true;
+    panel.hovered_row = Some(id.into());
+    panel
+}
+
+fn kill_key(session: &str, key: &str) -> SendKey {
+    SendKey {
+        detail: Some(key.into()),
+        ..SendKey::new(session, SendKind::Kill)
+    }
+}
+
+#[test]
+fn live_suffix_text() {
+    let suffix = |p: &SessionProcs| {
+        card::procs_suffix(p)
+            .into_iter()
+            .map(|(t, _)| t)
+            .collect::<Vec<_>>()
+    };
+    let three = session_procs(
+        "a",
+        vec![
+            command("a:1", "vite", &[5173], 100),
+            command("a:2", "api", &[8080, 9000], 100),
+        ],
+        100,
+    );
+    assert_eq!(suffix(&three), ["· :5173 +2"]);
+    let two = session_procs(
+        "a",
+        vec![
+            command("a:1", "vite", &[5173], 100),
+            command("a:2", "api", &[8080], 100),
+        ],
+        100,
+    );
+    assert_eq!(suffix(&two), ["· :5173 :8080"]);
+    let bare = session_procs(
+        "a",
+        vec![
+            command("a:1", "tsc", &[], 100),
+            command("a:2", "x", &[], 100),
+        ],
+        100,
+    );
+    assert_eq!(suffix(&bare), ["· 2 lệnh nền"]);
+    let heavy = session_procs("a", vec![command("a:1", "tsc", &[], 100)], 2600);
+    assert_eq!(suffix(&heavy), ["· 1 lệnh nền", "· 2,6 GB"]);
+    let only_heavy = session_procs("a", vec![], 2600);
+    assert_eq!(suffix(&only_heavy), ["· 2,5 GB"]);
+    assert!(suffix(&session_procs("a", vec![], 400)).is_empty());
+    let mut hot = bare.clone();
+    hot.commands[0].cpu_percent = Some(590.0);
+    assert_eq!(
+        card::procs_suffix(&hot)
+            .last()
+            .map(|(t, c)| (t.as_str(), *c)),
+        Some(("· CPU cao", ThemeColor::Red))
+    );
+
+    // Drawn: the parts, a chevron, and one hit that opens the list.
+    let mut snap = snapshot(vec![finished("a")]);
+    snap.procs.insert("a".into(), heavy);
+    let mut panel = open();
+    let shut = render(&snap, &panel);
+    let node = card(&shut.scene, "a").clone();
+    assert!(texts(&node).contains(&"· 1 lệnh nền") && texts(&node).contains(&"· 2,6 GB"));
+    assert!(symbols(&node).contains(&"chevron.right"));
+    assert!(targets(&shut, &node).contains(&Target::ToggleProcs("a".into())));
+    let (_, color) = text_cmd(&node, "· 2,6 GB").unwrap();
+    assert_eq!(color.token, ThemeColor::Orange);
+    panel.open_procs.insert("a".into());
+    let opened = render(&snap, &panel);
+    assert!(symbols(card(&opened.scene, "a")).contains(&"chevron.down"));
+}
+
+#[test]
+fn closed_row_shows_count_and_bytes() {
+    let mut snap = snapshot(vec![finished("a")]);
+    let cs = closed("x");
+    let procs = session_procs(
+        "x",
+        vec![
+            command("x:1", "vite", &[3000], 412),
+            command("x:2", "mock-auth-server.js", &[4010], 64),
+        ],
+        410,
+    );
+    snap.closed = vec![cs.clone()];
+    snap.closed_rows = vec![ClosedRow {
+        procs: Some(procs),
+        ..plain_row(&cs)
+    }];
+    let mut panel = open();
+    panel.closed_open = true;
+    let built = render(&snap, &panel);
+    let node = built
+        .scene
+        .nodes
+        .iter()
+        .find(|n| n.key.0 == "closed")
+        .unwrap()
+        .clone();
+    assert!(texts(&node).contains(&"3 đang chạy · ") && texts(&node).contains(&"886 MB"));
+    assert!(!texts(&node).contains(&"· 3 đang chạy"));
+    assert!(targets(&built, &node).contains(&Target::ToggleProcs("x".into())));
+    assert!(targets(&built, &node).contains(&Target::Resume("x".into())));
+    assert_eq!(
+        node.frame.h,
+        layout::closed_height(&[(false, 3)], true),
+        "the child rows stay closed until opened"
+    );
+    panel.open_procs.insert("x".into());
+    let opened = render(&snap, &panel);
+    let n = opened
+        .scene
+        .nodes
+        .iter()
+        .find(|n| n.key.0 == "closed")
+        .unwrap();
+    assert_eq!(n.frame.h, layout::closed_height(&[(true, 3)], true));
+    let t = texts(n);
+    assert!(t.contains(&"vite") && t.contains(&":3000") && t.contains(&"412 MB"));
+    assert!(t.contains(&"Claude và MCP") && t.contains(&"410 MB"));
+
+    // Collapsed list: the orange count joins the title.
+    panel.closed_open = false;
+    let shut = render(&snap, &panel);
+    let n = shut
+        .scene
+        .nodes
+        .iter()
+        .find(|n| n.key.0 == "closed")
+        .unwrap();
+    let (_, color) = text_cmd(n, "· 3 đang chạy").unwrap();
+    assert_eq!(color.token, ThemeColor::Orange);
+}
+
+#[test]
+fn kill_button_states() {
+    let mut snap = snapshot(vec![finished("a")]);
+    let procs = session_procs("a", vec![command("a:1", "vite", &[5173], 412)], 750);
+    snap.procs.insert("a".into(), procs);
+    let mut panel = hovered("a");
+    panel.open_procs.insert("a".into());
+    let key = "a:1";
+    let arm = Target::ArmKill {
+        session: "a".into(),
+        key: key.into(),
+    };
+    let kill = Target::Kill {
+        session: "a".into(),
+        key: key.into(),
+    };
+    let face = |snap: &Snapshot, panel: &PanelState| {
+        let b = render(snap, panel);
+        let node = card(&b.scene, "a").clone();
+        (
+            symbols(&node).contains(&"xmark"),
+            texts(&node)
+                .iter()
+                .map(|t| t.to_string())
+                .collect::<Vec<_>>(),
+            targets(&b, &node),
+        )
+    };
+
+    // Idle and hovered: the grey `✕` with the memory beside it.
+    let (x, t, hits) = face(&snap, &panel);
+    assert!(x && t.contains(&"412 MB".to_string()));
+    assert!(hits.contains(&arm) && !hits.contains(&kill));
+    // Not hovered: nothing to click.
+    let (x, _, hits) = face(&snap, &{
+        let mut p = panel.clone();
+        p.hovered_row = None;
+        p
+    });
+    assert!(!x && !hits.contains(&arm));
+    // Armed: the red `Tắt` replaces the value and the next click kills.
+    panel.kill_armed.insert(key.into(), now());
+    let (x, t, hits) = face(&snap, &panel);
+    assert!(!x && t.contains(&"Tắt".to_string()) && !t.contains(&"412 MB".to_string()));
+    assert!(hits.contains(&kill) && !hits.contains(&arm));
+    // Sending, then done but still listed: `Đang tắt…`, no hit.
+    for state in [SendState::Sending, SendState::Sent] {
+        snap.sends.insert(kill_key("a", key), (state, now()));
+        let (_, t, hits) = face(&snap, &panel);
+        assert!(t.contains(&"Đang tắt…".to_string()), "{state:?}");
+        assert!(!hits.contains(&kill) && !hits.contains(&arm), "{state:?}");
+    }
+    // Failed: red text, and a click arms again.
+    snap.sends
+        .insert(kill_key("a", key), (SendState::Failed, now()));
+    let (_, t, hits) = face(&snap, &panel);
+    assert!(t.contains(&"Không tắt được".to_string()));
+    assert!(hits.contains(&arm));
+}
+
+#[test]
+fn claude_and_mcp_row_of_live_session_has_no_kill_target() {
+    let mut snap = snapshot(vec![finished("a")]);
+    let procs = session_procs("a", vec![], 750);
+    snap.procs.insert("a".into(), procs);
+    let mut panel = hovered("a");
+    panel.open_procs.insert("a".into());
+    panel.kill_armed.insert("a:claude".into(), now());
+    let b = render(&snap, &panel);
+    let node = card(&b.scene, "a").clone();
+    assert!(texts(&node).contains(&"Claude và MCP") && texts(&node).contains(&"750 MB"));
+    for t in targets(&b, &node) {
+        assert!(
+            !matches!(t, Target::ArmKill { .. } | Target::Kill { .. }),
+            "{t:?}"
+        );
+    }
+    assert!(!symbols(&node).contains(&"xmark"));
+}
+
 #[test]
 fn the_closed_list_opens_rows_that_resume_and_show_their_send_state() {
     let mut snap = snapshot(vec![finished("done")]);
     snap.closed = vec![closed("c1"), closed("c2")];
+    snap.closed_rows = snap.closed.iter().map(plain_row).collect();
     let mut panel = open();
     panel.hovering = true;
     let shut = render(&snap, &panel);
@@ -1403,11 +1673,14 @@ fn the_closed_list_opens_rows_that_resume_and_show_their_send_state() {
             .unwrap()
             .clone()
     };
-    assert_eq!(node(&shut).frame.h, layout::closed_height(2, false));
+    assert_eq!(
+        node(&shut).frame.h,
+        layout::closed_height(&[(false, 0); 2], false)
+    );
     panel.closed_open = true;
     let open = render(&snap, &panel);
     let n = node(&open);
-    assert_eq!(n.frame.h, layout::closed_height(2, true));
+    assert_eq!(n.frame.h, layout::closed_height(&[(false, 0); 2], true));
     assert_eq!(
         targets(&open, &n),
         [
@@ -1546,6 +1819,7 @@ fn every_block_takes_the_height_the_size_model_gives_it() {
                 Block::LinkList => link_list_height(s),
                 Block::Editor => editor_height(),
                 Block::SentLine => layout::sent_line_height(),
+                Block::Procs => layout::procs_height(snap.procs[&s.id].row_count()),
                 Block::Head | Block::Todo | Block::Activity => p.h,
             };
             assert_eq!(p.h, want, "{} {:?}", s.id, p.block);

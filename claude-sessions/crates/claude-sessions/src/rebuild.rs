@@ -51,9 +51,20 @@ pub fn next_rebuild(
     {
         at(now + next_label_change(t, now));
     }
+    for t in panel.kill_armed.values() {
+        if secs_since(now, *t) < STOP_ARM_SECS {
+            at(add_secs(*t, STOP_ARM_SECS));
+        }
+    }
     if panel.closed_open {
-        for item in &snap.closed {
-            at(now + next_closed_change(item.closed_at, now));
+        for row in &snap.closed_rows {
+            let since = row.closed_at.or(row
+                .procs
+                .as_ref()
+                .map(|p| SystemTime::UNIX_EPOCH + Duration::from_micros(p.started_us)));
+            if let Some(since) = since {
+                at(now + next_closed_change(since, now));
+            }
         }
     }
     for (state, sent_at) in snap.sends.values() {

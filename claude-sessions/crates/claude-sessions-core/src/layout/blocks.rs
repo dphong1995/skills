@@ -76,6 +76,8 @@ pub const LINK_ROW_H: f64 = 22.0;
 /// The `Vừa đóng` disclosure row.
 pub const CLOSED_ROW_H: f64 = 30.0;
 pub const CLOSED_ITEM_H: f64 = 30.0;
+/// One process row: a child row of an open `Vừa đóng` row, and a row of the open list of a live card.
+pub const CLOSED_CHILD_H: f64 = 30.0;
 pub const EMPTY_H: f64 = 40.0;
 /// The key hint line at the bottom of the panel in keyboard mode.
 pub const KEY_HINT_H: f64 = 26.0;
@@ -304,14 +306,35 @@ pub fn editor_height() -> f64 {
     BLOCK_GAP + FIELD_H
 }
 
-/// The `Vừa đóng · N` row, and one row per closed session while it is open.
-pub fn closed_height(count: usize, open: bool) -> f64 {
-    if count == 0 {
+/// The open list of the processes of a live card: one fixed row per group.
+pub fn procs_height(n_rows: usize) -> f64 {
+    CLOSED_CHILD_H * n_rows as f64
+}
+
+/// `(process list open, child rows)` of every row of `Vừa đóng`, in `snap.closed_rows` order.
+pub fn closed_shape(snap: &Snapshot, panel: &PanelState) -> Vec<(bool, usize)> {
+    snap.closed_rows
+        .iter()
+        .map(|r| match &r.procs {
+            Some(p) => (panel.open_procs.contains(&r.id), p.row_count()),
+            None => (false, 0),
+        })
+        .collect()
+}
+
+/// The `Vừa đóng · N` row, and one row per closed session (`rows` as `closed_shape`) while it is open, each with its
+/// child rows when its process list is open.
+pub fn closed_height(rows: &[(bool, usize)], open: bool) -> f64 {
+    if rows.is_empty() {
         return 0.0;
     }
     CLOSED_ROW_H
         + if open {
-            CLOSED_ITEM_H * count as f64
+            rows.iter()
+                .map(|(procs_open, n)| {
+                    CLOSED_ITEM_H + if *procs_open { procs_height(*n) } else { 0.0 }
+                })
+                .sum::<f64>()
         } else {
             0.0
         }
@@ -327,6 +350,8 @@ pub enum Block {
     Reply,
     Todo,
     Activity,
+    /// The open process list of a live card: a row per command group, then `Claude và MCP`.
+    Procs,
     /// The inset list of every PR of `Session::prs`.
     Prs,
     /// The ticket buttons and the menu count.
@@ -434,6 +459,13 @@ fn card_layout_with(
     if s.activity.is_some() {
         place(Block::Activity, LINE_ROW_H);
     }
+    if let Some(p) = snap
+        .procs
+        .get(&s.id)
+        .filter(|p| p.row_count() > 0 && panel.open_procs.contains(&s.id))
+    {
+        place(Block::Procs, procs_height(p.row_count()));
+    }
     if !s.prs.is_empty() {
         place(Block::Prs, prs_height(s.prs.len()));
     }
@@ -523,7 +555,7 @@ pub fn expanded_layout(snap: &Snapshot, panel: &PanelState, m: &dyn TextMeasure)
             y += h + CARD_GAP;
         }
     }
-    let closed = closed_height(snap.closed.len(), panel.closed_open);
+    let closed = closed_height(&closed_shape(snap, panel), panel.closed_open);
     if closed > 0.0 {
         items.push(Item::Closed { y, h: closed });
         y += closed;
@@ -544,8 +576,9 @@ pub fn expanded_size(snap: &Snapshot, panel: &PanelState, m: &dyn TextMeasure) -
     expanded_layout(snap, panel, m).size
 }
 
-/// One group of the pill: the sparkle count, the red `Cần bạn` badge, the orange `Xong` and blue `Đang chạy` counts.
-pub fn pill_groups(snap: &Snapshot) -> [usize; 4] {
+/// One group of the pill: the sparkle count, the red `Cần bạn` badge, the orange `Xong` and blue `Đang chạy` counts, and the
+/// grey count of processes left over by closed sessions.
+pub fn pill_groups(snap: &Snapshot) -> [usize; 5] {
     let sections = snap.sections();
     let n = |i: usize| sections[i].1.len();
     let new = snap
@@ -557,7 +590,7 @@ pub fn pill_groups(snap: &Snapshot) -> [usize; 4] {
                 .is_some_and(|m| m.claude || !m.prs.is_empty())
         })
         .count();
-    [new, n(0), n(1), n(2)]
+    [new, n(0), n(1), n(2), snap.leftover_count()]
 }
 
 pub const PILL_PAD: f64 = 14.0;

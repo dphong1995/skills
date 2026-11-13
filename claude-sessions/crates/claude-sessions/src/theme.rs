@@ -69,6 +69,8 @@ pub const ROW_FONT: FontSpec = font(12.5, Weight::Medium);
 pub const HINT_FONT: FontSpec = font(11.0, Weight::Regular);
 pub const TIME_FONT: FontSpec = font(11.0, Weight::Regular);
 pub const META_FONT: FontSpec = font(11.5, Weight::Regular);
+/// The name, port and memory of a process row.
+pub const PROC_FONT: FontSpec = font(12.5, Weight::Regular);
 /// The `#7583` of a PR row.
 pub const PR_FONT: FontSpec = font(11.5, Weight::Semibold);
 /// The title of a PR in the inset list.
