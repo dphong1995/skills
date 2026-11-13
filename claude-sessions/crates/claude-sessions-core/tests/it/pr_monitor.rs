@@ -922,6 +922,44 @@ fn reviewed_review_is_slow_polled_until_it_flips_to_approved() {
     assert_eq!(snap.events, [PREvent::Approved, PREvent::RabbitDone]);
 }
 
+fn set_pipeline(api: &Api, state: &str) {
+    api.set(
+        "/statuses",
+        json!({"values": [
+            {"key": "pipe", "name": "Pipeline", "state": state, "commit": {"hash": "abc123"}},
+            rs("Review approved", STARTED),
+        ]}),
+    );
+}
+
+#[test]
+fn pipeline_in_progress_keeps_polling_statuses() {
+    let api = fake(vec![pr_c(7571, 1)]);
+    set_pipeline(&api, "INPROGRESS");
+    let m = monitor(&api, None);
+    m.update(&refs(&[pr_ref(7571)]), t0());
+    let _ = m.take_snapshot();
+    let count = n(&api, "/statuses");
+    m.update(&refs(&[pr_ref(7571)]), at(299.0));
+    assert_eq!(n(&api, "/statuses"), count);
+    set_pipeline(&api, "FAILED");
+    m.update(&refs(&[pr_ref(7571)]), at(700.0));
+    assert_eq!(n(&api, "/statuses"), count + 1);
+    let snap = m.take_snapshot();
+    assert!(first_of(&snap).unwrap().pipeline_failed);
+}
+
+#[test]
+fn finished_pipeline_is_not_polled_after_rabbit_approved() {
+    let api = fake(vec![pr_c(7571, 1)]);
+    set_pipeline(&api, "SUCCESSFUL");
+    let m = monitor(&api, None);
+    m.update(&refs(&[pr_ref(7571)]), t0());
+    let count = n(&api, "/statuses");
+    m.update(&refs(&[pr_ref(7571)]), at(700.0));
+    assert_eq!(n(&api, "/statuses"), count);
+}
+
 #[test]
 fn settled_rabbit_kinds_are_not_slow_polled() {
     let cases = [

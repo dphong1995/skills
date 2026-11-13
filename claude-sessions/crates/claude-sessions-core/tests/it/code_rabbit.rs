@@ -340,6 +340,46 @@ fn hides_ask_claude_table() {
 }
 
 #[test]
+fn pipeline_failed_head_commit_only() {
+    let st = |key: &str, state: &str, hash: &str| json!({"key": key, "name": key, "state": state, "commit": {"hash": hash}});
+    let head = Some("abc123");
+    let failed = [st("pipe", "FAILED", "abc123def")];
+    assert!(cr::pipeline_failed(&failed, head));
+    assert!(!cr::pipeline_failed(
+        &[st("pipe", "FAILED", "zzz999")],
+        head
+    ));
+    assert!(!cr::pipeline_failed(
+        &[st("pipe", "SUCCESSFUL", "abc123")],
+        head
+    ));
+    assert!(!cr::pipeline_failed(
+        &[st("pipe", "INPROGRESS", "abc123")],
+        head
+    ));
+    assert!(!cr::pipeline_failed(
+        &[st("coderabbitai/1", "FAILED", "abc123")],
+        head
+    ));
+    assert!(cr::pipeline_running(
+        &[st("pipe", "INPROGRESS", "abc123")],
+        head
+    ));
+    assert!(!cr::pipeline_running(
+        &[st("pipe", "INPROGRESS", "zzz999")],
+        head
+    ));
+    assert!(!cr::pipeline_running(
+        &[st("pipe", "FAILED", "abc123")],
+        head
+    ));
+    assert!(!cr::pipeline_running(
+        &[st("coderabbitai/1", "INPROGRESS", "abc123")],
+        head
+    ));
+}
+
+#[test]
 fn pr_buttons_table() {
     use claude_sessions_core::pull_requests::{PRRef, PRStatus};
     let pr = |id: i64, state: &str| PRStatus {
@@ -368,6 +408,7 @@ fn pr_buttons_table() {
         rabbit_since: None,
         rabbit_threads: None,
         rabbit_others_pending: false,
+        pipeline_failed: false,
     };
     let open = |r: Option<Rabbit>, t: Option<RabbitThreads>| {
         let mut p = pr(1, "OPEN");
@@ -384,6 +425,26 @@ fn pr_buttons_table() {
         ),
         (pr(2, "MERGED"), (false, false)),
         (pr(3, "CLOSED"), (false, false)),
+        (
+            open(Some(Rabbit::Approved), Some(threads(0, 3))),
+            (false, false),
+        ),
+        (
+            {
+                let mut p = open(Some(Rabbit::Approved), Some(threads(0, 3)));
+                p.pipeline_failed = true;
+                p
+            },
+            (true, false),
+        ),
+        (
+            {
+                let mut p = pr(2, "MERGED");
+                p.pipeline_failed = true;
+                p
+            },
+            (false, false),
+        ),
     ];
     for (p, want) in rows {
         assert_eq!(cr::pr_buttons(&p), want, "{:?} {:?}", p.state, p.rabbit);

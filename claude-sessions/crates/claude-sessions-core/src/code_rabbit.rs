@@ -137,18 +137,37 @@ pub fn is_comment(v: &Value) -> bool {
     raw(v).contains(MARKER)
 }
 
+/// A status without a commit hash, or a missing `commit`, counts as on the head commit.
+fn on_commit(v: &Value, commit: Option<&str>) -> bool {
+    let hash = v.get("commit").and_then(|c| str_of(c, "hash"));
+    match (commit, hash) {
+        (Some(commit), Some(hash)) => hash.starts_with(commit),
+        _ => true,
+    }
+}
+
+/// A non-CodeRabbit build status of `commit` is in `state`.
+fn pipeline_in(values: &[Value], commit: Option<&str>, state: &str) -> bool {
+    values
+        .iter()
+        .any(|v| !is_status(v) && on_commit(v, commit) && str_of(v, "state") == Some(state))
+}
+
+/// A pipeline (non-CodeRabbit) status of `commit` is FAILED.
+pub fn pipeline_failed(values: &[Value], commit: Option<&str>) -> bool {
+    pipeline_in(values, commit, "FAILED")
+}
+
+/// A pipeline (non-CodeRabbit) status of `commit` is INPROGRESS.
+pub fn pipeline_running(values: &[Value], commit: Option<&str>) -> bool {
+    pipeline_in(values, commit, "INPROGRESS")
+}
+
 /// The newest CodeRabbit status of `commit`.
 pub fn newest_status<'a>(values: &'a [Value], commit: Option<&str>) -> Option<&'a Value> {
-    let matching = values.iter().filter(|v| {
-        if !is_status(v) {
-            return false;
-        }
-        let hash = v.get("commit").and_then(|c| str_of(c, "hash"));
-        match (commit, hash) {
-            (Some(commit), Some(hash)) => hash.starts_with(commit),
-            _ => true,
-        }
-    });
+    let matching = values
+        .iter()
+        .filter(|v| is_status(v) && on_commit(v, commit));
     max_first(matching, |a, b| {
         stamp(a, "updated_on").unwrap_or_else(distant_past)
             < stamp(b, "updated_on").unwrap_or_else(distant_past)
@@ -362,11 +381,12 @@ pub fn label(r: &Rabbit, threads: Option<RabbitThreads>) -> String {
 pub fn pr_buttons(pr: &crate::pull_requests::PRStatus) -> (bool, bool) {
     let open = pr.is_open();
     (
-        open && !hides_ask_claude(
-            pr.rabbit.as_ref(),
-            pr.rabbit_threads,
-            pr.rabbit_others_pending,
-        ),
+        open && (pr.pipeline_failed
+            || !hides_ask_claude(
+                pr.rabbit.as_ref(),
+                pr.rabbit_threads,
+                pr.rabbit_others_pending,
+            )),
         open && pr.rabbit == Some(Rabbit::AwaitingApproval),
     )
 }

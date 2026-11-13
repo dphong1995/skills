@@ -114,6 +114,8 @@ pub struct PRStatus {
     pub rabbit_threads: Option<RabbitThreads>,
     /// A reviewer's comment is still unanswered by `me`.
     pub rabbit_others_pending: bool,
+    /// A non-CodeRabbit build status on the head commit is FAILED.
+    pub pipeline_failed: bool,
 }
 
 impl PRStatus {
@@ -194,6 +196,7 @@ pub fn status_from(o: &Value) -> Option<PRStatus> {
         rabbit_since: None,
         rabbit_threads: None,
         rabbit_others_pending: false,
+        pipeline_failed: false,
     })
 }
 

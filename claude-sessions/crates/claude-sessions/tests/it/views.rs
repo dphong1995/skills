@@ -477,6 +477,7 @@ fn pr(id: i64, state: &str) -> PRStatus {
         rabbit_since: None,
         rabbit_threads: None,
         rabbit_others_pending: false,
+        pipeline_failed: false,
     }
 }
 

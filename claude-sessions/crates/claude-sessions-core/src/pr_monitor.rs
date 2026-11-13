@@ -539,6 +539,10 @@ impl Inner {
         pr.rabbit_since = v.since;
         pr.rabbit_threads = v.threads;
         pr.rabbit_others_pending = v.others_pending;
+        pr.pipeline_failed = t
+            .status_values
+            .get(ref_)
+            .is_some_and(|vals| code_rabbit::pipeline_failed(vals, pr.commit.as_deref()));
     }
 
     /// Remembers the label of a finished review so only a new one (or a new commit) chimes.
@@ -789,10 +793,15 @@ impl Inner {
                 prev_rabbit_status,
                 Some(Rabbit::Reviewed(_) | Rabbit::ApprovalFailed(_))
             );
-            let slow_poll = (reviewed || (!in_window && prev_rabbit_status.is_none()))
-                && t.statuses_at
-                    .get(ref_)
-                    .is_none_or(|a| secs_since(now, *a) >= STATUSES_SLOW_POLL);
+            let pipeline_running = t
+                .status_values
+                .get(ref_)
+                .is_some_and(|vals| code_rabbit::pipeline_running(vals, pr.commit.as_deref()));
+            let slow_poll =
+                (reviewed || (!in_window && prev_rabbit_status.is_none()) || pipeline_running)
+                    && t.statuses_at
+                        .get(ref_)
+                        .is_none_or(|a| secs_since(now, *a) >= STATUSES_SLOW_POLL);
             if prev.is_none()
                 || prev.as_ref().map(|p| &p.commit) != Some(&pr.commit)
                 || rabbit_pending
