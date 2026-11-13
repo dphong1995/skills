@@ -47,7 +47,7 @@ A bug fix handed off by `routing-bug-fixes-to-cook` collapses Step 1 the same wa
 <HARD-GATE>
 Steps 1 and 2 are NOT delegated. Scout, Q&A and the design review are conversational, and the plan is
 written by the orchestrator itself — it holds the full design conversation in context, so handing it
-to a sub-agent only loses fidelity. 1A's code reading runs in `explore` (Sonnet) per `../brainstorm-pro/references/design-flow.md` Phase 1 while the orchestrator keeps synthesis; research sub-agents may assist in 1B; the 1E builder check agent (`../brainstorm-pro/references/builder-check.md`) is the one other exception. Never write `spec.md`, never invoke the `ck-plan` skill, and
+to a sub-agent only loses fidelity. 1A's code reading runs in `explore` (Sonnet) per `../brainstorm-pro/references/design-flow.md` Phase 1 while the orchestrator keeps synthesis; research sub-agents may assist in 1B; the 1E builder check agent (`../brainstorm-pro/references/builder-check.md`) is the only other exception. Never write `spec.md`, never invoke the `ck-plan` skill, and
 never dispatch a `planner` sub-agent — the approved design goes straight into plan files the
 orchestrator writes with Write. Sub-agent delegation starts at Step 3 (execution).
 
@@ -119,7 +119,7 @@ flowchart TD
 ```
 [Setup] → [Design: scout → research → Q&A → approaches → design.md reviewed on a page] → [Plan: orchestrator writes it] → [Phase sub-agents] → [Test sub-agent] → [Review: sized by the diff (workflow-steps.md § Step 5) — compliance+bugs / reuse+simplification+efficiency+altitude] → [Finalize sub-agents]
 
-Steps 1–2 are orchestrator-run (design + plan; except the 1E builder check agent). Steps 3–6 are sub-agent-run (execution).
+Steps 1–2 are orchestrator-run (design + plan; except 1A's `explore` scout and the 1E builder check agent). Steps 3–6 are sub-agent-run (execution).
 ```
 
 Step 1 is interactive (Q&A rounds, the design review page). **From Step 2 onward the workflow runs straight through without stopping for approval** (exceptions: SKILL.md § Gates). **Claude Tasks (ALWAYS create AND update):** A task list MUST always be created — use `TaskCreate` to seed tasks up front — AND MUST be kept in lock-step throughout: `TaskUpdate` → `in_progress` before each phase dispatch, `TaskUpdate` → `complete` once its report passes the check and its commit lands, or nothing is left to commit (`references/workflow-steps.md` § Report check, status and commit; one phase at a time, same turn — never batched to the end). **Fallback:** `TaskCreate`/`TaskUpdate`/`TaskGet`/`TaskList` are CLI-only — unavailable in the VSCode extension. If they error, still create AND update the list via `TodoWrite`. Never skip creating or updating the task list.
@@ -153,7 +153,7 @@ The review (Step 5) is **sized by the diff** (workflow-steps.md § Step 5: one r
 
 | Phase | Subagent | Requirement |
 |-------|----------|-------------|
-| Step 1 Design (1A–1E) | **orchestrator-run** (builder check agent in 1E) | Skip only if plan path provided. `explore` (Sonnet, required for 1A's reading); `document-specialist` optional in 1B; the builder check agent per `../brainstorm-pro/references/builder-check.md` in 1E |
+| Step 1 Design (1A–1E) | **orchestrator-run** (builder check agent in 1E) | Skip only if plan path provided. `explore` (Sonnet, required for 1A's reading, not in the collapsed Step 1 of § Escalation: its minimal scout stays inline); `document-specialist` optional in 1B; the builder check agent per `../brainstorm-pro/references/builder-check.md` in 1E |
 | Step 2 Plan | **none — orchestrator-run** | Orchestrator writes `plan.md` + `phase-XX-*.md` itself with Write, in **`ck-plan`'s format** (load `../ck-plan/references/plan-writing.md` + `plan-organization.md` + `output-standards.md` first). Skip only if plan path provided. Dispatching `planner` here is FORBIDDEN |
 | Implementation (per phase) | `executor` (or `designer` for frontend) | **MUST** spawn one per phase. Dispatch with `model: "sonnet"`. Prompt carries the Report contract, then the `references/subagent-patterns.md` § Every prompt lines |
 | Testing | `test-engineer`, `debugger` | **MUST** spawn. Dispatch with `model: "sonnet"` |

@@ -145,7 +145,7 @@ git add -A && git commit -m "..." && git push
 skills/
 ├── brainstorm-pro/   Thiết kế feature: deep scout → Q&A từng câu một trên trang HTML cục bộ → viết spec theo
 │                     section → user duyệt trên trang web (góp ý từng mục; phím tắt trên các trang, `?` liệt kê)
-│                     → gọi ck-plan. Phase 1 lưu snapshot Jira (Story/Epic) và lập bảng truy vết AC; Phase 1 giao phần đọc code cho agent `explore` (Sonnet), luồng chính chỉ nhận báo cáo có `file:line` để bớt token; Phase 2 có thẻ phát lại, Phase 5 có builder check. Luồng thiết kế nằm ở `references/design-flow.md`, dùng chung với cook. Gồm `assets/render-interview.mjs` + `assets/lib/` + `assets/page/`,
+│                     → gọi ck-plan. Phase 1 lưu snapshot Jira (Story/Epic), lập bảng truy vết AC và giao phần đọc code cho agent `explore` (Sonnet), luồng chính chỉ nhận báo cáo có `file:line` để bớt token; Phase 2 có thẻ phát lại, Phase 5 có builder check. Luồng thiết kế nằm ở `references/design-flow.md`, dùng chung với cook. Gồm `assets/render-interview.mjs` + `assets/lib/` + `assets/page/`,
 │                     `tests/`, `DEVELOPING.md`
 ├── ck-plan/          Lập kế hoạch: research → phân tích codebase → plan.md + phase-XX-*.md (mẫu và luật viết trong `references/plan-writing.md`; Global Constraints, Review Focus, Interfaces; tự kiểm plan)
 │                     → tự động gọi cook

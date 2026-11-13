@@ -22,7 +22,7 @@ design stage only. Summary:
 
 | Sub-step | What happens | Delegation |
 |---|---|---|
-| 1A Deep Scout | CLAUDE.md + rules, related dirs/features, cross-repo, docs, user memory. Produce reuse opportunities / conflict risks / open questions. | Orchestrator synthesizes; code reading runs in `explore` (Sonnet; fallback `general-purpose`, Sonnet) per `design-flow.md` Phase 1 (conclusions with citations, not file dumps); `document-specialist` optional in 1B |
+| 1A Deep Scout | CLAUDE.md + rules, related dirs/features, cross-repo, docs, user memory. Produce reuse opportunities / conflict risks / open questions. | Orchestrator synthesizes; code reading runs in `explore` (Sonnet; fallback `general-purpose`, Sonnet) per `design-flow.md` Phase 1 (conclusions with citations, not file dumps) |
 | 1B Best-Practice Research | Conditional — only if no in-repo precedent AND well-trodden externally AND a real design fork. Orienting pass by default. | Orchestrator; `document-specialist` / context7 / WebSearch optional |
 | 1C Q&A Loop | ONE round at a time (one question, or up to 4 independent ones) on a local HTML question page (`../brainstorm-pro/references/html-interview.md`): full card, multi-choice + recommendation, answers sent back from the page (or pasted), mini re-explore between rounds, ≥1 brutal-honesty pushback, a playback card (Vietnamese: "Thẻ phát lại", no recommendation) before the approaches. **Cap 8 rounds.** | Orchestrator only |
 | 1D Approaches | 2-3 approaches with pros/cons/effort, recommendation first — the last question on the interview page. | Orchestrator only |
@@ -581,7 +581,7 @@ If a plan path is provided at Step 0, skip Steps 1–2 and start at Step 3.
 ## Critical Rules
 
 - Never skip steps without explicit user instruction.
-- **STEP 1 IS NOT DELEGATED.** The design conversation (1C Q&A, 1D approaches, 1E design review) is run by the orchestrator. Sub-agents assist with reading in 1A/1B only, plus the builder check agent in 1E. Never write `spec.md`, never invoke `ck-plan` — Step 2 continues in this run.
+- **STEP 1 IS NOT DELEGATED.** The design conversation (1C Q&A, 1D approaches, 1E design review) is run by the orchestrator. 1A's code reading runs in `explore`; sub-agents may assist in 1B, plus the builder check agent in 1E. Never write `spec.md`, never invoke `ck-plan` — Step 2 continues in this run.
 - **MANDATORY SUBAGENT DELEGATION:** Steps 3, 4, 5, 6 MUST spawn subagents via the `Agent` tool. DO NOT implement, test, or review directly. Resolve every type through `subagent-patterns.md` § Agent Name Mapping first.
   - Step 3: `executor` / `designer` for frontend (one per phase)
   - Step 4: `test-engineer` (and `debugger` if failures)

@@ -39,7 +39,7 @@ disallowedTools: Write, Edit, Artifact
     3) Cross-validate findings across multiple tools (Grep results vs Glob results vs ast_grep_search).
     4) Cap exploratory depth: if a search path yields diminishing returns after 2 rounds, stop and report what you found.
     5) Batch independent queries in parallel. Never run sequential searches when parallel is possible.
-    6) Structure results in the required format (or the caller's own format when the brief gives one): files, relationships, answer, next_steps.
+    6) Structure results per <Output_Format>.
   </Investigation_Protocol>
 
   <Context_Budget>

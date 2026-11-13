@@ -79,12 +79,12 @@ Every later question and the design build on what the scout finds in the code.
 **Required actions:**
 1. **Read `CLAUDE.md`** + any `.claude/rules/*.md` to internalize project conventions
 2. **Save the Jira stories** when the topic names Jira issues: run `~/.claude/skills/brainstorm-pro/references/jira-snapshot.md` (Sonnet agents in the background; it keeps Story/Epic only). Read their one-line reports, then the saved files of the stories you design.
-3. **Dispatch the scout** (replaces the old steps 3-5: related areas, cross-repo scan, `docs/`). Run step 2 first, then send this brief to `Agent(subagent_type: "explore", model: "sonnet")`, one agent per working directory when the project has several, all in one message. If `explore` is not registered, use `general-purpose` with `model: "sonnet"` and the same brief; never fall back to reading inline.
+3. **Dispatch the scout**. Run step 2 first, then send this brief to `Agent(subagent_type: "explore", model: "sonnet")`, one agent per working directory when the project has several, all in one message. If `explore` is not registered, use `general-purpose` with `model: "sonnet"` and the same brief; never fall back to reading inline.
 
    ```text
    Topic: <topic, one paragraph, plus the Jira story summaries from step 2 if any>
    Repo: <absolute working directory>
-   Find what this feature can build on. Read code, not only names.
+   Find what this feature can build on: related code, similar features, and project docs (`docs/`, READMEs near the code). Read code, not only names.
    Report format (use this instead of your default one), at most ~1500 words:
    ## Existing infrastructure   what exists and could be reused, each with /abs/path:line
    ## Reuse opportunities       files/functions/types to build on, /abs/path:line-range
@@ -92,7 +92,7 @@ Every later question and the design build on what the scout finds in the code.
    ## Open questions            gaps the code does not answer
    ## Not checked / unsure      what you skipped or could not confirm
    ```
-6. **List user memory** if available — past feedback informs design
+4. **List user memory** if available — past feedback informs design
 
 **Scout output:** the agent's report, with the five sections above (one report per working directory). Cite its `file:line` on cards through `{t:"code", file, lines}`; the script cuts the snippet, so no Read is needed for that. Read a span yourself only when a section lacks what a card or the design needs, or the item is under `Not checked / unsure`.
 
