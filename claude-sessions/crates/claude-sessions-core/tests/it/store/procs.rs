@@ -198,3 +198,65 @@ fn kill_still_valid_only_while_a_target_is_listed() {
     });
     assert!(!store.still_valid(&action));
 }
+
+fn leftovers() -> ProcTable {
+    ProcTable {
+        live: HashMap::new(),
+        closed: vec![procs("b", 2, Some("/p/b"), vec![group("g", &[(12, 1)])])],
+    }
+}
+
+#[test]
+fn leftovers_keep_the_widget_visible_without_live_sessions() {
+    let (mut store, _dir) = store_closed(vec![]);
+    let t0 = SystemTime::now();
+    store.refresh(t0);
+    store.refresh(t0 + Duration::from_secs(60));
+    assert!(store.hidden());
+    store.set_procs(leftovers());
+    assert!(
+        !store.hidden(),
+        "a scan that finds leftovers shows it again"
+    );
+    store.refresh(t0 + Duration::from_secs(120));
+    assert!(!store.hidden());
+    // The leftovers go: the 30 s timer starts over.
+    store.set_procs(ProcTable::default());
+    store.refresh(t0 + Duration::from_secs(130));
+    assert!(!store.hidden());
+    store.refresh(t0 + Duration::from_secs(170));
+    assert!(store.hidden());
+}
+
+#[test]
+fn old_leftover_session_keeps_its_closed_entry_across_restart_and_refresh() {
+    let day = 24 * 3600;
+    let (mut store, _dir) = store_closed(vec![closed("old", day + 3600), closed("new", 10)]);
+    store.refresh(SystemTime::now());
+    // No scan result yet: nothing is pruned.
+    assert_eq!(store.snapshot().closed.len(), 2);
+    store.set_procs(ProcTable {
+        live: HashMap::new(),
+        closed: vec![procs("old", 1, None, vec![group("g", &[(12, 1)])])],
+    });
+    store.refresh(SystemTime::now());
+    let mut ids: Vec<String> = store
+        .snapshot()
+        .closed
+        .iter()
+        .map(|c| c.id.clone())
+        .collect();
+    ids.sort();
+    assert_eq!(ids, ["new", "old"]);
+    let old_row = store
+        .snapshot()
+        .closed_rows
+        .into_iter()
+        .find(|r| r.id == "old")
+        .unwrap();
+    assert_eq!(old_row.title, "title old");
+    // Once its leftovers are gone, the age limit applies again.
+    store.set_procs(ProcTable::default());
+    store.refresh(SystemTime::now());
+    assert_eq!(store.snapshot().closed.len(), 1);
+}

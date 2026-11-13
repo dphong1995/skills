@@ -91,10 +91,10 @@ impl ClosedSessions {
         &self.items
     }
 
-    pub fn add(&mut self, s: ClosedSession, now: SystemTime) {
+    /// Puts `s` first; the caller prunes (it alone knows which ids have leftovers to keep).
+    pub fn add(&mut self, s: ClosedSession) {
         self.items.retain(|i| i.id != s.id);
         self.items.insert(0, s);
-        self.prune(now, &HashSet::new());
     }
 
     pub fn revive(&mut self, ids: &HashSet<String>) {
@@ -125,8 +125,8 @@ impl ClosedStore {
         Self { kv }
     }
 
-    /// The saved list with what is older than 24 h dropped; empty when nothing usable is saved.
-    pub fn load(&self, now: SystemTime) -> ClosedSessions {
+    /// The saved list as it is (the store prunes once it knows which sessions have leftovers); empty when nothing usable is saved.
+    pub fn load(&self) -> ClosedSessions {
         // One item at a time: a bad item (a date out of range) is dropped, not the whole list.
         let items = self
             .kv
@@ -136,9 +136,7 @@ impl ClosedStore {
             .into_iter()
             .filter_map(|v| serde_json::from_value::<ClosedSession>(v).ok())
             .collect();
-        let mut loaded = ClosedSessions::new(items);
-        loaded.prune(now, &HashSet::new());
-        loaded
+        ClosedSessions::new(items)
     }
 
     pub fn save(&self, closed: &ClosedSessions) {

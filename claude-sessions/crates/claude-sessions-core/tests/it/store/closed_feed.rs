@@ -395,7 +395,7 @@ fn revive_closed_saves_the_list() {
     ClosedStore::new(Box::new(kv.clone())).save(&ClosedSessions::new(vec![make("x"), make("y")]));
     let mut store = store_with_closed(dir.path(), &kv);
     store.revive_closed(&set(["x"]));
-    let saved = ClosedStore::new(Box::new(kv.clone())).load(now);
+    let saved = ClosedStore::new(Box::new(kv.clone())).load();
     let got: Vec<&str> = saved.items().iter().map(|c| c.id.as_str()).collect();
     assert_eq!(got, ["y"]);
     assert_eq!(store.snapshot().closed.len(), 1);

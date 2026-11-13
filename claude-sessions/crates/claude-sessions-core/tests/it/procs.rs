@@ -39,7 +39,8 @@ fn wrapper(pid: i32, start_s: u64, text: &str) -> RawProc {
     let script = format!(
         "source /Users/u/.claude/shell-snapshots/snapshot-zsh-1.sh && eval '{text}' < /dev/null"
     );
-    cmd(pid, pid, start_s, &["/bin/zsh", "-c", &script])
+    // A platform binary: argv is readable but the env (session id, CLAUDE_PID) is not.
+    base(pid, pid, start_s, &["/bin/zsh", "-c", &script])
 }
 
 fn claude(rss_mb: u64) -> RawProc {
@@ -117,15 +118,135 @@ fn nohup_leftover_with_dead_leader_is_command() {
 }
 
 #[test]
-fn leader_without_session_id_is_command() {
+fn live_untagged_non_wrapper_leader_is_claude_and_mcp() {
     let shell = base(400, 400, 5, &["-zsh"]);
     let t = update(
         vec![claude(1), shell, cmd(401, 400, 10, &["sleep", "999"])],
         &live(),
     );
     let s = &t.live["s1"];
+    assert!(s.commands.is_empty());
+    assert_eq!(
+        s.claude_and_mcp.as_ref().unwrap().members,
+        [(401, 10 * S)],
+        "a user shell leading the group makes it unkillable"
+    );
+}
+
+#[test]
+fn untagged_wrapper_leader_is_command_with_eval_tooltip() {
+    let t = update(
+        vec![
+            claude(1),
+            wrapper(200, 10, "npm run dev"),
+            vite(201, 200, 10),
+        ],
+        &live(),
+    );
+    let c = &t.live["s1"].commands[0];
+    assert_eq!(c.command, "npm run dev");
+    assert_eq!(c.members, [(200, 10 * S), (201, 10 * S)]);
+}
+
+#[test]
+fn untagged_members_of_a_command_group_are_kill_targets() {
+    let sleep = RawProc {
+        rss: 2 * MB,
+        ..base(202, 200, 11, &["/bin/sleep", "1"])
+    };
+    let unrelated = base(900, 900, 11, &["/bin/sleep", "600"]);
+    let t = update(
+        vec![
+            claude(1),
+            wrapper(200, 10, "while true; do node w.js; sleep 1; done"),
+            vite(201, 200, 10),
+            sleep,
+            unrelated,
+        ],
+        &live(),
+    );
+    let s = &t.live["s1"];
     assert_eq!(s.commands.len(), 1);
-    assert_eq!(s.commands[0].members, [(401, 10 * S)]);
+    let c = &s.commands[0];
+    assert_eq!(c.members, [(200, 10 * S), (201, 10 * S), (202, 11 * S)]);
+    assert_eq!(c.name, "vite", "an untagged helper never names the group");
+    assert_eq!(c.rss, 302 * MB);
+    assert!(s.claude_and_mcp.as_ref().unwrap().members.is_empty());
+}
+
+#[test]
+fn nested_claude_mcp_with_foreign_claude_pid_is_not_killable() {
+    let nested = RawProc {
+        claude_pid: Some(777),
+        ..mcp(310, 300, 10, &["node", "/x/nested-mcp"])
+    };
+    let t = update(vec![claude(1), nested], &live());
+    let s = &t.live["s1"];
+    assert!(s.commands.is_empty());
+    assert_eq!(s.claude_and_mcp.as_ref().unwrap().members, [(310, 10 * S)]);
+}
+
+#[test]
+fn member_that_is_its_own_group_leader_does_not_keep_the_session_hidden() {
+    let t = update(vec![mcp(500, 500, 3, &["node", "m"])], &HashMap::new());
+    assert_eq!(t.closed.len(), 1);
+}
+
+#[test]
+fn mcp_whose_parent_claude_is_alive_stays_hidden() {
+    let parent = base(50, 50, 1, &["claude", "-p", "x"]);
+    let child = RawProc {
+        ppid: 50,
+        ..mcp(500, 300, 3, &["node", "m"])
+    };
+    let t = update(vec![parent, child.clone()], &HashMap::new());
+    assert!(t.closed.is_empty());
+    let t = update(vec![child], &HashMap::new());
+    assert_eq!(t.closed.len(), 1, "parent gone: closed");
+}
+
+#[test]
+fn small_rss_jitter_keeps_table_equal() {
+    let mut model = ProcModel::default();
+    let at = |t: u64, rss_mb: u64| {
+        scan(
+            t,
+            vec![
+                claude(rss_mb),
+                wrapper(200, 10, "x"),
+                RawProc {
+                    rss: rss_mb * MB,
+                    ..cmd(201, 200, 10, &["a"])
+                },
+            ],
+        )
+    };
+    let first = model.update(&at(100, 300), &live());
+    assert_eq!(model.update(&at(105, 302), &live()), first);
+    assert_eq!(model.update(&at(110, 298), &live()), first);
+    let moved = model.update(&at(115, 330), &live());
+    assert_ne!(moved, first);
+    assert_eq!(moved.live["s1"].commands[0].rss, 330 * MB);
+}
+
+#[test]
+fn clock_going_backwards_does_not_panic() {
+    let mut model = ProcModel::default();
+    for i in 0..14u64 {
+        let mut leaf = cmd(201, 200, 0, &["node", "busy.js"]);
+        leaf.cpu_ns = i * 3_000_000_000;
+        model.update(
+            &scan(10 + 5 * i, vec![claude(1), wrapper(200, 0, "x"), leaf]),
+            &live(),
+        );
+    }
+    let mut leaf = cmd(201, 200, 0, &["node", "busy.js"]);
+    leaf.cpu_ns = 14 * 3_000_000_000;
+    let t = model.update(
+        &scan(20, vec![claude(1), wrapper(200, 0, "x"), leaf]),
+        &live(),
+    );
+    assert_eq!(t.live["s1"].commands[0].cpu_percent, None);
 }
 
 #[test]
@@ -238,7 +359,7 @@ fn rss_and_ports_sum_per_group() {
     let c = &t.live["s1"].commands[0];
     assert_eq!(c.rss, 300 * MB);
     assert_eq!(c.ports, [5173, 8080]);
-    assert_eq!(c.name, "b.js", "the largest listener is named");
+    assert_eq!(c.name, "a.js", "the oldest listener, lowest pid, is named");
 }
 
 fn cpu_scans(pct_of_5s: u64, n: u64) -> Vec<Option<f64>> {
@@ -358,13 +479,26 @@ fn display_name_rules() {
     assert_eq!(name(&["ugrep", "-rn", "TODO", "/"]), "ugrep");
     assert_eq!(name(&["docker", "compose", "up", "kafka"]), "docker");
     assert_eq!(name(&["/usr/bin/python3.12", "app.py"]), "app.py");
+    assert_eq!(
+        name(&[
+            "/opt/homebrew/Cellar/python@3.13/3.13.1/Frameworks/Python.framework/Versions/3.13/Resources/Python.app/Contents/MacOS/Python",
+            "-m",
+            "http.server",
+            "8765"
+        ]),
+        "http.server"
+    );
     assert_eq!(display_name(&[], "fallback"), "fallback");
 }
 
 #[test]
 fn tooltip_unwraps_eval() {
     let t = update(
-        vec![claude(1), wrapper(200, 10, r"echo '\''hi'\''")],
+        vec![
+            claude(1),
+            wrapper(200, 10, r"echo '\''hi'\''"),
+            cmd(201, 200, 10, &["echo", "hi"]),
+        ],
         &live(),
     );
     let c = &t.live["s1"].commands[0];

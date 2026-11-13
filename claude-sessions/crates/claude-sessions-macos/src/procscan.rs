@@ -13,8 +13,8 @@ const PROC_PIDFDSOCKETINFO: libc::c_int = 3;
 /// `SOCKINFO_TCP` and `TSI_S_LISTEN` of `<sys/proc_info.h>`.
 const SOCKINFO_TCP: i32 = 2;
 const TSI_S_LISTEN: i32 = 1;
-/// `SZOMB` of `<sys/proc.h>`.
-const SZOMB: u32 = 5;
+/// Marks a Bash-tool wrapper in its argv.
+const SNAPSHOT_MARK: &str = "/.claude/shell-snapshots/";
 /// `kern.argmax` is 1 MiB on macOS; the buffer for `KERN_PROCARGS2`.
 const ARGS_BUFFER: usize = 1 << 20;
 /// A process younger than this may still be between `fork` and `exec` (same pid and start, other env): not cached yet.
@@ -127,7 +127,7 @@ impl Scanner {
         let mut seen = HashSet::new();
         for pid in list_pids() {
             let Some(bsd) = bsd_info(pid) else { continue };
-            if bsd.pbi_status == SZOMB {
+            if bsd.pbi_status == libc::SZOMB {
                 continue;
             }
             let start_us = start_of(&bsd);
@@ -147,16 +147,29 @@ impl Scanner {
                 proc.claude_pid = info.claude_pid;
                 proc.pwd = info.pwd;
             }
-            if proc.session.is_some() {
-                if let Some(task) = task_info(pid) {
-                    proc.rss = task.pti_resident_size;
-                    let ticks = task.pti_total_user.saturating_add(task.pti_total_system);
-                    proc.cpu_ns = (u128::from(ticks) * u128::from(self.timebase.0)
-                        / u128::from(self.timebase.1)) as u64;
-                }
-                proc.ports = listen_ports(pid);
-            }
             procs.push(proc);
+        }
+        // Platform binaries hide their env: the processes of a Bash-tool group (the group of a tagged process with a
+        // `CLAUDE_PID`) and the Bash wrappers themselves are measured too, so the group's rss/cpu/ports are complete.
+        let bash_groups: HashSet<i32> = procs
+            .iter()
+            .filter(|p| p.session.is_some() && p.claude_pid.is_some())
+            .map(|p| p.pgid)
+            .collect();
+        for proc in &mut procs {
+            let measured = proc.session.is_some()
+                || bash_groups.contains(&proc.pgid)
+                || proc.argv.iter().any(|a| a.contains(SNAPSHOT_MARK));
+            if !measured {
+                continue;
+            }
+            if let Some(task) = task_info(proc.pid) {
+                proc.rss = task.pti_resident_size;
+                let ticks = task.pti_total_user.saturating_add(task.pti_total_system);
+                proc.cpu_ns = (u128::from(ticks) * u128::from(self.timebase.0)
+                    / u128::from(self.timebase.1)) as u64;
+            }
+            proc.ports = listen_ports(proc.pid);
         }
         self.env.retain(|key, _| seen.contains(key));
         Scan {
@@ -386,7 +399,7 @@ pub enum KillOutcome {
 
 /// The process still has this start time and is not a zombie.
 fn alive(pid: i32, start_us: u64) -> bool {
-    bsd_info(pid).is_some_and(|b| b.pbi_status != SZOMB && start_of(&b) == start_us)
+    bsd_info(pid).is_some_and(|b| b.pbi_status != libc::SZOMB && start_of(&b) == start_us)
 }
 
 fn wait_gone(pending: &[(i32, u64)], limit: Duration) -> Vec<(i32, u64)> {
@@ -401,33 +414,55 @@ fn wait_gone(pending: &[(i32, u64)], limit: Duration) -> Vec<(i32, u64)> {
     }
 }
 
-/// Signals `pid` only when it still has the shown start time. True when the signal was sent.
-fn signal(pid: i32, start_us: u64, sig: libc::c_int) -> bool {
+enum Signalled {
+    Sent,
+    /// Already gone, or another process now (the start time changed).
+    Gone,
+    /// The signal was refused (`EPERM`): the process stays.
+    Refused,
+}
+
+/// Signals `pid` only when it still has the shown start time.
+fn signal(pid: i32, start_us: u64, sig: libc::c_int) -> Signalled {
     if !alive(pid, start_us) {
-        return false;
+        return Signalled::Gone;
     }
     // SAFETY: `pid` is a single positive pid other than 1 and our own (callers filter); no process group is signalled.
-    unsafe { libc::kill(pid, sig) == 0 }
+    if unsafe { libc::kill(pid, sig) } == 0 {
+        return Signalled::Sent;
+    }
+    match std::io::Error::last_os_error().raw_os_error() {
+        Some(libc::ESRCH) => Signalled::Gone,
+        _ => Signalled::Refused,
+    }
 }
 
 /// SIGTERM each target whose start still matches, wait up to `KILL_GRACE_SECS`, SIGKILL the survivors, wait up to 1 s.
 /// Skips pid <= 1 and the caller's own pid. Blocks; call it off the main thread.
 pub fn kill(targets: &[(i32, u64)]) -> KillOutcome {
     let own = std::process::id() as i32;
-    let sent: Vec<(i32, u64)> = targets
-        .iter()
-        .copied()
-        .filter(|&(pid, start)| pid > 1 && pid != own && signal(pid, start, libc::SIGTERM))
-        .collect();
+    let mut sent: Vec<(i32, u64)> = Vec::new();
+    let mut refused: Vec<(i32, u64)> = Vec::new();
+    for &(pid, start) in targets.iter().filter(|t| t.0 > 1 && t.0 != own) {
+        match signal(pid, start, libc::SIGTERM) {
+            Signalled::Sent => sent.push((pid, start)),
+            Signalled::Refused => refused.push((pid, start)),
+            Signalled::Gone => {}
+        }
+    }
     let survivors = wait_gone(&sent, Duration::from_secs_f64(KILL_GRACE_SECS));
     for &(pid, start) in &survivors {
         signal(pid, start, libc::SIGKILL);
     }
-    let left = wait_gone(&survivors, KILL_FINAL_WAIT);
-    if left.is_empty() {
+    let left = wait_gone(&survivors, KILL_FINAL_WAIT).len()
+        + refused
+            .iter()
+            .filter(|&&(pid, start)| alive(pid, start))
+            .count();
+    if left == 0 {
         KillOutcome::AllGone
     } else {
-        KillOutcome::StillAlive(left.len())
+        KillOutcome::StillAlive(left)
     }
 }
 
@@ -435,6 +470,7 @@ pub fn kill(targets: &[(i32, u64)]) -> KillOutcome {
 mod tests {
     use super::*;
     use std::io::{BufRead, BufReader};
+    use std::os::unix::process::CommandExt;
     use std::process::{Child, Command, Stdio};
 
     struct Guard(Child);
@@ -548,6 +584,8 @@ mod tests {
             Command::new("sleep")
                 .arg("30")
                 .env_remove("CLAUDE_CODE_SESSION_ID")
+                // Its own group: the test process may sit in a tagged Bash-tool group, whose members are measured too.
+                .process_group(0)
                 .spawn()
                 .unwrap(),
         );

@@ -101,7 +101,7 @@ impl Store {
             }
         }
 
-        if list.is_empty() {
+        if list.is_empty() && self.procs.closed.is_empty() {
             if self.empty_since.is_none() {
                 self.empty_since = Some(now);
             }
@@ -387,7 +387,7 @@ impl Store {
             {
                 self.departed.remove(&id);
             } else if !self.running(pid) {
-                now_closed.add(session, now);
+                now_closed.add(session);
                 self.departed.remove(&id);
             }
         }
@@ -398,7 +398,9 @@ impl Store {
             .iter()
             .map(|p| p.session.clone())
             .collect();
-        now_closed.prune(now, &keep);
+        if self.procs_seen {
+            now_closed.prune(now, &keep);
+        }
         if now_closed != self.closed {
             if let Some(store) = &self.closed_store {
                 store.save(&now_closed);

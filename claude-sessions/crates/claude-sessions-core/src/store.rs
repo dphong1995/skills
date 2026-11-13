@@ -201,6 +201,8 @@ pub struct Store {
     /// The last scan result and the refresh time it first appeared at.
     procs: ProcTable,
     procs_at: SystemTime,
+    /// Whether a scan result has arrived; until then the closed list is not pruned (a leftover's row must survive a restart).
+    procs_seen: bool,
     now: SystemTime,
     sends: HashMap<SendKey, (SendState, SystemTime)>,
     issue_icons: HashMap<url::Url, Vec<u8>>,
@@ -252,7 +254,7 @@ impl Store {
         let closed = options
             .closed_store
             .as_ref()
-            .map(|c| c.load(now))
+            .map(|c| c.load())
             .unwrap_or_default();
         let branches = match options.branch {
             Some(f) => Branches::Custom(f),
@@ -297,6 +299,7 @@ impl Store {
             pids: HashMap::new(),
             procs: ProcTable::default(),
             procs_at: UNIX_EPOCH,
+            procs_seen: false,
             last_status: HashMap::new(),
             last_question: HashMap::new(),
             announced_question: HashMap::new(),
@@ -442,6 +445,11 @@ impl Store {
 
     /// Keeps `table` only when it differs from the held one, so an idle scan leaves the snapshot equal.
     pub fn set_procs(&mut self, table: ProcTable) {
+        self.procs_seen = true;
+        if !table.closed.is_empty() {
+            // Leftovers keep the widget on screen even without a live session.
+            self.empty_since = None;
+        }
         if table != self.procs {
             self.procs = table;
             self.procs_at = self.now;

@@ -28,7 +28,8 @@ fn add_caps_at_five() {
     let now = SystemTime::now();
     let mut c = ClosedSessions::default();
     for i in 0..7 {
-        c.add(closed(&format!("s{i}"), now), now);
+        c.add(closed(&format!("s{i}"), now));
+        c.prune(now, &Default::default());
     }
     assert_eq!(c.items().len(), 5);
     assert_eq!(ids(&c), ["s6", "s5", "s4", "s3", "s2"]);
@@ -39,12 +40,13 @@ fn drops_after_24h() {
     let now = SystemTime::now();
     let hours = |h: u64| Duration::from_secs(h * 3600);
     let mut c = ClosedSessions::default();
-    c.add(closed("old", now - hours(23)), now);
-    c.add(closed("new", now), now);
+    c.add(closed("old", now - hours(23)));
+    c.add(closed("new", now));
     assert_eq!(ids(&c), ["new", "old"]);
     c.prune(now + hours(2), &Default::default());
     assert_eq!(ids(&c), ["new"]);
-    c.add(closed("stale", now - hours(25)), now);
+    c.add(closed("stale", now - hours(25)));
+    c.prune(now, &Default::default());
     assert_eq!(ids(&c), ["new"]);
 }
 
@@ -53,9 +55,9 @@ fn no_duplicate_ids() {
     let now = SystemTime::now();
     let later = now + Duration::from_secs(5);
     let mut c = ClosedSessions::default();
-    c.add(closed("a", now), now);
-    c.add(closed("b", now), now);
-    c.add(closed("a", later), later);
+    c.add(closed("a", now));
+    c.add(closed("b", now));
+    c.add(closed("a", later));
     assert_eq!(ids(&c), ["a", "b"]);
 }
 
@@ -64,7 +66,7 @@ fn revived_is_removed() {
     let now = SystemTime::now();
     let mut c = ClosedSessions::default();
     for id in ["a", "b", "c"] {
-        c.add(closed(id, now), now);
+        c.add(closed(id, now));
     }
     c.revive(&["a", "c", "zzz"].iter().map(|s| s.to_string()).collect());
     assert_eq!(ids(&c), ["b"]);
@@ -90,10 +92,10 @@ fn codable_round_trip() {
     let b = closed("b", now - Duration::from_secs(60));
     let store = ClosedStore::new(Box::new(MemoryStore::default()));
     let mut c = ClosedSessions::default();
-    c.add(b.clone(), now);
-    c.add(a.clone(), now);
+    c.add(b.clone());
+    c.add(a.clone());
     store.save(&c);
-    assert_eq!(store.load(now).items(), [a, b]);
+    assert_eq!(store.load().items(), [a, b]);
 }
 
 #[test]
@@ -106,7 +108,7 @@ fn decodes_swift_encoded_closed_sessions() {
     let first = &fixture[0];
     let unix = first["closedAt"].as_f64().unwrap() + REFERENCE_OFFSET;
     let now = UNIX_EPOCH + Duration::from_secs_f64(unix);
-    let items = store.load(now).items().to_vec();
+    let items = store.load().items().to_vec();
     assert_eq!(items.len(), 2);
     assert_eq!(items[0].id, first["id"].as_str().unwrap());
     assert_eq!(items[0].cwd, "/tmp/project-a");
@@ -121,7 +123,7 @@ fn encodes_dates_since_2001() {
     let now = SystemTime::now();
     let store = ClosedStore::new(Box::new(kv.clone()));
     let mut c = ClosedSessions::default();
-    c.add(closed("a", now), now);
+    c.add(closed("a", now));
     store.save(&c);
     let bytes = kv.get_bytes("closedSessions").unwrap();
     let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
@@ -166,7 +168,7 @@ fn out_of_range_closed_at_loads_as_empty_without_panic() {
         let json = format!(r#"[{{"id":"a","title":"t","cwd":"/x","closedAt":{bad}}}]"#);
         kv.set_bytes("closedSessions", json.as_bytes());
         let store = ClosedStore::new(Box::new(kv));
-        assert!(store.load(SystemTime::now()).items().is_empty());
+        assert!(store.load().items().is_empty());
     }
 }
 
@@ -182,7 +184,7 @@ fn one_bad_item_is_dropped_and_the_good_ones_stay() {
     ]);
     kv.set_bytes("closedSessions", &serde_json::to_vec(&list).unwrap());
     let store = ClosedStore::new(Box::new(kv));
-    assert_eq!(ids(&store.load(now)), ["good1", "good2"]);
+    assert_eq!(ids(&store.load()), ["good1", "good2"]);
 }
 
 #[test]
@@ -201,4 +203,21 @@ fn prune_keeps_ids_with_leftovers() {
     assert_eq!(ids(&c), ["s0", "s1", "s2", "s3", "s4", "s5", "old"]);
     c.prune(now, &Default::default());
     assert_eq!(ids(&c), ["s0", "s1", "s2", "s3", "s4"]);
+}
+
+#[test]
+fn add_leaves_pruning_to_the_caller_and_load_keeps_old_items() {
+    let now = SystemTime::now();
+    let old = closed("old", now - Duration::from_secs(30 * 3600));
+    let mut c = ClosedSessions::new(vec![old]);
+    c.add(closed("new", now));
+    assert_eq!(
+        ids(&c),
+        ["new", "old"],
+        "a leftover's entry survives an add"
+    );
+    let kv = MemoryStore::default();
+    let store = ClosedStore::new(Box::new(kv));
+    store.save(&c);
+    assert_eq!(ids(&store.load()), ["new", "old"]);
 }

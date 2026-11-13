@@ -124,20 +124,26 @@ struct CpuHist {
 #[derive(Default)]
 pub struct ProcModel {
     cpu: HashMap<String, CpuHist>,
+    /// The `rss` last emitted per group key (hysteresis: see `settle_rss`).
+    rss: HashMap<String, u64>,
 }
 
 impl ProcModel {
     /// `live` maps the ids of sessions whose `~/.claude/sessions/*.json` pid is running to that claude pid.
-    pub fn update(&mut self, scan: &Scan, live: &HashMap<String, i32>) -> ProcTable {
+    pub fn update<'a>(&mut self, scan: &'a Scan, live: &HashMap<String, i32>) -> ProcTable {
         let by_pid: HashMap<i32, &RawProc> = scan.procs.iter().map(|p| (p.pid, p)).collect();
         let skipped = |p: &RawProc| reaches(p, scan.own_pid, &by_pid, scan.procs.len());
 
         let mut by_session: BTreeMap<&str, Vec<&RawProc>> = BTreeMap::new();
+        // Processes without a session id (platform binaries hide their env), by group: they join a Command group.
+        let mut untagged: HashMap<i32, Vec<&RawProc>> = HashMap::new();
         for p in &scan.procs {
-            if let Some(s) = &p.session
-                && !skipped(p)
-            {
-                by_session.entry(s).or_default().push(p);
+            if skipped(p) {
+                continue;
+            }
+            match &p.session {
+                Some(s) => by_session.entry(s).or_default().push(p),
+                None => untagged.entry(p.pgid).or_default().push(p),
             }
         }
         for id in live.keys() {
@@ -162,18 +168,30 @@ impl ProcModel {
                 groups.entry(p.pgid).or_default().push(p);
             }
 
+            // Every member of a Bash-tool group: tagged processes plus the untagged ones sharing the group.
+            let mates =
+                |pgid: i32, ms: &[&'a RawProc]| with_mates(ms, untagged.get(&pgid), live_pid);
+
             if live_pid.is_none() {
                 let earliest = procs.iter().map(|p| p.start_us).min().unwrap_or(0);
+                let mut member_pids: HashSet<i32> = procs.iter().map(|p| p.pid).collect();
+                for (pgid, ms) in &groups {
+                    if ms.iter().any(|m| m.claude_pid.is_some()) {
+                        member_pids.extend(mates(*pgid, ms).iter().map(|m| m.pid));
+                    }
+                }
                 let mut candidates: HashSet<i32> =
                     procs.iter().filter_map(|p| p.claude_pid).collect();
+                candidates.extend(procs.iter().map(|p| p.ppid).filter(|&pp| pp != 1));
                 for (pgid, ms) in &groups {
                     if ms.iter().all(|m| m.claude_pid.is_none()) {
                         candidates.insert(*pgid);
                     }
                 }
-                let alive = candidates
-                    .iter()
-                    .any(|c| by_pid.get(c).is_some_and(|q| q.start_us <= earliest));
+                let alive = candidates.iter().any(|c| {
+                    !member_pids.contains(c)
+                        && by_pid.get(c).is_some_and(|q| q.start_us <= earliest)
+                });
                 if alive {
                     continue;
                 }
@@ -182,11 +200,15 @@ impl ProcModel {
             let mut commands = Vec::new();
             let mut mcp: Vec<&RawProc> = Vec::new();
             for (pgid, ms) in &groups {
-                let leader = all.iter().find(|p| p.pid == *pgid);
-                let leader_ok = leader.is_none_or(|l| is_wrapper(l));
-                if leader_ok && ms.iter().all(|m| m.claude_pid.is_some()) {
-                    let wrapper = ms.iter().copied().find(|m| m.pid == *pgid && is_wrapper(m));
-                    let (g, cpu) = command_group(id, *pgid, ms, wrapper);
+                // The leader is looked up in the whole scan: an untagged one is the Bash wrapper (or a user shell).
+                let leader = by_pid.get(pgid).copied().filter(|l| l.pgid == *pgid);
+                let leader_ok = leader.is_none_or(is_wrapper);
+                let ours = ms.iter().all(|m| {
+                    m.claude_pid.is_some() && live_pid.is_none_or(|l| m.claude_pid == Some(l))
+                });
+                if leader_ok && ours {
+                    let wrapper = leader.filter(|l| is_wrapper(l));
+                    let (g, cpu) = command_group(id, *pgid, &mates(*pgid, ms), wrapper);
                     cpu_sums.insert(g.key.clone(), cpu);
                     commands.push(g);
                 } else {
@@ -228,9 +250,12 @@ impl ProcModel {
         let flags = self.sample(scan.at_us, &cpu_sums);
         let min_age_us = MIN_AGE_SECS * 1_000_000;
         let mut table = ProcTable::default();
+        let mut emitted: HashMap<String, u64> = HashMap::new();
         for (mut s, is_live) in sessions {
             for g in s.commands.iter_mut().chain(s.claude_and_mcp.iter_mut()) {
                 g.cpu_percent = flags.get(&g.key).map(|p| p.round());
+                g.rss = settle_rss(self.rss.get(&g.key).copied(), g.rss);
+                emitted.insert(g.key.clone(), g.rss);
             }
             s.commands
                 .retain(|g| g.started_us + min_age_us <= scan.at_us);
@@ -243,6 +268,7 @@ impl ProcModel {
                 table.closed.push(s);
             }
         }
+        self.rss = emitted;
         table.closed.sort_by(|a, b| {
             b.started_us
                 .cmp(&a.started_us)
@@ -266,7 +292,12 @@ impl ProcModel {
                 self.cpu.insert(key.clone(), h);
                 continue;
             };
-            if at_us > h.at_us {
+            if at_us < h.at_us {
+                // The clock went backwards: the history no longer lines up.
+                h.samples.clear();
+                h.at_us = at_us;
+                h.cpu_ns = cpu_ns;
+            } else if at_us > h.at_us {
                 let pct = cpu_ns.saturating_sub(h.cpu_ns) as f64
                     / ((at_us - h.at_us) as f64 * 1000.0)
                     * 100.0;
@@ -282,13 +313,37 @@ impl ProcModel {
                 h.cpu_ns = cpu_ns;
             }
             if let (Some(first), Some(last)) = (h.samples.front(), h.samples.back())
-                && at_us - first.0 >= window
+                && at_us.saturating_sub(first.0) >= window
             {
                 on.insert(key.clone(), last.2);
             }
             self.cpu.insert(key.clone(), h);
         }
         on
+    }
+}
+
+fn with_mates<'a>(
+    ms: &[&'a RawProc],
+    untagged: Option<&Vec<&'a RawProc>>,
+    live_pid: Option<i32>,
+) -> Vec<&'a RawProc> {
+    let mut all = ms.to_vec();
+    all.extend(
+        untagged
+            .into_iter()
+            .flatten()
+            .copied()
+            .filter(|u| Some(u.pid) != live_pid),
+    );
+    all
+}
+
+/// Keeps the previously emitted `rss` unless the new one moved by 5 % or 16 MB, so RSS jitter does not change the table every scan.
+fn settle_rss(prev: Option<u64>, new: u64) -> u64 {
+    match prev {
+        Some(p) if new.abs_diff(p) < 16 * MB && (new.abs_diff(p) as f64) < p as f64 * 0.05 => p,
+        _ => new,
     }
 }
 
@@ -322,9 +377,21 @@ fn command_group(
         .copied()
         .filter(|m| Some(m.pid) != wrapper.map(|w| w.pid))
         .collect();
-    let named = pick_named(if others.is_empty() { ms } else { &others });
-    let (name, command) = match (wrapper, others.is_empty()) {
-        (Some(w), _) => {
+    // Untagged helpers (`sleep`, `sh`) never name a group while a tagged process does.
+    let tagged: Vec<&RawProc> = others
+        .iter()
+        .copied()
+        .filter(|m| m.session.is_some())
+        .collect();
+    let named = pick_named(if !tagged.is_empty() {
+        &tagged
+    } else if !others.is_empty() {
+        &others
+    } else {
+        ms
+    });
+    let (name, command) = match wrapper {
+        Some(w) => {
             let text = eval_text(&w.argv.join(" "));
             let name = if others.is_empty() {
                 text.as_deref()
@@ -337,7 +404,7 @@ fn command_group(
             };
             (name, text.unwrap_or_else(|| w.argv.join(" ")))
         }
-        (None, _) => {
+        None => {
             let command = ms
                 .iter()
                 .find(|m| m.pid == pgid)
@@ -381,13 +448,13 @@ fn mcp_group(
     )
 }
 
-/// The member that gives the group its name: the largest port listener, else the largest RSS.
+/// The member that gives the group its name: a port listener, else any member; the oldest first, then the lowest pid (stable between scans).
 fn pick_named<'a>(ms: &[&'a RawProc]) -> &'a RawProc {
     let best = |listening: bool| {
         ms.iter()
             .copied()
             .filter(|m| !listening || !m.ports.is_empty())
-            .max_by_key(|m| (m.rss, std::cmp::Reverse(m.pid)))
+            .min_by_key(|m| (m.start_us, m.pid))
     };
     best(true).or_else(|| best(false)).unwrap_or(ms[0])
 }
@@ -470,23 +537,26 @@ fn basename(s: &str) -> &str {
 }
 
 fn is_runner(b: &str) -> bool {
-    matches!(
-        b,
-        "node"
-            | "python"
-            | "python3"
-            | "ruby"
-            | "java"
-            | "sh"
-            | "bash"
-            | "zsh"
-            | "npm"
-            | "npx"
-            | "pnpm"
-            | "yarn"
-            | "bun"
-            | "deno"
-    ) || b.starts_with("python3.")
+    // The framework python of Homebrew is named `Python`.
+    let lower = b.to_ascii_lowercase();
+    lower.starts_with("python3.")
+        || matches!(
+            lower.as_str(),
+            "node"
+                | "python"
+                | "python3"
+                | "ruby"
+                | "java"
+                | "sh"
+                | "bash"
+                | "zsh"
+                | "npm"
+                | "npx"
+                | "pnpm"
+                | "yarn"
+                | "bun"
+                | "deno"
+        )
 }
 
 pub fn display_name(argv: &[String], comm: &str) -> String {
