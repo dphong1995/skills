@@ -9,6 +9,7 @@ names=(
   question-4-two-questions stop-armed 16-todo 15-titles-branch
   35-background-agents 22-pr-lines 31-pr-awaiting-approval 29-link-list-open
   34-mark-both quota-3-high-forecast closed-2-open
+  40-procs-live-open 41-procs-closed-open
 )
 
 command -v magick >/dev/null || { echo "magick (ImageMagick) not found" >&2; exit 1; }

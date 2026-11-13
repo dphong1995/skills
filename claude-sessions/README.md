@@ -95,6 +95,15 @@ Dòng gập `Vừa đóng` cuối danh sách liệt kê các session vừa kết
 
 ![Vừa đóng](docs/images/closed-2-open.png)
 
+### Process do Claude start
+Dev server, lệnh nền và MCP mà một session Claude Code start nhưng quên tắt được tìm theo `CLAUDE_CODE_SESSION_ID` trong env của process (quét mỗi 5 giây, bằng syscall, không chạy `ps`). Thẻ session đang sống hiện thêm `· :5173 :8080 ›` hoặc `· 2 lệnh nền ›` (gập mặc định), `· 2,6 GB` màu cam khi tổng RAM từ 2 GB và `· CPU cao` màu đỏ khi một nhóm quá 50% CPU suốt 60 giây. Session đã đóng mà còn process thì dòng `Vừa đóng` của nó giữ lại, hiện `N đang chạy · 886 MB ›` (chấm cam ở tiêu đề khi gập, chấm xám ở viên) và giữ đến khi hết process, không hết hạn sau 24 giờ. Mở dòng thấy `Claude và MCP`, `N MCP và agent` và từng lệnh (`vite :5173 · 412 MB`, tooltip là lệnh gốc).
+
+Tắt: rê chuột vào dòng, bấm `✕` rồi `Tắt` trong 3 giây (`Tắt N` cho cả một nhóm, `Tắt cả N` cho cả session). Widget gửi `SIGTERM`, đợi 3 giây rồi `SIGKILL` các process còn sống; nút hiện `Đang tắt…`, lỗi hiện `Không tắt được`. Không bao giờ hiện thành dòng có nút tắt: MCP của session đang sống, lệnh ngắn hơn 5 giây, chính widget và process con của nó, process khởi động ngoài Claude.
+
+![Process còn chạy trong Vừa đóng](docs/images/41-procs-closed-open.png)
+
+![Thẻ session sống với process](docs/images/40-procs-live-open.png)
+
 ## Cài và chạy
 
 ```bash
