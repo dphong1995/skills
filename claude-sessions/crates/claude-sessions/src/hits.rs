@@ -16,6 +16,12 @@ use url::Url;
 /// A second `Dừng` click within this many seconds sends the stop.
 pub const STOP_ARM_SECS: f64 = 3.0;
 
+/// Whether `key` was armed (by a first click) less than `STOP_ARM_SECS` before `now`.
+pub fn is_armed(map: &HashMap<String, SystemTime>, key: &str, now: SystemTime) -> bool {
+    map.get(key)
+        .is_some_and(|t| secs_since(now, *t) < STOP_ARM_SECS)
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Target {
     /// The card body: jump to the session's pane.
@@ -78,12 +84,8 @@ pub enum Target {
     Resume(String),
     /// A `· 2 lệnh nền ›` / `N đang chạy ›` line: opens or closes the process list of a live session or closed row.
     ToggleProcs(String),
-    /// `Tắt` / `Tắt N` / `Tắt cả N` / `✕` when not armed; `key` is a `ProcGroup::key`, `all:<session>` or `all`.
-    ArmKill {
-        session: String,
-        key: String,
-    },
-    /// The same control while armed (shown as `Tắt?`): a click kills.
+    /// `Tắt` / `Tắt N` / `Tắt cả N` / `✕` / `Không tắt được`; `key` is a `ProcGroup::key`, `all:<session>` or `all`. The first
+    /// click arms it (shown as `Tắt?`), a click while armed kills.
     Kill {
         session: String,
         key: String,
@@ -151,9 +153,7 @@ impl Target {
             | Target::Link { session, .. }
             | Target::AskClaude { session, .. }
             | Target::Nudge { session, .. } => Some(session),
-            Target::ArmKill { session, .. } | Target::Kill { session, .. } => {
-                Some(session.as_str()).filter(|s| !s.is_empty())
-            }
+            Target::Kill { session, .. } => Some(session.as_str()).filter(|s| !s.is_empty()),
             Target::Resume(_) | Target::Connect(_) | Target::ToggleClosed | Target::Settings(_) => {
                 None
             }
@@ -193,12 +193,7 @@ impl Target {
             }),
             Target::ReplySend(_) => Click::Stale,
             Target::Stop(id) => {
-                let armed = env
-                    .panel
-                    .stop_armed
-                    .get(id)
-                    .is_some_and(|t| secs_since(env.now, *t) < STOP_ARM_SECS);
-                if armed {
+                if is_armed(&env.panel.stop_armed, id, env.now) {
                     Click::Action(Action::Stop(id.clone()))
                 } else {
                     Click::Panel(PanelChange::ArmStop(id.clone()))
@@ -276,19 +271,13 @@ impl Target {
             }
             Target::Connect(service) => Click::Action(Action::Connect(*service)),
             Target::ToggleClosed => Click::Panel(PanelChange::ToggleClosed),
-            Target::Resume(id) => match env.snap.closed.iter().find(|c| &c.id == id) {
-                Some(c) => Click::Action(Action::Resume(c.clone())),
+            Target::Resume(id) => match env.snap.closed_rows.iter().find(|r| &r.id == id) {
+                Some(r) => Click::Action(Action::Resume(r.session.clone())),
                 None => Click::Stale,
             },
             Target::ToggleProcs(id) => Click::Panel(PanelChange::ToggleProcs(id.clone())),
-            Target::ArmKill { key, .. } => Click::Panel(PanelChange::ArmKill(key.clone())),
             Target::Kill { session, key } => {
-                let armed = env
-                    .panel
-                    .kill_armed
-                    .get(key)
-                    .is_some_and(|t| secs_since(env.now, *t) < STOP_ARM_SECS);
-                if !armed {
+                if !is_armed(&env.panel.kill_armed, key, env.now) {
                     return Click::Panel(PanelChange::ArmKill(key.clone()));
                 }
                 match kill_targets(env.snap, key) {

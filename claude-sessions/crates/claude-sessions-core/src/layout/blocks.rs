@@ -322,22 +322,35 @@ pub fn closed_shape(snap: &Snapshot, panel: &PanelState) -> Vec<(bool, usize)> {
         .collect()
 }
 
+/// `(top, height)` of every row of the open `Vừa đóng` list, relative to its node: rows start under the title row.
+fn row_geometry(rows: &[(bool, usize)]) -> Vec<(f64, f64)> {
+    let mut y = CLOSED_ROW_H;
+    rows.iter()
+        .map(|(procs_open, n)| {
+            let h = CLOSED_ITEM_H + if *procs_open { procs_height(*n) } else { 0.0 };
+            y += h;
+            (y - h, h)
+        })
+        .collect()
+}
+
+/// `(top, height)` of every row of `snap.closed_rows` while the list is open, relative to the node.
+pub fn closed_rows(snap: &Snapshot, panel: &PanelState) -> Vec<(f64, f64)> {
+    row_geometry(&closed_shape(snap, panel))
+}
+
 /// The `Vừa đóng · N` row, and one row per closed session (`rows` as `closed_shape`) while it is open, each with its
 /// child rows when its process list is open.
 pub fn closed_height(rows: &[(bool, usize)], open: bool) -> f64 {
     if rows.is_empty() {
         return 0.0;
     }
-    CLOSED_ROW_H
-        + if open {
-            rows.iter()
-                .map(|(procs_open, n)| {
-                    CLOSED_ITEM_H + if *procs_open { procs_height(*n) } else { 0.0 }
-                })
-                .sum::<f64>()
-        } else {
-            0.0
-        }
+    if !open {
+        return CLOSED_ROW_H;
+    }
+    row_geometry(rows)
+        .last()
+        .map_or(CLOSED_ROW_H, |(top, h)| top + h)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -462,7 +475,7 @@ fn card_layout_with(
     if let Some(p) = snap
         .procs
         .get(&s.id)
-        .filter(|p| p.row_count() > 0 && panel.open_procs.contains(&s.id))
+        .filter(|p| p.has_suffix() && panel.open_procs.contains(&s.id))
     {
         place(Block::Procs, procs_height(p.row_count()));
     }

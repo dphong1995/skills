@@ -6,13 +6,12 @@
 //! (`Tắt`, `Tắt N`, `Tắt cả N`), `Đang tắt…` while the kill runs, `Không tắt được` for 3 s after a failure.
 
 use super::{Canvas, Ctx};
-use crate::hits::{STOP_ARM_SECS, Target};
+use crate::hits::{Target, is_armed};
 use crate::theme;
 use claude_sessions_core::layout::{CARD_PAD_RIGHT, CARD_W, CLOSED_CHILD_H};
 use claude_sessions_core::procs::{GroupKind, ProcGroup, format_bytes};
 use claude_sessions_core::scene::{Align, Rect, ThemeColor, Weight};
-use claude_sessions_core::store::{SendKey, SendKind, SendState};
-use claude_sessions_core::time::secs_since;
+use claude_sessions_core::store::{SendKey, SendState};
 
 /// The right edge of the memory column: the control's width and a gap in from the row's padding.
 pub const VALUE_RIGHT: f64 = CARD_W - CARD_PAD_RIGHT - theme::ROW_BUTTON - 8.0;
@@ -24,6 +23,29 @@ pub fn active(ctx: &Ctx, owner: &str) -> bool {
     let panel = ctx.view.panel;
     panel.hovered_row.as_deref() == Some(owner)
         || (panel.keyboard && panel.selected.as_deref() == Some(owner))
+}
+
+/// A filled capsule with `label` centred in it, its right edge at `right` and its top at `y`: the armed faces (`Tắt?`, `Dừng?`)
+/// and `Đang tắt…`. Returns its rect.
+pub fn capsule(
+    ctx: &Ctx,
+    c: &mut Canvas,
+    (right, y): (f64, f64),
+    label: &str,
+    fill: ThemeColor,
+    text: ThemeColor,
+) -> Rect {
+    let w = (ctx.text_w(label, &theme::DANGER_FONT) + 18.0).ceil();
+    let rect = Rect::new(right - w, y, w, theme::ROW_BUTTON);
+    c.capsule(rect, Some(theme::solid(fill)));
+    c.label(
+        rect,
+        label,
+        theme::DANGER_FONT,
+        theme::solid(text),
+        Align::Center,
+    );
+    rect
 }
 
 /// The kill control of the row at `y` (30 pt tall). `session` is the card or closed-row id, `key` what the kill stands for,
@@ -39,29 +61,10 @@ pub fn kill_control(
     let (snap, panel, now) = (ctx.view.snap, ctx.view.panel, ctx.view.now);
     let right = CARD_W - CARD_PAD_RIGHT;
     let btn_y = y + (CLOSED_CHILD_H - theme::ROW_BUTTON) / 2.0;
-    let send = snap.send_state(
-        &SendKey {
-            detail: Some(key.to_string()),
-            ..SendKey::new(session, SendKind::Kill)
-        },
-        now,
-    );
-    let armed = panel
-        .kill_armed
-        .get(key)
-        .is_some_and(|t| secs_since(now, *t) < STOP_ARM_SECS);
+    let send = snap.send_state(&SendKey::kill(session, key), now);
+    let armed = is_armed(&panel.kill_armed, key, now);
     let capsule = |c: &mut Canvas, label: &str, fill: ThemeColor, text: ThemeColor| {
-        let w = (ctx.text_w(label, &theme::DANGER_FONT) + 18.0).ceil();
-        let rect = Rect::new(right - w, btn_y, w, theme::ROW_BUTTON);
-        c.capsule(rect, Some(theme::solid(fill)));
-        c.label(
-            rect,
-            label,
-            theme::DANGER_FONT,
-            theme::solid(text),
-            Align::Center,
-        );
-        rect
+        capsule(ctx, c, (right, btn_y), label, fill, text)
     };
     match send {
         // A kill that went through stays `Đang tắt…` until the next scan no longer lists the process.
@@ -82,7 +85,7 @@ pub fn kill_control(
             );
             c.hit(
                 rect,
-                Target::ArmKill {
+                Target::Kill {
                     session: session.to_string(),
                     key: key.to_string(),
                 },
@@ -117,7 +120,7 @@ pub fn kill_control(
             c.tip(rect, "Tắt (bấm hai lần)");
             c.hit(
                 rect,
-                Target::ArmKill {
+                Target::Kill {
                     session: session.to_string(),
                     key: key.to_string(),
                 },
@@ -128,21 +131,19 @@ pub fn kill_control(
     }
 }
 
-/// The row of `group` at `y`, its text starting at `x_indent`. `kill` is `(owner id, key)` of the control; none, or
-/// `read_only`, draws no control (the `Claude và MCP` row of a live session).
+/// The row of `group` at `y`, its text starting at `x_indent`; `owner` is the card or closed-row id its kill control belongs
+/// to. `read_only` draws no control and dims the name (the `Claude và MCP` row of a live session).
 pub fn draw(
     ctx: &Ctx,
     c: &mut Canvas,
     group: &ProcGroup,
     y: f64,
     x_indent: f64,
-    kill: Option<(&str, &str)>,
+    owner: &str,
     read_only: bool,
 ) {
-    let replaced = match kill.filter(|_| !read_only) {
-        Some(k) => kill_control(ctx, c, y, k, "Tắt", active(ctx, k.0)),
-        None => false,
-    };
+    let replaced =
+        !read_only && kill_control(ctx, c, y, (owner, &group.key), "Tắt", active(ctx, owner));
     let dim = group.kind == GroupKind::ClaudeAndMcp && read_only;
     let value_w = if replaced {
         0.0

@@ -93,6 +93,12 @@ impl SessionProcs {
         self.groups().any(|g| g.cpu_percent.is_some())
     }
 
+    /// Whether a live card's subtitle carries the process tail (and with it the chevron that opens the list): background
+    /// commands, heavy memory or a busy loop. Without it the list cannot be opened, so the card does not place it.
+    pub fn has_suffix(&self) -> bool {
+        !self.commands.is_empty() || self.rss() >= HEAVY_BYTES || self.cpu_high()
+    }
+
     pub fn row_count(&self) -> usize {
         self.commands.len() + usize::from(self.claude_and_mcp.is_some())
     }

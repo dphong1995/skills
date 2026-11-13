@@ -4,7 +4,7 @@
 //! own modules at the rect `card_layout` placed them.
 
 use super::{Canvas, Ctx, RowPos, approval, chips, pr_row, proc_row, question};
-use crate::hits::{STOP_ARM_SECS, Target};
+use crate::hits::{Target, is_armed};
 use crate::theme;
 use claude_sessions_core::layout::{
     BLOCK_GAP, Block, CARD_INSET, CARD_PAD_RIGHT, CARD_PAD_Y, CARD_W, CLOSED_CHILD_H, CardLayout,
@@ -15,7 +15,6 @@ use claude_sessions_core::procs::{GroupKind, HEAVY_BYTES, SessionProcs, format_b
 use claude_sessions_core::scene::{Align, Node, Rect, ThemeColor, Weight};
 use claude_sessions_core::store::{SendKey, SendKind, Session};
 use claude_sessions_core::text;
-use claude_sessions_core::time::secs_since;
 
 /// Space before each part of the process tail, and the chevron at its end.
 const SUFFIX_GAP: f64 = 4.0;
@@ -44,7 +43,7 @@ pub fn subtitle(s: &Session) -> String {
 /// has nothing worth a line.
 pub fn procs_suffix(p: &SessionProcs) -> Vec<(String, ThemeColor)> {
     let heavy = p.rss() >= HEAVY_BYTES;
-    if p.commands.is_empty() && !heavy && !p.cpu_high() {
+    if !p.has_suffix() {
         return Vec::new();
     }
     let mut parts = Vec::new();
@@ -321,7 +320,7 @@ pub fn node(ctx: &mut Ctx, s: &Session, y: f64, layout: &CardLayout, pos: RowPos
                             g,
                             p.y + i as f64 * CLOSED_CHILD_H,
                             CARD_INSET,
-                            Some((s.id.as_str(), g.key.as_str())),
+                            &s.id,
                             live,
                         );
                     }
@@ -392,25 +391,19 @@ fn right_column(ctx: &Ctx, c: &mut Canvas, s: &Session, active: bool) {
     } else {
         "Dừng (bấm hai lần)"
     };
-    let armed = s.shown_status() == "busy"
-        && panel
-            .stop_armed
-            .get(&s.id)
-            .is_some_and(|t| secs_since(now, *t) < STOP_ARM_SECS);
+    let armed = s.shown_status() == "busy" && is_armed(&panel.stop_armed, &s.id, now);
     if let Some((_, target)) = &quick
         && armed
         && slot.is_none()
     {
         // The capsule takes the place of the time, inside the right column the title leaves free.
-        let w = (ctx.text_w("Dừng?", &theme::DANGER_FONT) + 18.0).ceil();
-        let rect = Rect::new(right - w, CARD_PAD_Y, w, theme::ROW_BUTTON);
-        c.capsule(rect, Some(theme::solid(ThemeColor::Red)));
-        c.label(
-            rect,
+        let rect = proc_row::capsule(
+            ctx,
+            c,
+            (right, CARD_PAD_Y),
             "Dừng?",
-            theme::DANGER_FONT,
-            theme::solid(ThemeColor::White),
-            Align::Center,
+            ThemeColor::Red,
+            ThemeColor::White,
         );
         c.tip(rect, tip);
         if in_cmux {

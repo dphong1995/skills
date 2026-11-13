@@ -1635,10 +1635,6 @@ fn kill_button_states() {
     let mut panel = hovered("a");
     panel.open_procs.insert("a".into());
     let key = "a:1";
-    let arm = Target::ArmKill {
-        session: "a".into(),
-        key: key.into(),
-    };
     let kill = Target::Kill {
         session: "a".into(),
         key: key.into(),
@@ -1659,38 +1655,38 @@ fn kill_button_states() {
     // Idle and hovered: the grey `✕` with the memory beside it.
     let (x, t, hits) = face(&snap, &panel);
     assert!(x && t.contains(&"412 MB".to_string()));
-    assert!(hits.contains(&arm) && !hits.contains(&kill));
+    assert!(hits.contains(&kill));
     // Not hovered: nothing to click.
     let (x, _, hits) = face(&snap, &{
         let mut p = panel.clone();
         p.hovered_row = None;
         p
     });
-    assert!(!x && !hits.contains(&arm));
+    assert!(!x && !hits.contains(&kill));
     // Armed: the red `Tắt` replaces the value and the next click kills.
     panel.kill_armed.insert(key.into(), now());
     let (x, t, hits) = face(&snap, &panel);
     assert!(!x && t.contains(&"Tắt".to_string()) && !t.contains(&"412 MB".to_string()));
-    assert!(hits.contains(&kill) && !hits.contains(&arm));
+    assert!(hits.contains(&kill));
     // Sending, then done but still listed: `Đang tắt…`, no hit.
     for state in [SendState::Sending, SendState::Sent] {
         snap.sends.insert(kill_key("a", key), (state, now()));
         let (_, t, hits) = face(&snap, &panel);
         assert!(t.contains(&"Đang tắt…".to_string()), "{state:?}");
-        assert!(!hits.contains(&kill) && !hits.contains(&arm), "{state:?}");
+        assert!(!hits.contains(&kill), "{state:?}");
     }
     // Failed: red text, and a click arms again.
     snap.sends
         .insert(kill_key("a", key), (SendState::Failed, now()));
     let (_, t, hits) = face(&snap, &panel);
     assert!(t.contains(&"Không tắt được".to_string()));
-    assert!(hits.contains(&arm));
+    assert!(hits.contains(&kill));
 }
 
 #[test]
 fn claude_and_mcp_row_of_live_session_has_no_kill_target() {
     let mut snap = snapshot(vec![finished("a")]);
-    let procs = session_procs("a", vec![], 750);
+    let procs = session_procs("a", vec![command("a:1", "vite", &[5173], 412)], 750);
     snap.procs.insert("a".into(), procs);
     let mut panel = hovered("a");
     panel.open_procs.insert("a".into());
@@ -1700,11 +1696,12 @@ fn claude_and_mcp_row_of_live_session_has_no_kill_target() {
     assert!(texts(&node).contains(&"Claude và MCP") && texts(&node).contains(&"750 MB"));
     for t in targets(&b, &node) {
         assert!(
-            !matches!(t, Target::ArmKill { .. } | Target::Kill { .. }),
+            !matches!(&t, Target::Kill { key, .. } if key == "a:claude"),
             "{t:?}"
         );
     }
-    assert!(!symbols(&node).contains(&"xmark"));
+    // Only the command row has the `✕`.
+    assert_eq!(symbols(&node).iter().filter(|s| **s == "xmark").count(), 1);
 }
 
 #[test]
@@ -4233,4 +4230,93 @@ mod settings_view {
         assert!(full.scene.size.h < 5000.0);
         assert!(full.scene.nodes.iter().all(|n| n.scroll.is_none()));
     }
+}
+
+#[test]
+fn synthesized_closed_row_resumes_in_its_pwd() {
+    let cs = closed("x");
+    let procs = session_procs("x", vec![command("x:1", "vite", &[3000], 100)], 10);
+    let mut snap = snapshot(vec![finished("a")]);
+    snap.closed_rows = vec![ClosedRow {
+        closed_at: None,
+        procs: Some(procs),
+        ..plain_row(&cs)
+    }];
+    let node = closed_node(&snap);
+    let resume = Target::Resume("x".into());
+    let built = render(&snap, &{
+        let mut p = open();
+        p.closed_open = true;
+        p
+    });
+    assert!(targets(&built, &node).contains(&resume));
+    let click = resume.click(&claude_sessions::hits::ClickEnv {
+        snap: &snap,
+        panel: &open(),
+        now: now(),
+        text: "",
+        pr_prompt: "",
+    });
+    assert_eq!(
+        click,
+        claude_sessions::hits::Click::Action(claude_sessions_core::action::Action::Resume(
+            cs.clone()
+        ))
+    );
+}
+
+#[test]
+fn kill_all_needs_two_leftover_rows_not_two_groups() {
+    let cs = closed("x");
+    let two_groups = session_procs(
+        "x",
+        vec![
+            command("x:1", "vite", &[3000], 100),
+            command("x:2", "node", &[4000], 100),
+        ],
+        10,
+    );
+    let mut snap = snapshot(vec![finished("a")]);
+    snap.closed_rows = vec![ClosedRow {
+        procs: Some(two_groups.clone()),
+        ..plain_row(&cs)
+    }];
+    // `Tắt cả` is the armed face of the title's kill control.
+    let all_node = |snap: &Snapshot| {
+        let mut panel = open();
+        panel.closed_open = true;
+        panel.kill_armed.insert("all".into(), now());
+        render(snap, &panel)
+            .scene
+            .nodes
+            .iter()
+            .find(|n| n.key.0 == "closed")
+            .unwrap()
+            .clone()
+    };
+    let one = all_node(&snap);
+    assert!(!texts(&one).iter().any(|t| t.starts_with("Tắt cả")));
+    let other = closed("y");
+    snap.closed_rows.push(ClosedRow {
+        procs: Some(two_groups),
+        ..plain_row(&other)
+    });
+    let two = all_node(&snap);
+    assert!(texts(&two).contains(&"Tắt cả 6"), "{:?}", texts(&two));
+}
+
+#[test]
+fn open_live_list_is_not_placed_once_its_suffix_is_gone() {
+    let mut snap = snapshot(vec![finished("a")]);
+    snap.procs
+        .insert("a".into(), session_procs("a", vec![], 750));
+    let mut panel = open();
+    panel.open_procs.insert("a".into());
+    let b = render(&snap, &panel);
+    let node = card(&b.scene, "a").clone();
+    assert!(
+        !texts(&node).contains(&"Claude và MCP"),
+        "{:?}",
+        texts(&node)
+    );
 }

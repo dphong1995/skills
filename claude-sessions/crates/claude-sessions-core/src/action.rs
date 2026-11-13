@@ -40,6 +40,14 @@ impl SendKey {
             detail: None,
         }
     }
+
+    /// The kill control of `key` (a `ProcGroup::key`, `all:<session>` or `all`) of `session`.
+    pub fn kill(session: &str, key: &str) -> Self {
+        SendKey {
+            detail: Some(key.to_string()),
+            ..SendKey::new(session, SendKind::Kill)
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -124,10 +132,7 @@ impl Action {
             Action::Jump(session) => Some(key(session, SendKind::Jump)),
             Action::KillProcs {
                 session, key: k, ..
-            } => Some(SendKey {
-                detail: Some(k.clone()),
-                ..key(session, SendKind::Kill)
-            }),
+            } => Some(SendKey::kill(session, k)),
             Action::OpenLink(..)
             | Action::Connect(_)
             | Action::MarkSeen(_)

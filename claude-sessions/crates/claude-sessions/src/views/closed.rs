@@ -8,7 +8,7 @@ use crate::hits::Target;
 use crate::theme;
 use claude_sessions_core::layout::{
     CARD_PAD_RIGHT, CARD_W, CLOSED_CHILD_H, CLOSED_ITEM_H, CLOSED_ROW_H, KEY_HINT_H, PANEL_PAD,
-    closed_shape, procs_height,
+    closed_rows,
 };
 use claude_sessions_core::procs::{SessionProcs, format_bytes};
 use claude_sessions_core::scene::{Align, Node, Rect, ThemeColor, Weight};
@@ -40,22 +40,6 @@ const DOT_TITLE_X: f64 = 26.0;
 /// The right edge of the `N đang chạy · 886 MB` summary; the chevron sits after it, then the kill control.
 const SUMMARY_RIGHT: f64 = CARD_W - CARD_PAD_RIGHT - theme::ROW_BUTTON - 8.0 - 14.0;
 
-/// `(y, height)` of every row of the open list, relative to the node.
-fn row_tops(
-    snap: &claude_sessions_core::store::Snapshot,
-    panel: &claude_sessions_core::panel_state::PanelState,
-) -> Vec<(f64, f64)> {
-    let mut y = CLOSED_ROW_H;
-    closed_shape(snap, panel)
-        .into_iter()
-        .map(|(open, n)| {
-            let h = CLOSED_ITEM_H + if open { procs_height(n) } else { 0.0 };
-            y += h;
-            (y - h, h)
-        })
-        .collect()
-}
-
 /// The node of the list and, before it, an empty node per row with processes (and one for the title row): the app finds the
 /// hovered row by the `card-<id>` key of a node, and those rows are drawn inside the one `closed` node.
 pub fn nodes(ctx: &mut Ctx, y: f64, h: f64) -> Vec<Node> {
@@ -66,7 +50,7 @@ pub fn nodes(ctx: &mut Ctx, y: f64, h: f64) -> Vec<Node> {
         Canvas::default(),
     )];
     if panel.closed_open {
-        for (row, (ry, rh)) in snap.closed_rows.iter().zip(row_tops(snap, panel)) {
+        for (row, (ry, rh)) in snap.closed_rows.iter().zip(closed_rows(snap, panel)) {
             if row.procs.is_some() {
                 out.push(ctx.node(
                     &super::card::key(&row.id),
@@ -288,7 +272,7 @@ fn row_line(ctx: &Ctx, c: &mut Canvas, row: &ClosedRow, y: f64) {
             Align::Right,
         );
     }
-    if state != Some(SendState::Sending) && row.closed_at.is_some() {
+    if state != Some(SendState::Sending) {
         c.hit(line, Target::Resume(row.id.clone()));
     }
 }
@@ -298,7 +282,13 @@ pub fn node(ctx: &mut Ctx, y: f64, h: f64) -> Node {
     let panel = ctx.view.panel;
     let mut c = Canvas::default();
     title_row(ctx, &mut c);
-    if snap.leftover_count() >= 2 {
+    if snap
+        .closed_rows
+        .iter()
+        .filter(|r| r.procs.is_some())
+        .count()
+        >= 2
+    {
         let n = snap.leftover_count();
         proc_row::kill_control(
             ctx,
@@ -323,7 +313,7 @@ pub fn node(ctx: &mut Ctx, y: f64, h: f64) -> Node {
         for (i, (row, (y, _))) in snap
             .closed_rows
             .iter()
-            .zip(row_tops(snap, panel))
+            .zip(closed_rows(snap, panel))
             .enumerate()
         {
             if i > 0 {
@@ -338,7 +328,7 @@ pub fn node(ctx: &mut Ctx, y: f64, h: f64) -> Node {
                         g,
                         y + CLOSED_ITEM_H + j as f64 * CLOSED_CHILD_H,
                         DOT_TITLE_X,
-                        Some((row.id.as_str(), g.key.as_str())),
+                        &row.id,
                         false,
                     );
                 }
