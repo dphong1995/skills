@@ -180,7 +180,8 @@ fn nested_claude_mcp_with_foreign_claude_pid_is_not_killable() {
         claude_pid: Some(777),
         ..mcp(310, 300, 10, &["node", "/x/nested-mcp"])
     };
-    let t = update(vec![claude(1), nested], &live());
+    let foreign = base(777, 777, 1, &["claude"]);
+    let t = update(vec![claude(1), nested, foreign], &live());
     let s = &t.live["s1"];
     assert!(s.commands.is_empty());
     assert_eq!(s.claude_and_mcp.as_ref().unwrap().members, [(310, 10 * S)]);
@@ -359,7 +360,7 @@ fn rss_and_ports_sum_per_group() {
     let c = &t.live["s1"].commands[0];
     assert_eq!(c.rss, 300 * MB);
     assert_eq!(c.ports, [5173, 8080]);
-    assert_eq!(c.name, "a.js", "the oldest listener, lowest pid, is named");
+    assert_eq!(c.name, "b.js", "the largest listener is named");
 }
 
 fn cpu_scans(pct_of_5s: u64, n: u64) -> Vec<Option<f64>> {
@@ -512,4 +513,109 @@ fn format_bytes_rules() {
     assert_eq!(format_bytes(999 * MB), "999 MB");
     assert_eq!(format_bytes(1000 * MB), "1,0 GB");
     assert_eq!(format_bytes(2662 * MB + MB * 2 / 5), "2,6 GB");
+}
+
+#[test]
+fn mcp_under_surviving_bash_parent_still_shows_as_closed() {
+    // `bash -c "source nvm; npx foo"`: the untagged parent shares the child's group and outlives claude.
+    let parent = base(50, 300, 1, &["bash", "-c", "source nvm; npx foo"]);
+    let child = RawProc {
+        ppid: 50,
+        ..mcp(500, 300, 3, &["node", "m"])
+    };
+    let t = update(vec![parent, child], &HashMap::new());
+    assert_eq!(t.closed.len(), 1);
+}
+
+#[test]
+fn resumed_session_keeps_old_leftover_command_killable() {
+    // Claude 555 died; `claude --resume` runs as 100 with the same session id.
+    let old = RawProc {
+        claude_pid: Some(555),
+        ..mcp(301, 300, 10, &["npm", "run", "dev"])
+    };
+    let t = update(vec![claude(1), old], &live());
+    let s = &t.live["s1"];
+    assert_eq!(s.commands.len(), 1);
+    assert_eq!(s.commands[0].key, "s1:300");
+}
+
+#[test]
+fn name_follows_the_largest_member() {
+    let big = |pid, mb| RawProc {
+        rss: mb * MB,
+        ..cmd(pid, 200, 10, &["node", &format!("p{pid}.js")])
+    };
+    let t = update(
+        vec![
+            claude(1),
+            wrapper(200, 10, "npm test"),
+            big(201, 50),
+            big(202, 400),
+        ],
+        &live(),
+    );
+    assert_eq!(t.live["s1"].commands[0].name, "p202.js");
+}
+
+#[test]
+fn name_does_not_flip_on_small_rss_swaps() {
+    let mut model = ProcModel::default();
+    let mut at = |t: u64, a: u64, b: u64| {
+        let m = |pid, mb| RawProc {
+            rss: mb * MB,
+            ..cmd(pid, 200, 10, &["node", &format!("p{pid}.js")])
+        };
+        let table = model.update(
+            &scan(
+                t,
+                vec![claude(1), wrapper(200, 10, "x"), m(201, a), m(202, b)],
+            ),
+            &live(),
+        );
+        table.live["s1"].commands[0].name.clone()
+    };
+    assert_eq!(at(100, 300, 290), "p201.js");
+    assert_eq!(at(105, 290, 300), "p201.js", "a small swap keeps the name");
+    assert_eq!(at(110, 200, 300), "p202.js", "a large lead switches it");
+}
+
+#[test]
+fn short_lived_untagged_mates_do_not_change_the_table() {
+    let mut model = ProcModel::default();
+    let mut at = |t: u64, sleep_pid: i32| {
+        model.update(
+            &scan(
+                t,
+                vec![
+                    claude(1),
+                    wrapper(200, 10, "while true; do node w.js; sleep 1; done"),
+                    vite(201, 200, 10),
+                    base(sleep_pid, 200, t - 1, &["/bin/sleep", "1"]),
+                ],
+            ),
+            &live(),
+        )
+    };
+    let first = at(100, 700);
+    assert_eq!(at(105, 701), first);
+    assert_eq!(
+        first.live["s1"].commands[0].members,
+        [(200, 10 * S), (201, 10 * S)]
+    );
+}
+
+#[test]
+fn live_claude_of_another_session_is_not_a_group_mate() {
+    let other = base(150, 200, 5, &["claude"]);
+    let mut live = live();
+    live.insert("s2".into(), 150);
+    let t = update(
+        vec![claude(1), wrapper(200, 10, "x"), vite(201, 200, 10), other],
+        &live,
+    );
+    assert_eq!(
+        t.live["s1"].commands[0].members,
+        [(200, 10 * S), (201, 10 * S)]
+    );
 }

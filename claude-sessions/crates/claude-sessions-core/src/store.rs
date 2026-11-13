@@ -487,12 +487,17 @@ impl Store {
             session: c.clone(),
             procs: by_id.get(c.id.as_str()).map(|p| (*p).clone()),
         };
-        let (mut with, rest): (Vec<ClosedRow>, Vec<ClosedRow>) = self
-            .closed
-            .items()
-            .iter()
-            .map(row)
-            .partition(|r| r.procs.is_some());
+        // Before the first scan the list is not pruned (a leftover's row must survive a restart), but rows the prune
+        // would drop stay hidden so they do not flash.
+        let shown = if self.procs_seen {
+            self.closed.items().to_vec()
+        } else {
+            let mut c = self.closed.clone();
+            c.prune(self.now, &HashSet::new());
+            c.items().to_vec()
+        };
+        let (mut with, rest): (Vec<ClosedRow>, Vec<ClosedRow>) =
+            shown.iter().map(row).partition(|r| r.procs.is_some());
         with.sort_by_key(|r| std::cmp::Reverse(r.closed_at));
         let known: HashSet<&str> = self.closed.items().iter().map(|c| c.id.as_str()).collect();
         let mut synthesized: Vec<&SessionProcs> = self

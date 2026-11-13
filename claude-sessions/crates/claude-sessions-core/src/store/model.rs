@@ -311,6 +311,13 @@ pub struct ClosedRow {
     pub procs: Option<SessionProcs>,
 }
 
+impl ClosedRow {
+    /// Whether Resume can open it: a synthesized row needs the cwd it ran in.
+    pub fn resumable(&self) -> bool {
+        self.closed_at.is_some() || !self.session.cwd.is_empty()
+    }
+}
+
 impl Snapshot {
     /// Processes left over by closed sessions: the sum of the rows' group counts.
     pub fn leftover_count(&self) -> usize {

@@ -4266,6 +4266,37 @@ fn synthesized_closed_row_resumes_in_its_pwd() {
 }
 
 #[test]
+fn synthesized_closed_row_without_cwd_cannot_resume() {
+    let cs = ClosedSession {
+        cwd: String::new(),
+        ..closed("x")
+    };
+    let procs = session_procs("x", vec![command("x:1", "vite", &[3000], 100)], 10);
+    let mut snap = snapshot(vec![finished("a")]);
+    snap.closed_rows = vec![ClosedRow {
+        closed_at: None,
+        procs: Some(procs),
+        ..plain_row(&cs)
+    }];
+    let node = closed_node(&snap);
+    let resume = Target::Resume("x".into());
+    let built = render(&snap, &{
+        let mut p = open();
+        p.closed_open = true;
+        p
+    });
+    assert!(!targets(&built, &node).contains(&resume));
+    let click = resume.click(&claude_sessions::hits::ClickEnv {
+        snap: &snap,
+        panel: &open(),
+        now: now(),
+        text: "",
+        pr_prompt: "",
+    });
+    assert_eq!(click, claude_sessions::hits::Click::Stale);
+}
+
+#[test]
 fn kill_all_needs_two_leftover_rows_not_two_groups() {
     let cs = closed("x");
     let two_groups = session_procs(

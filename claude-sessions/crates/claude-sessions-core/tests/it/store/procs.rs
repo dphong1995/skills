@@ -260,3 +260,23 @@ fn old_leftover_session_keeps_its_closed_entry_across_restart_and_refresh() {
     store.refresh(SystemTime::now());
     assert_eq!(store.snapshot().closed.len(), 1);
 }
+
+#[test]
+fn rows_the_prune_would_drop_stay_hidden_until_the_first_scan() {
+    let day = 24 * 3600;
+    let mut items = vec![closed("old", day + 3600)];
+    items.extend((0..6).map(|i| closed(&format!("n{i}"), 10 + i)));
+    let (mut store, _dir) = store_closed(items);
+    store.refresh(SystemTime::now());
+    let ids = row_ids(&store);
+    assert_eq!(ids, ["n0", "n1", "n2", "n3", "n4"]);
+    assert_eq!(store.snapshot().closed.len(), 7, "storage is untouched");
+    store.set_procs(ProcTable::default());
+    store.refresh(SystemTime::now());
+    assert_eq!(row_ids(&store).len(), 5);
+    assert_eq!(
+        store.snapshot().closed.len(),
+        5,
+        "the scan lets the prune run"
+    );
+}

@@ -272,7 +272,7 @@ fn row_line(ctx: &Ctx, c: &mut Canvas, row: &ClosedRow, y: f64) {
             Align::Right,
         );
     }
-    if state != Some(SendState::Sending) {
+    if state != Some(SendState::Sending) && row.resumable() {
         c.hit(line, Target::Resume(row.id.clone()));
     }
 }

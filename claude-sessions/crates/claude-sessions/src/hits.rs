@@ -272,8 +272,8 @@ impl Target {
             Target::Connect(service) => Click::Action(Action::Connect(*service)),
             Target::ToggleClosed => Click::Panel(PanelChange::ToggleClosed),
             Target::Resume(id) => match env.snap.closed_rows.iter().find(|r| &r.id == id) {
-                Some(r) => Click::Action(Action::Resume(r.session.clone())),
-                None => Click::Stale,
+                Some(r) if r.resumable() => Click::Action(Action::Resume(r.session.clone())),
+                _ => Click::Stale,
             },
             Target::ToggleProcs(id) => Click::Panel(PanelChange::ToggleProcs(id.clone())),
             Target::Kill { session, key } => {

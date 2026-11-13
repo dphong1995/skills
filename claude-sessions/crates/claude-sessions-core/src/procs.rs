@@ -132,12 +132,50 @@ pub struct ProcModel {
     cpu: HashMap<String, CpuHist>,
     /// The `rss` last emitted per group key (hysteresis: see `settle_rss`).
     rss: HashMap<String, u64>,
+    /// The pid that named each group key last scan (hysteresis: see `Names::pick`).
+    named: HashMap<String, i32>,
+}
+
+/// The naming memory of one `update`: last scan's choices in, this scan's out.
+struct Names {
+    prev: HashMap<String, i32>,
+    next: HashMap<String, i32>,
+}
+
+impl Names {
+    /// The member that gives group `key` its name: a port listener, else the largest RSS (lowest pid on a tie). The previous
+    /// choice stays while it is in the group and nobody leads it by more than the RSS hysteresis.
+    fn pick<'a>(&mut self, key: &str, ms: &[&'a RawProc]) -> &'a RawProc {
+        let pool: Vec<&'a RawProc> = if ms.iter().any(|m| !m.ports.is_empty()) {
+            ms.iter().copied().filter(|m| !m.ports.is_empty()).collect()
+        } else {
+            ms.to_vec()
+        };
+        let best = pool
+            .iter()
+            .copied()
+            .min_by_key(|m| (std::cmp::Reverse(m.rss), m.pid))
+            .unwrap_or(ms[0]);
+        let kept = self
+            .prev
+            .get(key)
+            .and_then(|pid| pool.iter().copied().find(|m| m.pid == *pid))
+            .filter(|p| settle_rss(Some(p.rss), best.rss) == p.rss);
+        let chosen = kept.unwrap_or(best);
+        self.next.insert(key.to_string(), chosen.pid);
+        chosen
+    }
 }
 
 impl ProcModel {
     /// `live` maps the ids of sessions whose `~/.claude/sessions/*.json` pid is running to that claude pid.
     pub fn update<'a>(&mut self, scan: &'a Scan, live: &HashMap<String, i32>) -> ProcTable {
         let by_pid: HashMap<i32, &RawProc> = scan.procs.iter().map(|p| (p.pid, p)).collect();
+        let mut names = Names {
+            prev: std::mem::take(&mut self.named),
+            next: HashMap::new(),
+        };
+        let at_us = scan.at_us;
         let skipped = |p: &RawProc| reaches(p, scan.own_pid, &by_pid, scan.procs.len());
 
         let mut by_session: BTreeMap<&str, Vec<&RawProc>> = BTreeMap::new();
@@ -175,20 +213,30 @@ impl ProcModel {
             }
 
             // Every member of a Bash-tool group: tagged processes plus the untagged ones sharing the group.
-            let mates =
-                |pgid: i32, ms: &[&'a RawProc]| with_mates(ms, untagged.get(&pgid), live_pid);
+            let mates = |pgid: i32, ms: &[&'a RawProc], cut: u64| {
+                with_mates(ms, pgid, untagged.get(&pgid), live, cut)
+            };
+            // Untagged mates younger than `MIN_AGE_SECS` (a loop's `sleep`) stay out of a group, its leader excepted.
+            let settled = at_us.saturating_sub(MIN_AGE_SECS * 1_000_000);
 
             if live_pid.is_none() {
                 let earliest = procs.iter().map(|p| p.start_us).min().unwrap_or(0);
                 let mut member_pids: HashSet<i32> = procs.iter().map(|p| p.pid).collect();
                 for (pgid, ms) in &groups {
                     if ms.iter().any(|m| m.claude_pid.is_some()) {
-                        member_pids.extend(mates(*pgid, ms).iter().map(|m| m.pid));
+                        member_pids.extend(mates(*pgid, ms, u64::MAX).iter().map(|m| m.pid));
                     }
                 }
                 let mut candidates: HashSet<i32> =
                     procs.iter().filter_map(|p| p.claude_pid).collect();
-                candidates.extend(procs.iter().map(|p| p.ppid).filter(|&pp| pp != 1));
+                // A parent in the child's own group (`bash -c "source nvm; npx foo"`) is a wrapper, not a claude that outlives it.
+                candidates.extend(
+                    procs
+                        .iter()
+                        .filter(|p| by_pid.get(&p.ppid).is_none_or(|q| q.pgid != p.pgid))
+                        .map(|p| p.ppid)
+                        .filter(|&pp| pp != 1),
+                );
                 for (pgid, ms) in &groups {
                     if ms.iter().all(|m| m.claude_pid.is_none()) {
                         candidates.insert(*pgid);
@@ -209,12 +257,16 @@ impl ProcModel {
                 // The leader is looked up in the whole scan: an untagged one is the Bash wrapper (or a user shell).
                 let leader = by_pid.get(pgid).copied().filter(|l| l.pgid == *pgid);
                 let leader_ok = leader.is_none_or(is_wrapper);
+                // Ours: started by this claude or by a dead earlier one of the session (`--resume`), not by a live foreign one.
                 let ours = ms.iter().all(|m| {
-                    m.claude_pid.is_some() && live_pid.is_none_or(|l| m.claude_pid == Some(l))
+                    m.claude_pid.is_some_and(|c| {
+                        live_pid.is_none_or(|l| c == l || !by_pid.contains_key(&c))
+                    })
                 });
                 if leader_ok && ours {
                     let wrapper = leader.filter(|l| is_wrapper(l));
-                    let (g, cpu) = command_group(id, *pgid, &mates(*pgid, ms), wrapper);
+                    let (g, cpu) =
+                        command_group(id, *pgid, &mates(*pgid, ms, settled), wrapper, &mut names);
                     cpu_sums.insert(g.key.clone(), cpu);
                     commands.push(g);
                 } else {
@@ -224,7 +276,7 @@ impl ProcModel {
             commands.sort_by(|a, b| (a.started_us, &a.key).cmp(&(b.started_us, &b.key)));
 
             let claude_and_mcp = (!mcp.is_empty() || claude.is_some()).then(|| {
-                let (g, cpu) = mcp_group(id, &mcp, claude, live_pid.is_some());
+                let (g, cpu) = mcp_group(id, &mcp, claude, live_pid.is_some(), &mut names);
                 cpu_sums.insert(g.key.clone(), cpu);
                 g
             });
@@ -275,6 +327,7 @@ impl ProcModel {
             }
         }
         self.rss = emitted;
+        self.named = names.next;
         table.closed.sort_by(|a, b| {
             b.started_us
                 .cmp(&a.started_us)
@@ -329,18 +382,19 @@ impl ProcModel {
     }
 }
 
+/// The tagged members plus the untagged processes of the group started by `cut` (the leader always), never a live claude.
 fn with_mates<'a>(
     ms: &[&'a RawProc],
+    pgid: i32,
     untagged: Option<&Vec<&'a RawProc>>,
-    live_pid: Option<i32>,
+    live: &HashMap<String, i32>,
+    cut: u64,
 ) -> Vec<&'a RawProc> {
     let mut all = ms.to_vec();
     all.extend(
-        untagged
-            .into_iter()
-            .flatten()
-            .copied()
-            .filter(|u| Some(u.pid) != live_pid),
+        untagged.into_iter().flatten().copied().filter(|u| {
+            !live.values().any(|&l| l == u.pid) && (u.pid == pgid || u.start_us <= cut)
+        }),
     );
     all
 }
@@ -377,7 +431,9 @@ fn command_group(
     pgid: i32,
     ms: &[&RawProc],
     wrapper: Option<&RawProc>,
+    names: &mut Names,
 ) -> (ProcGroup, u64) {
+    let key = format!("{session}:{pgid}");
     let others: Vec<&RawProc> = ms
         .iter()
         .copied()
@@ -389,13 +445,16 @@ fn command_group(
         .copied()
         .filter(|m| m.session.is_some())
         .collect();
-    let named = pick_named(if !tagged.is_empty() {
-        &tagged
-    } else if !others.is_empty() {
-        &others
-    } else {
-        ms
-    });
+    let named = names.pick(
+        &key,
+        if !tagged.is_empty() {
+            &tagged
+        } else if !others.is_empty() {
+            &others
+        } else {
+            ms
+        },
+    );
     let (name, command) = match wrapper {
         Some(w) => {
             let text = eval_text(&w.argv.join(" "));
@@ -418,14 +477,7 @@ fn command_group(
             (display_name(&named.argv, &named.comm), command)
         }
     };
-    aggregate(
-        format!("{session}:{pgid}"),
-        GroupKind::Command,
-        name,
-        command,
-        ms,
-        None,
-    )
+    aggregate(key, GroupKind::Command, name, command, ms, None)
 }
 
 fn mcp_group(
@@ -433,7 +485,9 @@ fn mcp_group(
     ms: &[&RawProc],
     claude: Option<&RawProc>,
     live: bool,
+    names: &mut Names,
 ) -> (ProcGroup, u64) {
+    let key = format!("{session}:claude");
     let name = if live {
         "Claude và MCP".to_string()
     } else {
@@ -442,27 +496,9 @@ fn mcp_group(
     let command = if ms.is_empty() {
         claude.map(|c| c.argv.join(" ")).unwrap_or_default()
     } else {
-        pick_named(ms).argv.join(" ")
+        names.pick(&key, ms).argv.join(" ")
     };
-    aggregate(
-        format!("{session}:claude"),
-        GroupKind::ClaudeAndMcp,
-        name,
-        command,
-        ms,
-        claude,
-    )
-}
-
-/// The member that gives the group its name: a port listener, else any member; the oldest first, then the lowest pid (stable between scans).
-fn pick_named<'a>(ms: &[&'a RawProc]) -> &'a RawProc {
-    let best = |listening: bool| {
-        ms.iter()
-            .copied()
-            .filter(|m| !listening || !m.ports.is_empty())
-            .min_by_key(|m| (m.start_us, m.pid))
-    };
-    best(true).or_else(|| best(false)).unwrap_or(ms[0])
+    aggregate(key, GroupKind::ClaudeAndMcp, name, command, ms, claude)
 }
 
 fn aggregate(

@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
-use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::mpsc::{Receiver, Sender, TryRecvError, channel};
 use std::time::{Instant, SystemTime};
 
 use claude_sessions_core::action::Action;
@@ -264,6 +264,30 @@ fn start_procscan() -> Option<ProcScan> {
     }
 }
 
+/// One tick of scan bookkeeping: takes finished tables into `store`, starts the next job when due. False once the scanner
+/// thread is gone.
+fn step_scan(scan: &mut ProcScan, store: &mut Store, ticks: u64) -> bool {
+    loop {
+        match scan.tables.try_recv() {
+            Ok(table) => {
+                scan.in_flight = false;
+                store.set_procs(table);
+            }
+            Err(TryRecvError::Empty) => break,
+            Err(TryRecvError::Disconnected) => return false,
+        }
+    }
+    let due = ticks.is_multiple_of(SCAN_EVERY_TICKS) || scan.rescan;
+    if due && !scan.in_flight {
+        if scan.jobs.send(store.live_pids()).is_err() {
+            return false;
+        }
+        scan.in_flight = true;
+        scan.rescan = false;
+    }
+    true
+}
+
 /// Runs `f` with the state borrowed. A failed borrow is a re-entrancy bug: debug builds panic, release builds drop
 /// the event.
 fn with_state<R>(weak: &WeakState, f: impl FnOnce(&mut AppState) -> R) -> Option<R> {
@@ -457,14 +481,10 @@ impl AppState {
         let Some(scan) = &mut self.procscan else {
             return;
         };
-        while let Ok(table) = scan.tables.try_recv() {
-            scan.in_flight = false;
-            self.store.set_procs(table);
-        }
-        let due = self.ticks.is_multiple_of(SCAN_EVERY_TICKS) || scan.rescan;
-        if due && !scan.in_flight && scan.jobs.send(self.store.live_pids()).is_ok() {
-            scan.in_flight = true;
-            scan.rescan = false;
+        if !step_scan(scan, &mut self.store, self.ticks) {
+            // The scanner thread is gone: an empty table lets the store prune and the widget hide, and no more jobs go out.
+            self.procscan = None;
+            self.store.set_procs(ProcTable::default());
         }
     }
 
@@ -1779,6 +1799,11 @@ fn start() -> Running {
     if live {
         claude_sessions_macos::login_item::ensure_registered();
     }
+    let procscan = fixture_free.then(start_procscan).flatten();
+    if fixture_free && procscan.is_none() {
+        // No scanner: an empty table lets the store prune and the widget hide.
+        store.set_procs(ProcTable::default());
+    }
     let (tx, completions) = channel();
     let poster: Poster = Arc::new(move |c| {
         if tx.send(c).is_ok() {
@@ -1806,7 +1831,7 @@ fn start() -> Running {
         checking_focus: false,
         focus_gen: 0,
         ticks: 0,
-        procscan: fixture_free.then(start_procscan).flatten(),
+        procscan,
     }));
     let weak = Rc::downgrade(&shared);
     APP.with(|a| *a.borrow_mut() = Some(weak.clone()));
@@ -1871,6 +1896,55 @@ mod tests {
         assert_eq!(*shared.borrow(), 0);
         assert!(try_apply(&weak, &add));
         assert_eq!(*shared.borrow(), 1);
+    }
+
+    fn scan_pair() -> (ProcScan, Receiver<HashMap<String, i32>>, Sender<ProcTable>) {
+        let (jobs, job_rx) = channel();
+        let (table_tx, tables) = channel();
+        let scan = ProcScan {
+            jobs,
+            tables,
+            in_flight: false,
+            rescan: false,
+        };
+        (scan, job_rx, table_tx)
+    }
+
+    fn empty_store(dir: &std::path::Path) -> Store {
+        Store::new(
+            Paths {
+                sessions: dir.join("sessions"),
+                projects: dir.join("projects"),
+                tasks: dir.join("tasks"),
+            },
+            StoreOptions::default(),
+        )
+    }
+
+    #[test]
+    fn step_scan_sends_one_job_when_due_and_reports_a_dead_scanner() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = empty_store(dir.path());
+        let (mut scan, job_rx, table_tx) = scan_pair();
+        assert!(step_scan(&mut scan, &mut store, 0));
+        assert!(job_rx.try_recv().is_ok());
+        assert!(scan.in_flight);
+        assert!(step_scan(&mut scan, &mut store, 5));
+        assert!(job_rx.try_recv().is_err(), "one job at a time");
+        table_tx.send(ProcTable::default()).unwrap();
+        assert!(step_scan(&mut scan, &mut store, 6), "a table came back");
+        assert!(!scan.in_flight);
+        drop(job_rx);
+        assert!(
+            !step_scan(&mut scan, &mut store, 10),
+            "the job channel is dead"
+        );
+        let (mut scan, _job_rx, table_tx) = scan_pair();
+        drop(table_tx);
+        assert!(
+            !step_scan(&mut scan, &mut store, 1),
+            "the reply channel is dead"
+        );
     }
 
     #[test]
