@@ -1577,6 +1577,56 @@ fn closed_row_shows_count_and_bytes() {
     assert_eq!(color.token, ThemeColor::Orange);
 }
 
+fn closed_node(snap: &Snapshot) -> Node {
+    let mut panel = open();
+    panel.closed_open = true;
+    render(snap, &panel)
+        .scene
+        .nodes
+        .iter()
+        .find(|n| n.key.0 == "closed")
+        .unwrap()
+        .clone()
+}
+
+#[test]
+fn closed_row_with_a_busy_loop_shows_cpu_in_red_instead_of_bytes() {
+    let cs = closed("x");
+    let mut procs = session_procs("x", vec![command("x:1", "ugrep", &[], 40)], 10);
+    procs.commands[0].cpu_percent = Some(590.0);
+    let mut snap = snapshot(vec![finished("a")]);
+    snap.closed = vec![cs.clone()];
+    snap.closed_rows = vec![ClosedRow {
+        procs: Some(procs),
+        ..plain_row(&cs)
+    }];
+    let node = closed_node(&snap);
+    let (_, color) = text_cmd(&node, "CPU cao").unwrap();
+    assert_eq!(color.token, ThemeColor::Red);
+    assert!(!texts(&node).contains(&"50 MB"));
+}
+
+#[test]
+fn synthesized_closed_row_says_how_long_it_has_been_running() {
+    let cs = closed("x");
+    let mut procs = session_procs("x", vec![command("x:1", "vite", &[3000], 100)], 10);
+    // Started 26 hours before `now()`.
+    procs.started_us = (NOW - Duration::from_secs(26 * 3600)).as_micros() as u64;
+    let mut snap = snapshot(vec![finished("a")]);
+    snap.closed_rows = vec![ClosedRow {
+        closed_at: None,
+        procs: Some(procs),
+        ..plain_row(&cs)
+    }];
+    let node = closed_node(&snap);
+    assert!(
+        texts(&node).iter().any(|t| t.starts_with("chạy từ 26")),
+        "{:?}",
+        texts(&node)
+    );
+    assert!(!texts(&node).iter().any(|t| t.starts_with("đóng")));
+}
+
 #[test]
 fn kill_button_states() {
     let mut snap = snapshot(vec![finished("a")]);

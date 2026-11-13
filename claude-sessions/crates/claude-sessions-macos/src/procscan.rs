@@ -445,6 +445,20 @@ mod tests {
         }
     }
 
+    /// `kill` returns once the pid is gone from `bsd_info`; the child may still need a moment to be reapable.
+    fn exited_soon(child: &mut Child) -> bool {
+        let deadline = Instant::now() + Duration::from_secs(1);
+        loop {
+            if child.try_wait().unwrap().is_some() {
+                return true;
+            }
+            if Instant::now() >= deadline {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
     fn unique() -> String {
         format!(
             "test-{}-{}",
@@ -568,7 +582,7 @@ mod tests {
         let pid = child.id() as i32;
         let start = start_of_pid(pid);
         assert_eq!(kill(&[(pid, start)]), KillOutcome::AllGone);
-        assert!(child.try_wait().unwrap().is_some());
+        assert!(exited_soon(&mut child), "child still running after kill");
     }
 
     #[test]
@@ -589,7 +603,7 @@ mod tests {
         unsafe { libc::kill(-pid, libc::SIGKILL) };
         assert_eq!(outcome, KillOutcome::AllGone);
         assert!(elapsed >= Duration::from_secs(3), "{elapsed:?}");
-        assert!(child.try_wait().unwrap().is_some());
+        assert!(exited_soon(&mut child), "child still running after kill");
     }
 
     #[test]
