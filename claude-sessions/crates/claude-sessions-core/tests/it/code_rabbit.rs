@@ -343,40 +343,33 @@ fn hides_ask_claude_table() {
 fn pipeline_failed_head_commit_only() {
     let st = |key: &str, state: &str, hash: &str| json!({"key": key, "name": key, "state": state, "commit": {"hash": hash}});
     let head = Some("abc123");
-    let failed = [st("pipe", "FAILED", "abc123def")];
-    assert!(cr::pipeline_failed(&failed, head));
-    assert!(!cr::pipeline_failed(
-        &[st("pipe", "FAILED", "zzz999")],
-        head
-    ));
-    assert!(!cr::pipeline_failed(
-        &[st("pipe", "SUCCESSFUL", "abc123")],
-        head
-    ));
-    assert!(!cr::pipeline_failed(
-        &[st("pipe", "INPROGRESS", "abc123")],
-        head
-    ));
-    assert!(!cr::pipeline_failed(
-        &[st("coderabbitai/1", "FAILED", "abc123")],
-        head
-    ));
-    assert!(cr::pipeline_running(
-        &[st("pipe", "INPROGRESS", "abc123")],
-        head
-    ));
-    assert!(!cr::pipeline_running(
-        &[st("pipe", "INPROGRESS", "zzz999")],
-        head
-    ));
-    assert!(!cr::pipeline_running(
-        &[st("pipe", "FAILED", "abc123")],
-        head
-    ));
-    assert!(!cr::pipeline_running(
-        &[st("coderabbitai/1", "INPROGRESS", "abc123")],
-        head
-    ));
+    // (key, state, hash, want_failed, want_running)
+    let rows = [
+        ("pipe", "FAILED", "abc123def", true, false),
+        ("pipe", "FAILED", "zzz999", false, false),
+        ("pipe", "SUCCESSFUL", "abc123", false, false),
+        ("pipe", "INPROGRESS", "abc123", false, true),
+        ("pipe", "INPROGRESS", "zzz999", false, false),
+        ("coderabbitai/1", "FAILED", "abc123", false, false),
+        ("coderabbitai/1", "INPROGRESS", "abc123", false, false),
+    ];
+    for (key, state, hash, want_failed, want_running) in rows {
+        let values = [st(key, state, hash)];
+        assert_eq!(
+            cr::pipeline_failed(&values, head),
+            want_failed,
+            "{key} {state} {hash}"
+        );
+        assert_eq!(
+            cr::pipeline_running(&values, head),
+            want_running,
+            "{key} {state} {hash}"
+        );
+    }
+    // No `commit` on the status, or no head commit: counts as on the head commit.
+    let no_commit = json!({"key": "pipe", "name": "pipe", "state": "FAILED"});
+    assert!(cr::pipeline_failed(&[no_commit], head));
+    assert!(cr::pipeline_failed(&[st("pipe", "FAILED", "zzz999")], None));
 }
 
 #[test]
@@ -416,6 +409,10 @@ fn pr_buttons_table() {
         p.rabbit_threads = t;
         p
     };
+    let failing = |mut p: PRStatus| {
+        p.pipeline_failed = true;
+        p
+    };
     let rows: Vec<(PRStatus, (bool, bool))> = vec![
         (open(None, None), (true, false)),
         (open(Some(Rabbit::AwaitingApproval), None), (true, true)),
@@ -430,21 +427,10 @@ fn pr_buttons_table() {
             (false, false),
         ),
         (
-            {
-                let mut p = open(Some(Rabbit::Approved), Some(threads(0, 3)));
-                p.pipeline_failed = true;
-                p
-            },
+            failing(open(Some(Rabbit::Approved), Some(threads(0, 3)))),
             (true, false),
         ),
-        (
-            {
-                let mut p = pr(2, "MERGED");
-                p.pipeline_failed = true;
-                p
-            },
-            (false, false),
-        ),
+        (failing(pr(2, "MERGED")), (false, false)),
     ];
     for (p, want) in rows {
         assert_eq!(cr::pr_buttons(&p), want, "{:?} {:?}", p.state, p.rabbit);

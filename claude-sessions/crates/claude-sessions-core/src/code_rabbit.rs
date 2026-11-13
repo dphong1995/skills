@@ -137,7 +137,7 @@ pub fn is_comment(v: &Value) -> bool {
     raw(v).contains(MARKER)
 }
 
-/// A status without a commit hash, or a missing `commit`, counts as on the head commit.
+/// A status without `commit.hash`, or a `None` head commit, counts as on the head commit.
 fn on_commit(v: &Value, commit: Option<&str>) -> bool {
     let hash = v.get("commit").and_then(|c| str_of(c, "hash"));
     match (commit, hash) {

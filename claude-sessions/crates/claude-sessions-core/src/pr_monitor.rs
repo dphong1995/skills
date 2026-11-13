@@ -531,7 +531,7 @@ impl Inner {
         )
     }
 
-    /// Sets the five rabbit fields from the raw data kept for `ref_`; the thread counts stay `None` until a comments fetch succeeded.
+    /// Sets the rabbit fields and `pipeline_failed` from the raw data kept for `ref_`; the thread counts stay `None` until a comments fetch succeeded.
     fn apply_rabbit(t: &Ticker, pr: &mut PRStatus, ref_: &PRRef, now: SystemTime) {
         let v = Self::derive(t, pr, ref_, now);
         pr.rabbit = v.rabbit;
@@ -793,15 +793,18 @@ impl Inner {
                 prev_rabbit_status,
                 Some(Rabbit::Reviewed(_) | Rabbit::ApprovalFailed(_))
             );
-            let pipeline_running = t
-                .status_values
+            let due = t
+                .statuses_at
                 .get(ref_)
-                .is_some_and(|vals| code_rabbit::pipeline_running(vals, pr.commit.as_deref()));
-            let slow_poll =
-                (reviewed || (!in_window && prev_rabbit_status.is_none()) || pipeline_running)
-                    && t.statuses_at
-                        .get(ref_)
-                        .is_none_or(|a| secs_since(now, *a) >= STATUSES_SLOW_POLL);
+                .is_none_or(|a| secs_since(now, *a) >= STATUSES_SLOW_POLL);
+            // Bitbucket reuses the status key on a re-run, so a FAILED pipeline is re-read like a running one.
+            let slow_poll = due
+                && (reviewed
+                    || (!in_window && prev_rabbit_status.is_none())
+                    || t.status_values.get(ref_).is_some_and(|vals| {
+                        code_rabbit::pipeline_running(vals, pr.commit.as_deref())
+                            || code_rabbit::pipeline_failed(vals, pr.commit.as_deref())
+                    }));
             if prev.is_none()
                 || prev.as_ref().map(|p| &p.commit) != Some(&pr.commit)
                 || rabbit_pending
