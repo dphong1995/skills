@@ -22,6 +22,7 @@ pub mod kv;
 pub mod layout;
 pub mod panel_state;
 pub mod pr_monitor;
+pub mod procs;
 pub mod pull_requests;
 pub mod quota;
 pub mod scene;

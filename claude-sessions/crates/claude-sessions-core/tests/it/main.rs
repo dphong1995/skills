@@ -18,6 +18,7 @@ mod layout;
 mod panel_state;
 mod performance;
 mod pr_monitor;
+mod procs;
 mod pull_requests;
 mod quota;
 mod rabbit_replay;
