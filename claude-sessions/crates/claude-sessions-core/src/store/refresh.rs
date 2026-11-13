@@ -392,7 +392,13 @@ impl Store {
             }
         }
         now_closed.revive(&live);
-        now_closed.prune(now);
+        let keep: HashSet<String> = self
+            .procs
+            .closed
+            .iter()
+            .map(|p| p.session.clone())
+            .collect();
+        now_closed.prune(now, &keep);
         if now_closed != self.closed {
             if let Some(store) = &self.closed_store {
                 store.save(&now_closed);

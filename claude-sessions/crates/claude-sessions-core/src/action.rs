@@ -18,6 +18,8 @@ pub enum SendKind {
     Answer,
     /// A jump to cmux from a button that shows it (`Cần duyệt trong cmux`); other jumps claim it too, nothing draws it.
     Jump,
+    /// `Tắt` of a process group or a closed row (`detail` is the group key).
+    Kill,
 }
 
 /// One send button of one session; `pr` tells the PR buttons of a session apart, `detail` the prompt of an approve/deny (its tool id).
@@ -84,6 +86,12 @@ pub enum Action {
         session: String,
         tool_id: String,
     },
+    /// Stops the processes `targets` (`(pid, start time)` pairs as shown); `key` is the `ProcGroup::key`, `all:<session>` or `all`.
+    KillProcs {
+        session: String,
+        key: String,
+        targets: Vec<(i32, u64)>,
+    },
 }
 
 impl Action {
@@ -114,6 +122,12 @@ impl Action {
             Action::Resume(c) => Some(key(&c.id, SendKind::Resume)),
             Action::Answer { session, .. } => Some(key(session, SendKind::Answer)),
             Action::Jump(session) => Some(key(session, SendKind::Jump)),
+            Action::KillProcs {
+                session, key: k, ..
+            } => Some(SendKey {
+                detail: Some(k.clone()),
+                ..key(session, SendKind::Kill)
+            }),
             Action::OpenLink(..)
             | Action::Connect(_)
             | Action::MarkSeen(_)
@@ -134,7 +148,8 @@ impl Action {
             | Action::AskClaude { session, .. }
             | Action::Reply { session, .. }
             | Action::Answer { session, .. }
-            | Action::ShowCommand { session, .. } => session,
+            | Action::ShowCommand { session, .. }
+            | Action::KillProcs { session, .. } => session,
             Action::Resume(c) => &c.id,
             Action::Connect(_) => "",
         }

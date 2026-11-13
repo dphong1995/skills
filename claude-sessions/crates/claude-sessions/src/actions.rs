@@ -43,6 +43,8 @@ pub enum Completion {
         ok: bool,
     },
     Nudged(SendKey, bool),
+    /// The kill of a process group finished: `true` when every target is gone.
+    Killed(SendKey, bool),
     /// `Action::Connect`: the app opens the Settings window on a later run-loop turn.
     OpenSettings(Service),
     /// The token check and Keychain write of `connect` finished: `failure` is the notice to show, `None` when stored.
@@ -97,6 +99,8 @@ pub trait EffectRunner {
     fn resume(&mut self, closed: &ClosedSession, key: SendKey);
     /// Opens the token dialog of `service`.
     fn connect(&mut self, service: Service);
+    /// Kills `targets` off the main thread, then posts `Completion::Killed(key, ok)`.
+    fn kill_procs(&mut self, key: SendKey, targets: Vec<(i32, u64)>);
 }
 
 /// Plays `chime` unless muted (Swift `playChime`).
@@ -220,6 +224,13 @@ pub fn run(
                 return None;
             };
             runner.resume(closed, key);
+        }
+        Action::KillProcs { targets, .. } => {
+            let (Some(key), true) = (key, store.still_valid(action)) else {
+                finish_unclaimed(store, action, runner, now);
+                return None;
+            };
+            runner.kill_procs(key, targets.clone());
         }
         Action::Jump(_) => {
             store.mark_seen(&id);
@@ -377,7 +388,7 @@ pub fn complete(c: Completion, store: &mut Store, runner: &mut dyn EffectRunner,
                 runner.beep();
             }
         }
-        Completion::Nudged(key, ok) => {
+        Completion::Nudged(key, ok) | Completion::Killed(key, ok) => {
             store.finish_send(&key, ok, now);
             if !ok {
                 runner.beep();

@@ -76,6 +76,18 @@ pub enum Target {
     ToggleClosed,
     /// Resume a closed session by id.
     Resume(String),
+    /// A `· 2 lệnh nền ›` / `N đang chạy ›` line: opens or closes the process list of a live session or closed row.
+    ToggleProcs(String),
+    /// `Tắt` / `Tắt N` / `Tắt cả N` / `✕` when not armed; `key` is a `ProcGroup::key`, `all:<session>` or `all`.
+    ArmKill {
+        session: String,
+        key: String,
+    },
+    /// The same control while armed (shown as `Tắt?`): a click kills.
+    Kill {
+        session: String,
+        key: String,
+    },
     /// A control of the Settings window.
     Settings(SettingsAction),
 }
@@ -87,6 +99,8 @@ pub enum PanelChange {
     ToggleMenu(String),
     ToggleClosed,
     ArmStop(String),
+    ToggleProcs(String),
+    ArmKill(String),
     Pick {
         session: String,
         question: usize,
@@ -126,7 +140,8 @@ impl Target {
             | Target::ReplySend(s)
             | Target::Stop(s)
             | Target::Answer(s)
-            | Target::Menu(s) => Some(s),
+            | Target::Menu(s)
+            | Target::ToggleProcs(s) => Some(s),
             Target::ShowCommand { session, .. }
             | Target::Approve { session, .. }
             | Target::Deny { session, .. }
@@ -136,6 +151,9 @@ impl Target {
             | Target::Link { session, .. }
             | Target::AskClaude { session, .. }
             | Target::Nudge { session, .. } => Some(session),
+            Target::ArmKill { session, .. } | Target::Kill { session, .. } => {
+                Some(session.as_str()).filter(|s| !s.is_empty())
+            }
             Target::Resume(_) | Target::Connect(_) | Target::ToggleClosed | Target::Settings(_) => {
                 None
             }
@@ -262,6 +280,26 @@ impl Target {
                 Some(c) => Click::Action(Action::Resume(c.clone())),
                 None => Click::Stale,
             },
+            Target::ToggleProcs(id) => Click::Panel(PanelChange::ToggleProcs(id.clone())),
+            Target::ArmKill { key, .. } => Click::Panel(PanelChange::ArmKill(key.clone())),
+            Target::Kill { session, key } => {
+                let armed = env
+                    .panel
+                    .kill_armed
+                    .get(key)
+                    .is_some_and(|t| secs_since(env.now, *t) < STOP_ARM_SECS);
+                if !armed {
+                    return Click::Panel(PanelChange::ArmKill(key.clone()));
+                }
+                match kill_targets(env.snap, key) {
+                    Some(targets) if !targets.is_empty() => Click::Action(Action::KillProcs {
+                        session: session.clone(),
+                        key: key.clone(),
+                        targets,
+                    }),
+                    _ => Click::Stale,
+                }
+            }
             // The Settings window's `Targets` carry this variant so it can reuse the panel's hit ids and `node_of`, but its
             // clicks are resolved by the app's own handler and never reach here: stale if one ever does.
             Target::Settings(_) => Click::Stale,
@@ -282,6 +320,14 @@ impl PanelChange {
             PanelChange::ToggleClosed => panel.closed_open = !panel.closed_open,
             PanelChange::ArmStop(id) => {
                 panel.stop_armed.insert(id.clone(), now);
+            }
+            PanelChange::ToggleProcs(id) => {
+                if !panel.open_procs.remove(id) {
+                    panel.open_procs.insert(id.clone());
+                }
+            }
+            PanelChange::ArmKill(key) => {
+                panel.kill_armed.insert(key.clone(), now);
             }
             PanelChange::Pick {
                 session,
@@ -305,6 +351,24 @@ impl PanelChange {
             }
         }
     }
+}
+
+/// The `(pid, start)` pairs a kill key stands for in `snap`: a group's key, `all:<session>` for one closed row, `all` for every
+/// closed row with leftovers. `None` when nothing in the snapshot has that key.
+fn kill_targets(snap: &Snapshot, key: &str) -> Option<Vec<(i32, u64)>> {
+    let closed = || snap.closed_rows.iter().filter_map(|r| r.procs.as_ref());
+    if key == "all" {
+        return Some(closed().flat_map(|p| p.targets()).collect());
+    }
+    if let Some(id) = key.strip_prefix("all:") {
+        return closed().find(|p| p.session == id).map(|p| p.targets());
+    }
+    snap.procs
+        .values()
+        .chain(closed())
+        .flat_map(|p| p.groups())
+        .find(|g| g.key == key)
+        .map(|g| g.members.clone())
 }
 
 /// The targets of one built scene, by hit id.

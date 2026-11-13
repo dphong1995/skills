@@ -1509,6 +1509,7 @@ fn resumed_id_does_not_inherit_the_last_status() {
 mod activity;
 mod chime;
 mod closed_feed;
+mod procs;
 mod prs;
 mod sends;
 

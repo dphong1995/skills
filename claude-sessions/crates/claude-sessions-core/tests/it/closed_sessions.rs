@@ -42,7 +42,7 @@ fn drops_after_24h() {
     c.add(closed("old", now - hours(23)), now);
     c.add(closed("new", now), now);
     assert_eq!(ids(&c), ["new", "old"]);
-    c.prune(now + hours(2));
+    c.prune(now + hours(2), &Default::default());
     assert_eq!(ids(&c), ["new"]);
     c.add(closed("stale", now - hours(25)), now);
     assert_eq!(ids(&c), ["new"]);
@@ -183,4 +183,22 @@ fn one_bad_item_is_dropped_and_the_good_ones_stay() {
     kv.set_bytes("closedSessions", &serde_json::to_vec(&list).unwrap());
     let store = ClosedStore::new(Box::new(kv));
     assert_eq!(ids(&store.load(now)), ["good1", "good2"]);
+}
+
+#[test]
+fn prune_keeps_ids_with_leftovers() {
+    let now = SystemTime::now();
+    let hours = |h: u64| Duration::from_secs(h * 3600);
+    let mut c = ClosedSessions::new(
+        (0..6)
+            .map(|i| closed(&format!("s{i}"), now - Duration::from_secs(i)))
+            .chain([closed("old", now - hours(30))])
+            .collect(),
+    );
+    let keep: std::collections::HashSet<String> = ["old".to_string(), "s5".to_string()].into();
+    c.prune(now, &keep);
+    // "s5" is past the limit of 5 and "old" past 24 h, but both keep their leftovers; the others stay capped at 5.
+    assert_eq!(ids(&c), ["s0", "s1", "s2", "s3", "s4", "s5", "old"]);
+    c.prune(now, &Default::default());
+    assert_eq!(ids(&c), ["s0", "s1", "s2", "s3", "s4"]);
 }

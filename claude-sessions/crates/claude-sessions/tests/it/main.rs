@@ -10,6 +10,7 @@ mod key_map;
 mod menu;
 mod panels;
 mod placement;
+mod procs;
 mod rebuild;
 mod settings;
 mod settings_model;

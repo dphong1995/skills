@@ -8,6 +8,7 @@ use claude_sessions_core::action::{Action, SendKey, SendKind};
 use claude_sessions_core::closed_sessions::ClosedSession;
 use claude_sessions_core::cmux::Key;
 use claude_sessions_core::credentials::Service;
+use claude_sessions_core::procs::{GroupKind, ProcGroup, ProcTable, SessionProcs};
 use claude_sessions_core::pull_requests::{Chime, PRRef};
 use claude_sessions_core::store::{
     LinkKind, NewMark, Paths, SendState, Session, Store, StoreOptions,
@@ -30,6 +31,7 @@ enum Fx {
     Keys(String, Vec<Key>),
     Resume(String),
     Connect(Service),
+    Kill(SendKey, Vec<(i32, u64)>),
 }
 
 #[derive(Default)]
@@ -72,6 +74,9 @@ impl EffectRunner for Recorder {
     }
     fn connect(&mut self, service: Service) {
         self.fx.push(Fx::Connect(service));
+    }
+    fn kill_procs(&mut self, key: SendKey, targets: Vec<(i32, u64)>) {
+        self.fx.push(Fx::Kill(key, targets));
     }
 }
 
@@ -521,4 +526,72 @@ fn mark_seen_only_touches_the_store() {
     run(&Action::MarkSeen("a".into()), &mut store, &mut rec);
     assert!(rec.fx.is_empty());
     assert!(!store.unseen.contains_key("a"));
+}
+
+#[test]
+fn kill_action_calls_runner_and_finishes_send() {
+    let action = Action::KillProcs {
+        session: "a".into(),
+        key: "g".into(),
+        targets: vec![(10, 1)],
+    };
+    let key = action.send_key().unwrap();
+    for (ok, want) in [(true, SendState::Sent), (false, SendState::Failed)] {
+        let mut store = store_with(vec![approval("a")]);
+        store.set_procs(procs_of("a", "g", (10, 1)));
+        let mut rec = Recorder::default();
+        run(&action, &mut store, &mut rec);
+        assert_eq!(rec.fx, [Fx::Kill(key.clone(), vec![(10, 1)])]);
+        assert_eq!(store.send_state(&key), Some(SendState::Sending));
+        actions::complete(
+            Completion::Killed(key.clone(), ok),
+            &mut store,
+            &mut rec,
+            t0(),
+        );
+        assert_eq!(store.send_state(&key), Some(want));
+    }
+}
+
+#[test]
+fn kill_of_processes_that_are_gone_fails_without_the_runner() {
+    let action = Action::KillProcs {
+        session: "a".into(),
+        key: "g".into(),
+        targets: vec![(10, 1)],
+    };
+    let mut store = store_with(vec![approval("a")]);
+    let mut rec = Recorder::default();
+    run(&action, &mut store, &mut rec);
+    assert_eq!(rec.fx, [Fx::Beep]);
+    assert_eq!(
+        store.send_state(&action.send_key().unwrap()),
+        Some(SendState::Failed)
+    );
+}
+
+/// A table whose live session `session` has one command group `key` with one member.
+fn procs_of(session: &str, key: &str, member: (i32, u64)) -> ProcTable {
+    let group = ProcGroup {
+        key: key.into(),
+        kind: GroupKind::Command,
+        name: key.into(),
+        command: key.into(),
+        ports: vec![],
+        rss: 0,
+        cpu_percent: None,
+        started_us: 0,
+        members: vec![member],
+    };
+    let procs = SessionProcs {
+        session: session.into(),
+        commands: vec![group],
+        claude_and_mcp: None,
+        pwd: None,
+        started_us: 0,
+    };
+    ProcTable {
+        live: [(session.to_string(), procs)].into(),
+        closed: vec![],
+    }
 }

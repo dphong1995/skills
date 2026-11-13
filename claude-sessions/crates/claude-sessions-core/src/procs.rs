@@ -80,7 +80,7 @@ pub struct SessionProcs {
 }
 
 impl SessionProcs {
-    fn groups(&self) -> impl Iterator<Item = &ProcGroup> {
+    pub fn groups(&self) -> impl Iterator<Item = &ProcGroup> {
         self.commands.iter().chain(self.claude_and_mcp.iter())
     }
 

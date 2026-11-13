@@ -174,7 +174,8 @@ pub fn keys_for(a: &Action) -> Vec<Key> {
         | Action::Resume(_)
         | Action::Answer { .. }
         | Action::MarkSeen(_)
-        | Action::ShowCommand { .. } => vec![],
+        | Action::ShowCommand { .. }
+        | Action::KillProcs { .. } => vec![],
     }
 }
 

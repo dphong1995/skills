@@ -19,6 +19,7 @@ use crate::jira::{self, JiraIssue};
 use crate::jira_monitor::{JiraMonitor, JiraTarget};
 use crate::panel_state::{EditKind, Editing};
 use crate::pr_monitor::{PRMonitor, PRTarget};
+use crate::procs::{ProcTable, SessionProcs};
 use crate::pull_requests::{self, PRRef, PRStatus};
 use crate::quota::QuotaReader;
 use crate::tasks::{self, Todo};
@@ -197,6 +198,9 @@ pub struct Store {
     /// Task directory listings, for tests.
     pub task_listings: usize,
 
+    /// The last scan result and the refresh time it first appeared at.
+    procs: ProcTable,
+    procs_at: SystemTime,
     now: SystemTime,
     sends: HashMap<SendKey, (SendState, SystemTime)>,
     issue_icons: HashMap<url::Url, Vec<u8>>,
@@ -291,6 +295,8 @@ impl Store {
             connections: HashMap::new(),
             last_focused: None,
             pids: HashMap::new(),
+            procs: ProcTable::default(),
+            procs_at: UNIX_EPOCH,
             last_status: HashMap::new(),
             last_question: HashMap::new(),
             announced_question: HashMap::new(),
@@ -434,6 +440,86 @@ impl Store {
         }
     }
 
+    /// Keeps `table` only when it differs from the held one, so an idle scan leaves the snapshot equal.
+    pub fn set_procs(&mut self, table: ProcTable) {
+        if table != self.procs {
+            self.procs = table;
+            self.procs_at = self.now;
+        }
+    }
+
+    /// Live session id -> claude pid, as of the last refresh.
+    pub fn live_pids(&self) -> HashMap<String, i32> {
+        self.pids.clone()
+    }
+
+    /// Whether any of `targets` is still listed in the current table.
+    pub(crate) fn procs_listed(&self, targets: &[(i32, u64)]) -> bool {
+        let table = &self.procs;
+        table
+            .live
+            .values()
+            .chain(&table.closed)
+            .flat_map(|s| s.targets())
+            .any(|t| targets.contains(&t))
+    }
+
+    fn closed_rows(&self) -> Vec<ClosedRow> {
+        let by_id: HashMap<&str, &SessionProcs> = self
+            .procs
+            .closed
+            .iter()
+            .map(|p| (p.session.as_str(), p))
+            .collect();
+        let row = |c: &ClosedSession| ClosedRow {
+            id: c.id.clone(),
+            title: c.title.clone(),
+            folder: c.folder(),
+            closed_at: Some(c.closed_at),
+            session: c.clone(),
+            procs: by_id.get(c.id.as_str()).map(|p| (*p).clone()),
+        };
+        let (mut with, rest): (Vec<ClosedRow>, Vec<ClosedRow>) = self
+            .closed
+            .items()
+            .iter()
+            .map(row)
+            .partition(|r| r.procs.is_some());
+        with.sort_by_key(|r| std::cmp::Reverse(r.closed_at));
+        let known: HashSet<&str> = self.closed.items().iter().map(|c| c.id.as_str()).collect();
+        let mut synthesized: Vec<&SessionProcs> = self
+            .procs
+            .closed
+            .iter()
+            .filter(|p| !known.contains(p.session.as_str()))
+            .collect();
+        synthesized.sort_by_key(|p| std::cmp::Reverse(p.started_us));
+        let synthesized = synthesized.into_iter().map(|p| {
+            let cwd = p.pwd.clone().unwrap_or_default();
+            let folder = crate::closed_sessions::folder(&cwd);
+            let title = if folder.is_empty() {
+                p.session.chars().take(8).collect()
+            } else {
+                folder.clone()
+            };
+            ClosedRow {
+                id: p.session.clone(),
+                title: title.clone(),
+                folder,
+                closed_at: None,
+                session: ClosedSession {
+                    id: p.session.clone(),
+                    title,
+                    cwd,
+                    branch: None,
+                    closed_at: self.procs_at,
+                },
+                procs: Some(p.clone()),
+            }
+        });
+        with.into_iter().chain(synthesized).chain(rest).collect()
+    }
+
     pub fn hidden(&self) -> bool {
         self.empty_since
             .is_some_and(|e| secs_since(self.now, e) >= HIDE_AFTER)
@@ -447,6 +533,8 @@ impl Store {
         Snapshot {
             sessions: self.sessions.clone(),
             closed: self.closed.items().to_vec(),
+            procs: self.procs.live.clone(),
+            closed_rows: self.closed_rows(),
             quota: self.quota.clone(),
             unseen: self.unseen.clone(),
             sends: self.sends.clone(),

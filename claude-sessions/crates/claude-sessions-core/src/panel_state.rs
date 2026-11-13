@@ -48,6 +48,10 @@ pub struct PanelState {
     pub stop_armed: HashMap<String, SystemTime>,
     /// Session ids whose menu list is expanded; cleared when the widget collapses.
     pub open_menus: HashSet<String>,
+    /// Live session ids and closed row ids whose process list is expanded; cleared when the widget collapses.
+    pub open_procs: HashSet<String>,
+    /// Kill key -> when its `Tắt` was first clicked; a second click within 3 s kills.
+    pub kill_armed: HashMap<String, SystemTime>,
     /// The `Vừa đóng (N)` group is expanded; cleared when the widget collapses.
     pub closed_open: bool,
     /// Session id the mouse is over in the expanded card; drives the hover dwell that clears a fresh mark.
@@ -92,9 +96,11 @@ impl PanelState {
         self.selected = None;
     }
 
-    /// The widget collapsed: closes the open link menus and the `Vừa đóng` group (the caller also calls `prune_questions`).
+    /// The widget collapsed: closes the open link menus, process lists and the `Vừa đóng` group (the caller also calls `prune_questions`).
     pub fn on_collapse(&mut self) {
         self.open_menus.clear();
+        self.open_procs.clear();
+        self.kill_armed.clear();
         self.closed_open = false;
     }
 

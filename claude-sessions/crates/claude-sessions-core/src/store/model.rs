@@ -6,6 +6,7 @@ use crate::credentials::Service;
 use crate::feed::{BlockState, FeedQuestion};
 use crate::jira::JiraTone;
 use crate::panel_state::EditKind;
+use crate::procs::SessionProcs;
 use crate::pull_requests::{PRRef, PRStatus};
 use crate::quota::Quota;
 use crate::tasks::Todo;
@@ -277,6 +278,10 @@ pub fn command_is_shown(shown: &HashSet<String>, p: &Pending) -> bool {
 pub struct Snapshot {
     pub sessions: Vec<Session>,
     pub closed: Vec<ClosedSession>,
+    /// Live sessions' processes by session id.
+    pub procs: HashMap<String, SessionProcs>,
+    /// `Vừa đóng` rows: leftovers first, then synthesized rows, then the rest of `closed`.
+    pub closed_rows: Vec<ClosedRow>,
     pub quota: Option<Quota>,
     pub unseen: HashMap<String, NewMark>,
     pub sends: HashMap<SendKey, (SendState, SystemTime)>,
@@ -292,7 +297,30 @@ pub struct Snapshot {
     pub bg_opacity: f64,
 }
 
+/// One row of `Vừa đóng`: a closed session, or a session the widget never saw whose processes are still running.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ClosedRow {
+    pub id: String,
+    /// `ClosedSession.title`, or the folder of `pwd` for a synthesized row.
+    pub title: String,
+    pub folder: String,
+    /// `None` for a synthesized row (it shows `chạy từ <age>` from `procs.started_us`).
+    pub closed_at: Option<SystemTime>,
+    /// What Resume uses.
+    pub session: ClosedSession,
+    pub procs: Option<SessionProcs>,
+}
+
 impl Snapshot {
+    /// Processes left over by closed sessions: the sum of the rows' group counts.
+    pub fn leftover_count(&self) -> usize {
+        self.closed_rows
+            .iter()
+            .filter_map(|r| r.procs.as_ref())
+            .map(SessionProcs::row_count)
+            .sum()
+    }
+
     /// Whether the card shows the whole of `p`'s command; see `command_is_shown`.
     pub fn is_command_shown(&self, p: &Pending) -> bool {
         command_is_shown(&self.shown_commands, p)

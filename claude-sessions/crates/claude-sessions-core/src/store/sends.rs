@@ -106,6 +106,7 @@ impl Store {
             Action::AskClaude { session: id, .. } | Action::Reply { session: id, .. } => {
                 session(id).is_some_and(Session::can_ask_claude)
             }
+            Action::KillProcs { targets, .. } => self.procs_listed(targets),
             Action::Stop(id) => session(id).is_some_and(|s| s.shown_status() == "busy"),
             Action::Answer {
                 session: id,

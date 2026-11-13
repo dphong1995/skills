@@ -94,17 +94,24 @@ impl ClosedSessions {
     pub fn add(&mut self, s: ClosedSession, now: SystemTime) {
         self.items.retain(|i| i.id != s.id);
         self.items.insert(0, s);
-        self.prune(now);
+        self.prune(now, &HashSet::new());
     }
 
     pub fn revive(&mut self, ids: &HashSet<String>) {
         self.items.retain(|i| !ids.contains(&i.id));
     }
 
-    pub fn prune(&mut self, now: SystemTime) {
-        self.items
-            .retain(|i| secs_since(now, i.closed_at) <= Self::MAX_AGE);
-        self.items.truncate(Self::LIMIT);
+    /// Drops what is older than `MAX_AGE` and what is past `LIMIT`; ids in `keep` (sessions with processes left over) survive both.
+    pub fn prune(&mut self, now: SystemTime, keep: &HashSet<String>) {
+        let mut others = 0;
+        self.items.retain(|i| {
+            if keep.contains(&i.id) {
+                return true;
+            }
+            let fresh = secs_since(now, i.closed_at) <= Self::MAX_AGE;
+            others += usize::from(fresh);
+            fresh && others <= Self::LIMIT
+        });
     }
 }
 
@@ -130,7 +137,7 @@ impl ClosedStore {
             .filter_map(|v| serde_json::from_value::<ClosedSession>(v).ok())
             .collect();
         let mut loaded = ClosedSessions::new(items);
-        loaded.prune(now);
+        loaded.prune(now, &HashSet::new());
         loaded
     }
 

@@ -10,6 +10,7 @@ use claude_sessions_core::cmux::{self, Key};
 use claude_sessions_core::credentials::Service;
 use claude_sessions_core::pull_requests::Chime;
 use claude_sessions_macos::defaults::beep;
+use claude_sessions_macos::procscan::{self, KillOutcome};
 use claude_sessions_macos::{apple_script, main_queue, sound, workspace};
 use url::Url;
 
@@ -96,6 +97,19 @@ impl EffectRunner for RealRunner {
             let ok = cli.is_some_and(|cli| cmux::resume(&cli, &closed));
             poster(Completion::Resumed(closed, key, ok));
         });
+    }
+
+    fn kill_procs(&mut self, key: SendKey, targets: Vec<(i32, u64)>) {
+        let poster = self.poster.clone();
+        let spawned = std::thread::Builder::new()
+            .name("claude-sessions.kill".into())
+            .spawn(move || {
+                let ok = procscan::kill(&targets) == KillOutcome::AllGone;
+                poster(Completion::Killed(key, ok));
+            });
+        if let Err(e) = spawned {
+            eprintln!("kill thread: {e}");
+        }
     }
 
     fn connect(&mut self, service: Service) {

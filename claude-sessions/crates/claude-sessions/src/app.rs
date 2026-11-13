@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
-use std::sync::mpsc::{Receiver, channel};
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::{Instant, SystemTime};
 
 use claude_sessions_core::action::Action;
@@ -25,6 +25,7 @@ use claude_sessions_core::keyboard::KeyOutcome;
 use claude_sessions_core::layout;
 use claude_sessions_core::panel_state::{HotkeyToggle, PanelState};
 use claude_sessions_core::pr_monitor::PRMonitor;
+use claude_sessions_core::procs::{ProcModel, ProcTable, SCAN_EVERY_TICKS};
 use claude_sessions_core::quota::QuotaReader;
 use claude_sessions_core::scene::{HitId, Rect};
 use claude_sessions_core::store::{Effect, Paths, Snapshot, Store, StoreOptions};
@@ -34,6 +35,7 @@ use claude_sessions_macos::main_queue::{self, Ticker};
 use claude_sessions_macos::menu as mac_menu;
 use claude_sessions_macos::mouse::{self, MouseMonitors};
 use claude_sessions_macos::process;
+use claude_sessions_macos::procscan::Scanner;
 use claude_sessions_macos::text::CoreTextMeasure;
 use claude_sessions_macos::ui::{EventHandler, UiEvent, WidgetPanelHandle};
 use claude_sessions_macos::{NotificationObserver, app as mac_app, screens, workspace};
@@ -119,6 +121,8 @@ pub struct AppState {
     /// Bumped when the focus check is cancelled; a result of an older one is dropped.
     focus_gen: u64,
     ticks: u64,
+    /// The process scanner; `None` in fixture mode.
+    procscan: Option<ProcScan>,
 }
 
 /// `CLAUDE_SESSIONS_FRAME_LOG=1` also logs every scene rebuild (the renderer logs every node redraw).
@@ -219,6 +223,45 @@ fn read_credentials() -> Receiver<Credentials> {
         eprintln!("credentials thread: {e}");
     }
     rx
+}
+
+/// The process scanner's worker thread: one job (the live `session id -> claude pid` map) in, one `ProcTable` out.
+struct ProcScan {
+    jobs: Sender<HashMap<String, i32>>,
+    tables: Receiver<ProcTable>,
+    /// A scan job was sent and its table has not come back yet; at most one runs at a time.
+    in_flight: bool,
+    /// A kill finished: scan on the next tick instead of waiting for the 5th.
+    rescan: bool,
+}
+
+/// Starts the thread that owns the `Scanner` and the `ProcModel`; the tick sends jobs and picks the tables up.
+fn start_procscan() -> Option<ProcScan> {
+    let (jobs, job_rx) = channel::<HashMap<String, i32>>();
+    let (table_tx, tables) = channel();
+    let spawned = std::thread::Builder::new()
+        .name("claude-sessions.procscan".into())
+        .spawn(move || {
+            let (mut scanner, mut model) = (Scanner::new(), ProcModel::default());
+            for live in job_rx {
+                let table = model.update(&scanner.scan(), &live);
+                if table_tx.send(table).is_err() {
+                    break;
+                }
+            }
+        });
+    match spawned {
+        Ok(_) => Some(ProcScan {
+            jobs,
+            tables,
+            in_flight: false,
+            rescan: false,
+        }),
+        Err(e) => {
+            eprintln!("procscan thread: {e}");
+            None
+        }
+    }
 }
 
 /// Runs `f` with the state borrowed. A failed borrow is a re-entrancy bug: debug builds panic, release builds drop
@@ -324,6 +367,7 @@ impl AppState {
         if self.fixture.is_none() {
             self.refresh_and_chime(now);
             self.ticks += 1;
+            self.scan_processes();
             if self.ticks.is_multiple_of(2) {
                 self.check_focused_pane();
             }
@@ -406,6 +450,22 @@ impl AppState {
             false
         });
         dropped
+    }
+
+    /// Takes a finished scan into the store, and starts the next one every `SCAN_EVERY_TICKS` ticks (or the tick after a kill).
+    fn scan_processes(&mut self) {
+        let Some(scan) = &mut self.procscan else {
+            return;
+        };
+        while let Ok(table) = scan.tables.try_recv() {
+            scan.in_flight = false;
+            self.store.set_procs(table);
+        }
+        let due = self.ticks.is_multiple_of(SCAN_EVERY_TICKS) || scan.rescan;
+        if due && !scan.in_flight && scan.jobs.send(self.store.live_pids()).is_ok() {
+            scan.in_flight = true;
+            scan.rescan = false;
+        }
     }
 
     fn pick_up_credentials(&mut self) {
@@ -1314,6 +1374,9 @@ impl AppState {
                 return;
             }
             other => {
+                if let (Completion::Killed(..), Some(scan)) = (&other, &mut self.procscan) {
+                    scan.rescan = true;
+                }
                 let mut runner = RealRunner::new(self.poster.clone());
                 actions::complete(other, &mut self.store, &mut runner, now);
             }
@@ -1697,6 +1760,7 @@ fn start() -> Running {
     mac_app::set_accessory_policy();
     mac_menu::install_main_menu();
     let fixture = load_fixture();
+    let fixture_free = fixture.is_none();
     let root = std::env::var_os("CLAUDE_SESSIONS_ROOT").map(PathBuf::from);
     let live = fixture.is_none() && root.is_none();
     let kv = UserDefaultsStore::new(None).expect("UserDefaults on the main thread");
@@ -1742,6 +1806,7 @@ fn start() -> Running {
         checking_focus: false,
         focus_gen: 0,
         ticks: 0,
+        procscan: fixture_free.then(start_procscan).flatten(),
     }));
     let weak = Rc::downgrade(&shared);
     APP.with(|a| *a.borrow_mut() = Some(weak.clone()));
