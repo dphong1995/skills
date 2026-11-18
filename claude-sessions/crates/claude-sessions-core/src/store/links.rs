@@ -11,7 +11,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use url::Url;
 
 /// How many PRs of a session the PR list shows; the menu lists the ones past it.
-pub const PR_LIST_MAX: usize = 3;
+pub const PR_LIST_MAX: usize = 20;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Source {

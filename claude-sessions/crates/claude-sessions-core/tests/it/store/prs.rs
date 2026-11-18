@@ -38,6 +38,14 @@ fn plain_pr(id: i64) -> Value {
     })
 }
 
+/// PR ids that fill the session card's PR list (`PR_LIST_MAX` fillers), then `past`, which overflow into the menu.
+fn capped_ids(past: &[i64]) -> Vec<i64> {
+    (1000..)
+        .take(PR_LIST_MAX)
+        .chain(past.iter().copied())
+        .collect()
+}
+
 fn pr_with_reviewer(id: i64, approved: bool, comments: i64) -> Value {
     let mut o = pr_json(PrSpec {
         id,
@@ -71,11 +79,12 @@ fn unseen_keys(store: &Store) -> HashSet<String> {
 
 #[test]
 fn prs_attached_to_session() {
-    let api = fake([7571, 6874, 1, 2].map(plain_pr).to_vec());
-    let (mut store, _d, _p) = pr_store(&api, pr_reply(&[7571, 6874, 1, 2]));
+    let ids = capped_ids(&[2]);
+    let api = fake(ids.iter().copied().map(plain_pr).collect());
+    let (mut store, _d, _p) = pr_store(&api, pr_reply(&ids));
     store.refresh(pr_t0());
     let got: Vec<i64> = store.sessions[0].prs.iter().map(|p| p.ref_.id).collect();
-    assert_eq!(got, vec![7571, 6874, 1]);
+    assert_eq!(got, ids[..PR_LIST_MAX]);
 }
 
 #[test]
@@ -294,16 +303,17 @@ fn pr_mark_dropped_when_pr_gone() {
 }
 
 #[test]
-fn pr_mark_on_hidden_fourth_pr() {
-    let ids = [7571, 7572, 7573, 7574];
-    let api = fake(ids.map(|i| pr_with_reviewer(i, false, 0)).to_vec());
+fn pr_mark_on_pr_past_the_pr_list() {
+    let ids = capped_ids(&[7574]);
+    let api = fake(ids.iter().map(|&i| pr_with_reviewer(i, false, 0)).collect());
     let (mut store, _d, _p) = pr_store(&api, pr_reply(&ids));
     store.refresh(pr_t0());
     assert!(store.unseen.is_empty());
     set_open(
         &api,
-        ids.map(|i| pr_with_reviewer(i, false, i64::from(i == 7574)))
-            .to_vec(),
+        ids.iter()
+            .map(|&i| pr_with_reviewer(i, false, i64::from(i == 7574)))
+            .collect(),
     );
     tin_comment(&api, COMMENT_AT);
     store.refresh(at(61));
@@ -368,7 +378,7 @@ struct MenuRig {
 
 /// One idle session `a`: the user mentions T6IR-2 then T6IR-3, Claude T6IR-4 and four PRs.
 fn menu_store(extra: &[String], jira: Option<Arc<FakeJira>>, prs: bool) -> MenuRig {
-    menu_store_with_prs(&[7571, 6874, 1, 2], extra, jira, prs)
+    menu_store_with_prs(&capped_ids(&[2]), extra, jira, prs)
 }
 
 /// `menu_store` with the PR ids Claude links (and Bitbucket answers for) chosen by the test.
@@ -478,10 +488,10 @@ fn bare_status(state: &str, title: Option<&str>) -> pull_requests::PRStatus {
 }
 
 #[test]
-fn menu_lists_the_prs_past_the_first_three() {
+fn menu_lists_the_prs_past_the_pr_list_cap() {
     let r = menu_store(&[], None, true);
     let s = &r.store.sessions[0];
-    assert_eq!(s.prs.len(), 3);
+    assert_eq!(s.prs.len(), PR_LIST_MAX);
     let prs = section(s, "PR").unwrap();
     assert_eq!(prs, vec!["PR #2  PR 2  ·  mở"]);
     assert_eq!(
@@ -497,7 +507,7 @@ fn menu_lists_the_prs_past_the_first_three() {
 #[test]
 fn menu_lists_only_prs_past_the_pr_list() {
     let r = menu_store_with_prs(
-        &[7571, 6874, 1, 2, 3],
+        &capped_ids(&[2, 3]),
         &[assistant_line(
             Some("https://github.com/a/b/pull/12"),
             false,
@@ -506,10 +516,9 @@ fn menu_lists_only_prs_past_the_pr_list() {
         true,
     );
     let s = &r.store.sessions[0];
-    assert_eq!(PR_LIST_MAX, 3);
     assert_eq!(s.prs.len(), PR_LIST_MAX);
     assert!(section(s, "Bạn nhắc").is_some());
-    // PRs 4 and 5 stay, the untracked link too; the three above are gone.
+    // The two PRs past the cap stay, the untracked link too; the PR list ones are gone.
     assert_eq!(
         section(s, "PR"),
         Some(vec![
@@ -758,19 +767,20 @@ fn menu_count_excludes_footer() {
     let r = menu_store(&[], Some(failing_jira(JiraError::Transport)), true);
     let s = &r.store.sessions[0];
     assert!(s.menu_needs_jira);
-    // Two user tickets, one by Claude, and the fourth PR (the first three are in the PR list).
+    // Two user tickets, one by Claude, and the PR past the cap (the rest are in the PR list).
     assert_eq!(s.menu_count(), 2 + 1 + 1);
 }
 
 #[test]
 fn menu_row_for_pr_only_session() {
-    let ids = [7571, 6874, 1, 2];
-    let (mut store, _d, _p) = pr_store(&fake(ids.map(plain_pr).to_vec()), pr_reply(&ids));
+    let ids = capped_ids(&[2]);
+    let api = fake(ids.iter().copied().map(plain_pr).collect());
+    let (mut store, _d, _p) = pr_store(&api, pr_reply(&ids));
     store.refresh(pr_t0());
     let s = &store.sessions[0];
-    // Only the fourth PR's button is left; the first three are in the PR list.
+    // Only the PR past the cap has a button; the rest are in the PR list.
     assert_eq!(s.links.len(), 1);
-    assert_eq!(s.prs.len(), 3);
+    assert_eq!(s.prs.len(), PR_LIST_MAX);
     let titles: Vec<&str> = s.menu.iter().map(|m| m.title.as_str()).collect();
     assert_eq!(titles, vec!["PR"]);
     assert_eq!(s.menu_count(), 1);
@@ -1013,8 +1023,8 @@ fn hiding_a_pr_removes_it_from_rows_menu_and_marks() {
 
 #[test]
 fn hidden_pr_drops_its_link_chip_and_menu_line() {
-    let ids = [7571, 6874, 1, 2];
-    let api = fake(ids.map(plain_pr).to_vec());
+    let ids = capped_ids(&[2]);
+    let api = fake(ids.iter().copied().map(plain_pr).collect());
     let (mut store, _d, _p) = pr_store(&api, pr_reply(&ids));
     store.refresh(pr_t0());
     assert_eq!(store.sessions[0].links.len(), 1);
