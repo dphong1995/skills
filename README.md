@@ -76,7 +76,12 @@ code về. Sửa quy tắc trong repo (`claude-md/`) chứ không sửa trong CL
 - `web-pages.md` (mục `skills`): câu hỏi cho người dùng đi trang phỏng vấn HTML; file Markdown đưa người dùng đọc
   hoặc duyệt (spec, thiết kế của cook, plan, draft ticket, báo cáo) mở bằng trang web dựng từ file
   md (`render-interview.mjs <file.md> … --serve | --open`).
-- `worktrees.md` (mục `skills`): mỗi nhánh mới (ticket, feature, bug fix) ở mọi repo được tạo trong worktree `.worktrees/<ticket>` bằng `git worktree add`, cắt từ nhánh chính trên remote; chưa ignore thì ghi `.git/info/exclude` và commit dòng `.gitignore` trong worktree; deps theo CLAUDE.md của repo, không có thì copy theo `.worktreeinclude` (hoặc `.env*`) và symlink theo `worktree.symlinkDirectories` (hoặc `node_modules`); không tự xoá worktree. cook Step 3 tạo nhánh theo quy tắc này.
+- `worktrees.md` (mục `skills`): mỗi nhánh mới (ticket, feature, bug fix) ở mọi repo được tạo trong
+  worktree `.worktrees/<ticket>` bằng `git worktree add`, cắt từ nhánh chính trên remote; chưa ignore
+  thì ghi `.git/info/exclude` và commit dòng `.gitignore` trong worktree; deps theo CLAUDE.md của repo,
+  không có thì copy theo `.worktreeinclude` (hoặc `.env*`) và symlink theo
+  `worktree.symlinkDirectories` (hoặc `node_modules`); không tự xoá worktree. cook Step 3 tạo nhánh
+  theo quy tắc này.
 - `language.md` (mục `vietnamese`): mọi tin nhắn cho người dùng viết bằng tiếng Việt (cả dòng báo tiến độ, tin nhắn
   sau compact, khi chuyển tiếp tài liệu tiếng Anh); tiếng Anh chỉ ở memory, commit, prompt cho
   subagent, nội dung cho Jira/PR.
