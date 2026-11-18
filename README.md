@@ -81,7 +81,9 @@ code về. Sửa quy tắc trong repo (`claude-md/`) chứ không sửa trong CL
   thì ghi `.git/info/exclude` và commit dòng `.gitignore` trong worktree; deps theo CLAUDE.md của repo,
   không có thì copy theo `.worktreeinclude` (hoặc `.env*`) và symlink theo
   `worktree.symlinkDirectories` (hoặc `node_modules`); không tự xoá worktree. cook Step 3 tạo nhánh
-  theo quy tắc này.
+  theo quy tắc này khi đang đứng trên nhánh mặc định (`main`/`master`) ở checkout chính, trừ khi
+  CLAUDE.md của repo bảo commit thẳng lên đó (như skills-repo), hoặc khi rule của người dùng cấm commit
+  lên nhánh hiện tại; nhánh feature hay linked worktree thì commit tại chỗ.
 - `language.md` (mục `vietnamese`): mọi tin nhắn cho người dùng viết bằng tiếng Việt (cả dòng báo tiến độ, tin nhắn
   sau compact, khi chuyển tiếp tài liệu tiếng Anh); tiếng Anh chỉ ở memory, commit, prompt cho
   subagent, nội dung cho Jira/PR.
