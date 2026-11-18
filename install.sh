@@ -11,7 +11,7 @@ SELECTION="$DEST/.skills-repo-selection"
 # Item table (parallel arrays, bash 3.2: no associative arrays). DEFAULTS: 1 = ticked in the menu.
 ITEMS=(skills subagent vietnamese compact org-skills cmux hud widget)
 DESCS=(
-  "4 skills + 19 agents + web-pages rule + todo tools (add subagent when you use cook)"
+  "4 skills + 19 agents + web-pages and worktrees rules + todo tools (add subagent when you use cook)"
   "subagent-models rule + context-guard hook (recommended with cook)"
   "language rule + reply-language hook + language=vietnamese"
   "main-context-compact mod"
@@ -148,6 +148,7 @@ install_skills() {
   done
   find "$DEST/skills" "$DEST/agents" -name '.DS_Store' -delete 2>/dev/null || true
   write_block web-pages
+  write_block worktrees
   merge_settings skills
 }
 

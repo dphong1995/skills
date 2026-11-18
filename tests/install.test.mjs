@@ -33,6 +33,7 @@ test('only skills', () => {
   assert.equal(readdirSync(join(home, 'agents')).filter((n) => n.endsWith('.md')).length, 19);
   const md = claudeMd(home);
   assert.ok(md.includes('<!-- skills-repo: web-pages -->'));
+  assert.ok(md.includes('<!-- skills-repo: worktrees -->'));
   assert.ok(!md.includes('skills-repo: language'));
   const s = settings(home);
   assert.equal(s.env.CLAUDE_CODE_ENABLE_TODO_TOOLS, '1');
@@ -94,7 +95,7 @@ test('rerun does not duplicate', () => {
   const s = settings(home);
   for (const ev of Object.keys(s.hooks)) assert.equal(s.hooks[ev].length, 1, ev);
   const md = claudeMd(home);
-  for (const b of ['web-pages', 'subagent-models', 'language']) assert.equal(count(md, `<!-- skills-repo: ${b} -->`), 1, b);
+  for (const b of ['web-pages', 'worktrees', 'subagent-models', 'language']) assert.equal(count(md, `<!-- skills-repo: ${b} -->`), 1, b);
 });
 
 test('old install then new --only does not duplicate', () => {
@@ -107,7 +108,7 @@ test('old install then new --only does not duplicate', () => {
     assert.equal(s.hooks[ev].length, 1, ev);
   }
   const md = claudeMd(home);
-  for (const b of ['web-pages', 'subagent-models', 'language']) assert.equal(count(md, `<!-- skills-repo: ${b} -->`), 1, b);
+  for (const b of ['web-pages', 'worktrees', 'subagent-models', 'language']) assert.equal(count(md, `<!-- skills-repo: ${b} -->`), 1, b);
 });
 
 test('selection accumulates', () => {

@@ -111,9 +111,10 @@ Report the plan overview with its phases and continue straight to implementation
 3. If no tasks → **ALWAYS** `TaskCreate` one task per phase file that still has an unchecked `[ ]` box, or has no box at all while its Phases-table Status is not `Complete` (not one per box), with priority order and metadata (`phase`, `planDir`, `phaseFile`). Never proceed to dispatch without a task list.
 4. Tasks can be blocked by other tasks via `addBlockedBy`.
 
+Cook commits on the current branch. If the user's rules forbid committing on it (e.g. `master`), first create the branch their rules name in its own worktree, as the `Git worktrees` rule in `~/.claude/CLAUDE.md` says (never `git switch -c` in the current checkout), and record the branch and worktree path in `## Claude's calls`. Rules with no name pattern → `<ticket>-<slug>` (`<slug>` = the plan dir name without its date and ticket; no ticket → `<slug>` alone). A name that exists locally or on the remote → add `-2` (then `-3`, …). Cook never switches to an existing branch. From then on that worktree is the repo's working directory: record the Step 3 start commit and status there, give its absolute path in every sub-agent prompt as the directory to work in (any plan path into the main checkout means the same relative path under the worktree), and run Steps 4–6's git and test commands there. When the rule adds the `.worktrees/` line to `.gitignore`, that commit lands before the start record, so it is not a file with changes from before the run. The plan stays in the main checkout's plan root; update the plan frontmatter `branch` to the new branch.
+
 Before dispatching phase 1, for every repo the plan touches, record and write down literally (shell variables do not survive between calls): `git rev-parse HEAD` (the Step 3 start commit — Step 5's size check needs it when the work is committed on the base branch itself), `git status --porcelain --untracked-files=all` (the files with changes from before this run), and `git hash-object <file>` for each of those files that exists as a regular file (record a deleted one as `deleted`).
 
-Cook commits on the current branch. If the user's rules forbid committing on it (e.g. `master`), first create the branch their rules name with `git switch -c <branch>` (it changes no file) and record that in `## Claude's calls`. Rules with no name pattern → `<ticket>-<slug>` (`<slug>` = the plan dir name without its date and ticket; no ticket → `<slug>` alone). A name that exists locally or on the remote → add `-2` (then `-3`, …). Cook never switches to an existing branch.
 
 **Dispatch rules:**
 - **One sub-agent per phase.** Read the `phase-XX-*.md` file, extract scope/files/acceptance criteria, embed verbatim into the sub-agent prompt; paste plan.md's Global Constraints first (§ Report contract, **Global Constraints** paragraph).
@@ -562,7 +563,7 @@ Sources of the rows:
 - Accepted pre-existing failing tests.
 - Files committed outside their phase's ownership.
 - DONE_WITH_CONCERNS concerns that were not fixed.
-- Branch creation (§ Step 3).
+- Branch and worktree creation (§ Step 3).
 
 With no rows, write "None" (Không có).
 

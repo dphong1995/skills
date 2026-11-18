@@ -17,7 +17,7 @@ The first `--update` after upgrading from the old installer has no remembered se
 
 | Item | What it installs | Where | Default |
 |---|---|---|---|
-| `skills` | 4 skills + 19 agents + `web-pages` rule block + todo tools (`settings/skills.json`) | `~/.claude/skills/`, `~/.claude/agents/`, `~/.claude/CLAUDE.md`, `~/.claude/settings.json` | ticked |
+| `skills` | 4 skills + 19 agents + `web-pages` and `worktrees` rule blocks + todo tools (`settings/skills.json`) | `~/.claude/skills/`, `~/.claude/agents/`, `~/.claude/CLAUDE.md`, `~/.claude/settings.json` | ticked |
 | `subagent` | `subagent-models` rule block + `subagent-context-guard` hook (install it with `cook`) | `~/.claude/hooks/`, `~/.claude/CLAUDE.md`, `~/.claude/settings.json` | no |
 | `vietnamese` | `language` rule block + `reply-language` hook + `language: "vietnamese"` | `~/.claude/hooks/`, `~/.claude/CLAUDE.md`, `~/.claude/settings.json` | no |
 | `compact` | `main-context-compact` mod + `CLAUDE_CODE_PLUGIN_DIRS` | `~/.claude/mods/`, `~/.claude/settings.json` | no |
