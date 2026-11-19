@@ -7,7 +7,7 @@ Review-fix cycle used at Step 5. It runs autonomously — no approval stop.
 Step 5 dispatches one review sub-agent (small diff) or two in one message (large diff), sized by the diff per `workflow-steps.md` § Step 5. Their output lands in two buckets:
 
 **Gating — from agent 1 (`code-reviewer`; the single reviewer on a small diff):**
-- **Section A — Plan Compliance:** per-acceptance-criterion verdicts (✅ / ❌ MISSING / ❌ WRONG / ⚠ EXTRA) for the plan ACs, plus the `in scope` rows of plan.md's AC Traceability table when it has one. **Non-overridable** — any ❌ means dispatch a fix sub-agent, not "note it and move on".
+- **Section A — Plan Compliance:** per-acceptance-criterion verdicts (✅ / ❌ MISSING / ❌ WRONG / ⚠ EXTRA) for the plan ACs, plus the `in scope` rows of plan.md's AC Traceability table when it has one. **Non-overridable once CONFIRMED (§ Finding check)** — any ❌ means dispatch a fix sub-agent, not "note it and move on".
 - **Section B — Code Quality (bugs):** severity-rated findings (Critical / High / Medium / Low). Critical + High gate; the counts per severity come from this section.
 
 **Gating — from the Runtime check (`verifier`, Dispatch 3; only when a `## Live check` path changed):**
@@ -19,7 +19,7 @@ Step 5 dispatches one review sub-agent (small diff) or two in one message (large
 **Non-gating — from agent 2, or the Cleanup section of the single reviewer (reuse + simplification + efficiency + altitude, already collapsed across its own lenses):**
 - Findings carry `file`, `line`, `summary`, and the concrete cost — **no severity**, because they are not bugs. They are applied or skipped with a stated reason, and they **never** gate Step 6 or increment the cycle counter.
 
-Done means Section A = all ✅ **and** Section B = no Critical / no High. Remaining Medium/Low findings and all cleanup findings are applied or explicitly skipped, each skip with its reason recorded in the final report's `## Claude's calls` (Claude tự quyết) (`workflow-steps.md` § Final report) — then re-verified (see `workflow-steps.md` § After applying).
+Done means no CONFIRMED blocking finding (Section A, Section B Critical/High, Runtime AC ❌ / BROKEN). Remaining Medium/Low findings and all cleanup findings are applied or explicitly skipped, each skip with its reason recorded in the final report's `## Claude's calls` (Claude tự quyết) (`workflow-steps.md` § Final report) — then re-verified (see `workflow-steps.md` § After applying).
 
 ## Cycle (max 3 cycles)
 
@@ -71,13 +71,14 @@ LOOP:
      └─────────────────────────────────────────┘
 
   4. Decide and act — do NOT ask the user for approval:
-     IF a CONFIRMED finding is a Section A or Runtime AC ❌, a Runtime BROKEN, or Critical/High
-     (act only on CONFIRMED; REFUTED and UNCLEAR go to `## Claude's calls`):
-       → thrash (a re-review marked a finding NOT RESOLVED, or two consecutive
-         re-reviews both returned CONFIRMED blocking findings in the same function)
-         → the batch goes to `debugger`: root cause, a failing reproducing test
-         first, then the fix; record it in `## Claude's calls`
-       → dispatch a fresh fix sub-agent with the blocking fixes FIRST and
+     IF cycle < 3 AND a CONFIRMED finding is a Section A or Runtime AC ❌, a Runtime
+     BROKEN, or Critical/High (act only on CONFIRMED; REFUTED and UNCLEAR go to
+     `## Claude's calls`):
+       → if thrash (a re-review marked a finding NOT RESOLVED, or two consecutive
+         re-reviews both returned CONFIRMED blocking findings in the same function):
+         the applier is `debugger` (root cause, failing reproducing test first),
+         recorded in `## Claude's calls`; else the applier is `executor`
+       → then dispatch the batch to a fresh applier, blocking fixes FIRST and
          the worthwhile non-blocking ones in the same batch; the
          orchestrator commits the batch (`workflow-steps.md` § Report check,
          status and commit), re-runs tests + the project verification
@@ -89,7 +90,7 @@ LOOP:
          `## Claude's calls` (behaviour change, out of diff scope, breaks a
          documented invariant, false positive)
 
-  5. IF cycle >= 3 AND blocking issues remain (hard cap, max 3: never open a
+  5. Cycle >= 3 with blocking issues left (the ELSE branch of step 4; hard cap, max 3: never open a
      fourth blocking fix batch):
      → stop looping, PROCEED, and report the remaining issues plainly
 

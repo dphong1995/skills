@@ -84,7 +84,7 @@ The orchestrator NEVER edits source files itself during Step 3. Every phase MUST
 | "Writing the plan counts as 'the orchestrator never edits files'" | That gate covers PRODUCTION code in Step 3. Plan files under `plans/` are the orchestrator's own output. |
 | "I'll update the task list at the end" | No. Update `in_progress`/`complete` around EVERY phase, in the same turn. Batching = stale board. |
 | "The phase is obviously done, no need to mark it" | Un-marked = not done. Update the task status before moving on. |
-| "A cleanup finding looks serious, so block Step 6 on it" | Only Section A ❌ and Section B Critical/High gate. If a cleanup lens found a real defect, re-file it under Section B — don't smuggle a gate in through the cleanup bucket. |
+| "A cleanup finding looks serious, so block Step 6 on it" | Only Section A ❌, Section B Critical/High and Runtime AC ❌ / BROKEN gate, once CONFIRMED. If a cleanup lens found a real defect, re-file it under Section B — don't smuggle a gate in through the cleanup bucket. |
 | "Tests were green before the cleanup, so they're green after" | Cleanup edits change working code. Re-run tests AND the project verification gate, every fix batch. |
 | "Re-run the reviewers each cycle" | No. The cleanup lenses run once, on cycle 0. Only the gating reviewer re-dispatches, scoped to the fix. |
 | "Four lenses means four agents" / "Reuse is search-heavy, give it its own agent" | No — one cleanup agent holds all four lenses, Reuse pass first. A separate Reuse agent searched no more than the other cleanup agent and re-reported a third of its findings, leaving the orchestrator to dedup them from summaries. |
@@ -108,7 +108,7 @@ flowchart TD
     D --> F
     F --> H[Step 3: Dispatch sub-agent per phase — delegation starts HERE]
     H --> K[Step 4: Test sub-agent]
-    K --> Rev[Step 5: Review sized by the diff — compliance + bugs gating,<br/>reuse+simplification+efficiency+altitude non-gating,<br/>Runtime check when a Live check path changed]
+    K --> Rev[Step 5: Review sized by the diff — compliance + bugs gating,<br/>reuse+simplification+efficiency+altitude non-gating,<br/>Runtime check when a Live check path changed + Finding check before fix batches]
     Rev --> L[Step 6: Finalize sub-agents]
 ```
 
@@ -117,7 +117,7 @@ flowchart TD
 ## Workflow Overview
 
 ```
-[Setup] → [Design: scout → research → Q&A → approaches → design.md reviewed on a page] → [Plan: orchestrator writes it] → [Phase sub-agents] → [Test sub-agent] → [Review: sized by the diff (workflow-steps.md § Step 5) — compliance+bugs / reuse+simplification+efficiency+altitude / Runtime check] → [Finalize sub-agents]
+[Setup] → [Design: scout → research → Q&A → approaches → design.md reviewed on a page] → [Plan: orchestrator writes it] → [Phase sub-agents] → [Test sub-agent] → [Review: sized by the diff (workflow-steps.md § Step 5) — compliance+bugs / reuse+simplification+efficiency+altitude / Runtime check + Finding check before fix batches] → [Finalize sub-agents]
 
 Steps 1–2 are orchestrator-run (design + plan; except 1A's `explore` scout and the 1E builder check agent). Steps 3–6 are sub-agent-run (execution).
 ```

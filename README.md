@@ -198,7 +198,7 @@ các gate tương tác trong phase design của brainstorm-pro/cook; từ cook S
 - **Mục `## Live check`.** Repo nào muốn cook chạy thử và xem ảnh khi diff chạm một vùng code thì khai báo trong CLAUDE.md gốc: mỗi `### <khu vực>` có `- paths:` (glob), `- run:` (lệnh, có thể lặp), `- look at:` (glob ảnh). Không có mục này thì Step 5 chạy như cũ và ghi "Runtime check: skipped". Lệnh khai báo không được hiện cửa sổ hay kích hoạt app; `verifier` chỉ chạy đúng các lệnh `run`.
 - **`agents/` là dependency thật, không phải tuỳ chọn.** `cook` dispatch theo tên:
   `executor`, `code-reviewer`, `test-engineer`, `code-simplifier`, `writer`,
-  `designer`, `debugger`, `explore`, `document-specialist`, `verifier` (Runtime check). Thiếu thì cook vẫn chạy
+  `designer`, `debugger`, `explore`, `document-specialist`, `verifier` (Runtime check, Finding check). Thiếu thì cook vẫn chạy
   nhưng phải fallback sang agent mặc định và chất lượng giảm.
 - **Không có CLI `ck`.** Tên `ck-plan` chỉ là di sản đặt tên; mọi thứ chạy trong skill.
 - **`routing-bug-fixes-to-cook` cần 1 dòng trong `~/.claude/CLAUDE.md`** để được gọi đúng lúc (thêm

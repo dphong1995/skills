@@ -456,7 +456,7 @@ Lens blocks (all four, in this order):
 
 ### Dispatch 3 — runtime check (gating)
 
-Runs only when the Live check trigger matched (§ Step 5 above), one `verifier` per repo with matching areas, in the same message as the reviewer(s). Agent definition `agents/verifier.md` is overridden by the prompt below.
+Runs only when the Live check trigger matched (§ Step 5 above), one `verifier` per repo with matching areas, in the same message as the reviewer(s). On a re-run, add a `## Findings the batch fixed (verbatim)` section, use `review-NN.diff` and `<base>` = FIX_BASE, and return RESOLVED / NOT RESOLVED per Runtime finding. Agent definition `agents/verifier.md` is overridden by the prompt below.
 
 ```
 Agent(
@@ -486,14 +486,12 @@ Agent(
   Step 4 evidence, for reference only: <Step 4 report>
 
   <the "Do not trust the reports" and "Outside the diff" parts of the Reviewer evidence block, verbatim;
-  NOT its "Evidence already gathered" part, and say the package path is <repo path>>
+  NOT its "Evidence already gathered" part, and give the repo path `<repo path>` the run commands start from
 
   ## Rules
   - Run each `run` command first, from the repo root unless the command says otherwise.
-  - A `run` command that fails: re-run it at <base> in a temporary detached worktree
-    (`git worktree add --detach <scratch dir> <base>`, removed afterwards). A failure on both is
-    reported as "pre-existing failure", not BROKEN.
-  - Never set `UPDATE_SNAPSHOTS`. Never run any command other than the `run` commands. Never run
+  - A run command that fails: re-run it at <base> exactly as § Step 4 re-runs a pre-existing failure (same worktree setup per the Git worktrees rule, same-assertion rule: confirm only when the same assertion fails on the base); a confirmed one goes under Pre-existing, not BROKEN.
+  - Never set `UPDATE_SNAPSHOTS`. Never run any command other than the `run` commands and the git commands named in these rules; build output and generated images the `run` commands write are expected. Never run
     anything that shows a window or activates an app.
   - Compare each committed reference image changed in the diff with its base version
     (`git show <base>:<path>`). Generated images with no committed reference are new: view them as new.
@@ -509,6 +507,8 @@ Agent(
     AC or element AND naming the image region.
   - COSMETIC: every other visual defect.
   Each with image, region and suspect file:line.
+  ### Pre-existing
+  Each `run` failure confirmed at <base>, with the command and the failing assertion.
   ### Commands run
   One `Commands run: <command> → <result>` line per command.
   ### Verdict
@@ -527,7 +527,7 @@ Wait for every reviewer, then split the findings. This split is the whole point 
 | **Blocking** | Section B Critical or High | Dispatch a fix sub-agent, cycle++ |
 | **Blocking** | Runtime AC ❌ (Dispatch 3) | Like Section A: dispatch a fix sub-agent, cycle++ |
 | **Blocking** | Runtime BROKEN | Graded High: dispatch a fix sub-agent, cycle++ |
-| **Non-blocking** | Pre-existing (a reviewer's Pre-existing section, or a Finding check REFUTED "pre-existing") | No severity, never gates; listed under `## For you to decide` |
+| **Non-blocking** | Pre-existing (a reviewer's Pre-existing section, Dispatch 3's Pre-existing, or a Finding check REFUTED "pre-existing") | No severity, never gates; listed under `## For you to decide` |
 | **Non-blocking** | Runtime COSMETIC | Apply-or-skip-with-reason, like cleanup; never increments the cycle counter |
 | **Non-blocking** | Runtime `⚠ NOT VISIBLE` | Record "AC checked by tests only" in `## Claude's calls` |
 | **Non-blocking** | Section B Medium / Low | Apply what is worth applying; record each skip and why in `## Claude's calls` |
@@ -541,7 +541,7 @@ Applier: `code-simplifier` for a cleanup-only batch (it is purpose-built for thi
 
 ### Finding check
 
-Runs after every review pass (cycle 0 and each re-review) when there is at least one of: a Section A ❌, a Section B Critical/High, a Runtime AC ❌ or BROKEN, a Critical/High under a reviewer's Open Questions, a `⚠️ CANNOT VERIFY` line. Otherwise skip it. One `verifier` checks the whole batch.
+Runs after every review pass (cycle 0 and each re-review) when there is at least one of: a Section A ❌, a Section B Critical/High, a Runtime AC ❌ or BROKEN, a Critical/High under a reviewer's Open Questions, a `⚠️ CANNOT VERIFY` line. Otherwise skip it. One `verifier` checks the whole batch. On a re-review, the inputs are its new Critical/High issues (and new Runtime AC ❌ / BROKEN); a NOT RESOLVED finding keeps its earlier CONFIRMED status and is not re-checked.
 
 ```
 Agent(
@@ -565,6 +565,7 @@ Agent(
   - For each item, read the code at its file:line and the evidence the reviewer gave.
   - Run at most one narrow test or command per item, only when reading cannot settle it.
   - Do not look for new findings. Do not propose alternative fixes. Do not dispatch subagents.
+  - Never run anything that shows a window or activates an app; never set UPDATE_SNAPSHOTS. For a Runtime item, re-run only that area's declared run command.
   - You are read-only: do not change the working tree, the index, HEAD or any branch.
 
   ## Return, per item
@@ -576,7 +577,7 @@ Agent(
 )
 ```
 
-Using the result: CONFIRMED → the blocking bucket at the final grade. REFUTED and UNCLEAR → `## Claude's calls` (item, result, reason). REFUTED "pre-existing" → `## For you to decide` (Pre-existing) instead. A Runtime BROKEN with a visual defect that names no image region is lowered to COSMETIC by the check; a crash, hang or failing `run` command is not.
+Using the result: CONFIRMED → the bucket its final grade puts it in (Section A ❌, Section B Critical/High, Runtime AC ❌, BROKEN block; lower grades are non-blocking). REFUTED and UNCLEAR → `## Claude's calls` (item, result, reason). REFUTED "pre-existing" → `## For you to decide` (Pre-existing) instead. A Runtime BROKEN with a visual defect that names no image region is lowered to COSMETIC by the check; a crash, hang or failing `run` command is not.
 
 ### After applying — re-verify (MANDATORY)
 
@@ -592,7 +593,7 @@ Skipping this is how a "quality pass" ships a regression. `simplify` on its own 
 
 **Thrash:** when a re-review marks a finding NOT RESOLVED, or two consecutive re-reviews both return CONFIRMED blocking findings (Runtime BROKEN included) in the same function, the next fix batch goes to `debugger`: find the root cause, write a failing test that reproduces it first, then fix. Record the routing in `## Claude's calls`.
 
-**Audit before Step 6:** every committed "Fix review findings (cycle N)" batch must have `review-NN.diff` and a re-review report. A missing one: write the package and run the re-review now, without opening a fourth batch. Record the thrash routing, if any, in `## Claude's calls`.
+**Audit before Step 6:** every committed "Fix review findings (cycle N)" batch must have `review-NN.diff` and a re-review report. A missing one: write the package and run the re-review now, without opening a fourth batch.
 
 Scoped re-review (both diff sizes) — replaces Dispatch 1/2 on every re-review (cycle > 0):
 
@@ -618,6 +619,7 @@ Agent(
   - For each finding above: RESOLVED / NOT RESOLVED, with file:line.
   - New issues only in the changed lines, graded on Dispatch 1/2's
     Critical / High / Medium / Low scale, each with file:line and a fix.
+    Every Critical/High must carry evidence: a failing test, a command with its output, or the code path step by step with file:line.
   - Final verdict as in Dispatch 1/2: APPROVED (every finding RESOLVED, no new
     Critical or High) or CHANGES REQUIRED.
   """
@@ -709,7 +711,7 @@ After `## Claude's calls`, add:
 - <issue, file:line>
 ```
 
-"Plan gaps" lists the reviewer's Plan gaps; "Pre-existing" lists the reviewer's Pre-existing items and findings the Finding check REFUTED as "pre-existing". Omit the whole section when both lists are empty, and omit an empty list. Headings are written in the user's language (names above).
+"Plan gaps" lists the reviewer's Plan gaps; "Pre-existing" lists the reviewer's Pre-existing items, Dispatch 3's Pre-existing and findings the Finding check REFUTED as "pre-existing". Omit the whole section when both lists are empty, and omit an empty list. Headings are written in the user's language (names above).
 
 ## Workflow Summary
 
@@ -717,7 +719,7 @@ Legend: `[R]` = human gate
 
 ```
 0 → 1A scout → 1B research → 1C Q&A [R per round] → playback card [R] → 1D approaches → 1E design.md → builder check → review page [R, notes per section]
-  → 2 (orchestrator writes plan + self-review) → 3 (sub-agent per phase; NEEDS_CONTEXT question [R, only when hard to change]) → 4 (test sub-agent) → 5 (review sized by the diff: 1 or 2 reviewers) → 6 (finalize sub-agents; push question [R], with its merge follow-up)
+  → 2 (orchestrator writes plan + self-review) → 3 (sub-agent per phase; NEEDS_CONTEXT question [R, only when hard to change]) → 4 (test sub-agent) → 5 (review sized by the diff: 1 or 2 reviewers; `verifier` for the Runtime check when a Live check path changed and the Finding check when there are blocking findings) → 6 (finalize sub-agents; push question [R], with its merge follow-up)
 ```
 
 Human gates live in Step 1. Steps 2–6 run straight through (exceptions: `../SKILL.md` § Gates, marked `[R]` above).
@@ -730,7 +732,7 @@ If a plan path is provided at Step 0, skip Steps 1–2 and start at Step 3.
 - **MANDATORY SUBAGENT DELEGATION:** Steps 3, 4, 5, 6 MUST spawn subagents via the `Agent` tool. DO NOT implement, test, or review directly. Resolve every type through `subagent-patterns.md` § Agent Name Mapping first.
   - Step 3: `executor` / `designer` for frontend (one per phase)
   - Step 4: `test-engineer` (and `debugger` if failures)
-  - Step 5: `code-reviewer` sized by the diff (§ Step 5) — small: one reviewer returning Section A, Section B and a Cleanup section; large: two in ONE message — agent 1 returns the dual-section gating report (Section A plan-compliance, non-overridable + Section B bugs by severity); agent 2 runs Reuse (first) + Simplification + Efficiency + Altitude and collapses findings that are one change. Cleanup lenses never gate. Re-verify after any fix batch.
+  - Step 5: `code-reviewer` sized by the diff (§ Step 5) — small: one reviewer returning Section A, Section B and a Cleanup section; large: two in ONE message — agent 1 returns the dual-section gating report (Section A plan-compliance, non-overridable once CONFIRMED + Section B bugs by severity); agent 2 runs Reuse (first) + Simplification + Efficiency + Altitude and collapses findings that are one change. Cleanup lenses never gate. Re-verify after any fix batch. A `verifier` (opus) runs the Runtime check when a Live check path changed and the Finding check when there are blocking findings.
   - Step 6: `executor` (sync-back), `writer` (docs); the orchestrator commits and pushes
 - **ALWAYS** create a task list — use `TaskCreate` one task per phase file (§ Step 3 Task hydration), with priority order and dependencies (or `TodoWrite` if Task tools unavailable). This is never skipped.
 - **ALWAYS** keep the task list updated in lock-step, not just at the end:
