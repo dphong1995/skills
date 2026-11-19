@@ -295,14 +295,14 @@ contract, the other users of a shared helper, an existing helper the diff could 
 focused check per risk. End with `Checked outside the diff: <risk → what you read>` or `none`.
 When something cannot be verified from the diff and the evidence, write
 `⚠️ CANNOT VERIFY: <what> — <what would settle it>` instead of searching further; the
-orchestrator settles it.
+Finding check settles it.
 
 You are read-only: do not change the working tree, the index, HEAD or any branch.
 ```
 
 - For the cleanup reviewer, Lens R's search counts as a named risk. The `Reuse searched:` line stays.
 - Give a reviewer only the plan, the package, the implementer reports and the evidence, as they are. Never tell a reviewer which findings are known, what to skip, or how severe something is.
-- Settle every `⚠️ CANNOT VERIFY` line yourself, before bucketing, by reading code or running one command. A confirmed problem becomes a finding in the bucket its severity puts it in; anything else goes to `## Claude's calls`.
+- Every `⚠️ CANNOT VERIFY` line goes to the Finding check (§ Finding check below); do not read code to settle it yourself.
 
 ### Dispatch 1/2 — compliance + bugs (gating)
 
@@ -343,6 +343,9 @@ Agent(
   no verdict; they do not count against "all ✅".
   This section MUST be exhaustive — every AC, no skips. Also flag work
   that lives outside the file ownership declared in the plan.
+  Plan gaps (non-gating): List cases the change clearly affects that plan.md, the phase files and
+  the design/spec do not mention (an input, a branch, a platform, a state). Each: the case, file:line
+  where the code meets it, and what happens today. Non-gating: do not mark them ❌.
 
   ### Section B — Code Quality (severity-rated)
   Standard severity-rated review of the diff:
@@ -351,6 +354,11 @@ Agent(
     - **Medium:** maintainability, naming, duplication, SOLID/design concerns, weak tests
     - **Low:** nits, style, comment quality
   For each finding, cite file:line and propose a concrete fix.
+  Not blocking findings: issues already present at <base> in code the diff did not change (report
+  them under **Pre-existing**, no severity); what the Step 4 lint/typecheck/test evidence already
+  covers; style nits; code with a deliberate lint suppression and a reason. Every Critical/High must
+  carry evidence: a failing test, a command with its output, or the code path step by step with
+  file:line.
 
   ## Final verdict
   - ✅ APPROVED — Section A all ✅, Section B has no Critical and no High
@@ -511,14 +519,15 @@ Agent(
 
 ### Verdict — gating vs non-gating
 
-Wait for every reviewer, then split the findings. This split is the whole point of the step; do not blend them into one score.
+Wait for every reviewer, then split the findings. This split is the whole point of the step; do not blend them into one score. Run the Finding check (§ Finding check) first: only CONFIRMED findings enter a blocking bucket below, Section A ❌ included.
 
 | Bucket | Source | Effect |
 |--------|--------|--------|
-| **Blocking** | Section A any ❌ | **Non-overridable.** Dispatch a fix sub-agent or abort. Nothing else. |
+| **Blocking** | Section A any ❌ | **Non-overridable once CONFIRMED** (§ Finding check). Dispatch a fix sub-agent or abort. Nothing else. |
 | **Blocking** | Section B Critical or High | Dispatch a fix sub-agent, cycle++ |
 | **Blocking** | Runtime AC ❌ (Dispatch 3) | Like Section A: dispatch a fix sub-agent, cycle++ |
 | **Blocking** | Runtime BROKEN | Graded High: dispatch a fix sub-agent, cycle++ |
+| **Non-blocking** | Pre-existing (a reviewer's Pre-existing section, or a Finding check REFUTED "pre-existing") | No severity, never gates; listed under `## For you to decide` |
 | **Non-blocking** | Runtime COSMETIC | Apply-or-skip-with-reason, like cleanup; never increments the cycle counter |
 | **Non-blocking** | Runtime `⚠ NOT VISIBLE` | Record "AC checked by tests only" in `## Claude's calls` |
 | **Non-blocking** | Section B Medium / Low | Apply what is worth applying; record each skip and why in `## Claude's calls` |
@@ -530,6 +539,45 @@ Wait for every reviewer, then split the findings. This split is the whole point 
 
 Applier: `code-simplifier` for a cleanup-only batch (it is purpose-built for this and preserves behaviour), `executor` for anything containing a blocking fix, `debugger` when the blocking fix needs root-cause work first. Dispatch with `model: "sonnet"`. Its prompt carries the findings verbatim and the package path (`<plan-dir>/review/review-NN.diff`), and ends with <Report contract block, verbatim>. Record `FIX_BASE` before dispatching a batch with a blocking fix (§ Review package). Every batch is committed after it returns and passes § Report check, status and commit: its files (`<ticket> - Fix review findings (cycle N)`; N is the cycle the fix batch opens; `<ticket> - Apply review cleanup` for a cleanup-only batch).
 
+### Finding check
+
+Runs after every review pass (cycle 0 and each re-review) when there is at least one of: a Section A ❌, a Section B Critical/High, a Runtime AC ❌ or BROKEN, a Critical/High under a reviewer's Open Questions, a `⚠️ CANNOT VERIFY` line. Otherwise skip it. One `verifier` checks the whole batch.
+
+```
+Agent(
+  subagent_type="verifier",
+  model="opus",
+  description="Finding check",
+  prompt="""
+  Check each reported finding below against the code. Your agent definition's investigation protocol,
+  approval rule and output format do not apply here: check only the items below, and report in the
+  format below.
+
+  ## Items (verbatim from the reviewers)
+  <Section A ❌ items, Section B Critical/High, Runtime AC ❌ / BROKEN, Critical/High under Open
+  Questions, `⚠️ CANNOT VERIFY` lines; numbered>
+
+  ## Diff and plan
+  Base: <base>. Read <plan-dir>/review/review-NN.diff once.
+  Plan files: <plan-dir>/plan.md, design.md, spec.md (if any), phase-01-*.md, ... (list ALL verbatim)
+
+  ## Rules
+  - For each item, read the code at its file:line and the evidence the reviewer gave.
+  - Run at most one narrow test or command per item, only when reading cannot settle it.
+  - Do not look for new findings. Do not propose alternative fixes. Do not dispatch subagents.
+  - You are read-only: do not change the working tree, the index, HEAD or any branch.
+
+  ## Return, per item
+  - CONFIRMED: the final grade (kept or lowered) and the reason.
+  - REFUTED: the counter-evidence with file:line. An issue already present at <base> in code the diff
+    did not change is REFUTED with the reason "pre-existing".
+  - UNCLEAR: what is missing to decide.
+  """
+)
+```
+
+Using the result: CONFIRMED → the blocking bucket at the final grade. REFUTED and UNCLEAR → `## Claude's calls` (item, result, reason). REFUTED "pre-existing" → `## For you to decide` (Pre-existing) instead. A Runtime BROKEN with a visual defect that names no image region is lowered to COSMETIC by the check; a crash, hang or failing `run` command is not.
+
 ### After applying — re-verify (MANDATORY)
 
 Cleanup edits change working code, so the step is NOT done when the fixes land:
@@ -540,7 +588,11 @@ Cleanup edits change working code, so the step is NOT done when the fixes land:
 
 Skipping this is how a "quality pass" ships a regression. `simplify` on its own has no verification phase — that gap is closed here, not inherited.
 
-**Cycle (max 3):** as defined in `review-cycle.md`. **Re-dispatch only the gating reviewer** (agent 1, or the single reviewer without its Cleanup section) on every re-review — the cleanup lenses run **once**, on the first pass. Dispatch 3 is re-dispatched too, scoped to the fixed Runtime findings and the changed images, only when `git diff --name-only FIX_BASE..HEAD` hits a matching `paths` glob; at most one Runtime check per cycle. Re-running them per cycle repeats the review cost for findings you already hold.
+**Cycle (max 3, hard):** as defined in `review-cycle.md`; no fourth blocking fix batch is ever opened, and a late re-review run by the audit below does not open one. **Re-dispatch only the gating reviewer** (agent 1, or the single reviewer without its Cleanup section) on every re-review — the cleanup lenses run **once**, on the first pass. Dispatch 3 is re-dispatched too, scoped to the fixed Runtime findings and the changed images, only when `git diff --name-only FIX_BASE..HEAD` hits a matching `paths` glob; at most one Runtime check per cycle. Re-running them per cycle repeats the review cost for findings you already hold.
+
+**Thrash:** when a re-review marks a finding NOT RESOLVED, or two consecutive re-reviews both return CONFIRMED blocking findings (Runtime BROKEN included) in the same function, the next fix batch goes to `debugger`: find the root cause, write a failing test that reproduces it first, then fix. Record the routing in `## Claude's calls`.
+
+**Audit before Step 6:** every committed "Fix review findings (cycle N)" batch must have `review-NN.diff` and a re-review report. A missing one: write the package and run the re-review now, without opening a fourth batch. Record the thrash routing, if any, in `## Claude's calls`.
 
 Scoped re-review (both diff sizes) — replaces Dispatch 1/2 on every re-review (cycle > 0):
 
@@ -556,6 +608,10 @@ Agent(
   <paste each blocking finding; when plan.md has an AC Traceability table, its Section A ❌ rows
   included, with their AC text from <plan-root>/jira/<KEY>.md>
 
+  ## Earlier cycles
+  <for each earlier fix cycle: the findings it fixed and a summary of each fix, verbatim from the
+  fix-batch reports; "None" in cycle 1. Do not suggest a fix that already failed.>
+
   <Reviewer evidence block, verbatim, with review-NN.diff, <base> = FIX_BASE, and the re-verify evidence>
 
   ## Return
@@ -568,9 +624,9 @@ Agent(
 )
 ```
 
-**Forbidden:** patching code in-line based on the review. Fixes are always dispatched to a sub-agent. Running the cleanup lenses more than once per cook run. Running the Runtime check more than once per cycle. Letting a cleanup finding block Step 6. Telling a reviewer which findings are known, what to skip, or how severe something is.
+**Forbidden:** patching code in-line based on the review. Fixes are always dispatched to a sub-agent. Running the cleanup lenses more than once per cook run. Running the Runtime check more than once per cycle. Opening a fourth blocking fix batch. Sending a blocking finding to a fix batch before the Finding check CONFIRMED it. Letting a cleanup finding block Step 6. Telling a reviewer which findings are known, what to skip, or how severe something is.
 
-**Output:** `✓ Step 5: Review ([N] lines / [M] files → [1|2] reviewer[s]) — Section A [✅|❌ N gaps] / Section B [N Critical, N High, N Medium, N Low] / Runtime [skipped|✅|❌ N AC, N broken, N cosmetic] / Cleanup [N applied, M skipped] — re-verify [✅|❌] — [Approved|Awaiting fix]`
+**Output:** `✓ Step 5: Review ([N] lines / [M] files → [1|2] reviewer[s]) — Section A [✅|❌ N gaps] / Section B [N Critical, N High, N Medium, N Low] / Verified [N confirmed, N refuted, N unclear] / Runtime [skipped|✅|❌ N AC, N broken, N cosmetic] / Cleanup [N applied, M skipped] — re-verify [✅|❌] — [Approved|Awaiting fix]`
 
 ## Step 6: Finalize
 
@@ -621,13 +677,18 @@ The heading, the column names and the "None" line are written in the user's lang
 | Claude's calls | Claude tự quyết |
 | Step / Decided / Why / If wrong, fix by | Bước / Đã quyết / Vì sao / Sai thì sửa gì |
 | None | Không có |
+| For you to decide | Để bạn quyết |
+| Plan gaps | Plan bỏ sót |
+| Pre-existing | Lỗi có sẵn |
 
 Sources of the rows:
 - Choices the plan made that the design did not (Step 2, only when cook wrote the plan).
 - The implementers' `Rulings` lines.
 - NEEDS_CONTEXT answers Claude ruled on itself.
 - Plan changes made during Step 3 (a split phase).
-- The outcome of each `⚠️ CANNOT VERIFY` line.
+- The outcome of each `⚠️ CANNOT VERIFY` line (from the Finding check).
+- REFUTED / UNCLEAR findings from the Finding check.
+- Thrash routing to `debugger`.
 - Skipped findings, with the reason.
 - Files that were not committed.
 - Blocking findings still open after the 3 cycles.
@@ -637,6 +698,18 @@ Sources of the rows:
 - Branch and worktree creation (§ Step 3).
 
 With no rows, write "None" (Không có).
+
+After `## Claude's calls`, add:
+
+```markdown
+## For you to decide
+### Plan gaps
+- <case, file:line, what happens today>
+### Pre-existing
+- <issue, file:line>
+```
+
+"Plan gaps" lists the reviewer's Plan gaps; "Pre-existing" lists the reviewer's Pre-existing items and findings the Finding check REFUTED as "pre-existing". Omit the whole section when both lists are empty, and omit an empty list. Headings are written in the user's language (names above).
 
 ## Workflow Summary
 

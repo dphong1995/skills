@@ -14,6 +14,8 @@ Step 5 dispatches one review sub-agent (small diff) or two in one message (large
 - **Runtime AC:** ✅ / ❌ WRONG / ❌ MISSING / ⚠ NOT VISIBLE. Any ❌ blocks like Section A; `⚠ NOT VISIBLE` does not block ("AC checked by tests only" in `## Claude's calls`).
 - **Defects:** BROKEN blocks (graded High); COSMETIC is non-blocking, apply-or-skip.
 
+**Finding check (`verifier`, `workflow-steps.md` § Finding check):** reviewers may park a low-confidence Critical/High under "Open Questions" and write `⚠️ CANNOT VERIFY` lines; both go to the Finding check with every blocking finding. Only CONFIRMED findings gate. A reviewer's **Pre-existing** section (issues already at base in unchanged code) is non-gating and goes to the final report's `## For you to decide`.
+
 **Non-gating — from agent 2, or the Cleanup section of the single reviewer (reuse + simplification + efficiency + altitude, already collapsed across its own lenses):**
 - Findings carry `file`, `line`, `summary`, and the concrete cost — **no severity**, because they are not bugs. They are applied or skipped with a stated reason, and they **never** gate Step 6 or increment the cycle counter.
 
@@ -34,8 +36,10 @@ LOOP:
                   + Dispatch 3 again only when `git diff --name-only FIX_BASE..HEAD`
                   hits a matching Live check path (max once per cycle)
 
-  2. Settle every `⚠️ CANNOT VERIFY` line first (`workflow-steps.md` § Review package).
-     Dedup across every agent that reported.
+  2. Finding check (`workflow-steps.md` § Finding check): when there is a blocking
+     finding, an Open Questions Critical/High or a `⚠️ CANNOT VERIFY` line, one
+     `verifier` returns CONFIRMED / REFUTED / UNCLEAR per item; otherwise skip.
+     Then dedup across every agent that reported.
      Overlap between a cleanup lens and Section B → keep Section B's copy.
 
   3. DISPLAY FINDINGS:
@@ -49,6 +53,9 @@ LOOP:
      │  [✅ all N criteria | ❌ N gaps]         │
      │ Runtime — [skipped|✅|❌ N AC, N broken, │
      │  N cosmetic]                            │
+     │ Verified [N confirmed, N refuted,       │
+     │  N unclear]                             │
+     │ Pre-existing ([N]): - [file:line]       │
      │ Blocking — Critical/High ([N])          │
      │  - [issue] at [file:line]               │
      │ Medium/Low ([N]): apply or skip         │
@@ -64,7 +71,12 @@ LOOP:
      └─────────────────────────────────────────┘
 
   4. Decide and act — do NOT ask the user for approval:
-     IF Section A or Runtime AC has any ❌ OR Runtime BROKEN > 0 OR critical_count > 0 OR high_count > 0:
+     IF a CONFIRMED finding is a Section A or Runtime AC ❌, a Runtime BROKEN, or Critical/High
+     (act only on CONFIRMED; REFUTED and UNCLEAR go to `## Claude's calls`):
+       → thrash (a re-review marked a finding NOT RESOLVED, or two consecutive
+         re-reviews both returned CONFIRMED blocking findings in the same function)
+         → the batch goes to `debugger`: root cause, a failing reproducing test
+         first, then the fix; record it in `## Claude's calls`
        → dispatch a fresh fix sub-agent with the blocking fixes FIRST and
          the worthwhile non-blocking ones in the same batch; the
          orchestrator commits the batch (`workflow-steps.md` § Report check,
@@ -77,8 +89,14 @@ LOOP:
          `## Claude's calls` (behaviour change, out of diff scope, breaks a
          documented invariant, false positive)
 
-  5. IF cycle >= 3 AND blocking issues remain:
+  5. IF cycle >= 3 AND blocking issues remain (hard cap, max 3: never open a
+     fourth blocking fix batch):
      → stop looping, PROCEED, and report the remaining issues plainly
+
+  6. Re-review audit, before PROCEED to Step 6: every committed "Fix review
+     findings (cycle N)" batch must have `review-NN.diff` and a re-review report.
+     A missing one → write the package and run the re-review now (it counts
+     within the 3 and opens no fourth batch)
 ```
 
 **Cleanup findings never drive the loop.** They are applied once, in whichever
@@ -90,6 +108,8 @@ Section A still runs the cleanup lenses exactly once.
 ## Severity
 
 Section B's severity scale is the one in agent 1's prompt (`workflow-steps.md` § Dispatch 1/2). It is the only scale; do not grade against any other list.
+
+**Pre-existing** (an issue already at base in code the diff did not change) has no severity and never gates; it is listed under `## For you to decide`.
 
 A cleanup finding moves to Section B only when the cleanup reviewer labelled it OUT-OF-LENS. Grade it on agent 1's scale; it gates only if Critical or High. Never promote an R/A/B/C finding yourself because it looks serious: duplication, coupling, YAGNI/KISS and wasted work stay cleanup.
 
