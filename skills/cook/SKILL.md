@@ -108,7 +108,7 @@ flowchart TD
     D --> F
     F --> H[Step 3: Dispatch sub-agent per phase — delegation starts HERE]
     H --> K[Step 4: Test sub-agent]
-    K --> Rev[Step 5: Review sized by the diff — compliance + bugs gating,<br/>reuse+simplification+efficiency+altitude non-gating]
+    K --> Rev[Step 5: Review sized by the diff — compliance + bugs gating,<br/>reuse+simplification+efficiency+altitude non-gating,<br/>Runtime check when a Live check path changed]
     Rev --> L[Step 6: Finalize sub-agents]
 ```
 
@@ -117,7 +117,7 @@ flowchart TD
 ## Workflow Overview
 
 ```
-[Setup] → [Design: scout → research → Q&A → approaches → design.md reviewed on a page] → [Plan: orchestrator writes it] → [Phase sub-agents] → [Test sub-agent] → [Review: sized by the diff (workflow-steps.md § Step 5) — compliance+bugs / reuse+simplification+efficiency+altitude] → [Finalize sub-agents]
+[Setup] → [Design: scout → research → Q&A → approaches → design.md reviewed on a page] → [Plan: orchestrator writes it] → [Phase sub-agents] → [Test sub-agent] → [Review: sized by the diff (workflow-steps.md § Step 5) — compliance+bugs / reuse+simplification+efficiency+altitude / Runtime check] → [Finalize sub-agents]
 
 Steps 1–2 are orchestrator-run (design + plan; except 1A's `explore` scout and the 1E builder check agent). Steps 3–6 are sub-agent-run (execution).
 ```
@@ -136,7 +136,7 @@ Step 1 is interactive (Q&A rounds, the design review page). **From Step 2 onward
 
 **No approval stops from Step 2 onward**, with two exceptions: a hard-to-change NEEDS_CONTEXT question in Step 3 (`workflow-steps.md` § Report check, status and commit), asked while independent phases keep running, and the Step 6 push question (one per repo), with its follow-up when the pre-push merge refuses to start or conflicts. Plan → implement → test → review → finalize runs end to end without pausing for the user. Report progress as you go (`✓ Step [N]: …`) so the user can interrupt if they want to redirect, but never block waiting for a go-ahead. In particular, once implementation and testing finish, go straight into the review in the same turn.
 
-The review (Step 5) is **sized by the diff** (workflow-steps.md § Step 5: one reviewer for a small diff, else a **single fan-out of two sub-agents in one message**): on a large diff agent 1 returns the dual-section gating report — (A) plan-compliance vs the acceptance criteria carried into `plan.md` from the approved design and per-phase "Done when" blocks, (B) severity-rated bugs — while agent 2 runs the four cleanup lenses borrowed from the `simplify` skill (Reuse first, then Simplification, Efficiency and Altitude) in one head, so it can collapse findings that are really one change at the mechanism level; on a small diff the single reviewer returns both, with the lenses as a non-gating Cleanup section. Re-reviews after a fix batch cover only the fix. Section A verdicts are non-overridable and Section B Critical/High gate; **cleanup findings never gate and never increment the cycle counter.** After any fix batch, re-run the tests AND the project's verification gate — cleanup edits touch working code.
+The review (Step 5) is **sized by the diff** (workflow-steps.md § Step 5: one reviewer for a small diff, else a **single fan-out of two sub-agents in one message**): on a large diff agent 1 returns the dual-section gating report — (A) plan-compliance vs the acceptance criteria carried into `plan.md` from the approved design and per-phase "Done when" blocks, (B) severity-rated bugs — while agent 2 runs the four cleanup lenses borrowed from the `simplify` skill (Reuse first, then Simplification, Efficiency and Altitude) in one head, so it can collapse findings that are really one change at the mechanism level; on a small diff the single reviewer returns both, with the lenses as a non-gating Cleanup section. When the diff touches a path listed in the repo's CLAUDE.md `## Live check`, a `verifier` (opus) runs the declared commands in the same message as the reviewers and checks the images against the ACs (Runtime check; Runtime AC ❌ and BROKEN gate). Re-reviews after a fix batch cover only the fix. Section A verdicts are non-overridable and Section B Critical/High gate; **cleanup findings never gate and never increment the cycle counter.** After any fix batch, re-run the tests AND the project's verification gate — cleanup edits touch working code.
 
 **Always enforced:**
 - **Testing:** 100% pass required (a failure confirmed on the Step 3 start commit excepted, `references/workflow-steps.md` § Step 4)
@@ -158,6 +158,7 @@ The review (Step 5) is **sized by the diff** (workflow-steps.md § Step 5: one r
 | Implementation (per phase) | `executor` (or `designer` for frontend) | **MUST** spawn one per phase. Dispatch with `model: "sonnet"`. Prompt carries the Report contract, then the `references/subagent-patterns.md` § Every prompt lines |
 | Testing | `test-engineer`, `debugger` | **MUST** spawn. Dispatch with `model: "sonnet"` |
 | Review (compliance + bugs + cleanup) | `code-reviewer` (1 or 2, sized by the diff) | **MUST** spawn. Small diff: one reviewer, gating report + non-gating Cleanup (sized by the diff, workflow-steps.md § Step 5). Large: both in ONE message — agent 1 = dual-section gating report; agent 2 = Reuse+Simplification+Efficiency+Altitude (non-gating). Dispatch with `model: "opus"` |
+| Runtime check | `verifier` | Only when a `## Live check` path changed; same message as the reviewers. Dispatch with `model: "opus"` |
 | Fix application | `code-simplifier` (cleanup-only batch) / `executor` / `debugger` | Dispatch with `model: "sonnet"`. Prompt carries the Report contract, then the `references/subagent-patterns.md` § Every prompt lines |
 | Finalize | sync-back (`executor`), docs (`writer`) | **MUST** spawn both. Dispatch each with `model: "sonnet"`. The orchestrator commits and pushes |
 

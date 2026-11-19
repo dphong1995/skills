@@ -157,7 +157,7 @@ skills/
 │                     `tests/`, `DEVELOPING.md`
 ├── ck-plan/          Lập kế hoạch: research → phân tích codebase → plan.md + phase-XX-*.md (mẫu và luật viết trong `references/plan-writing.md`; Global Constraints, Review Focus, Interfaces; tự kiểm plan)
 │                     → tự động gọi cook
-├── cook/             Triển khai: mỗi phase một subagent, orchestrator commit sau mỗi phase → test → review theo kích thước diff (diff nhỏ 1 reviewer, diff lớn 2) → finalize, hỏi push
+├── cook/             Triển khai: mỗi phase một subagent, orchestrator commit sau mỗi phase → test → review theo kích thước diff (diff nhỏ 1 reviewer, diff lớn 2; thêm Runtime check do `verifier` chạy khi diff chạm đường dẫn trong mục `## Live check` của CLAUDE.md) → finalize, hỏi push
 └── routing-bug-fixes-to-cook/
                       Cổng sau khi debug xong root cause: fix ≥ 3 file production, > 50 dòng
                       production (đếm gộp các repo) hoặc có nhiều cách sửa → gọi cook (Step 1 rút
@@ -195,9 +195,10 @@ các gate tương tác trong phase design của brainstorm-pro/cook; từ cook S
 - **3 skill phải nằm cạnh nhau trong cùng một thư mục.** `cook/SKILL.md` đọc
   `../ck-plan/references/plan-writing.md`, `../ck-plan/references/plan-organization.md` và `../ck-plan/references/output-standards.md` bằng
   đường dẫn tương đối để lấy format plan. Tách ra là hỏng.
+- **Mục `## Live check`.** Repo nào muốn cook chạy thử và xem ảnh khi diff chạm một vùng code thì khai báo trong CLAUDE.md gốc: mỗi `### <khu vực>` có `- paths:` (glob), `- run:` (lệnh, có thể lặp), `- look at:` (glob ảnh). Không có mục này thì Step 5 chạy như cũ và ghi "Runtime check: skipped". Lệnh khai báo không được hiện cửa sổ hay kích hoạt app; `verifier` chỉ chạy đúng các lệnh `run`.
 - **`agents/` là dependency thật, không phải tuỳ chọn.** `cook` dispatch theo tên:
   `executor`, `code-reviewer`, `test-engineer`, `code-simplifier`, `writer`,
-  `designer`, `debugger`, `explore`, `document-specialist`. Thiếu thì cook vẫn chạy
+  `designer`, `debugger`, `explore`, `document-specialist`, `verifier` (Runtime check). Thiếu thì cook vẫn chạy
   nhưng phải fallback sang agent mặc định và chất lượng giảm.
 - **Không có CLI `ck`.** Tên `ck-plan` chỉ là di sản đặt tên; mọi thứ chạy trong skill.
 - **`routing-bug-fixes-to-cook` cần 1 dòng trong `~/.claude/CLAUDE.md`** để được gọi đúng lúc (thêm

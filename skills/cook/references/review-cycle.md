@@ -10,6 +10,10 @@ Step 5 dispatches one review sub-agent (small diff) or two in one message (large
 - **Section A — Plan Compliance:** per-acceptance-criterion verdicts (✅ / ❌ MISSING / ❌ WRONG / ⚠ EXTRA) for the plan ACs, plus the `in scope` rows of plan.md's AC Traceability table when it has one. **Non-overridable** — any ❌ means dispatch a fix sub-agent, not "note it and move on".
 - **Section B — Code Quality (bugs):** severity-rated findings (Critical / High / Medium / Low). Critical + High gate; the counts per severity come from this section.
 
+**Gating — from the Runtime check (`verifier`, Dispatch 3; only when a `## Live check` path changed):**
+- **Runtime AC:** ✅ / ❌ WRONG / ❌ MISSING / ⚠ NOT VISIBLE. Any ❌ blocks like Section A; `⚠ NOT VISIBLE` does not block ("AC checked by tests only" in `## Claude's calls`).
+- **Defects:** BROKEN blocks (graded High); COSMETIC is non-blocking, apply-or-skip.
+
 **Non-gating — from agent 2, or the Cleanup section of the single reviewer (reuse + simplification + efficiency + altitude, already collapsed across its own lenses):**
 - Findings carry `file`, `line`, `summary`, and the concrete cost — **no severity**, because they are not bugs. They are applied or skipped with a stated reason, and they **never** gate Step 6 or increment the cycle counter.
 
@@ -22,10 +26,13 @@ cycle = 0
 LOOP:
   1. cycle == 0 → small diff: 1 reviewer (gating + Cleanup section)
                   large diff: fan out both agents in one message
+                  Runtime check matched → add Dispatch 3 (`verifier`) to the same message
      cycle >  0 → scoped re-review of the gating reviewer ONLY, using the
                   template in `workflow-steps.md` § Scoped re-review, reading
                   the `FIX_BASE..HEAD` package (`workflow-steps.md` § Review
                   package), not the whole change
+                  + Dispatch 3 again only when `git diff --name-only FIX_BASE..HEAD`
+                  hits a matching Live check path (max once per cycle)
 
   2. Settle every `⚠️ CANNOT VERIFY` line first (`workflow-steps.md` § Review package).
      Dedup across every agent that reported.
@@ -40,6 +47,8 @@ LOOP:
      ├─────────────────────────────────────────┤
      │ Section A — Plan Compliance             │
      │  [✅ all N criteria | ❌ N gaps]         │
+     │ Runtime — [skipped|✅|❌ N AC, N broken, │
+     │  N cosmetic]                            │
      │ Blocking — Critical/High ([N])          │
      │  - [issue] at [file:line]               │
      │ Medium/Low ([N]): apply or skip         │
@@ -55,7 +64,7 @@ LOOP:
      └─────────────────────────────────────────┘
 
   4. Decide and act — do NOT ask the user for approval:
-     IF Section A has any ❌ OR critical_count > 0 OR high_count > 0:
+     IF Section A or Runtime AC has any ❌ OR Runtime BROKEN > 0 OR critical_count > 0 OR high_count > 0:
        → dispatch a fresh fix sub-agent with the blocking fixes FIRST and
          the worthwhile non-blocking ones in the same batch; the
          orchestrator commits the batch (`workflow-steps.md` § Report check,

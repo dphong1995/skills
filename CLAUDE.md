@@ -79,6 +79,15 @@ cd claude-sessions && cargo xtask dist --version <v>   # builds target/dist/Clau
 Pass test globs quoted; a bare directory argument fails on Node 24. Test output lands in `skills/*/tests/out/`
 (gitignored).
 
+## Live check
+
+Cook's Step 5 reads this section. Commands here must not show a window or activate an app.
+
+### Widget
+- paths: claude-sessions/crates/**
+- run: cd claude-sessions && CLAUDE_SESSIONS_GUI_TESTS=1 cargo test --workspace
+- look at: claude-sessions/target/snapshots/*.png, claude-sessions/crates/claude-sessions/tests/snapshots/*.png
+
 ## Conventions
 
 - Skill, agent, reference and code text is English; `README.md` and user-facing page strings are Vietnamese.

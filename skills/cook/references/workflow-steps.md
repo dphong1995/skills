@@ -221,19 +221,24 @@ Report the test results and dispatch the Step 5 review in the same turn — do n
 
 **Size check first.** Base = `git merge-base <base-branch> HEAD` (for a branch cook created through the worktree rule, `<base-branch>` is the remote ref it was cut from, § Step 3; when the work is committed on the base branch itself, the commit recorded at the start of Step 3). Run `git diff --numstat <base>..HEAD -- . ':(exclude,glob)**/tests/**' ':(exclude,glob)**/__tests__/**' ':(exclude,glob)**/*.test.*' ':(exclude,glob)**/*.spec.*'`; files with changes from before the run are not counted. A binary row (`-  -`) counts as a file with 0 lines. The diff is **small** when added + removed ≤ 80 lines AND ≤ 3 files; otherwise **large**. State the numbers in the Step 5 output line.
 
+**Live check trigger.** For each changed repo, read the `## Live check` section of its root CLAUDE.md (the worktree's copy when cook works in one). An `### <area>` matches when `git diff --name-only <base>..HEAD` (no exclusions: reference images live under `tests/`) hits one of its `paths` globs. Any match turns the Runtime check on, with one `verifier` per repo that has matching areas. No `## Live check` section: add the `## Claude's calls` row "Runtime check: skipped (no ## Live check)". A section but no match: record nothing.
+
 | Diff | Dispatch |
 |------|----------|
 | Small | **One** `code-reviewer` with Dispatch 1/2's prompt, changed in three places: "Return TWO sections — both required, no exceptions" becomes "Return THREE sections — all three required, no exceptions"; a `### Cleanup (non-gating, no severity)` section is added, built from Dispatch 2/2's "Project conventions are binding" paragraph, the four lens blocks (R first, with the `Reuse searched:` line) and the Collapse block; and the prompt says a correctness defect a lens finds goes straight into Section B, never into Cleanup. It does NOT get Dispatch 2/2's role paragraph or its Reviewer evidence block (the single reviewer already has it from Dispatch 1/2's prompt) |
 | Large | **Two** fresh `code-reviewer`s **in one message** so they run concurrently, as below |
 
+When the Live check trigger matched, add the Runtime row below to either dispatch, in the same message as the reviewer(s).
+
 | # | Agent | Lens | Gating? |
 |---|-------|------|---------|
 | 1 | `code-reviewer` | Section A plan-compliance + Section B bugs by severity | **YES** |
 | 2 | `code-reviewer` | **Reuse + Simplification + Efficiency + Altitude** — one agent, four lenses, Reuse first | no |
+| Runtime | `verifier` (Dispatch 3; one per repo with a matching area) | **Runtime check** — runs the declared `run` commands, looks at the images | **YES** on Runtime AC ❌ and BROKEN |
 
 Agent 2 runs the four cleanup lenses of the `simplify` skill as a review-only sub-agent. Use `code-reviewer` for every reviewer: it is read-only (no Write/Edit), so no reviewer can violate the Step 3 gate. Fall back to `critic`, then `general-purpose`.
 
-**Model:** dispatch every reviewer with `model: "opus"` — this is the post-implementation verification pass.
+**Model:** dispatch every reviewer, and the Runtime `verifier`, with `model: "opus"` — this is the post-implementation verification pass.
 
 **Why size the review:** on a small fix two reviewers cost several times what the executor did. A diff of a few lines gives the cleanup lenses little to find, so one reviewer holding all of it is enough; the second agent pays off only when there is enough code for the lenses to work on.
 
@@ -441,6 +446,69 @@ Lens blocks (all four, in this order):
   Tag every finding with its lens (R / A / B / C) so the orchestrator can bucket it.
 ```
 
+### Dispatch 3 — runtime check (gating)
+
+Runs only when the Live check trigger matched (§ Step 5 above), one `verifier` per repo with matching areas, in the same message as the reviewer(s). Agent definition `agents/verifier.md` is overridden by the prompt below.
+
+```
+Agent(
+  subagent_type="verifier",
+  model="opus",
+  description="Runtime check",
+  prompt="""
+  Runtime check of the change: run the declared live-check commands and look at what they produce.
+
+  Your agent definition's investigation protocol, approval rule and output format do not apply here:
+  run only the `run` commands below, and report in the format below.
+
+  ## Plan files (authoritative)
+  - <plan-dir>/plan.md  (carries the approved design's Acceptance Criteria)
+  - <plan-dir>/design.md  (the approved design, when cook wrote it)
+  - <plan-dir>/spec.md  (only if the plan was authored outside cook and one exists)
+  - <plan-dir>/phase-01-*.md, phase-02-*.md, ... (list ALL phase files verbatim)
+
+  ## Implementer reports
+  <paste each phase sub-agent's final report>
+
+  ## Live check areas that matched (verbatim from the repo's CLAUDE.md)
+  <the matching `### <area>` blocks>
+
+  ## Diff
+  Base: <base>. Read <plan-dir>/review/review-NN.diff once; it is your view of the change.
+  Step 4 evidence, for reference only: <Step 4 report>
+
+  <the "Do not trust the reports" and "Outside the diff" parts of the Reviewer evidence block, verbatim;
+  NOT its "Evidence already gathered" part, and say the package path is <repo path>>
+
+  ## Rules
+  - Run each `run` command first, from the repo root unless the command says otherwise.
+  - A `run` command that fails: re-run it at <base> in a temporary detached worktree
+    (`git worktree add --detach <scratch dir> <base>`, removed afterwards). A failure on both is
+    reported as "pre-existing failure", not BROKEN.
+  - Never set `UPDATE_SNAPSHOTS`. Never run any command other than the `run` commands. Never run
+    anything that shows a window or activates an app.
+  - Compare each committed reference image changed in the diff with its base version
+    (`git show <base>:<path>`). Generated images with no committed reference are new: view them as new.
+  - Open only images for screens the diff touches (the `look at` globs).
+  - Do not dispatch subagents. You are read-only: do not change the working tree, the index, HEAD or any branch.
+
+  ## Return
+  ### Runtime AC
+  Each AC / phase Done-when that is visible in the images or the run output: ✅ / ❌ WRONG /
+  ❌ MISSING / ⚠ NOT VISIBLE, with the image path.
+  ### Defects
+  - BROKEN: a `run` failure caused by the diff, a crash or hang, or a visual defect tied to a specific
+    AC or element AND naming the image region.
+  - COSMETIC: every other visual defect.
+  Each with image, region and suspect file:line.
+  ### Commands run
+  One `Commands run: <command> → <result>` line per command.
+  ### Verdict
+  APPROVED (no ❌, no BROKEN) or CHANGES REQUIRED.
+  """
+)
+```
+
 ### Verdict — gating vs non-gating
 
 Wait for every reviewer, then split the findings. This split is the whole point of the step; do not blend them into one score.
@@ -449,10 +517,14 @@ Wait for every reviewer, then split the findings. This split is the whole point 
 |--------|--------|--------|
 | **Blocking** | Section A any ❌ | **Non-overridable.** Dispatch a fix sub-agent or abort. Nothing else. |
 | **Blocking** | Section B Critical or High | Dispatch a fix sub-agent, cycle++ |
+| **Blocking** | Runtime AC ❌ (Dispatch 3) | Like Section A: dispatch a fix sub-agent, cycle++ |
+| **Blocking** | Runtime BROKEN | Graded High: dispatch a fix sub-agent, cycle++ |
+| **Non-blocking** | Runtime COSMETIC | Apply-or-skip-with-reason, like cleanup; never increments the cycle counter |
+| **Non-blocking** | Runtime `⚠ NOT VISIBLE` | Record "AC checked by tests only" in `## Claude's calls` |
 | **Non-blocking** | Section B Medium / Low | Apply what is worth applying; record each skip and why in `## Claude's calls` |
 | **Non-blocking** | Agent 2, or the Cleanup section of the single reviewer (all four lenses) | Same — apply-or-skip-with-reason. **Never** blocks Step 6, **never** increments the cycle counter |
 
-**Dedup across every report before applying.** The cleanup reviewer has already collapsed its own four lenses; do not undo that by re-splitting its merged findings. Findings pointing at the same line or the same mechanism collapse into one; when a cleanup lens and Section B overlap, keep Section B's (it carries the severity that drives the gate). When you skip a cleanup finding for behaviour change or scope and it carries a `Fallback:`, judge the fallback on its own.
+**Dedup across every report before applying.** The cleanup reviewer has already collapsed its own four lenses; do not undo that by re-splitting its merged findings. Findings pointing at the same line or the same mechanism collapse into one; when a cleanup lens and Section B overlap, keep Section B's (it carries the severity that drives the gate). A Runtime finding and a Section B finding on the same defect: keep the higher grade (BROKEN = High, COSMETIC below Low), Section B's on a tie. When you skip a cleanup finding for behaviour change or scope and it carries a `Fallback:`, judge the fallback on its own.
 
 **Apply blocking and non-blocking fixes in the SAME dispatch**, blocking first. Tell the applier that blocking fixes take precedence and to **drop any cleanup finding that the blocking fix already resolved or made stale** — otherwise it patches code that no longer exists.
 
@@ -468,7 +540,7 @@ Cleanup edits change working code, so the step is NOT done when the fixes land:
 
 Skipping this is how a "quality pass" ships a regression. `simplify` on its own has no verification phase — that gap is closed here, not inherited.
 
-**Cycle (max 3):** as defined in `review-cycle.md`. **Re-dispatch only the gating reviewer** (agent 1, or the single reviewer without its Cleanup section) on every re-review — the cleanup lenses run **once**, on the first pass. Re-running them per cycle repeats the review cost for findings you already hold.
+**Cycle (max 3):** as defined in `review-cycle.md`. **Re-dispatch only the gating reviewer** (agent 1, or the single reviewer without its Cleanup section) on every re-review — the cleanup lenses run **once**, on the first pass. Dispatch 3 is re-dispatched too, scoped to the fixed Runtime findings and the changed images, only when `git diff --name-only FIX_BASE..HEAD` hits a matching `paths` glob; at most one Runtime check per cycle. Re-running them per cycle repeats the review cost for findings you already hold.
 
 Scoped re-review (both diff sizes) — replaces Dispatch 1/2 on every re-review (cycle > 0):
 
@@ -496,9 +568,9 @@ Agent(
 )
 ```
 
-**Forbidden:** patching code in-line based on the review. Fixes are always dispatched to a sub-agent. Running the cleanup lenses more than once per cook run. Letting a cleanup finding block Step 6. Telling a reviewer which findings are known, what to skip, or how severe something is.
+**Forbidden:** patching code in-line based on the review. Fixes are always dispatched to a sub-agent. Running the cleanup lenses more than once per cook run. Running the Runtime check more than once per cycle. Letting a cleanup finding block Step 6. Telling a reviewer which findings are known, what to skip, or how severe something is.
 
-**Output:** `✓ Step 5: Review ([N] lines / [M] files → [1|2] reviewer[s]) — Section A [✅|❌ N gaps] / Section B [N Critical, N High, N Medium, N Low] / Cleanup [N applied, M skipped] — re-verify [✅|❌] — [Approved|Awaiting fix]`
+**Output:** `✓ Step 5: Review ([N] lines / [M] files → [1|2] reviewer[s]) — Section A [✅|❌ N gaps] / Section B [N Critical, N High, N Medium, N Low] / Runtime [skipped|✅|❌ N AC, N broken, N cosmetic] / Cleanup [N applied, M skipped] — re-verify [✅|❌] — [Approved|Awaiting fix]`
 
 ## Step 6: Finalize
 
