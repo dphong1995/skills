@@ -63,6 +63,60 @@ describe('interview page', () => {
     assert.deepEqual(b.unexpectedErrors(), []);
   });
 
+  // Clicks card q01's prototype button; returns the hint and the card counts checked on the way.
+  const protoButton = (real) => b.eval(`(() => {
+    const c1 = document.querySelector('#card-q01');
+    const btns = [...c1.querySelectorAll('button')].filter((x) => x.textContent === 'Mở prototype ↗');
+    const out = { n: btns.length, hint: c1.textContent.includes('Lật bằng 1–3, ←/→, R ở tab mới; chọn ở đây.'), none: [...document.querySelectorAll('#card-q02 button')].filter((x) => x.textContent.includes('prototype')).length };
+    if (${!!real}) btns[0].setAttribute('data-proto-btn', '');
+    else btns[0].click();
+    return out;
+  })()`);
+  const protoChecks = (r) => { assert.equal(r.n, 1); assert.ok(r.hint); assert.equal(r.none, 0); };
+  // Stubbed window.open: asserts the call gets a blob URL and 'noopener'.
+  const protoClick = async () => {
+    await b.eval('window.__opened = []; window.open = (u, t, f) => { window.__opened.push([u, t, f]); return null; }');
+    protoChecks(await protoButton());
+    const opened = await b.eval('window.__opened');
+    assert.equal(opened.length, 1);
+    assert.ok(opened[0][0].startsWith('blob:'));
+    assert.equal(opened[0][2], 'noopener');
+    const text = await b.eval(`fetch(window.__opened[0][0]).then((x) => x.text())`);
+    assert.ok(text.includes('proto-picker') && text.includes('data-variant="Quiet"'));
+    assert.equal(await checked('q01'), '');
+  };
+  // Real click: follows the new tab through the browser's CDP target list, headless, no window.
+  const protoClickReal = async () => {
+    const list = async () => (await (await fetch(`http://127.0.0.1:${b.port}/json/list`)).json()).filter((t) => t.type === 'page');
+    const before = new Set((await list()).map((t) => t.id));
+    protoChecks(await protoButton(true));
+    await b.click('[data-proto-btn]'); // a real mouse click: a scripted click() has no user activation and the popup is blocked
+    let tab;
+    for (let i = 0; i < 80 && !tab; i++) {
+      tab = (await list()).find((t) => !before.has(t.id) && t.url.startsWith('blob:'));
+      if (!tab) await new Promise((r) => setTimeout(r, 100));
+    }
+    assert.ok(tab, 'the click opened a new blob: tab');
+    const ws = new WebSocket(tab.webSocketDebuggerUrl);
+    await new Promise((r) => { ws.onopen = r; });
+    const probe = (expression) => new Promise((res) => {
+      ws.onmessage = (m) => { const d = JSON.parse(m.data); if (d.id === 1) res(d.result.result.value); };
+      ws.send(JSON.stringify({ id: 1, method: 'Runtime.evaluate', params: { expression, returnByValue: true } }));
+    });
+    try {
+      for (let i = 0; i < 40 && !(await probe(`!!document.querySelector('.proto-picker')`)); i++) await new Promise((r) => setTimeout(r, 100));
+      assert.equal(await probe(`!!document.querySelector('.proto-picker') && !!document.querySelector('#stage')`), true);
+      assert.equal(await probe('window.opener'), null);
+    } finally {
+      ws.close();
+      await fetch(`http://127.0.0.1:${b.port}/json/close/${tab.id}`).catch(() => {});
+    }
+    assert.equal(await checked('q01'), '');
+  };
+  it('prototype button opens a tab and picks nothing', async () => {
+    await fresh();
+    await protoClick();
+  });
   it('picks an option from a card click and from the strip button', async () => {
     await fresh();
     await b.click(card('q01', 2) + ' > div:first-child');
@@ -237,6 +291,13 @@ describe('interview page', () => {
     const dialogs = b.leaveDialogs();
     await b.send('Page.navigate', { url: 'about:blank' });
     assert.equal(b.leaveDialogs(), dialogs, 'an answered page leaves without asking');
+  });
+
+  it('prototype button works on the file-opened page', async () => {
+    const out = dir + '/proto-file/round.html';
+    assert.equal(render(writeRound(dir), out).code, 0);
+    await b.goto('file://' + out, { ready });
+    await protoClickReal();
   });
 
   it('a file page has no server and offers a copy button', async () => {

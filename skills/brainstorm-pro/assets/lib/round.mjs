@@ -5,7 +5,7 @@ import { createEmbed, InputError } from './embed.mjs';
 const CODE = ['file', 'lines', 'text', 'label', 'lang'];
 const FIELDS = {
   round: ['root', 'topic', 'decided', 'questions'],
-  question: ['id', 'n', 'stage', 'title', 'why', 'reversible', 'reversibleWhy', 'context', 'options', 'multi', 'recommendation'],
+  question: ['id', 'n', 'stage', 'title', 'why', 'reversible', 'reversibleWhy', 'context', 'options', 'multi', 'recommendation', 'prototype'],
   option: ['id', 'label', 'means', 'example', 'pros', 'cons', 'effort', 'code', 'mockup'],
   code: CODE,
   recommendation: ['option', 'why'],
@@ -115,12 +115,14 @@ export const loadRound = (src) => {
     throw new InputError(`${src}: ${e instanceof SyntaxError ? 'not valid JSON: ' : 'cannot read: '}${e.message}`.replace(/\s+/g, ' '));
   }
   validateRound(data, src);
-  const { link, prep, image, files, paths } = createEmbed({ root: data.root || process.cwd(), src });
+  const { link, prep, image, prototype, files, paths, protos } = createEmbed({ root: data.root || process.cwd(), src });
   data.files = files;
   data.paths = paths;
+  data.protos = protos;
   (data.decided || []).forEach(link);
   for (const q of data.questions) {
     [q.title, q.why, q.reversibleWhy, q.recommendation && q.recommendation.why].forEach(link);
+    prototype(q);
     for (const b of q.context || []) {
       if (!b) continue;
       if (b.t === 'code') prep(b);

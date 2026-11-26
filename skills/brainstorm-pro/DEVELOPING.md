@@ -28,6 +28,7 @@ and check with `diff -rq -x out <repo skill> <live skill>` (`tests/out/` is outp
 | `assets/page/dom.js`, `strings.js`, `text.js`, `code.js` | Class constants, `el()`, `kbd()`, `modal()`, `writeClipboard()` (code block Copy; does not end the leave guard); escaping; inline Markdown; code view helpers, and `lcs(A, B)`, the pure common-subsequence walk under `alignRows` and `wordDiff` |
 | `assets/page/blocks.js`, `viewer.js`, `images.js`, `passages.js` | Context blocks; file viewer (also the Tailwind class carrier); pasted images; selection comments |
 | `assets/page/keys.js`, `shortcuts.js`, `interview-keys.js`, `doc-keys.js` | Key rules; ring, `?` dialog and the key listener; per-mode key tables |
+| `assets/prototype/harness.html`, `references/prototype.md` | The prototype harness (Emil Kowalski's picker, MIT) Claude copies per question, and the rules for building variants. `round.mjs`/`embed.mjs` (`prototype(q)`) check a question's `prototype` file and put its text into page data `D.protos[<question id>]` (not `files`); `interview.js` shows the "Mở prototype ↗" button, which opens a blob URL. A blob-opened prototype shares the page origin; acceptable, since Claude wrote the content |
 | `tests/` | `unit/` (Node; the server test runs the script, no Chrome), `page/` (headless Chrome), `harness/`, `fixtures/`, `snapshots/`, `out/` |
 
 ## Build and module rules

@@ -195,3 +195,44 @@ describe('createEmbed', () => {
     });
   });
 });
+
+describe('prototype field', () => {
+  const dir = outDir('unit-prototype');
+  const html = (n, { picker = true, stage = true } = {}) => (picker ? '<div class="proto-picker">' + '<button class="proto-picker-item">x</button>'.repeat(n) + '<button class="proto-picker-item proto-picker-replay">r</button></div>' : '') + (stage ? '<div id="stage"></div>' : '');
+  const load = (name, content, n = 2, field = join(dir, name)) => {
+    if (content != null) writeFileSync(join(dir, name), content);
+    const file = join(dir, 'round-' + name + '.json');
+    writeFileSync(file, JSON.stringify({ root: dir, questions: [q({ prototype: field, options: Array.from({ length: n }, (_, i) => ({ id: 'o' + i, label: 'L' + i })), recommendation: undefined })] }));
+    return loadRound(file);
+  };
+  const refuses = (fn, ...parts) => assert.throws(fn, (e) => e instanceof InputError && !e.message.includes('\n') && parts.every((p) => e.message.includes(p)));
+  it('embeds a valid prototype', () => {
+    const d = load('ok.html', html(2));
+    assert.equal(d.protos.q1, html(2));
+    assert.ok(!Object.keys(d.files).some((k) => k.endsWith('ok.html')));
+  });
+  it('refuses a prototype whose variant count differs from the options', () => {
+    refuses(() => load('three.html', html(3)), 'has 3 variants but q1 has 2 options');
+  });
+  it('refuses a relative path', () => {
+    refuses(() => load('rel.html', null, 2, 'rel.html'), 'rel.html', 'q1', '"prototype"');
+  });
+  it('refuses a missing file', () => {
+    refuses(() => load('none.html', null), join(dir, 'none.html'));
+  });
+  it('refuses a file that is not .html', () => {
+    refuses(() => load('p.txt', html(2)), 'p.txt', '.html');
+  });
+  it('refuses a file over 512 KB', () => {
+    refuses(() => load('big.html', html(2) + 'x'.repeat(512 * 1024)), 'big.html', '512 KB');
+  });
+  it('refuses a file without the picker', () => {
+    refuses(() => load('nopicker.html', html(2, { picker: false })), 'nopicker.html', 'proto-picker');
+  });
+  it('refuses a file without the stage', () => {
+    refuses(() => load('nostage.html', html(2, { stage: false })), 'nostage.html', 'id="stage"');
+  });
+  it('accepts the field name', () => {
+    validateRound({ questions: [q({ prototype: '/x/p.html' })] }, 'r.json');
+  });
+});

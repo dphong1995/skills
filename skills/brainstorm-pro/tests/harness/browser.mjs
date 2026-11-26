@@ -117,7 +117,7 @@ export async function launch({ dark = false, width = 1400, height = 1000 } = {})
   })()`);
 
   const api = {
-    send, eval: evaluate, until, errors, mouse,
+    send, eval: evaluate, until, errors, mouse, port,
     // Console errors and exceptions, without the favicon request every file page makes.
     leaveDialogs: () => leaveDialogs,
     unexpectedErrors: () => errors.filter((e) => !/favicon/.test(e)),

@@ -141,6 +141,7 @@ The scope-fixing question (Q0) and the Phase 3 approach pick are asked the same 
 - 2-4 suggested options per question with **your recommendation** clearly marked (the playback card excepted), plus a **"Other (type your own)" (Khác (tự nhập)) option on every question** for the user's own answer (the page adds it; in the chat fallback, list it yourself)
 - Each question targets the **biggest current gap** in your understanding
 - After each answer, decide: do I need to re-explore the code? If yes, mini-explore (1-3 actions) BEFORE the next question
+- A UI question that meets `~/.claude/skills/brainstorm-pro/references/prototype.md` § When to use gets a live prototype built per that file, set as the question's `prototype`; otherwise a static layout keeps `mockup`
 - Brutal honesty injection: at least once during the loop, challenge the user's framing or preferred direction with a "what if X were not true?" question
 
 **Question targeting (biggest gap first):**
@@ -227,7 +228,7 @@ The chosen approach and why, then a "Rejected alternatives" table (each alternat
 
 ## Design
 ### Architecture              (a Mermaid diagram when there are 3+ parts)
-### Components / Files        (create/modify, what changes, what it reuses)
+### Components / Files        (create/modify, what changes, what it reuses; cite `prototypes/` when a prototype was picked)
 ### Data flow / Types         (shapes, not full code; cite file:line)
 ### AC traceability           (only for Story/Epic work: the table of `~/.claude/skills/brainstorm-pro/references/jira-snapshot.md` § Traceability table; AC text English, verbatim)
 
@@ -370,6 +371,7 @@ Why bad: scout would reveal `TypeORM` instantly. Wastes a round.
 - [ ] Phase 1.5 best-practice research done right after scout when warranted (all 3 conditions), or consciously skipped (reuse/bespoke/no real fork); deep-dive reserved for a real open fork
 - [ ] Q&A ran one round at a time (one question, or up to 4 independent ones), max 8 rounds
 - [ ] Every interview question (Q0, Q&A, approach pick) went on the interview page as a full card (why, context with evidence, options with example/pros/cons, recommendation; the playback card excepted: its own field set); each answer taken from the page's reply (or the user's pasted one) before the next question
+- [ ] Each UI-feel question used a prototype; the winner is saved in `<plan-dir>/prototypes/`
 - [ ] Mid-stream re-explore happened at least once if answer reshaped scope
 - [ ] At least one brutal honesty pushback on premise/assumption
 - [ ] 2-3 approaches presented with trade-offs + recommendation

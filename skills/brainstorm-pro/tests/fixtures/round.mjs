@@ -15,6 +15,7 @@ export const round = () => ({
       id: 'q01', n: 1, stage: 'Design', title: 'Which adder?', reversible: true, reversibleWhy: 'Only a local helper.',
       why: 'The module needs one before the next step.',
       recommendation: { option: 'b', why: 'B is the smallest change.' },
+      prototype: join(HERE, 'prototype.html'),
       context: [
         { t: 'p', text: 'See `fixtures/code.ts:2-4` for the current adder.' },
         { t: 'code', file: join(HERE, 'code.ts'), lines: [2, 4] },

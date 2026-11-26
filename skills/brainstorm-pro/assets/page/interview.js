@@ -98,6 +98,7 @@ export const interviewPage = () => {
 
     const recI = own.findIndex((o) => o.id === recId);
     const hasUndo = q.reversible != null;
+    let protoUrl;
     const undoText = t(q.reversible ? 'easyUndo' : 'hardUndo');
     const card = el('article', { class: INTERVIEW_CARD, id: 'card-' + q.id },
       el('header', { class: 'grid gap-1' },
@@ -111,6 +112,10 @@ export const interviewPage = () => {
       q.why || (hasUndo && q.reversibleWhy) ? el('div', { class: 'alert alert-soft alert-info block text-base-content text-[14px] leading-normal px-3 py-1.5 [&_strong]:text-[var(--color-info)]' },
         q.why ? el('p', {}, el('strong', { text: t('whyDecide') }), inline(q.why)) : null,
         hasUndo && q.reversibleWhy ? el('p', {}, el('strong', { text: undoText + ': ' }), inline(q.reversibleWhy)) : null) : null,
+      D.protos && D.protos[q.id] ? el('div', { class: 'flex flex-wrap items-center gap-2' },
+        el('button', { type: 'button', class: 'btn btn-sm', text: t('openPrototype'),
+          onclick: () => { protoUrl ||= URL.createObjectURL(new Blob([D.protos[q.id]], { type: 'text/html' })); window.open(protoUrl, '_blank', 'noopener'); } }),
+        el('span', { class: 'text-[12px] text-muted', text: t('prototypeHint', own.length) })) : null,
       q.context && q.context.length ? el('div', { class: 'grid gap-2 min-w-0' }, q.context.map(block)) : null,
       own.length ? el('div', { class: 'grid gap-x-2 gap-y-1.5 grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))]'
         + (own.length === 4 ? ' max-[1060px]:grid-cols-[repeat(auto-fit,minmax(min(100%,22rem),1fr))]' : '') }, own.map(optCard)) : null,

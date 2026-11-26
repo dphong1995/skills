@@ -23,6 +23,7 @@ export const createEmbed = ({ root, src }) => {
   const files = {};
   const paths = {};
   const links = {};
+  const protos = {};
 
   const prep = (b) => {
     if (!b || !b.file) return;
@@ -92,5 +93,23 @@ export const createEmbed = ({ root, src }) => {
     }
   };
 
-  return { link, prep, image, docLinks, files, paths, links };
+  // A question's "prototype": an .html built per references/prototype.md, embedded as page data (not in `files`).
+  const prototype = (q) => {
+    if (!q.prototype) return;
+    const at = `${src}: ${q.id} "prototype" ${q.prototype}`;
+    if (!isAbsolute(q.prototype) && !q.prototype.startsWith('~/')) throw new InputError(`${at} must be an absolute path or start with ~/`);
+    const abs = resolvePath(q.prototype);
+    if (extname(abs).toLowerCase() !== '.html') throw new InputError(`${at} must be an .html file; build it per ~/.claude/skills/brainstorm-pro/references/prototype.md`);
+    const html = readInput(abs, src, 'utf8', q.prototype);
+    const size = Buffer.byteLength(html);
+    if (size > MAX_FILE) throw new InputError(`${at} is ${Math.ceil(size / 1024)} KB, over ${MAX_FILE / 1024} KB; trim the variants and drop inlined base64 images`);
+    if (!html.includes('class="proto-picker"')) throw new InputError(`${at} has no class="proto-picker"; start from ~/.claude/skills/brainstorm-pro/assets/prototype/harness.html`);
+    if (!html.includes('id="stage"')) throw new InputError(`${at} has no id="stage"; start from ~/.claude/skills/brainstorm-pro/assets/prototype/harness.html`);
+    const n = html.split('class="proto-picker-item"').length - 1;
+    const want = (q.options || []).length;
+    if (n !== want) throw new InputError(`${at} has ${n} variants but ${q.id} has ${want} options; make them equal`);
+    protos[q.id] = html;
+  };
+
+  return { link, prep, image, prototype, docLinks, files, paths, links, protos };
 };
