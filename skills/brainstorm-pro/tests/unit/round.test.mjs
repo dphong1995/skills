@@ -198,7 +198,8 @@ describe('createEmbed', () => {
 
 describe('prototype field', () => {
   const dir = outDir('unit-prototype');
-  const html = (n, { picker = true, stage = true } = {}) => (picker ? '<div class="proto-picker">' + '<button class="proto-picker-item">x</button>'.repeat(n) + '<button class="proto-picker-item proto-picker-replay">r</button></div>' : '') + (stage ? '<div id="stage"></div>' : '');
+  const html = (n, { picker = true, stage = true, variants = n } = {}) => (picker ? '<div class="proto-picker">' + '<button class="proto-picker-item">x</button>'.repeat(n) + '<button class="proto-picker-item proto-picker-replay">r</button></div>' : '') + (stage ? '<div id="stage"></div>' : '')
+    + (variants == null ? '' : '<script>\nconst variants = [\n' + '  () => `<p>v</p>`,\n'.repeat(variants) + '];\n</script>');
   const load = (name, content, n = 2, field = join(dir, name)) => {
     if (content != null) writeFileSync(join(dir, name), content);
     const file = join(dir, 'round-' + name + '.json');
@@ -213,6 +214,12 @@ describe('prototype field', () => {
   });
   it('refuses a prototype whose variant count differs from the options', () => {
     refuses(() => load('three.html', html(3)), 'has 3 variants but q1 has 2 options');
+  });
+  it('refuses a prototype whose variants array differs from its picker buttons', () => {
+    refuses(() => load('lost.html', html(2, { variants: 1 })), 'lost.html', 'has 1 entries in variants but 2 picker buttons');
+  });
+  it('refuses a prototype without a variants array', () => {
+    refuses(() => load('novariants.html', html(2, { variants: null })), 'novariants.html', 'const variants = [');
   });
   it('refuses a relative path', () => {
     refuses(() => load('rel.html', null, 2, 'rel.html'), 'rel.html', 'q1', '"prototype"');

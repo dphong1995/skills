@@ -106,6 +106,11 @@ export const createEmbed = ({ root, src }) => {
     if (!html.includes('class="proto-picker"')) throw new InputError(`${at} has no class="proto-picker"; start from ~/.claude/skills/brainstorm-pro/assets/prototype/harness.html`);
     if (!html.includes('id="stage"')) throw new InputError(`${at} has no id="stage"; start from ~/.claude/skills/brainstorm-pro/assets/prototype/harness.html`);
     const n = html.split('class="proto-picker-item"').length - 1;
+    // The harness keeps one `() => …` entry per variant in `const variants = [ … ];`; a picker button with no entry does nothing.
+    const list = /const variants = \[([\s\S]*?)\n\];/.exec(html);
+    if (!list) throw new InputError(`${at} has no "const variants = [ … ];" array; start from ~/.claude/skills/brainstorm-pro/assets/prototype/harness.html`);
+    const v = (list[1].match(/\(\)\s*=>/g) || []).length;
+    if (v !== n) throw new InputError(`${at} has ${v} entries in variants but ${n} picker buttons; give every variant one button, in the same order`);
     const want = (q.options || []).length;
     if (n !== want) throw new InputError(`${at} has ${n} variants but ${q.id} has ${want} options; make them equal`);
     protos[q.id] = html;

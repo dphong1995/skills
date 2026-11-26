@@ -40,7 +40,7 @@ With the Chrome DevTools MCP: `new_page` with `background: true`, open each `?v=
 
 ## Mapping to options
 
-Option N is picker item N, in the same order. The option `label` is the direction name; `means` states the axis. Set the question's `prototype` field to the absolute (or `~/`) path of the `.html` file. It must be an `.html` file under 512 KB containing `class="proto-picker"`, `id="stage"`, and exactly `options.length` items with `class="proto-picker-item"`.
+Option N is picker item N, in the same order. The option `label` is the direction name; `means` states the axis. Set the question's `prototype` field to the absolute (or `~/`) path of the `.html` file. It must be an `.html` file under 512 KB containing `class="proto-picker"`, `id="stage"`, exactly `options.length` items with `class="proto-picker-item"`, and one `() =>` entry in `const variants = [ … ];` per picker item.
 
 ## After the pick
 
