@@ -28,7 +28,7 @@ Use a `prototype` when the options differ in motion, interaction, personality or
 
 ## Picker is chrome
 
-The `.proto-picker` markup, CSS and wiring are copied verbatim and stay identical across runs. Do not restyle them. Two allowed changes only: set `data-position="top"` when a variant occupies the bottom-center of the screen; drop the replay button and the divider when no variant animates.
+The `.proto-picker` markup, CSS and wiring are copied verbatim and stay identical across runs. Do not restyle them. The shipped harness already wraps `history.replaceState` in `try/catch` (it throws on a `blob:http://` page); keep that. Two allowed changes only: set `data-position="top"` when a variant occupies the bottom-center of the screen; drop the replay button and the divider when no variant animates.
 
 ## Variant JS
 

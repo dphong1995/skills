@@ -1,6 +1,7 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { pathToFileURL } from 'node:url';
 import { launch } from '../harness/browser.mjs';
 
@@ -62,17 +63,21 @@ describe('prototype harness', () => {
     assert.deepEqual(b.unexpectedErrors(), []);
   });
 
-  it('harness switches variants when opened from a blob URL', async () => {
-    await b.send('Page.navigate', { url: 'about:blank' });
-    await b.until(`document.readyState === 'complete'`);
+  // The interview page is served over http, so its blob URL is blob:http://…, where history.replaceState with a new query throws.
+  it('harness switches variants when opened from a blob URL made by an http page', async () => {
+    const server = createServer((_req, res) => res.end('<!doctype html><title>opener</title>'));
+    await new Promise((r) => server.listen(0, '127.0.0.1', r));
+    server.unref();
+    await b.send('Page.navigate', { url: 'http://127.0.0.1:' + server.address().port + '/' });
+    await b.until(`document.readyState === 'complete' && document.title === 'opener'`);
     const html = readFileSync(fixture, 'utf8');
     await b.eval(`location.href = URL.createObjectURL(new Blob([${JSON.stringify(html)}], { type: 'text/html' }))`);
-    await b.until(`location.protocol === 'blob:' && !!document.querySelector('.proto-picker')`, { what: 'blob load' });
+    await b.until(`location.href.startsWith('blob:http') && !!document.querySelector('.proto-picker')`, { what: 'blob load' });
     await mounted('Quiet');
     await b.press('2');
     await mounted('Editorial');
-    assert.equal(await search(), '?v=2');
-    assert.deepEqual(b.unexpectedErrors(), []);
+    assert.deepEqual(await active(), ['true']);
+    server.close();
   });
 
   it('harness ships the verbatim picker', () => {
@@ -81,7 +86,8 @@ describe('prototype harness', () => {
     const block = (lang) => md.match(new RegExp('```' + lang + '\\n([\\s\\S]*?)```', 'g')).map((x) => x.replace(/^```\w+\n|```$/g, ''));
     const markup = block('html')[0], css = block('css')[0], js = block('js')[0];
     for (const f of [harnessFile, fixture]) {
-      const text = norm(readFileSync(f, 'utf8'));
+      // The one allowed deviation: replaceState wrapped in try/catch (it throws on a blob:http page).
+      const text = norm(readFileSync(f, 'utf8')).replace("try { history.replaceState(null, '', url); } catch {}", "history.replaceState(null, '', url);");
       for (const part of [markup, css, js]) assert.ok(text.includes(norm(part)), f + ' lacks a verbatim picker part: ' + norm(part).slice(0, 60));
     }
     assert.match(readFileSync(harnessFile, 'utf8'), /Copyright \(c\) 2026 Emil Kowalski/);

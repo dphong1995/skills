@@ -3,7 +3,7 @@
   Prototype harness for brainstorm-pro interview cards. Picker markup, CSS and wiring adapted verbatim from
   https://github.com/emilkowalski/skills/tree/64eb3deb9a5fbfa041faf783e0bc3fd635872e9c/skills/prototype
   Copyright (c) 2026 Emil Kowalski. MIT License.
-  Blob URL check (Phase 1 browser test): history.replaceState did not throw on a blob: URL, so the wiring is verbatim with no try/catch.
+  One deviation from PICKER.md: history.replaceState is wrapped in try/catch. On a blob:http://… page (the interview page's "Open prototype" tab) it throws a SecurityError, which stopped setActive before mount() and left the stage empty; there ?v= is simply not written.
 -->
 <html lang="en">
 <head>
@@ -175,7 +175,7 @@ function setActive(i) {
   moveHighlight();
   const url = new URL(location);
   url.searchParams.set('v', i + 1);
-  history.replaceState(null, '', url);
+  try { history.replaceState(null, '', url); } catch {}
   mount(i);
 }
 
