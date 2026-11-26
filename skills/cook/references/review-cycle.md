@@ -4,22 +4,28 @@ Review-fix cycle used at Step 5. It runs autonomously — no approval stop.
 
 ## Reviewer outputs
 
-Step 5 dispatches one review sub-agent (small diff) or two in one message (large diff), sized by the diff per `workflow-steps.md` § Step 5. Their output lands in two buckets:
+Step 5 dispatches one review sub-agent (small diff) or two in one message (large diff), sized by the diff per `workflow-steps.md` § Step 5. Two conditional dispatches join the same message: Dispatch 4 (`security-reviewer`, one per repo the Security trigger matched, any diff size; reported in the separate Security field, not counted in `[1|2|3]`) and Dispatch 5 (a bug-only `code-reviewer`, N > 400). Their output lands in two buckets:
 
 **Gating — from agent 1 (`code-reviewer`; the single reviewer on a small diff):**
 - **Section A — Plan Compliance:** per-acceptance-criterion verdicts (✅ / ❌ MISSING / ❌ WRONG / ⚠ EXTRA) for the plan ACs, plus the `in scope` rows of plan.md's AC Traceability table when it has one. **Non-overridable once CONFIRMED (§ Finding check)** — any ❌ means dispatch a fix sub-agent, not "note it and move on".
-- **Section B — Code Quality (bugs):** severity-rated findings (Critical / High / Medium / Low). Critical + High gate; the counts per severity come from this section.
+- **Section B — Code Quality (bugs):** severity-rated findings (Critical / High / Medium / Low). Critical + High gate; the counts per severity come from this section. Dispatch 5 findings are counted in Section B's numbers; Dispatch 4's in Security; Dispatch 4 agents are not counted in [1|2|3].
 
 **Gating — from the Runtime check (`verifier`, Dispatch 3; only when a `## Live check` path changed):**
 - **Runtime AC:** ✅ / ❌ WRONG / ❌ MISSING / ⚠ NOT VISIBLE. Any ❌ blocks like Section A; `⚠ NOT VISIBLE` does not block ("AC checked by tests only" in `## Claude's calls`).
 - **Defects:** BROKEN blocks (graded High); COSMETIC is non-blocking, apply-or-skip.
+
+**Gating — from the Security pass (`security-reviewer`, Dispatch 4; only when the Security trigger matched):**
+- **Security findings:** Critical / High gate; Medium / Low are non-blocking, apply-or-skip.
+
+**Gating — from the bug-only reviewer (`code-reviewer`, Dispatch 5; only when N > 400):**
+- **Section B only** (no Section A): Critical / High gate like Section B; Medium / Low are non-blocking.
 
 **Finding check (`verifier`, `workflow-steps.md` § Finding check):** reviewers may park a low-confidence Critical/High under "Open Questions" and write `⚠️ CANNOT VERIFY` lines; both go to the Finding check with every blocking finding. Only CONFIRMED findings gate. A reviewer's **Pre-existing** section (issues already at base in unchanged code) is non-gating and goes to the final report's `## For you to decide`.
 
 **Non-gating — from agent 2, or the Cleanup section of the single reviewer (reuse + simplification + efficiency + altitude, already collapsed across its own lenses):**
 - Findings carry `file`, `line`, `summary`, and the concrete cost — **no severity**, because they are not bugs. They are applied or skipped with a stated reason, and they **never** gate Step 6 or increment the cycle counter.
 
-Done means no CONFIRMED blocking finding (Section A, Section B Critical/High, Runtime AC ❌ / BROKEN). Remaining Medium/Low findings and all cleanup findings are applied or explicitly skipped, each skip with its reason recorded in the final report's `## Claude's calls` (Claude tự quyết) (`workflow-steps.md` § Final report) — then re-verified (see `workflow-steps.md` § After applying).
+Done means no CONFIRMED blocking finding (Section A, Section B Critical/High, Dispatch 4/5 Critical/High, Runtime AC ❌ / BROKEN). Remaining Medium/Low findings and all cleanup findings are applied or explicitly skipped, each skip with its reason recorded in the final report's `## Claude's calls` (Claude tự quyết) (`workflow-steps.md` § Final report) — then re-verified (see `workflow-steps.md` § After applying).
 
 ## Cycle (max 3 cycles)
 
@@ -29,18 +35,26 @@ LOOP:
   1. cycle == 0 → small diff: 1 reviewer (gating + Cleanup section)
                   large diff: fan out both agents in one message
                   Runtime check matched → add Dispatch 3 (`verifier`) to the same message
+                  Security trigger matched → add Dispatch 4 (`security-reviewer`, one per repo)
+                  N > 400 → add Dispatch 5 (bug-only `code-reviewer`)
      cycle >  0 → scoped re-review of the gating reviewer ONLY, using the
                   template in `workflow-steps.md` § Scoped re-review, reading
                   the `FIX_BASE..HEAD` package (`workflow-steps.md` § Review
                   package), not the whole change
                   + Dispatch 3 again only when `git diff --name-only FIX_BASE..HEAD`
                   hits a matching Live check path (max once per cycle)
+                  + Dispatch 4 scoped re-review, once per cycle at most, per repo whose
+                  fix batch held a finding Dispatch 4 reported (a dedup copy marked
+                  "also: Dispatch 4" counts); Dispatch 5 never re-runs
 
   2. Finding check (`workflow-steps.md` § Finding check): when there is a blocking
      finding, an Open Questions Critical/High or a `⚠️ CANNOT VERIFY` line, one
      `verifier` returns CONFIRMED / REFUTED / UNCLEAR per item; otherwise skip.
      Then dedup across every agent that reported.
      Overlap between a cleanup lens and Section B → keep Section B's copy.
+     Same defect from Section B, Dispatch 4 and Dispatch 5 → keep the higher grade
+     (Section B's on a tie); whenever Dispatch 4 reported the defect, the kept copy is
+     marked "also: Dispatch 4".
 
   3. DISPLAY FINDINGS:
      ┌─────────────────────────────────────────┐
@@ -53,6 +67,8 @@ LOOP:
      │  [✅ all N criteria | ❌ N gaps]         │
      │ Runtime — [skipped|✅|❌ N AC, N broken, │
      │  N cosmetic]                            │
+     │ Security — [skipped|✅|N Critical,       │
+     │  N High, N Medium, N Low]               │
      │ Verified [N confirmed, N refuted,       │
      │  N unclear]                             │
      │ Pre-existing ([N]): - [file:line]       │

@@ -223,18 +223,28 @@ Report the test results and dispatch the Step 5 review in the same turn — do n
 
 **Live check trigger.** For each changed repo, read the `## Live check` section of its root CLAUDE.md (the worktree's copy when cook works in one). An `### <area>` matches when `git diff --name-only <base>..HEAD` (no exclusions: reference images live under `tests/`) hits one of its `paths` globs. Any match turns the Runtime check on, with one `verifier` per repo that has matching areas. No `## Live check` section: add the `## Claude's calls` row "Runtime check: skipped (no ## Live check)". A section but no match: record nothing.
 
+**Security trigger.** For each changed repo, run the command below. Test files, lockfiles and `*.md` are excluded (the size check's test exclusions, plus lockfiles and Markdown); only added lines (`+`, not `+++`) are searched, with one case-sensitive `grep -E`. Any output means the pattern list hit:
+
+```bash
+git -C <repo> diff -U0 <base>..HEAD -- . ':(exclude,glob)**/tests/**' ':(exclude,glob)**/__tests__/**' ':(exclude,glob)**/*.test.*' ':(exclude,glob)**/*.spec.*' ':(exclude,glob)**/package-lock.json' ':(exclude,glob)**/pnpm-lock.yaml' ':(exclude,glob)**/yarn.lock' ':(exclude,glob)**/Cargo.lock' ':(exclude,glob)**/*.md' | grep '^+' | grep -v '^+++' | grep -oE '[Pp]assword|[Pp]asswd|[Ss]ecret[A-Z_]|SECRET|[Aa]pi[_-]?[Kk]ey|API_KEY|[Cc]redential|jsonwebtoken|jwt\.(sign|verify)|[Oo][Aa]uth|bcrypt|argon2|passport\.|\b(authenticate|authorize|isAuthorized|hasPermission|requireAuth|checkPermission)\b|[Ss]et-[Cc]ookie|setCookie|res\.cookie\(|httpOnly|sameSite|crypto\.|createHash|createHmac|createCipher|randomBytes|Math\.random\(\).*(token|id|key)|(^|[^.[:alnum:]_])exec(Sync|File)?\(|\.exec(Sync|File)\(|\bcp\.exec\(|\bspawn(Sync)?\(|\beval\(|new Function\(|child_process|subprocess\.|os\.system\(|shell=True|\b(SELECT|INSERT|UPDATE|DELETE)\b.*\b(FROM|INTO|SET|WHERE)\b|\$queryRaw|\$executeRaw|\.raw\(|\.query\([[:space:]]*`|innerHTML|outerHTML|dangerouslySetInnerHTML|v-html|document\.write\(|bypassSecurityTrust|sendFile\(|createReadStream\(|path\.(join|resolve)\(.*req\.|req\.(body|query|params|headers|files)|request\.(GET|POST|FILES)|multer|formidable|busboy|res\.redirect\(|\bcors\(|Access-Control-Allow|pickle\.loads?\(|yaml\.load\(|unserialize\(|ObjectInputStream' | sort -u | head -5
+```
+
+The patterns are concrete code shapes, not common words, so a UI-only or README diff does not match (`update`, `delete`, `author`, `token` alone never do). They cover secrets and auth, crypto, command and code execution, raw SQL, unescaped HTML, file paths from outside, request input, network and redirects, and deserialization. Fix `grep -E` syntax if a pattern misbehaves, keeping its intent: a diff with `req.body` or `exec(` matches, a diff that only edits UI text or a README does not. A dependency manifest (`package.json`, `Cargo.toml`, `go.mod`, `requirements*.txt`, `pyproject.toml`) in `git diff --name-only <base>..HEAD` also matches, whatever the added lines say. A repo with a match gets **one Dispatch 4**, at any diff size. Record `## Claude's calls` "Security pass <repo>: on (matched: <up to 5 patterns>)" (when only a manifest triggered: "matched: manifest <file>"); when no repo matches, "Security pass: skipped (no pattern hit)".
+
 | Diff | Dispatch |
 |------|----------|
 | Small | **One** `code-reviewer` with Dispatch 1/2's prompt, changed in three places: "Return TWO sections — both required, no exceptions" becomes "Return THREE sections — all three required, no exceptions"; a `### Cleanup (non-gating, no severity)` section is added, built from Dispatch 2/2's "Project conventions are binding" paragraph, the four lens blocks (R first, with the `Reuse searched:` line) and the Collapse block; and the prompt says a correctness defect a lens finds goes straight into Section B, never into Cleanup. It does NOT get Dispatch 2/2's role paragraph or its Reviewer evidence block (the single reviewer already has it from Dispatch 1/2's prompt) |
-| Large | **Two** fresh `code-reviewer`s **in one message** so they run concurrently, as below |
+| Large | **Two** fresh `code-reviewer`s (three when N > 400, Dispatch 5) **in one message** so they run concurrently, as below |
 
-When the Live check trigger matched, add the Runtime row below to either dispatch, in the same message as the reviewer(s).
+Every conditional dispatch (3, 4, 5) joins the reviewers' message: Dispatch 3 when the Live check trigger matched, Dispatch 4 when the Security trigger matched (any diff size), Dispatch 5 when N > 400 (N = the added + removed lines the size check computed, summed over repos). Resulting reviewer count: small → 1; large with N ≤ 400 → 2; large with N > 400 → 3. Dispatch 4 agents are not counted in `[1|2|3]`; they are reported in the Security field.
 
 | # | Agent | Lens | Gating? |
 |---|-------|------|---------|
 | 1 | `code-reviewer` | Section A plan-compliance + Section B bugs by severity | **YES** |
 | 2 | `code-reviewer` | **Reuse + Simplification + Efficiency + Altitude** — one agent, four lenses, Reuse first | no |
 | Runtime | `verifier` (Dispatch 3; one per repo with a matching area) | **Runtime check** — runs the declared `run` commands, looks at the images | **YES** on Runtime AC ❌ and BROKEN |
+| 4 | `security-reviewer` (one per repo the Security trigger matched, any diff size) | **Security**, only the area the diff touches | **YES** on Critical/High |
+| 5 | `code-reviewer` (one per review, N > 400) | **Bug-only**: Section B, no Section A; reads the same package as agent 1 | **YES** on Critical/High |
 
 Agent 2 runs the four cleanup lenses of the `simplify` skill as a review-only sub-agent. Use `code-reviewer` for every reviewer: it is read-only (no Write/Edit), so no reviewer can violate the Step 3 gate. Fall back to `critic`, then `general-purpose`.
 
@@ -248,6 +258,8 @@ Agent 2 runs the four cleanup lenses of the `simplify` skill as a review-only su
 
 **Why not one agent per lens like `simplify` does:** `simplify` dedups **and applies** the fixes in the same head, so the cross-lens collapse just moves from review time to apply time. Cook forbids that (Step 5's **Forbidden** line below: fixes are always dispatched to a sub-agent), so in cook the collapse would land in the orchestrator working from summaries — the weakest possible place. One cleanup reviewer keeps the synthesis where the code understanding is.
 
+**Why a separate security pass, and a second bug finder only past 400 lines:** security is the specialist role with the strongest evidence (a general reviewer splits its attention; OWASP and Anthropic both review it on its own). Independent extra passes raise recall but not precision, so the Finding check stays the filter, and a second bug finder pays off only when the diff is more than one review can hold. Debate between agents and wide fan-out did not beat one reviewer, so nothing more is added.
+
 **Why one dispatch instead of two steps:** the reviewers run concurrently, so a large diff costs one reviewer's wall-clock time and one gate. The cost is that gating and non-gating findings arrive together — § Verdict below is what keeps them from turning to mush. Read it before acting on any finding.
 
 **Why quality is a separate lens from bugs:** agent 2 is looking at reuse/complexity/efficiency/depth, NOT correctness. Agent 1 owns bugs. Do not let the cleanup agent argue a correctness defect — if it does, re-file it under Section B severity and treat it as gating.
@@ -258,8 +270,8 @@ Write the package after Step 4 is green, right before dispatching Step 5. `<base
 
 ```bash
 mkdir -p <plan-dir>/review
-{ echo "## Repo <path>"; git -C <repo> log --oneline <base>..HEAD; git -C <repo> diff --stat <base>..HEAD; git -C <repo> diff -U10 <base>..HEAD -- . ':(exclude,glob)**/package-lock.json' ':(exclude,glob)**/pnpm-lock.yaml' ':(exclude,glob)**/yarn.lock'; } > <plan-dir>/review/review-00.diff   # first repo
-{ echo "## Repo <path>"; git -C <repo> log --oneline <base>..HEAD; git -C <repo> diff --stat <base>..HEAD; git -C <repo> diff -U10 <base>..HEAD -- . ':(exclude,glob)**/package-lock.json' ':(exclude,glob)**/pnpm-lock.yaml' ':(exclude,glob)**/yarn.lock'; } >> <plan-dir>/review/review-00.diff   # each further repo
+{ echo "## Repo <path>"; git -C <repo> log --oneline <base>..HEAD; git -C <repo> diff --stat <base>..HEAD; git -C <repo> diff -U10 <base>..HEAD -- . ':(exclude,glob)**/package-lock.json' ':(exclude,glob)**/pnpm-lock.yaml' ':(exclude,glob)**/yarn.lock' ':(exclude,glob)**/Cargo.lock'; } > <plan-dir>/review/review-00.diff   # first repo
+{ echo "## Repo <path>"; git -C <repo> log --oneline <base>..HEAD; git -C <repo> diff --stat <base>..HEAD; git -C <repo> diff -U10 <base>..HEAD -- . ':(exclude,glob)**/package-lock.json' ':(exclude,glob)**/pnpm-lock.yaml' ':(exclude,glob)**/yarn.lock' ':(exclude,glob)**/Cargo.lock'; } >> <plan-dir>/review/review-00.diff   # each further repo
 ```
 - Lockfiles appear only in `--stat`. Snapshots and other generated files stay in the diff.
 - A plan that touches several repos goes into one file: write it with `>` for the first repo and `>>` for each further repo, each section starting with `echo "## Repo <path>"` (inside the braces, before the `git log`).
@@ -267,7 +279,7 @@ mkdir -p <plan-dir>/review
 - A file outside any git repo cannot be committed, so the package copies its full content under the header "no diff: not in a git repo".
 - Re-review: before each fix batch that contains a blocking fix (the only batch a re-review follows; a cleanup-only batch needs neither `FIX_BASE` nor a package) record `FIX_BASE` = `git rev-parse HEAD` (written down literally) for every repo the batch can touch, like Base. After re-verify and any revert, write `review-NN.diff` from `FIX_BASE..HEAD`, and append only the uncommitted files the fix batch changed (listed in its report, or attributed to it by the check), not every uncommitted file of the run; NN is the cycle the fix batch opens, i.e. the value after review-cycle.md's `cycle++`: the first review reads `review-00.diff`, the first fix batch is `cycle 1` and its re-review reads `review-01.diff`.
 
-Reviewer evidence block — pasted into Dispatch 1/2 (the small path uses that same prompt), into Dispatch 2/2's role paragraph and into the scoped re-review prompt, replacing every "Diff under review" paragraph. Templates refer to it as `<Reviewer evidence block, verbatim, with review-NN.diff ...>`:
+Reviewer evidence block — pasted into Dispatch 1/2 (the small path uses that same prompt), into Dispatch 2/2's role paragraph, into Dispatch 4 and Dispatch 5 and into the scoped re-review prompts (gating and Dispatch 4), replacing every "Diff under review" paragraph. Templates refer to it as `<Reviewer evidence block, verbatim, with review-NN.diff ...>`:
 
 ```
 ## Diff under review
@@ -517,6 +529,65 @@ Agent(
 )
 ```
 
+### Dispatch 4 — security (gating)
+
+Runs only when the Security trigger matched (§ Step 5 above), one agent per matching repo, at any diff size, in the same message as the reviewer(s). Agent definition `agents/security-reviewer.md` is overridden by the prompt below; when that agent is missing, fall back per `subagent-patterns.md` § Agent Name Mapping ("Security review (Dispatch 4)") with the same prompt.
+
+```
+Agent(
+  subagent_type="security-reviewer",
+  model="opus",
+  description="Security review",
+  prompt="""
+  Security review of the change: look only for vulnerabilities the diff introduces. Not ordinary bugs,
+  not style. Another reviewer owns those.
+
+  This prompt overrides the <Output_Format> and the investigation protocol of your agent definition:
+  report in the format below. You may run at most one dependency audit command, and only when a
+  dependency manifest changed in the diff; run nothing else.
+
+  ## Repo in scope
+  <repo path>. Review only this repo's sections of the package. The patterns that matched: <list>.
+
+  ## Plan files (authoritative)
+  - <plan-dir>/plan.md  (carries the approved design's Acceptance Criteria)
+  - <plan-dir>/design.md  (the approved design, when cook wrote it)
+  - <plan-dir>/spec.md  (only if the plan was authored outside cook and one exists)
+  - <plan-dir>/phase-01-*.md, phase-02-*.md, ... (list ALL phase files verbatim)
+
+  ## Implementer reports
+  <paste each phase sub-agent's final report>
+
+  <Reviewer evidence block, verbatim, with review-00.diff>
+
+  ## Hard exclusions
+  Do not report: denial of service or missing rate limiting; theoretical races; files used only by
+  tests; missing hardening with no concrete exploit path; issues already present at <base> in code the
+  diff did not change (list them under **Pre-existing**, no severity).
+
+  ## Severity
+  - **Critical:** remotely exploitable, data exposure, authentication bypass
+  - **High:** exploitable under realistic conditions
+  - **Medium:** hardening that should be added
+  - **Low:** notes
+  Every Critical/High must carry the exploit path: attacker-controlled input → each step with
+  file:line → the sink. Each finding: severity, file:line, exploit path, concrete fix.
+
+  ## Return
+  ### Security findings
+  ### Pre-existing
+  ### Open Questions
+  A Critical/High you could not confirm, with what would settle it.
+  ### Final verdict
+  APPROVED (no Critical, no High) or CHANGES REQUIRED.
+  """
+)
+```
+
+### Dispatch 5 — bug-only (gating)
+
+Runs only when N > 400 (§ Step 5 dispatch table), once per review, in the same message as agent 1 and agent 2. It reads the same package as agent 1 and is not told what agent 1 finds. Prompt: Dispatch 1/2's prompt with Section A and Plan gaps removed, the opening line "Bug-only review. Another reviewer checks plan compliance; you look only for correctness defects. Review independently.", a correctness-only severity scale (Critical and High as in Dispatch 1/2; Medium = an edge-case defect with limited impact; no Low; no maintainability, naming, duplication, SOLID, style or test-quality categories, because agent 2 owns those), and a verdict without the Section A clause. The Return header becomes "## Return — Code Quality (severity-rated)". Dispatch 5 Mediums are counted with Section B's Mediums; on dedup, compare only Critical/High. `subagent_type="code-reviewer"`, `model="opus"`.
+
 ### Verdict — gating vs non-gating
 
 Wait for every reviewer, then split the findings. This split is the whole point of the step; do not blend them into one score. Run the Finding check (§ Finding check) first: only CONFIRMED findings enter a blocking bucket below, Section A ❌ included.
@@ -525,15 +596,16 @@ Wait for every reviewer, then split the findings. This split is the whole point 
 |--------|--------|--------|
 | **Blocking** | Section A any ❌ | **Non-overridable once CONFIRMED** (§ Finding check). Dispatch a fix sub-agent or abort. Nothing else. |
 | **Blocking** | Section B Critical or High | Dispatch a fix sub-agent, cycle++ |
+| **Blocking** | Dispatch 4 or Dispatch 5 Critical or High | Like Section B: dispatch a fix sub-agent, cycle++ |
 | **Blocking** | Runtime AC ❌ (Dispatch 3) | Like Section A: dispatch a fix sub-agent, cycle++ |
 | **Blocking** | Runtime BROKEN | Graded High: dispatch a fix sub-agent, cycle++ |
-| **Non-blocking** | Pre-existing (a reviewer's Pre-existing section, Dispatch 3's Pre-existing, or a Finding check REFUTED "pre-existing") | No severity, never gates; listed under `## For you to decide` |
+| **Non-blocking** | Pre-existing (a reviewer's Pre-existing section, Dispatch 3's, 4's or 5's Pre-existing, or a Finding check REFUTED "pre-existing") | No severity, never gates; listed under `## For you to decide` |
 | **Non-blocking** | Runtime COSMETIC | Apply-or-skip-with-reason, like cleanup; never increments the cycle counter |
 | **Non-blocking** | Runtime `⚠ NOT VISIBLE` | Record "AC checked by tests only" in `## Claude's calls` |
-| **Non-blocking** | Section B Medium / Low | Apply what is worth applying; record each skip and why in `## Claude's calls` |
+| **Non-blocking** | Section B Medium / Low, and Dispatch 4/5 Medium / Low | Apply what is worth applying; record each skip and why in `## Claude's calls` |
 | **Non-blocking** | Agent 2, or the Cleanup section of the single reviewer (all four lenses) | Same — apply-or-skip-with-reason. **Never** blocks Step 6, **never** increments the cycle counter |
 
-**Dedup across every report before applying.** The cleanup reviewer has already collapsed its own four lenses; do not undo that by re-splitting its merged findings. Findings pointing at the same line or the same mechanism collapse into one; when a cleanup lens and Section B overlap, keep Section B's (it carries the severity that drives the gate). A Runtime finding and a Section B finding on the same defect: keep the higher grade (BROKEN = High, COSMETIC below Low), Section B's on a tie. When you skip a cleanup finding for behaviour change or scope and it carries a `Fallback:`, judge the fallback on its own.
+**Dedup across every report before applying.** The cleanup reviewer has already collapsed its own four lenses; do not undo that by re-splitting its merged findings. Findings pointing at the same line or the same mechanism collapse into one; when a cleanup lens and Section B overlap, keep Section B's (it carries the severity that drives the gate). The same defect reported by Section B, Dispatch 4 and Dispatch 5: keep the higher grade (Section B's on a tie); whenever Dispatch 4 reported the defect, the kept copy is marked "also: Dispatch 4". A Runtime finding and a Section B finding on the same defect: keep the higher grade (BROKEN = High, COSMETIC below Low), Section B's on a tie. When you skip a cleanup finding for behaviour change or scope and it carries a `Fallback:`, judge the fallback on its own.
 
 **Apply blocking and non-blocking fixes in the SAME dispatch**, blocking first. Tell the applier that blocking fixes take precedence and to **drop any cleanup finding that the blocking fix already resolved or made stale** — otherwise it patches code that no longer exists.
 
@@ -541,7 +613,7 @@ Applier: `code-simplifier` for a cleanup-only batch (it is purpose-built for thi
 
 ### Finding check
 
-Runs after every review pass (cycle 0 and each re-review) when there is at least one of: a Section A ❌, a Section B Critical/High, a Runtime AC ❌ or BROKEN, a Critical/High under a reviewer's Open Questions, a `⚠️ CANNOT VERIFY` line. Otherwise skip it. One `verifier` checks the whole batch. On a re-review, the inputs are its new Critical/High issues (and new Runtime AC ❌ / BROKEN); a NOT RESOLVED finding keeps its earlier CONFIRMED status and is not re-checked.
+Runs after every review pass (cycle 0 and each re-review) when there is at least one of: a Section A ❌, a Section B Critical/High, a Dispatch 4/5 Critical/High, a Runtime AC ❌ or BROKEN, a Critical/High under a reviewer's Open Questions, a `⚠️ CANNOT VERIFY` line. Otherwise skip it. One `verifier` checks the whole batch. On a re-review, the inputs are its new Critical/High issues (and new Runtime AC ❌ / BROKEN); a NOT RESOLVED finding keeps its earlier CONFIRMED status and is not re-checked.
 
 ```
 Agent(
@@ -554,7 +626,7 @@ Agent(
   format below.
 
   ## Items (verbatim from the reviewers)
-  <Section A ❌ items, Section B Critical/High, Runtime AC ❌ / BROKEN, Critical/High under Open
+  <Section A ❌ items, Section B and Dispatch 4/5 Critical/High, Runtime AC ❌ / BROKEN, Critical/High under Open
   Questions, `⚠️ CANNOT VERIFY` lines; numbered>
 
   ## Diff and plan
@@ -577,7 +649,7 @@ Agent(
 )
 ```
 
-Using the result: CONFIRMED → the bucket its final grade puts it in (Section A ❌, Section B Critical/High, Runtime AC ❌, BROKEN block; lower grades are non-blocking). REFUTED and UNCLEAR → `## Claude's calls` (item, result, reason). REFUTED "pre-existing" → `## For you to decide` (Pre-existing) instead. A Runtime BROKEN with a visual defect that names no image region is lowered to COSMETIC by the check; a crash, hang or failing `run` command is not.
+Using the result: CONFIRMED → the bucket its final grade puts it in (Section A ❌, Section B or Dispatch 4/5 Critical/High, Runtime AC ❌, BROKEN block; lower grades are non-blocking). REFUTED and UNCLEAR → `## Claude's calls` (item, result, reason). REFUTED "pre-existing" → `## For you to decide` (Pre-existing) instead. A Runtime BROKEN with a visual defect that names no image region is lowered to COSMETIC by the check; a crash, hang or failing `run` command is not.
 
 ### After applying — re-verify (MANDATORY)
 
@@ -589,7 +661,7 @@ Cleanup edits change working code, so the step is NOT done when the fixes land:
 
 Skipping this is how a "quality pass" ships a regression. `simplify` on its own has no verification phase — that gap is closed here, not inherited.
 
-**Cycle (max 3, hard):** as defined in `review-cycle.md`; no fourth blocking fix batch is ever opened, and a late re-review run by the audit below does not open one. **Re-dispatch only the gating reviewer** (agent 1, or the single reviewer without its Cleanup section) on every re-review — the cleanup lenses run **once**, on the first pass. Dispatch 3 is re-dispatched too, scoped to the fixed Runtime findings and the changed images, only when `git diff --name-only FIX_BASE..HEAD` hits a matching `paths` glob; at most one Runtime check per cycle. Re-running them per cycle repeats the review cost for findings you already hold.
+**Cycle (max 3, hard):** as defined in `review-cycle.md`; no fourth blocking fix batch is ever opened, and a late re-review run by the audit below does not open one. **Re-dispatch only the gating reviewer** (agent 1, or the single reviewer without its Cleanup section) on every re-review — the cleanup lenses run **once**, on the first pass. Dispatch 3 is re-dispatched too, scoped to the fixed Runtime findings and the changed images, only when `git diff --name-only FIX_BASE..HEAD` hits a matching `paths` glob; at most one Runtime check per cycle. Dispatch 4 is re-dispatched too, scoped, once per cycle at most, for each repo whose fix batch held a finding Dispatch 4 reported (a dedup copy kept under Section B and marked "also: Dispatch 4" counts); with the prompt "Scoped re-review of Dispatch 4" below. Dispatch 5 never re-runs: its fixed findings go into the gating re-review's "Findings the batch fixed". Re-running them per cycle repeats the review cost for findings you already hold.
 
 **Thrash:** when a re-review marks a finding NOT RESOLVED, or two consecutive re-reviews both return CONFIRMED blocking findings (Runtime BROKEN included) in the same function, the next fix batch goes to `debugger`: find the root cause, write a failing test that reproduces it first, then fix. Record the routing in `## Claude's calls`.
 
@@ -626,9 +698,13 @@ Agent(
 )
 ```
 
-**Forbidden:** patching code in-line based on the review. Fixes are always dispatched to a sub-agent. Running the cleanup lenses more than once per cook run. Running the Runtime check more than once per cycle. Opening a fourth blocking fix batch. Sending a blocking finding to a fix batch before the Finding check CONFIRMED it. Letting a cleanup finding block Step 6. Telling a reviewer which findings are known, what to skip, or how severe something is.
+Scoped re-review of Dispatch 4 (security) — runs per the Cycle paragraph, in the same message as the gating re-review. Same template as the Scoped re-review above (keeping "## Earlier cycles"), with `subagent_type="security-reviewer"` and `model="opus"`, "Findings the batch fixed" limited to the security findings the batch fixed for that repo, no Section A, and new issues graded on Dispatch 4's scale with an exploit path for every Critical/High. The prompt keeps the sentence "This prompt overrides the <Output_Format> of your agent definition" as its second line. The verdict is Dispatch 4's: APPROVED when every finding is RESOLVED and there is no new Critical or High.
 
-**Output:** `✓ Step 5: Review ([N] lines / [M] files → [1|2] reviewer[s]) — Section A [✅|❌ N gaps] / Section B [N Critical, N High, N Medium, N Low] / Verified [N confirmed, N refuted, N unclear] / Runtime [skipped|✅|❌ N AC, N broken, N cosmetic] / Cleanup [N applied, M skipped] — re-verify [✅|❌] — [Approved|Awaiting fix]`
+**Forbidden:** patching code in-line based on the review. Fixes are always dispatched to a sub-agent. Running the cleanup lenses more than once per cook run. Running the Runtime check more than once per cycle. Running Dispatch 4 more than once per cycle. Running Dispatch 5 after cycle 0. Opening a fourth blocking fix batch. Sending a blocking finding to a fix batch before the Finding check CONFIRMED it. Letting a cleanup finding block Step 6. Telling a reviewer which findings are known, what to skip, or how severe something is.
+
+**Output:** `✓ Step 5: Review ([N] lines / [M] files → [1|2|3] reviewer[s]) — Section A [✅|❌ N gaps] / Section B [N Critical, N High, N Medium, N Low] / Security [skipped|✅|N Critical, N High, N Medium, N Low] / Verified [N confirmed, N refuted, N unclear] / Runtime [skipped|✅|❌ N AC, N broken, N cosmetic] / Cleanup [N applied, M skipped] — re-verify [✅|❌] — [Approved|Awaiting fix]`
+
+Dispatch 5 findings are counted in Section B's numbers; Dispatch 4's in Security; Dispatch 4 agents are not counted in [1|2|3].
 
 ## Step 6: Finalize
 
@@ -717,7 +793,7 @@ After `## Claude's calls`, add:
 - <issue, file:line>
 ```
 
-"Plan gaps" lists the reviewer's Plan gaps; "Pre-existing" lists the reviewer's Pre-existing items, Dispatch 3's Pre-existing and findings the Finding check REFUTED as "pre-existing". Omit the whole section when both lists are empty, and omit an empty list. Headings are written in the user's language (names above).
+"Plan gaps" lists the reviewer's Plan gaps; "Pre-existing" lists the reviewer's Pre-existing items, Dispatch 3's, 4's and 5's Pre-existing and findings the Finding check REFUTED as "pre-existing". Omit the whole section when both lists are empty, and omit an empty list. Headings are written in the user's language (names above).
 
 ## Workflow Summary
 
@@ -725,7 +801,7 @@ Legend: `[R]` = human gate
 
 ```
 0 → 1A scout → 1B research → 1C Q&A [R per round] → playback card [R] → 1D approaches → 1E design.md → builder check → review page [R, notes per section]
-  → 2 (orchestrator writes plan + self-review) → 3 (sub-agent per phase; NEEDS_CONTEXT question [R, only when hard to change]) → 4 (test sub-agent) → 5 (review sized by the diff: 1 or 2 reviewers; `verifier` for the Runtime check when a Live check path changed and the Finding check when there are blocking findings) → 6 (finalize sub-agents; push question [R], with its merge follow-up)
+  → 2 (orchestrator writes plan + self-review) → 3 (sub-agent per phase; NEEDS_CONTEXT question [R, only when hard to change]) → 4 (test sub-agent) → 5 (review sized by the diff: 1, 2 or 3 reviewers, plus a `security-reviewer` when the Security trigger matched; `verifier` for the Runtime check when a Live check path changed and the Finding check when there are blocking findings) → 6 (finalize sub-agents; push question [R], with its merge follow-up)
 ```
 
 Human gates live in Step 1. Steps 2–6 run straight through (exceptions: `../SKILL.md` § Gates, marked `[R]` above).
@@ -738,7 +814,7 @@ If a plan path is provided at Step 0, skip Steps 1–2 and start at Step 3.
 - **MANDATORY SUBAGENT DELEGATION:** Steps 3, 4, 5, 6 MUST spawn subagents via the `Agent` tool. DO NOT implement, test, or review directly. Resolve every type through `subagent-patterns.md` § Agent Name Mapping first.
   - Step 3: `executor` / `designer` for frontend (one per phase)
   - Step 4: `test-engineer` (and `debugger` if failures)
-  - Step 5: `code-reviewer` sized by the diff (§ Step 5) — small: one reviewer returning Section A, Section B and a Cleanup section; large: two in ONE message — agent 1 returns the dual-section gating report (Section A plan-compliance, non-overridable once CONFIRMED + Section B bugs by severity); agent 2 runs Reuse (first) + Simplification + Efficiency + Altitude and collapses findings that are one change. Cleanup lenses never gate. Re-verify after any fix batch. A `verifier` (opus) runs the Runtime check when a Live check path changed and the Finding check when there are blocking findings.
+  - Step 5: `code-reviewer` sized by the diff (§ Step 5) — small: one reviewer returning Section A, Section B and a Cleanup section; large: two in ONE message — agent 1 returns the dual-section gating report (Section A plan-compliance, non-overridable once CONFIRMED + Section B bugs by severity); agent 2 runs Reuse (first) + Simplification + Efficiency + Altitude and collapses findings that are one change. Cleanup lenses never gate. A `security-reviewer` (Dispatch 4) runs when the Security trigger matched, and a third, bug-only `code-reviewer` (Dispatch 5) when the diff is over 400 lines; both gate on Finding-check-CONFIRMED Critical/High. Re-verify after any fix batch. A `verifier` (opus) runs the Runtime check when a Live check path changed and the Finding check when there are blocking findings.
   - Step 6: `executor` (sync-back), `writer` (docs); the orchestrator commits and pushes
 - **ALWAYS** create a task list — use `TaskCreate` one task per phase file (§ Step 3 Task hydration), with priority order and dependencies (or `TodoWrite` if Task tools unavailable). This is never skipped.
 - **ALWAYS** keep the task list updated in lock-step, not just at the end:

@@ -33,6 +33,7 @@ do the work inline.
 | Testing | `test-engineer` → `executor` → `general-purpose` |
 | Debugging / root cause | `debugger` → `tracer` → `general-purpose` |
 | Code review | `code-reviewer` → `critic` → `general-purpose` |
+| Security review (Dispatch 4) | `security-reviewer` → `code-reviewer` → `critic` → `general-purpose` |
 | Runtime check / Finding check | `verifier` → `critic` → `general-purpose` |
 | Plan sync-back (mechanical file edits) | `executor` → `general-purpose` |
 | Docs update | `writer` → `general-purpose` |
