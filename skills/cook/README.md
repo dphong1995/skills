@@ -57,7 +57,7 @@ From Step 2 onward it runs end to end without pausing (exceptions: SKILL.md § G
 | Testing | `test-engineer`, `debugger` |
 | Review (sized by the diff) | `code-reviewer` ×1 (small diff) or ×2 (large) — compliance (incl. `in scope` AC rows checked against the saved Jira text)+bugs (gating) / reuse+simplification+efficiency+altitude |
 | Fix application | `code-simplifier` (cleanup-only) / `executor` / `debugger` |
-| Finalize | `executor` (sync-back), `writer` (docs); the orchestrator commits each phase and pushes |
+| Finalize | `executor` (sync-back), `writer` (docs); the orchestrator commits each phase, squashes the run into one commit per repo (unless already pushed) and pushes |
 
 ## Files
 

@@ -157,7 +157,7 @@ skills/
 │                     `tests/`, `DEVELOPING.md`
 ├── ck-plan/          Lập kế hoạch: research → phân tích codebase → plan.md + phase-XX-*.md (mẫu và luật viết trong `references/plan-writing.md`; Global Constraints, Review Focus, Interfaces; tự kiểm plan)
 │                     → tự động gọi cook
-├── cook/             Triển khai: mỗi phase một subagent, orchestrator commit sau mỗi phase → test → review theo kích thước diff (diff nhỏ 1 reviewer, diff lớn 2; thêm Runtime check do `verifier` chạy khi diff chạm đường dẫn trong mục `## Live check` của CLAUDE.md) → lỗi chặn được verifier xác minh trước khi sửa; lỗi có sẵn và plan bỏ sót vào mục Để bạn quyết → finalize, hỏi push
+├── cook/             Triển khai: mỗi phase một subagent, orchestrator commit sau mỗi phase → test → review theo kích thước diff (diff nhỏ 1 reviewer, diff lớn 2; thêm Runtime check do `verifier` chạy khi diff chạm đường dẫn trong mục `## Live check` của CLAUDE.md) → lỗi chặn được verifier xác minh trước khi sửa; lỗi có sẵn và plan bỏ sót vào mục Để bạn quyết → finalize: squash các commit của lần chạy thành một commit mỗi repo (bỏ qua nếu đã push), hỏi push
 └── routing-bug-fixes-to-cook/
                       Cổng sau khi debug xong root cause: fix ≥ 3 file production, > 50 dòng
                       production (đếm gộp các repo) hoặc có nhiều cách sửa → gọi cook (Step 1 rút

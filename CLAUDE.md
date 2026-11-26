@@ -96,4 +96,5 @@ Cook's Step 5 reads this section. Commands here must not show a window or activa
   changed buttons (`Nhờ Claude`, `Nhắc duyệt`, ...); a button with an async effect shows its in-flight and result state.
 - cook commits straight on `main` in this repo: no branch, no worktree.
 - Commit subjects: imperative sentence, no prefix (e.g. "Add a mod that compacts the main thread at its own
-  threshold"); plan-driven work uses "Phase N: ...".
+  threshold"); plan-driven work uses "Phase N: ..." while cook runs, and cook squashes those into one commit
+  named after the plan at the end.

@@ -129,7 +129,7 @@ Before dispatching phase 1, for every repo the plan touches, record and write do
 The task list MUST be kept in lock-step with reality after EVERY phase: `in_progress` before dispatch, `complete` once its report passed the check and its commit landed (or nothing was left to commit, § Report check, status and commit). A phase awaiting an answer, a re-dispatch or a split stays `in_progress` (once split, the original task is deleted, the **Status handling** list in § Report check, status and commit) and does not block dispatching phases that do not depend on it. If you are about to move to Step 4 and any phase's task is not `complete`, STOP and settle it first. A phase is not "done" until its task status reflects it.
 </HARD-GATE>
 
-**Forbidden:** orchestrator using Edit/Write on production files during Step 3. If a sub-agent fails or returns incomplete work, dispatch another sub-agent (`debugger` / `executor`) — do not patch in-line. Commits and the Step 6 push are bookkeeping, not edits. The orchestrator never runs a git command that changes file content (`revert`, `checkout`, `reset`, `stash`); the one exception is in Step 6: the fetch + merge (and `git merge --abort` on a conflict) the user's push rules require before a push.
+**Forbidden:** orchestrator using Edit/Write on production files during Step 3. If a sub-agent fails or returns incomplete work, dispatch another sub-agent (`debugger` / `executor`) — do not patch in-line. Commits, the Step 6 squash (`commit-tree` + `update-ref`: it moves the branch ref and leaves every file as it is) and the Step 6 push are bookkeeping, not edits. The orchestrator never runs a git command that changes file content (`revert`, `checkout`, `reset`, `stash`); the one exception is in Step 6: the fetch + merge (and `git merge --abort` on a conflict) the user's push rules require before a push.
 
 ### Report contract
 
@@ -657,14 +657,19 @@ in its file is ticked (a file with no box: when its task is complete). Re-read t
 3. Use `TaskUpdate` to mark Claude Tasks complete after sync-back confirmation.
 4. Onboarding check (API keys, env vars).
 5. Commit the files the writer lists under `Files changed` (`<ticket> - Update docs`, § Report check, status and commit), never the plan root or `<plan-dir>` (the **Commit** rules in § Report check, status and commit).
-6. Ask on the interview page (`../brainstorm-pro/references/html-interview.md`), not in chat: one question per repo on the same page, "Push branch `<branch>` to `<remote>`?" with options Push / Not yet (Vietnamese: "Push nhánh … lên …?", Push / Chưa push); the context of each is its own `git log --oneline <base>..HEAD`. On a branch the user's rules forbid pushing (e.g. `master`), the question says so and recommends Not yet.
-7. If the user chose Push: when the user's push rules require fetching and merging the target branch first, the orchestrator does that (the only git commands that change file content that cook runs: the fetch + merge, and `git merge --abort` on a conflict); the merge commit uses the same commit identity as § Commit. If the merge refuses to start (uncommitted or staged changes in its way, an untracked file it would overwrite), do not stash or clean, and do not retry on your own: do not push; ask on the interview page with git's message, options `Cleaned up, retry` (run the fetch + merge once more) / `Not yet` (Vietnamese: `Đã dọn xong, thử lại` / `Chưa push`). On a conflict (after `git merge --abort`) ask the same two options. After a merge, dispatch `test-engineer` with the § Step 4 prompt and push only if it is green. If not green, do not push: report "not pushed" in the final report, with the failing tests and whether each also fails on the target branch. Push per the user's push rules. No squash.
+6. Squash the run, per repo: one commit replaces every commit cook made since the Step 3 start commit (phases, fix batches, reverts, cleanup, docs), so the branch gets one commit per run while review still had the per-phase history. Skip it, with a `## Claude's calls` row giving the reason, when `<start>..HEAD` holds fewer than two commits, when any of them is already on a remote (`git -C <repo> branch -r --contains <oldest commit of the range>` prints something), when the range holds a merge commit (`git rev-list --merges <start>..HEAD` prints something), or when the user's rules forbid rewriting the branch. Write down the current HEAD literally as `<old HEAD>`, then build the commit from HEAD's tree and move the branch to it in one shell command, without touching the index or the working tree (files left uncommitted, pre-run files included, stay exactly as they were):
+   ```bash
+   new=$(git -C <repo> commit-tree 'HEAD^{tree}' -p <start> -F <msg-file>) && git -C <repo> update-ref -m "cook: squash run" HEAD "$new" <old HEAD>
+   ```
+   Add the commit identity of § Commit with `-c` when the user's rules require one. The message file (in the scratchpad, not the repo): subject `<ticket> - <plan title>` (`<plan title>` without a ticket; an imperative sentence, following the user's commit-message rules), a blank line, the squashed subjects oldest first as `- <subject>` lines, then the attribution lines the session requires. Check `git -C <repo> diff <old HEAD> HEAD` is empty, and add a `## Claude's calls` row "Squashed K commits into <new short hash>; undo: `git update-ref HEAD <old HEAD>`".
+7. Ask on the interview page (`../brainstorm-pro/references/html-interview.md`), not in chat: one question per repo on the same page, "Push branch `<branch>` to `<remote>`?" with options Push / Not yet (Vietnamese: "Push nhánh … lên …?", Push / Chưa push); the context of each is its own `git log --oneline <base>..HEAD`. On a branch the user's rules forbid pushing (e.g. `master`), the question says so and recommends Not yet.
+8. If the user chose Push: when the user's push rules require fetching and merging the target branch first, the orchestrator does that (the only git commands that change file content that cook runs: the fetch + merge, and `git merge --abort` on a conflict); the merge commit uses the same commit identity as § Commit. If the merge refuses to start (uncommitted or staged changes in its way, an untracked file it would overwrite), do not stash or clean, and do not retry on your own: do not push; ask on the interview page with git's message, options `Cleaned up, retry` (run the fetch + merge once more) / `Not yet` (Vietnamese: `Đã dọn xong, thử lại` / `Chưa push`). On a conflict (after `git merge --abort`) ask the same two options. After a merge, dispatch `test-engineer` with the § Step 4 prompt and push only if it is green. If not green, do not push: report "not pushed" in the final report, with the failing tests and whether each also fails on the target branch. Push per the user's push rules. The merge commit is not squashed (item 6 ran before it).
 
-**Output:** `✓ Step 6: Finalized - [N] subagents - sync-back done - [K] commits - [pushed | not pushed]`
+**Output:** `✓ Step 6: Finalized - [N] subagents - sync-back done - [K] commits squashed into 1 (or: not squashed: <reason>) - [pushed | not pushed]`
 
 ### Final report
 
-The final report goes in chat, in the user's language. It has the `✓ Step N` lines, the commit list, and:
+The final report goes in chat, in the user's language. It has the `✓ Step N` lines, the commit list (after the squash: the squashed commit with its body), and:
 
 ```markdown
 ## Claude's calls
@@ -698,6 +703,7 @@ Sources of the rows:
 - Files committed outside their phase's ownership.
 - DONE_WITH_CONCERNS concerns that were not fixed.
 - Branch and worktree creation (§ Step 3).
+- The squash (§ Step 6 item 6): the old HEAD and how to undo it, or why it was skipped.
 
 With no rows, write "None" (Không có).
 

@@ -59,7 +59,7 @@ file itself. Cook-specific mapping and carve-outs: `references/workflow-steps.md
 </HARD-GATE>
 
 <HARD-GATE>
-The orchestrator NEVER edits source files itself during Step 3. Every phase MUST be dispatched to a sub-agent via the `Agent` tool (named `Task` in some harnesses). If you find yourself about to call Edit/Write for production code, STOP and dispatch a sub-agent instead. Committing a phase's files (`git add`/`git commit`) is bookkeeping, not editing; the orchestrator never runs a git command that changes file content. One exception, in Step 6 only: the fetch + merge (and `git merge --abort` on a conflict) the user's push rules require before a push (`references/workflow-steps.md` § Step 6).
+The orchestrator NEVER edits source files itself during Step 3. Every phase MUST be dispatched to a sub-agent via the `Agent` tool (named `Task` in some harnesses). If you find yourself about to call Edit/Write for production code, STOP and dispatch a sub-agent instead. Committing a phase's files (`git add`/`git commit`) and the Step 6 squash (`commit-tree` + `update-ref`) are bookkeeping, not editing; the orchestrator never runs a git command that changes file content. One exception, in Step 6 only: the fetch + merge (and `git merge --abort` on a conflict) the user's push rules require before a push (`references/workflow-steps.md` § Step 6).
 </HARD-GATE>
 
 ## Anti-Rationalization
@@ -141,13 +141,13 @@ The review (Step 5) is **sized by the diff** (workflow-steps.md § Step 5: one r
 **Always enforced:**
 - **Testing:** 100% pass required (a failure confirmed on the Step 3 start commit excepted, `references/workflow-steps.md` § Step 4)
 - **Code Review:** after the reviewers report, dedup, apply the findings worth applying and record which you skipped and why in the final report's `## Claude's calls` (Claude tự quyết) — do not stop to ask permission first
-- **Commits:** one commit per phase and per fix batch, made by the orchestrator, never squashed (`references/workflow-steps.md` § Report check, status and commit)
+- **Commits:** one commit per phase and per fix batch, made by the orchestrator (`references/workflow-steps.md` § Report check, status and commit); once docs are committed, Step 6 squashes the run's commits into one per repo, unless any is already pushed (`references/workflow-steps.md` § Step 6)
 - **Re-verify after cleanup:** any applied cleanup fix is followed by the test command AND the project's own verification gate, i.e. whatever command its CLAUDE.md declares must stay green (`pnpm verify` in talos-v2). A quality pass that ships a regression is worse than no quality pass
 - **Finalize (MANDATORY - never skip):**
   1. `executor` subagent → run full plan sync-back (all completed tasks/steps across all `phase-XX-*.md`, not only current phase), then update `plan.md` status/progress
   2. `writer` subagent → update `./docs` if changes warrant; the prompt carries the Report contract, then the `references/subagent-patterns.md` § Every prompt lines, and its files are committed
   3. `TaskUpdate` → mark all Claude Tasks complete after sync-back verification (or `TodoWrite` if Task tools unavailable)
-  4. Ask on the interview page (`../brainstorm-pro/references/html-interview.md`), not in chat, whether to push; the orchestrator pushes, never squashes. Then the final report with `## Claude's calls` (`references/workflow-steps.md` § Final report)
+  4. Squash the run's commits into one per repo (`references/workflow-steps.md` § Step 6), then ask on the interview page (`../brainstorm-pro/references/html-interview.md`), not in chat, whether to push; the orchestrator pushes. Then the final report with `## Claude's calls` (`references/workflow-steps.md` § Final report)
 
 ## Required Subagents (MANDATORY)
 
